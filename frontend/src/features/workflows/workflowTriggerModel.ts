@@ -33,13 +33,31 @@ export function supportedAutomationTriggerTypes(
   return [];
 }
 
+/**
+ * Workflows run and configured on the Discover page, with where each is
+ * managed there. Workflows does not list them; Activity keeps their runs.
+ */
+export const discoverManagedWorkflows: Record<string, { message: string; path: string }> = {
+  availability_watch: {
+    message: "availabilityWatchManagedOnSubscriptions",
+    path: "/discover?view=watch&panel=watch",
+  },
+  creator_subscription_refresh: {
+    message: "subscriptionRefreshManagedOnSubscriptions",
+    path: "/discover?panel=subscriptions",
+  },
+  dlsite_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/discover?view=rankings&panel=rankings",
+  },
+  remote_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/discover?view=rankings&panel=rankings",
+  },
+};
+
 /** Workflows whose automation is configured on the Discover page. */
-export const subscriptionsScheduledWorkflowCodes = new Set([
-  "availability_watch",
-  "creator_subscription_refresh",
-  "dlsite_popular_collection",
-  "remote_popular_collection",
-]);
+export const subscriptionsScheduledWorkflowCodes = new Set(Object.keys(discoverManagedWorkflows));
 
 export function workflowTriggerCondition(trigger: WorkflowTrigger) {
   if (trigger.triggerType === "startup") return workflowCopy("whenServiceStarts");

@@ -5,24 +5,37 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- Workflows: built-in definitions, including the preset catalog sync
-  workflows, with their triggers managed in the selected definition. There is no custom
-  workflow editor.
-- A status strip at the top shows what is running now with its progress and
-  how many runs need attention; each cell opens Activity.
-- **Activity** is the first entry of the workflow list, with the number of
-  running runs and of runs that need attention beside it. Selecting it shows
-  every workflow's runs in place of a workflow: active runs above
-  **Needs attention** and **History**. Each row shows the status, run number,
-  trigger, and elapsed time. Selecting a row, or the **Latest run** card,
-  opens the run's details: start and finish times, duration, trigger, steps,
-  candidates, run actions, and a collapsed **Diagnostic log** of run events.
-  Wide screens show the details beside the list; elsewhere they replace it,
-  and **Back to runs** returns to the list. On phones Activity opens from the
-  list like a workflow, and the header back button returns from a run to the
-  list and from Activity to where you were. Selecting a workflow leaves
-  Activity. `/activity` and `/runs` links open Workflows on Activity and
-  select the linked run.
+- **Workflows** lists what an administrator starts by hand, grouped by
+  purpose: **Library** (Scan local library, Refresh local work files, and Sync
+  work metadata), **Catalogs** (the catalog sync presets), and **Remote
+  sources** (Fetch and Check works on a source). There is no custom workflow
+  editor.
+- Each operation is one row: its name, one sentence about it, its state, and
+  a run control. The state reads **Never run**, **Starting**, **Queued**,
+  **Running** with its progress, or how the latest run ended and when, such as
+  **Succeeded** or **Failed**. **Needs review** marks a run with items that
+  wait for a decision. Select the state to open that run in Activity.
+- **Run** starts an operation with its default options. The row shows the run
+  at once, and the operation cannot be started again until the run ends. A run
+  started by a schedule, at startup, or in another browser shows on its
+  operation the same way. An operation that needs an input, such as a work
+  code or a circle, shows **Run…**, which opens its options.
+- **Options** opens, below the row, the operation's Run options with their own
+  **Run**, its triggers, and its run history. One operation is open at a time.
+  Phones show the same list.
+- When runs need attention, a line at the top of Workflows says how many and
+  opens them in Activity.
+- **Activity** is the run log, in the **Manage** group right after Workflows. Tabs
+  choose the list: **All**, **Running**, **Needs attention**, **Failed**, and
+  **History**; Running and Needs attention show how many runs they hold. A
+  menu narrows the list to one workflow, and the search field finds runs by
+  workflow name, work code, circle, or source. Each row shows the status, run
+  number, trigger, and elapsed time. Selecting a row opens the run's details:
+  start and finish times, duration, trigger, steps, candidates, run actions,
+  and a collapsed **Diagnostic log** of run events. Wide screens show the
+  details beside the list; elsewhere they replace it, and **Back to runs** or
+  the header back button returns to the list. `/runs` links and earlier links
+  to Activity inside Workflows open Activity and select the linked run.
 - Activity lists every run, including those of features with their own pages:
   translations are followed on the [Translation](translation.md) page, and
   transcriptions in a work's **Manage lyrics → Transcribe**. A notification
@@ -30,7 +43,7 @@ Workflows make backend actions inspectable.
 
 ## Who Can Use Workflows
 
-Workflows opens for accounts with `workflows:run`: contributors and
+Workflows and Activity open for accounts with `workflows:run`: contributors and
 administrators (see [Users](settings.md#users)). Every such account sees the
 same definitions, presets, triggers, and runs, including runs other accounts
 started, and can follow their status, events, and file progress. A run of a
@@ -42,7 +55,7 @@ administrators.
   action need both `remote:fetch` and `metadata:sync`, scans, metadata
   workflows, and the ranking pulls need `metadata:sync`, and the source check
   needs `sources:write`. Contributors
-  without `metadata:sync` can still see these workflows, but cannot start or
+  without `metadata:sync` can still see these operations, but cannot start or
   automate their Fetch paths.
 - Editing, switching off, or deleting a trigger needs the same permissions as
   creating it.
@@ -84,24 +97,13 @@ administrators.
   notifications open the local work detail and can be dismissed independently
   for the signed-in user; a translation that needs attention opens the
   Translation page's **Stopped** view, and a transcription its work;
-  **Open Activity** opens Activity on the Workflows page.
-- The workflow list groups every workflow by category: Basic (local scan, local
-  files, metadata sync, and Learn tag names), Catalog sync (the catalog sync
-  presets), Remote (Fetch and Check works on a source), and Discover (**Pull
-  remote source rankings**, **Pull DLsite rankings**, Availability Watch, and
-  **Refresh subscriptions**, which are configured on the
-  [Discover](discover.md) page), each in a fixed order. Every entry is one
-  line: a dot on its icon shows the latest run's status, and small icons mark
-  an enabled Startup trigger, schedule, or folder watcher. The latest run's
-  time is on the selected workflow's **Latest run** card. Wide layouts keep the
-  list beside the selected workflow; **Hide tab names** below it collapses the
-  list to its icons, and **Show tab names** expands it again. The page remembers this choice. On
-  phones the list is the landing view: tapping a workflow opens it, and the
-  header back button or the browser's Back returns to the list.
-  Definitions cannot be created, edited, or deleted from the page.
-- The selected workflow shows its name and description, its Run options, a
-  **Latest run** card, and its triggers. Each trigger states when it next
-  starts the workflow.
+  **Open Activity** opens the Activity page.
+- **Pull remote source rankings**, **Pull DLsite rankings**, Availability
+  Watch, and **Refresh subscriptions** are run and configured on the
+  [Discover](discover.md) page, and Learn tag names runs on its own; Workflows
+  lists none of them. Activity lists their runs, and its workflow menu narrows
+  the list to one of them. The operations cannot be created, edited, or deleted
+  from the page.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving or dismissing recorded issues clears the
   corresponding dedicated metadata-run notice. Other failures can be marked
@@ -111,7 +113,8 @@ administrators.
   issues stay in Metadata. This acknowledgement is per user. History keeps the
   original outcome, including failed, partial, and cancelled runs.
 - Metadata owns pending-work recovery and the DLsite proxy shortcut. Its
-  metadata sync shortcut selects the existing workflow here.
+  metadata sync shortcut opens the options of **Sync work metadata** in
+  Workflows.
 - Built-in local scan and metadata sync support editable interval triggers;
   local scan also supports a Startup trigger. Local scan does not check remote
   availability or synchronize metadata. Manual, Startup, and interval scans expose a
@@ -141,14 +144,14 @@ administrators.
   re-indexes every available local work. One run is queued or running at a
   time, and starting another returns the active run. It supports Startup and
   interval triggers that store the mode, and ships without a default trigger.
-- **Check works on a source** sits in Remote, after Fetch. It asks one remote
+- **Check works on a source** sits in Remote sources, after Fetch. It asks one remote
   source whether library works exist there and records the answer on each
   work, as checking availability on a work does; it never adds works. Its
   options choose the source, the works (**Local library**, the default, or
   **All works in database**), a filter (**No remote source**, the default, for
   works that no remote source currently provides, or **All**), and **Works per
   run** (50 to 1000, default 100). Without an enabled compatible remote source,
-  the workflow is covered by a prompt to configure one. Each work is one lookup on the source. When more works match,
+  its options show a prompt to configure one in place of the form. Each work is one lookup on the source. When more works match,
   the ones this source has never checked come first, then the ones checked
   longest ago, so repeated runs cover the whole library. The run first checks
   the source's health, as **Check health** in source settings does, and stops
@@ -156,39 +159,29 @@ administrators.
   when some lookups failed. One run per source is active at a time. It
   supports Startup and interval triggers that store these options and ships
   without a default trigger. Running it requires permission to manage sources.
-- Workflows with run parameters show them in a **Run options** form below the
-  summary. The form ends in a bar with `Run` and, when `Run` is unavailable,
-  the reason, such as a missing required input. While a long form scrolls, the
-  bar stays at the bottom of the screen, above the phone navigation and the
-  player. Options apply to the next manual run only and reset when another
-  workflow is selected.
-  Local scan shows its follow-up option there; built-in workflows without run
-  parameters show `Run` in their header instead.
-- The **Latest run** card follows the form. Its first line states the latest
-  run's status, number, time, and duration; select it to open that run in
-  Activity. Below it are the run's stages and its log, side by side when there
-  is room. The log stays folded after a successful run and opens by itself
-  while a run is active and after a failed or partial one; **Show log** and
-  **Hide log** fold it by hand. Starting a run keeps its workflow open, and
-  the card reports the new run. While a run is active, new log lines stream in
-  and the log follows the latest output unless you scroll up. Select a stage to
-  show only its lines.
-- A bar chart of the latest 20 runs' durations, oldest first, closes the card.
-  Ordinary successes stay neutral so failures and partial runs stand out; hover
-  a bar for its details and select it to open the run. **All runs** opens
-  Activity with only this workflow's runs; select the workflow's name below
-  the Activity heading to show every workflow again.
+- An operation's options start with its **Run options** form. The form ends
+  in a bar with `Run` and, when `Run` is unavailable, the reason, such as a
+  missing required input. While a long form scrolls, the bar stays at the
+  bottom of the screen, above the phone navigation and the player. Options
+  apply to the next manual run only and reset when the options are closed.
+  **Run** on the row uses the defaults: no follow-up run for the local scan,
+  Incremental for local work files, and all works from DLsite with Missing or
+  outdated for metadata sync.
+- **Run history** closes the options: a bar chart of the latest 20 runs'
+  durations, oldest first. Ordinary successes stay neutral so failures and
+  partial runs stand out; hover a bar for its details and select it to open
+  the run. **All runs** opens Activity with only this operation's runs; choose
+  **All workflows** in Activity's menu to show every workflow again. A run's
+  steps and its log are in its details in Activity.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
   [Discover](discover.md) page, where the watch keeps its source setting
   and its pool is the **Watch** view, the subscription refresh
   its schedule, and
-  each ranking its own pull schedule. Here they show their **Latest run** card,
-  link to that page, and have no Run options or
-  triggers of their own.
+  each ranking its own pull schedule. Activity narrowed to one of them says
+  where it is configured and links there.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
-  (tabs **Circle catalog**, **Series catalog**, and **VA catalog**) are preset
-  workflows that run on demand. Their Run options have three sections:
+  are the **Catalogs** operations, preset workflows that run on demand. Their Run options have three sections:
   **Input** (the target and the catalog refresh, Incremental or Full),
   **Filter** (a release date range and a work limit), and **Actions** (Sync
   metadata, the tag template, and for circles Check remote sources). On a wide

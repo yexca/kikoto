@@ -89,6 +89,9 @@ export function newlyAvailableCodes(summaryJson: string): string[] {
   }
 }
 
+/** The workflow that refreshes the subscribed catalogs; its runs are the schedule's latest runs. */
+export const SUBSCRIPTION_REFRESH_CODE = "creator_subscription_refresh";
+
 export const SUBSCRIPTION_INTERVAL_HOURS = [1, 6, 12, 24, 48, 168] as const;
 
 /** Raised after the feed is opened, so the navigation badge clears at once. */

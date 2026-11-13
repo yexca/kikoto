@@ -18,9 +18,21 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata&reason=metadata")).toBe("/metadata?reason=metadata");
     expect(legacyLibraryRedirect("/no-source", "?metadataRun=42&page=2")).toBe("/metadata?page=2&reason=no_source");
   });
-  it("opens legacy Activity links inside Workflows while preserving the selected run", () => {
-    expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBe("/workflows?view=failed&run=7&activity=1");
-    expect(legacyLibraryRedirect("/runs")).toBe("/workflows?activity=1");
+  it("sends addresses that showed Activity inside Workflows to the Activity page", () => {
+    expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBeNull();
+    expect(legacyLibraryRedirect("/runs", "?run=7")).toBe("/activity?run=7");
+    expect(legacyLibraryRedirect("/workflows", "?activity=1")).toBe("/activity");
+    expect(legacyLibraryRedirect("/workflows", "?activity=1&workflow=metadata_sync&view=history&run=7")).toBe(
+      "/activity?view=history&run=7",
+    );
+    expect(legacyLibraryRedirect("/workflows", "?activity=1&runsOf=metadata_sync")).toBe(
+      "/activity?workflow=metadata_sync",
+    );
+    expect(legacyLibraryRedirect("/workflows", "?workflow=metadata_sync&run=7")).toBe("/activity?run=7");
+  });
+  it("keeps an operation link on Workflows", () => {
+    expect(legacyLibraryRedirect("/workflows", "?workflow=circle_catalog_sync&circleId=RG00000000")).toBeNull();
+    expect(legacyLibraryRedirect("/workflows")).toBeNull();
   });
   it("moves no-source routes to work management", () => {
     expect(legacyLibraryRedirect("/no-source")).toBe("/metadata?reason=no_source");
@@ -32,12 +44,12 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/library/remote", "?q=voice")).toBe("/?q=voice");
   });
 
-  it("routes removed Maintenance sections to their Settings tabs", () => {
+  it("routes removed Maintenance sections to their System and Settings tabs", () => {
     for (const tab of ["overview", "paths", "system", "local", "remote"]) {
-      expect(legacyLibraryRedirect("/maintenance", `?tab=${tab}&source=8`)).toBe("/settings?tab=library&source=8");
+      expect(legacyLibraryRedirect("/maintenance", `?tab=${tab}&source=8`)).toBe("/system?tab=library&source=8");
     }
-    expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/settings?tab=users");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBe("/settings?tab=users");
+    expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/system?tab=users");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBe("/system?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=routing")).toBe("/settings?tab=playback");
     expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=recommendation");
     expect(legacyLibraryRedirect("/settings", "?tab=appearance")).toBe("/settings");
@@ -45,13 +57,28 @@ describe("legacyLibraryRedirect", () => {
 
   it("leaves current routes unchanged", () => {
     expect(legacyLibraryRedirect("/library/source/example_remote")).toBeNull();
-    expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBe("/settings?tab=library");
+    expect(legacyLibraryRedirect("/system", "?tab=users")).toBeNull();
+    expect(legacyLibraryRedirect("/tags/")).toBeNull();
+    for (const search of ["", "?tab=playback", "?tab=recommendation", "?tab=data", "?tab=time-zone"]) {
+      expect(legacyLibraryRedirect("/settings", search)).toBeNull();
+    }
   });
 
   it("redirects bare legacy administration routes", () => {
-    expect(legacyLibraryRedirect("/maintenance")).toBe("/settings?tab=library");
-    expect(legacyLibraryRedirect("/users")).toBe("/settings?tab=users");
-    expect(legacyLibraryRedirect("/cleanup")).toBe("/settings?tab=cleanup");
+    expect(legacyLibraryRedirect("/maintenance")).toBe("/system?tab=library");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBe("/system?tab=library");
+    expect(legacyLibraryRedirect("/users")).toBe("/system?tab=users");
+    expect(legacyLibraryRedirect("/cleanup")).toBe("/system?tab=cleanup");
+  });
+
+  it("opens the administration tabs of Settings links on the System page", () => {
+    for (const tab of ["library", "cache", "proxy", "llm", "cleanup", "users"]) {
+      expect(legacyLibraryRedirect("/settings", `?tab=${tab}`)).toBe(`/system?tab=${tab}`);
+    }
+    expect(legacyLibraryRedirect("/settings/", "?tab=library&source=8")).toBe("/system?tab=library&source=8");
+    expect(legacyLibraryRedirect("/settings", "?tab=metadata")).toBe("/system?tab=library");
+    expect(legacyLibraryRedirect("/settings", "?tab=asr")).toBe("/system?tab=llm");
+    expect(legacyLibraryRedirect("/settings", "?tab=services")).toBe("/system?tab=llm");
   });
 
   it("opens Subscriptions links as Discover with the same view", () => {
@@ -67,8 +94,8 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/settings", "?tab=history")).toBe("/insights");
   });
 
-  it("opens former personal pages as Settings tabs", () => {
-    expect(legacyLibraryRedirect("/tags/")).toBe("/settings?tab=tags");
+  it("opens former personal locations where their content lives", () => {
+    expect(legacyLibraryRedirect("/settings", "?tab=tags")).toBe("/tags");
     expect(legacyLibraryRedirect("/user-data")).toBe("/settings?tab=data");
   });
 

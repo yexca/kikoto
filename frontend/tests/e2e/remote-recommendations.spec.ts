@@ -8,6 +8,13 @@ import {
 } from "./fixtures/api";
 import { mockRemoteSource, selectLibrarySource } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
+import {
+  closeLibraryView,
+  openLibrarySort,
+  openLibraryView,
+  setRecommendationScores,
+  showFullWorkCards,
+} from "./fixtures/library-view";
 
 test("remote recommendation toggle scores the page in one batch without reloading the source", async ({ page }) => {
   const browseRequests: URL[] = [];
@@ -31,12 +38,13 @@ test("remote recommendation toggle scores the page in one batch without reloadin
       json: { scores: works.map((work, index) => ({ primaryCode: work.primaryCode, score: [65, 20][index] })) },
     });
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Example Remote Work", { exact: true })).toBeVisible();
   expect(scoreRequests).toHaveLength(0);
   const initialBrowseCount = browseRequests.length;
-  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  await setRecommendationScores(page, true);
   const badges = page.getByLabel("Recommended for you", { exact: true });
   await expect(badges).toHaveCount(2);
   await expect(badges.nth(0)).toHaveText("65");
@@ -49,7 +57,7 @@ test("remote recommendation toggle scores the page in one batch without reloadin
   await expect(badges.nth(1)).toHaveCSS("animation-delay", "0.04s");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(badges.nth(1)).toHaveCSS("animation-name", "none");
-  await page.getByRole("button", { name: "Hide recommendation badges", exact: true }).click();
+  await setRecommendationScores(page, false);
   await expect(badges).toHaveCount(0);
   expect(browseRequests).toHaveLength(initialBrowseCount);
 });
@@ -67,11 +75,12 @@ test("remote recommendation failure keeps cards and retries only scoring", async
     const request = route.request().postDataJSON() as { works: Array<{ primaryCode: string }> };
     await route.fulfill({ json: { scores: request.works.map(({ primaryCode }) => ({ primaryCode, score: 65 })) } });
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const browseCount = requests.length;
-  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  await setRecommendationScores(page, true);
   await page.getByRole("status").getByRole("button", { name: "Retry", exact: true }).click();
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("65");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
@@ -94,12 +103,15 @@ test("remote recommendation response cannot restore badges after disabling them"
       .fulfill({ json: { scores: request.works.map(({ primaryCode }) => ({ primaryCode, score: 65 })) } })
       .catch(() => undefined);
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  const scores = (await openLibraryView(page)).getByRole("switch", { name: "Recommendation scores", exact: true });
+  await scores.click();
   await expect.poll(() => started).toBe(true);
-  await page.getByRole("button", { name: "Hide recommendation badges", exact: true }).click();
+  await scores.click();
+  await closeLibraryView(page);
   releaseResponse();
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
@@ -140,18 +152,18 @@ test("demo remote badges reuse the local score session on browse and retry", asy
       ]),
     });
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();
   const session = localRequests.at(-1)?.searchParams.get("recommendationSession");
   expect(session).toBeTruthy();
   expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
-  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  await setRecommendationScores(page, true);
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("72");
   expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
   failNextBrowse = true;
-  await page.getByRole("button", { name: /^Sort:/ }).click();
-  await page.getByRole("button", { name: "Ascending", exact: true }).click();
+  await (await openLibrarySort(page)).getByRole("button", { name: "Ascending", exact: true }).click();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();

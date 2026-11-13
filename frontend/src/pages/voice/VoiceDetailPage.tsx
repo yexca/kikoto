@@ -1,23 +1,31 @@
-import { ArrowUpRight, CircleAlert, Heart, Image, Loader2, RefreshCw, Rss, SlidersHorizontal } from "lucide-react";
+import { ArrowUpRight, CircleAlert, CloudDownload, Image, RefreshCw, Rss } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
+import { CatalogStatStrip } from "@/components/creator/CatalogStatStrip";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
-import { ActionMenu } from "@/components/ui/action-menu";
+import type { ActionMenuItem } from "@/components/ui/action-menu";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
+import {
+  CreatorActionRow,
+  CreatorCatalogNote,
+  CreatorFavoriteButton,
+  CreatorMoreMenu,
+} from "@/components/creator/CreatorDetailActions";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
+import { CreatorWorkCaption, CreatorWorkResultsBar } from "@/components/creator/CreatorWorkResults";
+import { CreatorWorkViewMenu } from "@/components/creator/CreatorWorkViewMenu";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
+import { formatDateTime } from "@/i18n/format";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { CreatorWorkFetchConfirm, CreatorWorkSelectionBar } from "@/pages/creator/CreatorWorkSelectionBar";
 import { useCreatorWorkSelection } from "@/pages/creator/useCreatorWorkSelection";
 import { useCreatorWorksBrowse } from "@/pages/creator/useCreatorWorksBrowse";
@@ -62,7 +70,7 @@ import {
   replaceVoiceRouteKey,
   voiceReturnLabelForLocation,
 } from "@/lib/voiceNavigationState";
-import { voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
+import { voiceWorkRemoteTarget, type VoiceWorkFilter, type VoiceWorkView } from "@/pages/voiceWorkModel";
 import {
   isVoiceBulkSelectable,
   isVoiceWorkFetchable,
@@ -175,6 +183,7 @@ function VoiceNotFound({ routeKey }: { routeKey: string }) {
 
 function VoiceDetailView({ personId, routeKey, active }: { personId: number; routeKey: string; active: boolean }) {
   const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
   const auth = useAuth();
   const toast = useToast();
   const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
@@ -203,7 +212,6 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const [query, setQuery] = useState("");
   const [requestQuery, setRequestQuery] = useState("");
   const [filter, setFilter] = useState<VoiceWorkFilter>("all");
-  const [workOptionsOpen, setWorkOptionsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const resultsScroll = useCollectionResultsScroll<HTMLElement>();
   const completeResultsScroll = resultsScroll.complete;
@@ -246,7 +254,6 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
     if (!active || loadedPersonID.current === personId) return;
     const controller = new AbortController();
     setIsLoading(true);
-    setWorkOptionsOpen(false);
     setRemoteMatches([]);
     setCatalogRefresh(null);
     setNotFound(false);
@@ -690,19 +697,90 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
     );
   }
 
+  const canManageAliases = auth.demoMode || auth.hasPermission("metadata:sync");
+  const voiceSyncedTime = detail.lastSyncedAt ? formatDateTime(detail.lastSyncedAt, resolvedLocale) : "";
+  const metadataMissingWorks = detail.metadataMissingWorks ?? 0;
+  // Catalog management waits in More, and only for a viewer allowed to run it.
+  const moreMenuItems: ActionMenuItem[] = [
+    ...(canChangeCover
+      ? [
+          {
+            key: "cover",
+            label: t("detailActions.changeCover"),
+            icon: <Image className="h-4 w-4" />,
+            onSelect: () => setCoverDialogOpen(true),
+          },
+        ]
+      : []),
+    ...(canForceRefreshCatalog
+      ? [
+          {
+            key: "refresh",
+            label: firstPull ? t("detailActions.pullCatalog") : t("detailActions.refreshVoiceCatalog"),
+            icon: firstPull ? <CloudDownload className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />,
+            disabled: isRemoteLoading || catalogRefreshActive,
+            hint: catalogRefreshActive
+              ? t("detailActions.catalogRefreshing")
+              : voiceSyncedTime
+                ? t("detailActions.catalogSyncedAt", { time: voiceSyncedTime })
+                : undefined,
+            onSelect: firstPull ? firstPullVoiceCatalog : refreshVoice,
+          },
+          ...(!firstPull && metadataMissingWorks > 0
+            ? [
+                {
+                  key: "retryMetadata",
+                  label: t("detailActions.retryMetadata"),
+                  icon: <RefreshCw className="h-4 w-4" />,
+                  disabled: isRemoteLoading || catalogRefreshActive,
+                  hint: t("detailActions.retryMetadataCount", { count: metadataMissingWorks }),
+                  onSelect: retryVoiceMetadata,
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(canOpenCatalogSync
+      ? [
+          {
+            key: "catalogSync",
+            label: t("detailActions.syncVoiceCatalog"),
+            icon: <Rss className="h-4 w-4" />,
+            onSelect: () =>
+              openWorkflowPath(workflowRunFormPath("voice_catalog_sync", { personId: String(detail.personId) })),
+          },
+        ]
+      : []),
+    ...(canManageAliases
+      ? [
+          {
+            key: "aliases",
+            label: t("detailActions.manageAliases"),
+            icon: <ArrowUpRight className="h-4 w-4" />,
+            onSelect: () => openVoiceAliasMaintenance(detail.personId),
+          },
+        ]
+      : []),
+  ];
+  const worksBusy = isWorksLoading || isRemoteLoading || catalogRefreshActive;
+
   return (
     <div className="relative space-y-5">
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <CreatorDetailHeader
+        label={t("detailActions.voiceActorSummary")}
         name={detail.displayName}
         coverUrl={creatorCoverUrl(detail)}
         aliases={detail.aliases}
         eyebrow={
           <>
             <span className="font-mono tracking-tight">#{detail.personId}</span>
-            <CatalogSyncBadge state={detail.syncState} appearance="dot" />
-            {failedRemoteSources > 0 && (
+            {/* Sync attention and failed sources only matter to someone who can refresh the catalog. */}
+            {canForceRefreshCatalog && detail.syncState === "attention" && (
+              <CatalogSyncBadge state={detail.syncState} appearance="dot" />
+            )}
+            {canForceRefreshCatalog && failedRemoteSources > 0 && (
               <RemoteSourceWarning
                 count={failedRemoteSources}
                 onOpen={
@@ -712,214 +790,95 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
             )}
           </>
         }
-        meta={
-          <div
-            className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5"
-            aria-label={t("detailActions.voiceActorStatistics")}
-          >
-            <Badge variant={detail.localWorks > 0 ? "success" : "outline"} className="tabular-nums">
-              {t("detailActions.localCount", { count: detail.localWorks })}
-            </Badge>
-            <Badge variant="outline" className="tabular-nums">
-              {t("detailActions.remoteCount", { count: detail.remoteWorks })}
-            </Badge>
-            <UserTagRow tags={detail.userTags} scope="voice" onSave={saveVoiceTags} className="min-w-0 flex-1" />
-          </div>
-        }
+        meta={<UserTagRow tags={detail.userTags} scope="voice" onSave={saveVoiceTags} className="mt-2.5" />}
         actions={
-          <div
-            className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2"
-            role="group"
-            aria-label={t("detailActions.voiceActorActions")}
-          >
-            <Button
-              variant={detail.favorite ? "default" : "outline"}
-              size="icon"
-              className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-              aria-label={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-              aria-pressed={detail.favorite}
-              title={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-              onClick={() => void toggleFavorite()}
-            >
-              <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
-              <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
-            </Button>
+          <CreatorActionRow label={t("detailActions.voiceActorActions")}>
+            <CreatorFavoriteButton favorite={detail.favorite} onToggle={() => void toggleFavorite()} />
             <SubscribeButton
               target={{ kind: "voice", personId: detail.personId }}
               subjectName={detail.displayName}
               canSubscribe={!auth.demoMode && auth.hasPermission("favorites:write")}
-              canPullNow={!auth.demoMode && auth.hasPermission("metadata:sync")}
+              canPullNow={canForceRefreshCatalog}
               onOpenSubscriptions={() => openWorkflowPath("/discover?panel=subscriptions")}
-              className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
             />
-            {!firstPull && !catalogRefreshActive && (detail.metadataMissingWorks ?? 0) > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                aria-label={t("detailActions.retryMetadata")}
-                title={t("detailActions.retryMetadataCount", { count: detail.metadataMissingWorks ?? 0 })}
-                disabled={!canForceRefreshCatalog || isRemoteLoading}
-                onClick={retryVoiceMetadata}
-              >
-                <RefreshCw className="h-4 w-4" />
-                <span className="lg:hidden">{t("detailActions.metadata")}</span>
-                <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
-              </Button>
-            )}
-            {catalogRefreshActive ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                aria-label={t("detailActions.refreshRunning")}
-                title={canOpenWorkflows ? t("detailActions.viewRefreshRun") : undefined}
-                disabled={!canOpenWorkflows || !catalogRefresh?.runId}
-                onClick={() => catalogRefresh?.runId && openRefreshRun(catalogRefresh.runId)}
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>{t("detailActions.refreshRunning")}</span>
-              </Button>
-            ) : (
-              <Button
-                variant={firstPull ? "default" : "outline"}
-                size="sm"
-                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshVoice")}
-                disabled={!canForceRefreshCatalog || isRemoteLoading}
-                onClick={firstPull ? firstPullVoiceCatalog : refreshVoice}
-              >
-                {isRemoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshVoice")}</span>
-              </Button>
-            )}
-            <ActionMenu
-              label={t("detailActions.moreVoiceActions")}
-              buttonLabel={t("detailActions.more")}
-              items={[
-                ...(canChangeCover
-                  ? [
-                      {
-                        key: "cover",
-                        label: t("detailActions.changeCover"),
-                        icon: <Image className="h-4 w-4" />,
-                        onSelect: () => setCoverDialogOpen(true),
-                      },
-                    ]
-                  : []),
-                ...(canOpenCatalogSync
-                  ? [
-                      {
-                        key: "catalogSync",
-                        label: t("detailActions.syncVoiceCatalog"),
-                        icon: <Rss className="h-4 w-4" />,
-                        onSelect: () =>
-                          openWorkflowPath(
-                            workflowRunFormPath("voice_catalog_sync", { personId: String(detail.personId) }),
-                          ),
-                      },
-                    ]
-                  : []),
-                ...(auth.demoMode || auth.hasPermission("metadata:sync")
-                  ? [
-                      {
-                        key: "aliases",
-                        label: t("detailActions.manageAliases"),
-                        icon: <ArrowUpRight className="h-4 w-4" />,
-                        onSelect: () => openVoiceAliasMaintenance(detail.personId),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-          </div>
+            <CreatorMoreMenu label={t("detailActions.moreVoiceActions")} items={moreMenuItems} />
+          </CreatorActionRow>
         }
-      ></CreatorDetailHeader>
+      >
+        <CatalogStatStrip
+          label={t("detailActions.voiceActorStatistics")}
+          stats={[
+            { key: "available", label: t("content.available"), count: detail.playableWorks },
+            { key: "local", label: t("detailActions.local"), count: detail.localWorks },
+            { key: "remote", label: t("detailActions.remote"), count: detail.remoteWorks },
+          ]}
+          availability={{ total: detail.knownWorks, local: detail.localWorks, available: detail.playableWorks }}
+          availabilityLabel={t("creator.availabilityBreakdown", {
+            local: detail.localWorks,
+            remote: Math.max(0, detail.playableWorks - detail.localWorks),
+            missing: Math.max(0, detail.knownWorks - detail.playableWorks),
+          })}
+          note={
+            <CreatorCatalogNote
+              refreshing={catalogRefreshActive}
+              notPulled={firstPull}
+              onOpenRun={
+                canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
+              }
+              onPull={canForceRefreshCatalog && !isRemoteLoading ? firstPullVoiceCatalog : undefined}
+            />
+          }
+        />
+      </CreatorDetailHeader>
 
       <section ref={resultsScroll.anchorRef} className="scroll-mt-24 space-y-3">
         <CatalogWorkToolbar
           query={query}
           searchLabel={t("sheets.searchVoiceWorks")}
           onQueryChange={setQuery}
-          sort={<LibrarySortButton {...sortProps} variant="toolbar" />}
-          mobileSort={<LibrarySortButton {...sortProps} />}
-          cardModes={{
-            mobile: mobileCardMode,
-            desktop: desktopCardMode,
-            onMobileChange: setMobileCardMode,
-            onDesktopChange: setDesktopCardMode,
-          }}
+          sort={<LibrarySortButton {...sortProps} />}
           filterLabel={t("sheets.voiceWorkAvailability")}
           filter={filter}
           defaultFilter="all"
           filterOptions={voiceWorkFilterOptions(t)}
           onFilterChange={changeWorkFilter}
-          pageSize={pageSize}
-          pageSizeOptions={creatorWorkPageSizeOptions}
-          onPageSizeChange={changeWorkPageSize}
-          mobileColumns={mobileColumns}
-          desktopColumns={desktopColumns}
-          onMobileColumnsChange={setMobileColumns}
-          onDesktopColumnsChange={setDesktopColumns}
-          selectionMode={selection.selectionMode}
-          onSelectionModeChange={selection.setSelectionMode}
+          mobileCaption={<CreatorWorkCaption page={currentPage} total={totalWorks} totalPages={totalPages} />}
+          view={
+            <CreatorWorkViewMenu
+              display={{
+                cardModes: {
+                  mobile: mobileCardMode,
+                  desktop: desktopCardMode,
+                  onMobileChange: setMobileCardMode,
+                  onDesktopChange: setDesktopCardMode,
+                },
+                mobileColumns,
+                desktopColumns,
+                onMobileColumnsChange: setMobileColumns,
+                onDesktopColumnsChange: setDesktopColumns,
+                pageSize,
+                pageSizeOptions: creatorWorkPageSizeOptions,
+                onPageSizeChange: changeWorkPageSize,
+              }}
+              selection={{ active: selection.selectionMode, onToggle: selection.toggleSelectionMode }}
+            />
+          }
         />
-        <div>
-          <WorkCollectionPagination
-            placement="top"
-            page={currentPage}
-            pageSize={pageSize}
-            totalItems={totalWorks}
-            totalPages={totalPages}
-            compactMobile
-            refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
-            refreshingLabel={t("creatorBrowse.refreshingVoiceWorks")}
-            leadingControls={
-              <Button
-                variant="outline"
-                size="icon"
-                className="relative h-11 w-11 lg:hidden"
-                aria-label={t("creatorBrowse.openVoiceWorkOptions")}
-                title={t("sheets.voiceWorkOptions")}
-                aria-haspopup="dialog"
-                aria-expanded={workOptionsOpen}
-                onClick={() => setWorkOptionsOpen(true)}
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                {(query.trim() || filter !== "all" || selection.selectionMode) && (
-                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
-                )}
-              </Button>
-            }
-            onPageChange={changePage}
-          />
-        </div>
-        <VoiceWorkOptionsSheet
-          open={workOptionsOpen}
-          onClose={() => setWorkOptionsOpen(false)}
-          filter={filter}
-          onFilterChange={changeWorkFilter}
-          query={query}
-          onQueryChange={setQuery}
+        <CreatorWorkResultsBar
+          page={currentPage}
           pageSize={pageSize}
-          pageSizeOptions={creatorWorkPageSizeOptions}
-          onPageSizeChange={changeWorkPageSize}
-          mobileColumns={mobileColumns}
-          onMobileColumnsChange={setMobileColumns}
-          cardMode={mobileCardMode}
-          onCardModeChange={setMobileCardMode}
-          selectionMode={selection.selectionMode}
-          onSelectWorks={() => {
-            setWorkOptionsOpen(false);
-            selection.toggleSelectionMode();
-          }}
+          total={totalWorks}
+          totalPages={totalPages}
+          refreshing={worksBusy}
+          refreshingLabel={t("creatorBrowse.refreshingVoiceWorks")}
+          onPageChange={changePage}
         />
         <CreatorWorkSelectionBar selection={selection} />
         {pageWorks.length > 0 ? (
           <div
             className={workCollectionClassName()}
             style={workCollectionStyle(mobileColumns, desktopColumns, cardLayout)}
-            aria-busy={isWorksLoading || isRemoteLoading || catalogRefreshActive}
+            aria-busy={worksBusy}
           >
             {pageWorks.map((work) => (
               <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}>
@@ -946,7 +905,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
               </div>
             ))}
           </div>
-        ) : isWorksLoading || isRemoteLoading || catalogRefreshActive ? (
+        ) : worksBusy ? (
           <WorkCollectionLoadingState
             label={t("creatorBrowse.loadingVoiceWorks")}
             mobileColumns={mobileColumns}

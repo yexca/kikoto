@@ -1,26 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api, type WorkflowRun } from "@/lib/api";
 
-export type WorkflowPulseState = {
-  /** The newest active runs across every workflow, for the status strip. */
-  active: WorkflowRun[];
-  running: number;
-  attention: number;
-  loaded: boolean;
-};
-
-const activePreviewSize = 4;
+const activeListSize = 50;
 const busyPollMs = 3000;
 const idlePollMs = 15_000;
 
+type ActiveQueue = {
+  /** Queued and running runs across every workflow, newest first. */
+  runs: WorkflowRun[];
+  running: number;
+  attention: number;
+};
+
 /**
- * Page-wide workflow status: the active queue with its attention count, and the
- * latest run of each listed workflow. The queue polls quickly only while work is
- * active; the per-workflow summaries reload when the queue changes instead of on
- * their own timer.
+ * The newest run of each listed operation. The active queue is polled, quickly
+ * only while work is active, so a run started by a schedule, at startup, or in
+ * another browser shows on its operation; each operation's latest run reloads
+ * when the queue changes instead of on its own timer.
  */
-export function useWorkflowOverview({
+export function useOperationRuns({
   codes,
   refreshKey,
   staticDemo,
@@ -29,9 +28,9 @@ export function useWorkflowOverview({
   refreshKey: number;
   staticDemo: boolean;
 }) {
-  const [pulse, setPulse] = useState<WorkflowPulseState>({ active: [], running: 0, attention: 0, loaded: false });
+  const [queue, setQueue] = useState<ActiveQueue>({ runs: [], running: 0, attention: 0 });
   const [latest, setLatest] = useState<Record<string, WorkflowRun | null>>({});
-  const busy = pulse.running > 0;
+  const busy = queue.running > 0;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,13 +39,12 @@ export function useWorkflowOverview({
       if (fetching || document.hidden || controller.signal.aborted) return;
       fetching = true;
       try {
-        const page = await api.listWorkflowRuns(1, activePreviewSize, "running", "", "", controller.signal);
+        const page = await api.listWorkflowRuns(1, activeListSize, "running", "", "", controller.signal);
         if (controller.signal.aborted) return;
-        setPulse({
-          active: page.runs,
+        setQueue({
+          runs: page.runs,
           running: page.viewTotals?.running ?? page.total,
           attention: page.viewTotals?.attention ?? 0,
-          loaded: true,
         });
       } catch {
         // Keep the last known queue; Activity reports load failures where they block a task.
@@ -66,7 +64,7 @@ export function useWorkflowOverview({
   }, [busy, refreshKey, staticDemo]);
 
   const codesKey = codes.join(",");
-  const queueSignature = `${pulse.active.map((run) => `${run.id}:${run.status}`).join(",")}|${pulse.running}|${pulse.attention}`;
+  const queueSignature = `${queue.runs.map((run) => `${run.id}:${run.status}`).join(",")}|${queue.running}|${queue.attention}`;
   useEffect(() => {
     if (!codesKey) return;
     const controller = new AbortController();
@@ -88,9 +86,18 @@ export function useWorkflowOverview({
     return () => controller.abort();
   }, [codesKey, queueSignature, refreshKey]);
 
-  /** An active run from the faster queue poll wins over the slower per-workflow summary. */
-  const latestRun = (code: string): WorkflowRun | null | undefined =>
-    pulse.active.find((run) => run.workflowCode === code) ?? latest[code];
+  /**
+   * The run that states an operation's status: its active run when it has one,
+   * a running one ahead of a queued one, otherwise its newest run. `undefined`
+   * until the first answer and `null` for an operation that never ran.
+   */
+  const runOf = useCallback(
+    (code: string): WorkflowRun | null | undefined => {
+      const active = queue.runs.filter((run) => run.workflowCode === code);
+      return active.find((run) => run.status === "running") ?? active[0] ?? latest[code];
+    },
+    [latest, queue.runs],
+  );
 
-  return { pulse, latestRun };
+  return { attention: queue.attention, runOf };
 }

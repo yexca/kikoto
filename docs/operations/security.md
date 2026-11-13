@@ -137,7 +137,7 @@ password stays readable to anyone who can inspect the container environment.
 ## Authentication and Cookies
 
 A super administrator can change **Anonymous access** under
-`Settings -> Users -> Instance access` in production or development. The setting is stored in
+`System -> Users -> Instance access` in production or development. The setting is stored in
 SQLite and recorded in the audit log. In production it takes effect without a
 restart. When disabled, unauthenticated clients can reach only health,
 authentication bootstrap and initial setup, library migration status, and
@@ -271,7 +271,7 @@ allowed hosts never receive the private-LAN exception.
 The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
 `HTTPS_PROXY`, or `NO_PROXY` settings; the **Bypass proxy** list below takes
 the place of `NO_PROXY`. Administrators instead configure
-forward proxies under `Settings -> Proxy`: an ordered list of up to
+forward proxies under `System -> Proxy`: an ordered list of up to
 eight `http`, `https`, `socks5`, or `socks5h` proxies with an explicit host and
 port and an optional username and password. **Proxy scope** routes built-in
 DLsite requests, remote-source requests (with per-source direct or proxy
@@ -321,7 +321,7 @@ are stored in the SQLite settings table, are write-only through the settings
 API, and are never returned or included in validation errors.
 
 Only accounts with `sources:write` see source addresses while **Hide addresses
-from accounts that do not manage sources** in `Settings -> Library` is on, which
+from accounts that do not manage sources** in `System -> Library` is on, which
 is the default; other accounts and anonymous readers get covers, image
 previews, playback, and text through Kikoto itself. Accounts that can make the
 server reach remote sources on demand are limited to roles holding

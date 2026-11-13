@@ -84,6 +84,7 @@ export const subscriptionsHant = {
       label: "目前作品的操作",
       button: "操作",
       viewRun: "查看執行",
+      viewRuns: "查看執行記錄",
       metadata: {
         label: "同步中繼資料",
         hint: "針對沒有中繼資料或同步已超過一天的作品。媒體庫中沒有的作品會被加入。",
@@ -109,7 +110,7 @@ export const subscriptionsHant = {
         partial: "來源檢測已完成，部分作品未能檢測。",
         failed: "來源檢測失敗。",
         queueFailed: "無法將來源檢測加入佇列。",
-        noSource: "沒有可檢測的遠端來源。請先在設定中加入相容來源。",
+        noSource: "沒有可檢測的遠端來源。請先在「系統 → 媒體庫」中加入相容來源。",
       },
     },
     feed: {
@@ -196,9 +197,8 @@ export const subscriptionsHant = {
       availabilityWatch: "檢查可用性監視",
       availabilityWatchDescription: "每次重新整理後執行可用性監視檢查。",
       nextRun: "下次重新整理：",
-      lastRun: "上次重新整理：",
       off: "關閉",
-      viewRun: "查看最近一次執行",
+      latestRun: "最近一次重新整理",
       lastErrorNotice: "上次重新整理需要處理，請開啟最近一次執行查看詳情。",
       saveFailed: "無法儲存排程。",
       queued: "重新整理已加入佇列。",

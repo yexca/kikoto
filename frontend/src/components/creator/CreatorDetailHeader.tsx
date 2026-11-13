@@ -3,9 +3,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { assetURL } from "@/lib/api";
 
 /**
- * Identity panel for a circle or voice actor: the latest cover as a square
- * portrait over a cover-tinted surface, the name and personal state, the
- * action cluster, and an optional footer strip such as catalog statistics.
+ * Identity summary for a circle or voice actor, shaped like the work detail
+ * Hero: the latest cover as a square portrait, the name and personal tags, an
+ * optional summary such as catalog statistics, and the quiet action row. The
+ * cover tint alone sets it apart from the page; it draws no frame, and the
+ * summary keeps to the width of its content.
  */
 export function CreatorDetailHeader({
   label,
@@ -31,38 +33,36 @@ export function CreatorDetailHeader({
   const cover = coverUrl && !imageFailed ? assetURL(coverUrl) : "";
   const visibleAliases = aliases.filter((alias) => alias && alias !== name).slice(0, 4);
   return (
-    <section aria-label={label}>
-      <div className="relative isolate overflow-clip rounded-xl border bg-card">
-        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6 lg:p-5">
-          <div className="flex min-w-0 items-start gap-4 lg:items-center lg:gap-5">
-            <CreatorPortrait name={name} cover={cover} onError={() => setImageFailed(true)} />
-            <div className="min-w-0 flex-1">
-              {eyebrow && (
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-                  {eyebrow}
-                </div>
-              )}
-              <h2 className="mt-1 line-clamp-2 text-2xl font-semibold leading-tight tracking-tight lg:text-3xl">
-                {name}
-              </h2>
-              {visibleAliases.length > 0 && (
-                <p className="mt-0.5 truncate text-sm text-muted-foreground" title={visibleAliases.join(", ")}>
-                  {visibleAliases.join(" / ")}
-                </p>
-              )}
-              {meta}
+    <section aria-label={label} className="relative isolate overflow-clip rounded-xl bg-card">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-4 p-4 lg:gap-x-6 lg:p-5">
+        <CreatorPortrait name={name} cover={cover} onError={() => setImageFailed(true)} />
+        <div className="min-w-0 self-center lg:self-start">
+          {eyebrow && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+              {eyebrow}
             </div>
-          </div>
-          {actions}
+          )}
+          <h2 className="mt-1 line-clamp-2 text-2xl font-semibold leading-tight tracking-tight lg:text-3xl">{name}</h2>
+          {visibleAliases.length > 0 && (
+            <p className="mt-0.5 truncate text-sm text-muted-foreground" title={visibleAliases.join(", ")}>
+              {visibleAliases.join(" / ")}
+            </p>
+          )}
+          {meta}
         </div>
-        {children && <div className="border-t bg-background/40 px-4 py-3 lg:px-5">{children}</div>}
-        {cover && (
-          <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-            <img src={cover} alt="" className="h-full w-full scale-125 object-cover opacity-25 blur-3xl saturate-150" />
-            <div className="absolute inset-0 bg-gradient-to-r from-card/40 via-card/75 to-card" />
+        {(children || actions) && (
+          <div className="col-span-2 flex min-w-0 flex-col gap-3 lg:col-span-1 lg:col-start-2 lg:-mt-1">
+            {children}
+            {actions}
           </div>
         )}
       </div>
+      {cover && (
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+          <img src={cover} alt="" className="h-full w-full scale-125 object-cover opacity-25 blur-3xl saturate-150" />
+          <div className="absolute inset-0 bg-gradient-to-r from-card/40 via-card/75 to-card" />
+        </div>
+      )}
     </section>
   );
 }
@@ -71,7 +71,7 @@ function CreatorPortrait({ name, cover, onError }: { name: string; cover: string
   const initial = Array.from(name.trim())[0] ?? "?";
   return (
     <div
-      className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:h-28 lg:w-28"
+      className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:row-span-2 lg:h-32 lg:w-32"
       aria-hidden="true"
     >
       {cover ? (

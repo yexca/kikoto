@@ -2,7 +2,6 @@ import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { USER_TAGS_CHANGED_EVENT } from "@/lib/userTagEvents";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
-  Fragment,
   lazy,
   memo,
   Suspense,
@@ -15,25 +14,14 @@ import {
   type ComponentType,
 } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AlertTriangle,
-  ChevronLeft,
-  Download,
-  ExternalLink,
-  Lock,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Server,
-  WifiOff,
-  X,
-} from "lucide-react";
+import { AlertTriangle, ChevronLeft, Download, ExternalLink, Lock, Server, WifiOff, X } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import {
   INSIGHTS_PATH,
+  accountShortcutIds,
   canAccessPage,
   navItems,
-  navigationDescription,
   navigationLabel,
   visibleNavigationItems,
   type PageID,
@@ -46,6 +34,8 @@ import { SetupPage } from "@/pages/SetupPage";
 import { cx } from "@/lib/classNames";
 import { PlayerDock } from "@/player/dock/PlayerDock";
 import { PlayerProvider } from "@/player/PlayerProvider";
+import { AppSidebar } from "@/app/AppSidebar";
+import type { AccountDestination } from "@/app/header/AccountPanel";
 import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
@@ -64,7 +54,7 @@ import type {
   ListeningEntityLinkFactory,
   ListeningHistoryWorkLinkFactory,
 } from "@/features/listening-history/ListeningHistoryPage";
-import { PERSONAL_TAB_PERMISSION } from "@/pages/personalTabs";
+import { PERSONAL_DATA_PERMISSION } from "@/pages/settingsPaths";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
 import { LibraryMigrationGate } from "@/features/library-setup/LibraryMigrationGate";
@@ -90,6 +80,7 @@ import { readLastLibraryLocation } from "@/lib/libraryBrowseState";
 import { libraryTagSearchLocation } from "@/lib/libraryTagSearch";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
+import { workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import {
   closePlayerLayer,
   closeTopDocumentLayer,
@@ -134,9 +125,14 @@ const FavoritesPage = favoritesPage.Component;
 const CirclesPage = circlesPage.Component;
 const CreatorWorksPage = creatorWorksPage.Component;
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const SystemSettingsPage = lazy(() =>
+  import("@/pages/SystemSettingsPage").then((module) => ({ default: module.SystemSettingsPage })),
+);
+const TagsPage = lazy(() => import("@/pages/TagsPage").then((module) => ({ default: module.TagsPage })));
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
+const ActivityPage = lazy(() => import("@/pages/ActivityPage").then((module) => ({ default: module.ActivityPage })));
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const TranslationPage = lazy(() =>
   import("@/pages/TranslationPage").then((module) => ({ default: module.TranslationPage })),
@@ -264,6 +260,8 @@ function AuthenticatedApp() {
     (permission: string) => auth.demoMode || hasPermission(permission),
     [auth.demoMode, hasPermission],
   );
+  // Demo opens every administration surface read-only even though its identity is not an administrator.
+  const viewsAdministration = auth.demoMode || auth.user?.role === "admin" || auth.user?.role === "super_admin";
   const releaseFeedUnread = useReleaseFeedUnread(Boolean(auth.user) && !auth.demoMode);
   const listeningHistoryWorkLink = useCallback<ListeningHistoryWorkLinkFactory>(
     (primaryCode) => {
@@ -299,12 +297,19 @@ function AuthenticatedApp() {
   // Work detail belongs to the page it was opened from. A detail whose owner
   // the viewer cannot open stays readable under Library.
   const page: AppPage =
-    workDetailOpen && routePage !== "not-found" && !canAccessPage(routePage, authState, navigationHasPermission)
+    workDetailOpen &&
+    routePage !== "not-found" &&
+    !canAccessPage(routePage, authState, navigationHasPermission, viewsAdministration)
       ? "library"
       : routePage;
   const visibleNavItems = useMemo(
-    () => visibleNavigationItems({ state: authState, hasPermission: navigationHasPermission }),
-    [authState, navigationHasPermission],
+    () =>
+      visibleNavigationItems({
+        state: authState,
+        hasPermission: navigationHasPermission,
+        administrator: viewsAdministration,
+      }),
+    [authState, navigationHasPermission, viewsAdministration],
   );
   const mobileNavItems = useMemo(() => {
     const preferred = preferredMobileTabs
@@ -314,9 +319,25 @@ function AuthenticatedApp() {
     const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
     return [...preferred, ...additions].slice(0, 4);
   }, [visibleNavItems]);
+  // The account panel lists what the layout offers nowhere else: a page
+  // without a sidebar group wherever the bottom navigation does not carry it,
+  // and below the sidebar breakpoint the sidebar's pages that the bottom
+  // navigation does not carry. Where the sidebar is shown, the panel also
+  // repeats the shortcut destinations as tiles.
+  const accountDestinations = useMemo<AccountDestination[]>(() => {
+    const inBottomNavigation = (id: PageID) => mobileNavItems.some((item) => item.id === id);
+    return visibleNavItems.flatMap<AccountDestination>((item) => {
+      if ((accountShortcutIds as readonly string[]).includes(item.id)) {
+        return [{ item, placement: inBottomNavigation(item.id) ? "wide" : "always" }];
+      }
+      if (item.group) return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];
+      return [{ item, placement: inBottomNavigation(item.id) ? "wide" : "always" }];
+    });
+  }, [mobileNavItems, visibleNavItems]);
   const showMobilePageTitle = !["library", "favorites", "circles", "voice-actors"].includes(page);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
-  const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, navigationHasPermission);
+  const canAccessCurrentPage =
+    page !== "not-found" && canAccessPage(page, authState, navigationHasPermission, viewsAdministration);
   const showRoutePage = canAccessCurrentPage && !workDetailOpen;
 
   useEffect(() => {
@@ -531,84 +552,14 @@ function AuthenticatedApp() {
           sidebarCollapsed ? "lg:grid-cols-[4.75rem_minmax(0,1fr)]" : "lg:grid-cols-[13rem_minmax(0,1fr)]",
         )}
       >
-        <aside className="theme-shell-surface sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
-          <div
-            className={cx(
-              "flex h-[var(--header-height)] items-center border-b",
-              sidebarCollapsed ? "justify-center px-3" : "px-5",
-            )}
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[var(--control-radius)] bg-primary/10 ring-1 ring-primary/15">
-                <img src="/kikoto-icon-64.png" alt="" className="h-7 w-7" />
-              </span>
-              {!sidebarCollapsed && (
-                <div className="truncate font-[family-name:var(--font-heading)] text-xl font-semibold tracking-tight">
-                  Kikoto
-                </div>
-              )}
-            </div>
-          </div>
-          <nav className={cx("app-scroll min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
-            {visibleNavItems.map((item, index) => {
-              const active = page === item.id;
-              const startsGroup = index > 0 && visibleNavItems[index - 1].group !== item.group;
-              return (
-                <Fragment key={item.id}>
-                  {startsGroup && (
-                    <div aria-hidden="true" className={cx("my-2 border-t", sidebarCollapsed ? "mx-2" : "mx-3")} />
-                  )}
-                  <Button
-                    className={cx(
-                      "relative mb-0.5 w-full font-normal text-muted-foreground",
-                      sidebarCollapsed ? "justify-center px-0" : "justify-start gap-3",
-                      active && "bg-primary/10 font-medium text-foreground hover:bg-primary/15",
-                    )}
-                    variant="ghost"
-                    size={sidebarCollapsed ? "icon" : "default"}
-                    title={sidebarCollapsed ? navigationLabel(item, t) : undefined}
-                    aria-label={sidebarCollapsed ? navigationLabel(item, t) : undefined}
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => openPage(item.id)}
-                  >
-                    {active && (
-                      <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />
-                    )}
-                    <item.icon className={cx("h-4 w-4", active && "text-primary")} />
-                    {!sidebarCollapsed && navigationLabel(item, t)}
-                    {item.id === "subscriptions" && releaseFeedUnread > 0 && (
-                      <span
-                        className={cx(
-                          "rounded-full bg-primary text-2xs font-medium leading-none text-primary-foreground",
-                          sidebarCollapsed ? "absolute right-1.5 top-1.5 h-2 w-2" : "ml-auto px-1.5 py-1",
-                        )}
-                        aria-label={t("subscriptions.unreadBadge", { count: releaseFeedUnread })}
-                      >
-                        {!sidebarCollapsed && (releaseFeedUnread > 99 ? "99+" : releaseFeedUnread)}
-                      </span>
-                    )}
-                  </Button>
-                </Fragment>
-              );
-            })}
-          </nav>
-          <div className={cx("border-t", sidebarCollapsed ? "p-2" : "p-3")}>
-            <Button
-              variant="ghost"
-              size={sidebarCollapsed ? "icon" : "default"}
-              className={cx(
-                "w-full font-normal text-muted-foreground",
-                sidebarCollapsed ? "justify-center px-0" : "justify-start gap-3",
-              )}
-              aria-label={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
-              title={sidebarCollapsed ? t("app.expandSidebar") : undefined}
-              onClick={toggleSidebar}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              {!sidebarCollapsed && t("app.collapse")}
-            </Button>
-          </div>
-        </aside>
+        <AppSidebar
+          items={visibleNavItems}
+          page={page}
+          collapsed={sidebarCollapsed}
+          releaseFeedUnread={releaseFeedUnread}
+          onOpenPage={openPage}
+          onToggleCollapsed={toggleSidebar}
+        />
 
         <main className="app-main min-w-0">
           <header
@@ -624,20 +575,16 @@ function AuthenticatedApp() {
                       ? navigationLabel(activeItem, t)
                       : t("nav.library")
                 }
-                description={
-                  page === "not-found"
-                    ? t("app.notFoundDescription")
-                    : activeItem
-                      ? navigationDescription(activeItem, t)
-                      : t("app.libraryFallback")
-                }
                 showMobileTitle={showMobilePageTitle}
               />
               <HeaderActions
                 user={auth.user}
                 canView={navigationHasPermission}
+                accountDestinations={accountDestinations}
+                currentPage={page}
                 onLogout={() => void auth.logout()}
                 onOpenLogin={() => setLoginOpen(true)}
+                onOpenPage={openPage}
                 onOpenPath={openPath}
                 onOpenCommandPalette={openCommandPalette}
                 onLocaleChange={updateLocale}
@@ -684,23 +631,29 @@ function AuthenticatedApp() {
                   <SettingsPage
                     user={auth.user}
                     readOnly={auth.demoMode}
-                    personal={
-                      navigationHasPermission(PERSONAL_TAB_PERMISSION)
+                    data={
+                      navigationHasPermission(PERSONAL_DATA_PERMISSION)
                         ? {
-                            tags: { canEdit: effectiveHasPermission("tags:write"), demoMode: auth.demoMode },
-                            data: {
-                              canImportData:
-                                effectiveHasPermission("favorites:write") &&
-                                effectiveHasPermission("tags:write") &&
-                                effectiveHasPermission("playback:use"),
-                              demoMode: auth.demoMode,
-                            },
+                            canImportData:
+                              effectiveHasPermission("favorites:write") &&
+                              effectiveHasPermission("tags:write") &&
+                              effectiveHasPermission("playback:use"),
+                            demoMode: auth.demoMode,
                           }
                         : undefined
                     }
                     onAccountUpdated={auth.refresh}
+                  />
+                )}
+                {showRoutePage && page === "system" && auth.user && (
+                  <SystemSettingsPage
+                    user={auth.user}
+                    readOnly={auth.demoMode}
                     onAccessPolicyUpdated={auth.refreshRuntime}
                   />
+                )}
+                {showRoutePage && page === "tags" && auth.user && (
+                  <TagsPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
                 )}
                 {showRoutePage && page === "metadata" && auth.user && (
                   <WorkManagementPage
@@ -723,6 +676,12 @@ function AuthenticatedApp() {
                       auth.demoMode || (auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync"))
                     }
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
+                    readOnly={auth.demoMode}
+                  />
+                )}
+                {showRoutePage && page === "activity" && (
+                  <ActivityPage
+                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     readOnly={auth.demoMode}
                   />
                 )}
@@ -765,9 +724,12 @@ function AuthenticatedApp() {
                   "voice-actors",
                   "subscriptions",
                   "settings",
+                  "system",
+                  "tags",
                   "metadata",
                   "translation",
                   "workflows",
+                  "activity",
                   "insights",
                   "records",
                   "about",
@@ -841,15 +803,7 @@ function AuthenticatedApp() {
   );
 }
 
-function AppHeaderTitle({
-  title,
-  description,
-  showMobileTitle,
-}: {
-  title: string;
-  description: string;
-  showMobileTitle: boolean;
-}) {
+function AppHeaderTitle({ title, showMobileTitle }: { title: string; showMobileTitle: boolean }) {
   const back = usePageHeaderBackState();
   if (back) {
     return (
@@ -879,12 +833,11 @@ function AppHeaderTitle({
     );
   }
   return (
-    <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
+    <div className="flex min-w-0 items-center">
       {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-7 w-7 lg:hidden" />}
       <h1 className={cx("truncate text-base font-semibold lg:text-2xl", !showMobileTitle && "hidden lg:block")}>
         {title}
       </h1>
-      <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">{description}</p>
     </div>
   );
 }
@@ -1119,7 +1072,7 @@ function parseRemoteTrackSummary(raw: string) {
 }
 
 function openWorkflowActivity(runId: number) {
-  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
+  window.history.pushState({}, "", workflowActivityRunPath(runId));
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

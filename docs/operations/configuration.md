@@ -55,7 +55,7 @@ Compose stacks bound to a 64 MiB in-memory `/tmp`.
 
 ## Administrator Settings
 
-Administrators manage the instance from the administration tabs in Settings:
+Administrators manage the instance from the tabs of the System page:
 
 - **Library**: library storage, local scan depth, creator catalog freshness,
   Kikoeru import address policy, and remote file sources with their fallback
@@ -83,7 +83,7 @@ Administrators manage the instance from the administration tabs in Settings:
     helper; another machine or a custom service takes an origin. A Kikoto
     Helper requires the API token its web interface shows, for both services.
 
-  [Settings → ASR & LLM](../user/en/settings.md#asr--llm) defines credential
+  [System → ASR & LLM](../user/en/settings.md#asr--llm) defines credential
   clearing, model discovery, declared content boundaries and structured safety
   rules.
 - **Cleanup**: cache cleanup and database backups.
@@ -110,7 +110,7 @@ back, or return mixed-language metadata.
 Production anonymous access is an SQLite-backed instance setting rather than an
 environment variable. It defaults to disabled. A super administrator can
 enable read-only Library browsing and playback under
-`Settings -> Users -> Instance access`;
+`System -> Users -> Instance access`;
 the change applies immediately in production and is audited. Development shows
 and saves the same option so its automatic root identity can inspect every
 production administration surface, but all development requests remain
@@ -132,7 +132,7 @@ Set `api_url` to the upstream service base URL, such as
 `https://example.invalid`. The client appends paths such as `/api/health` and
 `/api/works`, so including a trailing `/api` would produce `/api/api/...`.
 
-After first startup, Settings is the source of truth for configured sources.
+After first startup, System -> Library is the source of truth for configured sources.
 
 Demo mode does not bootstrap or expose the root identity, recover or dispatch
 workflow jobs, or accept supplied sessions. Its HTTP API rejects mutation

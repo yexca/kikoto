@@ -131,7 +131,7 @@ export function DatabaseCleanupSection({
       {overview && !overview.dataRootAvailable && (
         <div
           role="status"
-          className="flex items-start gap-2 bg-warning-surface px-4 py-3 text-xs text-warning-foreground"
+          className="flex items-start gap-2 rounded-md bg-warning-surface px-3 py-2.5 text-xs text-warning-foreground"
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{t("cleanup.database.dataRootUnavailable")}</span>
@@ -146,7 +146,7 @@ export function DatabaseCleanupSection({
         const panelId = `${groupIdPrefix}-${group.key}`;
         return (
           <div key={group.key}>
-            <div className="flex items-center gap-3 bg-muted/30 px-4 py-2">
+            <div className="flex items-center gap-3 py-2">
               <Checkbox
                 checked={groupCleanable.length > 0 && groupSelected === groupCleanable.length}
                 indeterminate={groupSelected > 0 && groupSelected < groupCleanable.length}
@@ -186,7 +186,7 @@ export function DatabaseCleanupSection({
                   <label
                     key={key}
                     className={cn(
-                      "flex min-w-0 items-start gap-3 px-4 py-3",
+                      "flex min-w-0 items-start gap-3 py-3",
                       enabled && !readOnly ? "cursor-pointer hover:bg-muted/30" : "opacity-80",
                     )}
                   >
@@ -227,7 +227,7 @@ export function DatabaseCleanupSection({
           <ArrowRight className="h-4 w-4" />
         </Button>
       </SettingsRow>
-      <div className="flex flex-wrap items-center justify-end gap-2 bg-muted/25 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 py-3">
         <span className="mr-auto text-xs text-muted-foreground">
           {cleanableTasks.length === 0 && overview
             ? t("cleanup.database.nothingToClean")

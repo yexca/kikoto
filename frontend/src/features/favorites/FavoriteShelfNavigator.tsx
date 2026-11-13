@@ -1,15 +1,13 @@
 import { BookmarkCheck, Heart, Mic2, Pencil, Plus, UsersRound, Zap, type LucideIcon } from "lucide-react";
-import { Fragment, useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
 import { Button } from "@/components/ui/button";
-import { RailLabelsToggle, useRailLabelsShown } from "@/components/ui/rail-labels";
+import { SubNavActiveMark, SubNavColumn, SubNavHeading, subNavItemClassName } from "@/components/ui/sub-nav";
 import type { FavoriteList } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import type { FavoriteEntity } from "./favoritesBrowseState";
-
-const LABELS_SHOWN_KEY = "kikoto:favorites-rail-labels-shown";
 
 export type FavoriteShelfNavigation = {
   entity: FavoriteEntity;
@@ -117,26 +115,23 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
 }
 
 /**
- * The wide-layout shelf rail: works shelves, the user's lists, then followed
- * creators. Like the Workflows navigator it can collapse to icons, which is
- * where a list's chosen icon tells the lists apart; every item keeps its name
- * as the accessible name and tooltip.
+ * The wide-layout shelf list: works shelves, the user's lists, then followed
+ * creators, in the same column form as every other page's secondary navigation.
+ * A list's chosen icon tells the lists apart; every item shows its name.
  */
 export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelfNavigation }) {
   const { t } = useTranslation();
-  const [labelsShown, toggleLabels] = useRailLabelsShown(LABELS_SHOWN_KEY, true);
-  const collapsed = !labelsShown;
   const { works, lists, creators } = useShelfItems(navigation);
   const sections: { key: string; heading: string; content: ReactNode; actions?: ReactNode }[] = [
     {
       key: "works",
       heading: t("detailActions.works"),
-      content: works.map((item) => <ShelfSidebarItem key={item.key} item={item} collapsed={collapsed} />),
+      content: works.map((item) => <ShelfSidebarItem key={item.key} item={item} />),
     },
     {
       key: "lists",
       heading: t("favorites.myLists"),
-      actions: collapsed ? undefined : (
+      actions: (
         <>
           <ShelfSectionAction
             label={t("favorites.addList")}
@@ -155,34 +150,17 @@ export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelf
         </>
       ),
       content: navigation.listsLoading ? (
-        <ShelfSkeletonRows collapsed={collapsed} />
+        <ShelfSkeletonRows />
       ) : (
         <>
           {lists.map((item) => (
-            <ShelfSidebarItem key={item.key} item={item} collapsed={collapsed} />
+            <ShelfSidebarItem key={item.key} item={item} />
           ))}
-          {collapsed ? (
-            <>
-              <ShelfRailAction label={t("favorites.addList")} dashed onClick={navigation.onAddList}>
-                <Plus className="h-4 w-4" />
-              </ShelfRailAction>
-              <ShelfRailAction label={t("favorites.editLists")} onClick={navigation.onEditLists}>
-                <Pencil className="h-4 w-4" />
-              </ShelfRailAction>
-            </>
-          ) : (
-            lists.length === 0 && (
-              <button
-                type="button"
-                className="flex min-h-10 w-full items-center gap-3 rounded-md border border-dashed px-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                onClick={navigation.onAddList}
-              >
-                <span className="grid h-7 w-7 shrink-0 place-items-center">
-                  <Plus className="h-4 w-4" />
-                </span>
-                {t("favorites.createFirstList")}
-              </button>
-            )
+          {lists.length === 0 && (
+            <button type="button" className={subNavItemClassName(false, "text-xs")} onClick={navigation.onAddList}>
+              <Plus className="h-4 w-4 shrink-0" />
+              {t("favorites.createFirstList")}
+            </button>
           )}
         </>
       ),
@@ -190,58 +168,32 @@ export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelf
     {
       key: "creators",
       heading: t("favorites.creators"),
-      content: creators.map((item) => <ShelfSidebarItem key={item.key} item={item} collapsed={collapsed} />),
+      content: creators.map((item) => <ShelfSidebarItem key={item.key} item={item} />),
     },
   ];
 
   return (
-    // A sticky rail taller than the space above the page's bottom padding and player
-    // clearance would be pushed up at the end of the page, so it scrolls its list instead.
-    <div
-      className={cn(
-        "sticky top-20 flex max-h-[calc(100dvh-5rem-var(--page-padding-y)-var(--app-content-bottom-clearance))] shrink-0 flex-col gap-1 self-start border-r",
-        collapsed ? "pr-2" : "w-56 pr-3 xl:w-60",
-      )}
-    >
-      <nav aria-label={t("favorites.shelves")} className="app-scrollbar min-h-0 overflow-y-auto text-sm">
-        <div className={cn("grid", collapsed ? "gap-1" : "gap-4")}>
-          {sections.map((section, index) => (
-            <Fragment key={section.key}>
-              {collapsed && index > 0 && <span aria-hidden="true" className="mx-2 my-1 h-px bg-border" />}
-              <ShelfSection heading={section.heading} actions={section.actions} collapsed={collapsed}>
-                {section.content}
-              </ShelfSection>
-            </Fragment>
+    <SubNavColumn>
+      <nav aria-label={t("favorites.shelves")} className="app-scrollbar min-h-0 overflow-y-auto">
+        <div className="grid gap-4">
+          {sections.map((section) => (
+            <ShelfSection key={section.key} heading={section.heading} actions={section.actions}>
+              {section.content}
+            </ShelfSection>
           ))}
         </div>
       </nav>
-      <span aria-hidden="true" className="mx-2 my-1 h-px shrink-0 bg-border" />
-      <RailLabelsToggle expanded={!collapsed} onToggle={toggleLabels} />
-    </div>
+    </SubNavColumn>
   );
 }
 
-function ShelfSection({
-  heading,
-  actions,
-  collapsed,
-  children,
-}: {
-  heading: string;
-  actions?: ReactNode;
-  collapsed: boolean;
-  children: ReactNode;
-}) {
+function ShelfSection({ heading, actions, children }: { heading: string; actions?: ReactNode; children: ReactNode }) {
   const headingID = useId();
   return (
     <section aria-labelledby={headingID} className="min-w-0">
-      {/* An icon rail separates sections with dividers; the heading still names each one. */}
-      <div className={cn("flex h-7 items-center justify-between gap-2 pl-2", collapsed && "sr-only")}>
-        <h3 id={headingID} className="truncate text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {heading}
-        </h3>
-        {actions && <div className="flex shrink-0 items-center">{actions}</div>}
-      </div>
+      <SubNavHeading id={headingID} actions={actions}>
+        {heading}
+      </SubNavHeading>
       <div className="grid gap-0.5">{children}</div>
     </section>
   );
@@ -274,90 +226,23 @@ function ShelfSectionAction({
   );
 }
 
-function ShelfRailAction({
-  label,
-  dashed = false,
-  onClick,
-  children,
-}: {
-  label: string;
-  dashed?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      className="group/action grid h-11 w-11 place-items-center rounded-md transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted/70"
-      onClick={onClick}
-    >
-      <span
-        className={cn(
-          "grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors group-hover/action:text-foreground",
-          dashed && "border border-dashed",
-        )}
-      >
-        {children}
-      </span>
-    </button>
-  );
-}
-
-function ShelfSidebarItem({ item, collapsed }: { item: ShelfItem; collapsed: boolean }) {
-  const tooltip = collapsed && item.count !== null ? `${item.label} · ${item.count}` : item.title;
+function ShelfSidebarItem({ item }: { item: ShelfItem }) {
   return (
     <button
       type="button"
       aria-pressed={item.active}
-      title={tooltip}
-      className={cn(
-        "group/item relative flex min-w-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        collapsed ? "h-11 w-11 justify-center rounded-md" : "min-h-10 w-full gap-3 rounded-md px-2 py-1",
-        item.active ? "bg-primary/10" : "hover:bg-muted/50 active:bg-muted/70",
-      )}
+      title={item.title}
+      className={subNavItemClassName(item.active)}
       onClick={item.onSelect}
     >
-      {item.active && <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />}
-      <span
-        className={cn(
-          "relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors",
-          item.active
-            ? "bg-primary/15 text-primary"
-            : "bg-muted text-muted-foreground group-hover/item:text-foreground",
-        )}
-      >
-        <item.icon className="h-4 w-4" aria-hidden="true" />
+      {item.active && <SubNavActiveMark />}
+      <span data-sub-nav-icon="" className="relative grid h-5 w-5 shrink-0 place-items-center">
+        <item.icon className="h-5 w-5" aria-hidden="true" />
         {item.smart && <SmartListMark />}
-        {collapsed && Boolean(item.newCount) && (
-          <span
-            aria-hidden="true"
-            className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
-          />
-        )}
       </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          collapsed && "sr-only",
-          item.active ? "font-medium" : "text-foreground/85",
-        )}
-      >
-        {item.label}
-      </span>
-      {Boolean(item.newCount) && <SmartListNewCount count={item.newCount ?? 0} collapsed={collapsed} />}
-      {item.count !== null && (
-        <span
-          className={cn(
-            "shrink-0 text-xs tabular-nums",
-            collapsed && "sr-only",
-            item.active ? "text-primary" : "text-muted-foreground",
-          )}
-        >
-          {item.count}
-        </span>
-      )}
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {Boolean(item.newCount) && <SmartListNewCount count={item.newCount ?? 0} />}
+      {item.count !== null && <span className="shrink-0 text-xs tabular-nums">{item.count}</span>}
     </button>
   );
 }
@@ -374,14 +259,11 @@ function SmartListMark() {
   );
 }
 
-function SmartListNewCount({ count, collapsed }: { count: number; collapsed: boolean }) {
+function SmartListNewCount({ count }: { count: number }) {
   const { t } = useTranslation();
   return (
     <span
-      className={cn(
-        "shrink-0 rounded-full bg-primary px-1.5 text-2xs font-semibold leading-4 tabular-nums text-primary-foreground",
-        collapsed && "sr-only",
-      )}
+      className="shrink-0 rounded-full bg-primary px-1.5 text-2xs font-semibold leading-4 tabular-nums text-primary-foreground"
       title={t("favorites.smart.newCount", { count })}
     >
       <span aria-hidden="true">{count}</span>
@@ -390,16 +272,13 @@ function SmartListNewCount({ count, collapsed }: { count: number; collapsed: boo
   );
 }
 
-function ShelfSkeletonRows({ collapsed }: { collapsed: boolean }) {
+function ShelfSkeletonRows() {
   return (
     <>
       {Array.from({ length: 3 }, (_, index) => (
-        <div
-          key={index}
-          className={cn("flex items-center", collapsed ? "h-11 w-11 justify-center" : "min-h-10 gap-3 px-2")}
-        >
-          <div className="h-8 w-8 shrink-0 animate-pulse rounded-md bg-muted" />
-          {!collapsed && <div className="h-3 flex-1 animate-pulse rounded bg-muted" />}
+        <div key={index} className="flex min-h-11 items-center gap-3 px-3">
+          <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-muted" />
+          <div className="h-3 flex-1 animate-pulse rounded bg-muted" />
         </div>
       ))}
     </>

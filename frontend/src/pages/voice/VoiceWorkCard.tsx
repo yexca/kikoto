@@ -182,6 +182,7 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
     series: "series" in work ? work.series || null : null,
     hasLyrics: work.hasLyrics,
     hasPlaybackHistory: "progress" in work && hasPlaybackHistory(work.progress),
+    mark: normalizeListeningStatus("listeningMark" in work ? work.listeningMark : "none"),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: isKnown ? userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)) : [],
     sourceBadges,

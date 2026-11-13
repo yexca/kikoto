@@ -6,7 +6,16 @@ import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
 import { FloatingSelect } from "@/components/ui/floating-select";
 
-/** Mode, style, and color; UI and metadata languages live in the account panel. */
+export type AppearanceControl = {
+  mode: ThemeMode;
+  preset: ThemePreset;
+  palette: ThemePalette;
+  onModeChange: (mode: ThemeMode) => void;
+  onPresetChange: (preset: ThemePreset) => void;
+  onPaletteChange: (palette: ThemePalette) => void;
+};
+
+/** Mode, style, and color; the account panel shows them in its Appearance view. */
 export function AppearanceControls({
   mode,
   preset,
@@ -14,14 +23,7 @@ export function AppearanceControls({
   onModeChange,
   onPresetChange,
   onPaletteChange,
-}: {
-  mode: ThemeMode;
-  preset: ThemePreset;
-  palette: ThemePalette;
-  onModeChange: (mode: ThemeMode) => void;
-  onPresetChange: (preset: ThemePreset) => void;
-  onPaletteChange: (palette: ThemePalette) => void;
-}) {
+}: AppearanceControl) {
   const { t } = useTranslation();
   return (
     <>

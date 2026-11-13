@@ -1,23 +1,52 @@
 # Frontend
 
-On mobile, the app header is a compact tool bar ordered as Quick actions,
-Notifications (when authenticated), Appearance, and account. Quick actions
-opens the searchable Command Palette in a bottom sheet; Notifications,
-Appearance, and account use anchored popovers. Wider screens group Quick
-actions, the native server connection, Notifications, and Appearance in one
-header tray and end with the account avatar. Quick actions is always an icon
-button, never a search field, so it is not confused with library search; its
-tooltip names the keyboard shortcut. On desktop the
-command palette remains a centered surface while the header popovers stay
-anchored to their triggers.
+The shell separates listening from managing. Each navigation destination
+declares a group in `app/navigation`: `browse` pages are listening
+destinations, `personal` pages belong to the signed-in account, and `manage`
+pages are administration. A page without a group, such as About, is an account
+panel destination. The desktop sidebar (`app/AppSidebar`) lists the browse
+destinations and, below a hairline, the collapsible groups that
+`navigationGroups` declares: **Personal**, holding Insights, Tags, and
+Settings, and **Manage**, holding Workflows, Activity, Metadata,
+Translation, and System. The sidebar renders a group from its declaration and the pages that
+name it, so a new page joins a group by declaring it. Each group is collapsed
+by default, remembers its expanded state in browser storage, and opens while
+one of its pages is current; collapsed, it still marks the current page. An
+account that can open none of a group's pages does not see the group. The icon
+rail that the sidebar collapses to keeps the same structure.
 
-Appearance owns only mode, style, and color choices.
+On phones, the app header holds Notifications (when authenticated),
+Appearance, and the account avatar, or Sign in for anonymous visitors. Wider
+screens group Quick actions, Notifications, and Appearance in one header tray
+before the avatar, which shows the display name on extra-wide screens but
+never the role. Quick actions is always an icon button, never a search field,
+so it is not confused with library search; its tooltip names the keyboard
+shortcut. It opens the searchable Command Palette, a bottom sheet on phones
+and a centered surface on desktop; Notifications, Appearance, and the account
+panel are anchored popovers. Appearance (`app/ThemeTrigger`) is one palette
+icon whose tooltip states the current mode, style, and color; its popover owns
+only those three choices. Quick actions lists every destination the viewer can
+open, in every group.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
-Sign in for anonymous visitors, on every screen size. It shows the profile,
-Discover, Insights, and Tags as shortcuts, the UI language, Settings and
-Users, and sign-in or sign-out; on phones it also holds the native connection actions. A
-signed-in user also chooses the personal preferred metadata language there:
+Sign in for anonymous visitors, on every screen size. Where the sidebar is
+shown, three shortcut tiles under the profile open Discover, Insights, and
+Tags (`accountShortcutIds` in `app/navigation`); the sidebar keeps these
+pages in their own groups, so the tiles repeat them. Below the profile, one
+list holds the destinations the layout shows nowhere else. Where the sidebar
+is shown, that is About. Below the sidebar breakpoint it is, in order: Quick
+actions on phones; the browse pages the bottom navigation does not carry, such
+as Discover and Record; the Personal pages; one **Manage** entry that opens
+the Manage pages as a view of the panel and names the current page while it is
+one of them; and About. The tiles do not appear below the breakpoint, so no
+destination is listed twice. A page the bottom navigation carries appears in
+the list only where the sidebar is shown. While a listed page or a tile is
+current, its entry and the account trigger carry the selected state. **Language** opens a
+view of its own inside the panel and shows its current value on the entry.
+Sign-in or sign-out
+ends the panel, and in the native shell it also holds the server connection
+actions. A signed-in user also chooses the personal preferred metadata language
+in the Language view:
 **Origin** is shown when the user has no preference and choosing it clears the
 stored preference, and a saved change refreshes the routed page through the
 user preference event. Demo keeps the choice in browser storage scoped to the
@@ -53,11 +82,10 @@ that variable and `env(safe-area-inset-*)`, so a WebView that reports the
 insets itself still gets them once. With the keyboard open, the shell ends the
 WebView above the keyboard and reports no bottom inset.
 
-The header owns the desktop page title and description. Mobile browsing
-destinations use the bottom navigation as their location cue and show a compact
-Kikoto mark instead; administrative destinations retain a single-line title.
-Descriptions do not appear in the mobile header, so page content owns any
-additional context it needs.
+The header owns the desktop page title and carries no description, so page
+content owns any additional context it needs. Mobile browsing destinations use
+the bottom navigation as their location cue and show a compact Kikoto mark
+instead; other destinations retain a single-line title.
 
 The frontend is a React application focused on library browsing, work detail,
 remote source management, and playback.
@@ -127,7 +155,25 @@ open. The browse lists learn what a detail changed from `app/workDetailEvents`
 sharing state with it. The app shell recognizes a direct work link with
 `workDetailCodeFromLocation` from `app/workDetailNavigation` and starts the
 detail chunk with the session request; an idle Library also preloads it, so
-opening a work normally renders without suspending. Library, circle, voice actor, and work
+opening a work normally renders without suspending.
+
+`WorkDetailLayout` composes the persisted and remote-only details from the
+same parts: the Hero, the Directory, and the Source info panel. Each
+controller hands it the Hero actions and the selected source's actions, which
+Source info lists at every width. `heroPlaybackModel` decides the Hero's one
+primary action from the shown directory, the folder routing rules, and the
+saved playback cursor: Resume, Play for the folder the Directory opens on
+(the tracks that folder queues when played from its first track), loading, or
+the reason nothing can play. `WorkDetailActionBars` renders that action, the
+quiet Mark, rating, and List controls, the Manage menu (the shared
+`ActionMenu`), and the source action list. The List control on a work card
+and on work detail is the shared `WorkCardListButton`; it names lists in the
+order `workMemberLists` gives a work's lists, which follows the `memberOrder`
+the server sets on each list holding the work. The controllers decide each management entry and source action
+from the viewer's permissions and pass nothing for one the viewer may not use,
+so those components never check permissions themselves.
+
+Library, circle, voice actor, and work
 detail surfaces load the remote Fetch workspace dialog on demand through
 `LazyRemoteFetchWorkspaceDialog`, which mounts it only while a draft is open
 and closes the draft with a toast if its chunk fails to load. The persisted
@@ -218,17 +264,34 @@ render through one `pages/creator/CreatorListPage`, and the creator detail pages
 and the Library remote source panel record remote Fetch and Fork runs through
 `pages/useRemoteWorkActions`.
 
-The Workflows page keeps routing, selection, and run handlers. Definition
-detail, run forms, the trigger editor, the Availability Watch configuration
-and pool that the Discover page composes, run detail, and candidate
-review live in `features/workflows`.
+The circle and voice actor detail pages compose one summary and works toolbar
+from `components/creator`: `CreatorDetailHeader` lays out the frameless
+summary, `CatalogStatStrip` the content-width counts and their note,
+`CreatorDetailActions` the quiet Favorite control, the More menu (the shared
+`ActionMenu`), and the catalog note with its pull link, `CatalogWorkToolbar`
+the search, order, filter, and View row, `CreatorWorkViewMenu` the View popover
+or phone sheet around the shared display options, and `CreatorWorkResults` the
+result count or top page bar. Each page decides the More entries, the pull
+link, and the sync and failed-source marks from the viewer's permissions and
+passes nothing for one the viewer may not use, so those components never check
+permissions themselves. The subscribe button takes the same quiet look.
+
+The Workflows page (`pages/WorkflowsPage`, at `/workflows`) keeps the open
+operation, run handlers, and the trigger editor's state, and the Activity page
+(`pages/ActivityPage`, at `/activity`) keeps the open run. The operation
+model, rows, and options panel (`features/workflows/operations`), run forms,
+the trigger editor, the Activity list, run detail, candidate review, and the
+Availability Watch configuration and pool that the Discover page composes
+live in `features/workflows`. `features/workflows/workflowLinks` builds the
+addresses other pages use to open an operation's options or a run in Activity.
 
 The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
 where to find what to listen to next. A `/subscriptions` address redirects to
 it with its query. It switches between four views, For you (`?view=for-you`,
 a labelled random sample in the demo), the release feed, Rankings (`?view=rankings`), and Watch
 (`?view=watch`, for accounts that can run workflows; any other account sees
-the release feed), and composes its
+the release feed), as `SubNavTabs` along the top of the page with the page
+toolbar at the end of the same row (below the tabs on a phone), and composes its
 settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.
@@ -238,10 +301,11 @@ the actions menu, the display options, and the settings icon, in that order;
 the actions menu is disabled on a view without actions.
 
 The four views compose the same card parts from shared code. Their cards
-follow one Discover display choice (`DISCOVER_LAYOUT_STORE` and
-`discoverCardLayout` in `components/work-collection/WorkCollectionLayout`),
-kept apart from the Library's and starting with compact row cards, in the
-shared work collection grid. Each card is a `WorkCardContextItem`: a
+follow one Discover display choice (`DISCOVER_LAYOUT_STORE`,
+`discoverCardLayout`, and the modes in `discoverCardModes`, in
+`components/work-collection/WorkCollectionLayout`), kept apart from the
+Library's and starting with compact row cards, in the shared work collection
+grid. Each card is a `WorkCardContextItem`: a
 fixed-height `WorkCardContextStrip` above `LayoutWorkCard`, with the strip's
 `WorkCardStatusBadge` and `WorkCardUnreadDot` as its status vocabulary
 (`components/work-card/WorkCardContext`), and `WorkCardActionFooter` orders
@@ -284,6 +348,7 @@ ranking settings show one line per ranking with its Show switch, relative pull
 times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier
 annual years and the history retention each collapse into one line.
+Below the shared line, one line per pulling workflow states its latest pull.
 
 Watch shows the Availability Watch pool: a summary with Add codes, whose
 preview `parseWatchCodes` extracts from pasted codes, DLsite links, or mixed
@@ -313,6 +378,19 @@ settings, and the Availability Watch source setting, which they take from the
 workflows feature. The Watch view and that setting read one
 `useAvailabilityWatch` state, which loads when either is first shown and polls
 while either is shown and the page is visible.
+Each of the four Discover workflows (the two ranking pulls, the subscription
+refresh, and Availability Watch) shows its latest run as one `LatestRunStatus`
+line at the top of its panel: the run's state, when it ended, and a link to it
+in Activity. `useLatestRun` supplies it from the run list by workflow code,
+which includes every trigger, reading again every 4 seconds while a run is
+active and every 20 seconds otherwise, and merges it with the run the panel's
+endpoint reports (`mergeLatestRun` keeps the higher run id), so a run just
+requested shows before the list does. An account without `workflows:run` has
+no run list: its line shows the endpoint's status and no link. The panels take
+the permissions they need separately: `SubscriptionManager` enables the
+schedule and **Refresh now** on `metadata:sync` alone, and the subscriptions on
+`favorites:write`; Demo disables both. A manual run's notice carries the run
+it queued (`useRankingQueuedNotice` for the ranking pulls).
 `?panel=subscriptions`, `?panel=rankings`, or `?panel=watch` opens the
 settings, and the settings button opens the tab of the current view. `?page=`
 names the feed page. The feed, subscription list, schedule panel,
@@ -329,7 +407,7 @@ configuration, and their shared state live in
 `features/workflows/availability-watch`.
 
 The Favorites page keeps data loading, browse state, and history restoration.
-The shelf rail, shelf header, controls, card and list views, creator shelves,
+The shelf list, shelf header, controls, card and list views, creator shelves,
 and list management live in `features/favorites`. List icons come from a
 shared catalog in `components/favorite-list`, so the work card's list menu and
 Favorites draw the same icon for a stored key.
@@ -342,7 +420,18 @@ restoration. The rest lives in `pages/library`. `libraryRoutes` and
 result pages for the controls they are given. `useLibraryRecommendations` owns
 the recommendation session, the score badge preference, list telemetry, and the
 explanation state. The toolbars, source tabs, search clause editor, local and
-remote result panels, and work cards are components there. `WorkDetailPage`
+remote result panels, and work cards are components there. The two toolbars
+hold the source switcher, the search field, and the controls the page hands
+them: `LibrarySortButton` (the toolbar variant, with its reshuffle beside it),
+`LibraryMarkFilter` on local and tracked works, `RecentlyPlayedPicker`, and
+`LibraryViewMenu`. The wide source tabs (`LibraryPrimaryTabs`) lead with the
+shared `SourceVisibilityPicker`; the phone source menu lists every source.
+`LibraryViewMenu` is the View entry and its panel, a popover on wide layouts
+and a sheet on phones: it composes the shared `WorkCollectionDisplayOptions`,
+the recommendation score switch, and Select works on a remote source. The
+sort button and the mark filter button each name their own setting, so no
+other surface restates it. Each result panel shows its top page bar only when
+the results span more than one page and `LibraryResultCount` otherwise. `WorkDetailPage`
 uses the same folder's work-route helpers, and `useLibraryWorkDetail` loads
 the work its route selects. The local and remote
 loaders share one set of browse controls, so tab, search, sort, and page state
@@ -431,33 +520,33 @@ so a still-loading element never replaces it.
 - Favorites.
 - Circles.
 - Voice actors.
-- Settings: one shared `IconRail` with the personal tabs (Account, which opens
-  with the profile and ends with data transfer; Playback;
-  Recommendations, which shows recommendation activity above recommendation
-  tuning; and personal tags) followed, after a divider, by the Library,
-  Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users administration tabs, which share an
-  Administration accessible description. Wide layouts start with a row above
-  the content that names as much as fits on one line (every tab, then the
-  selected tab's divider-bounded group beside the other group's icons, then
-  only the selected tab) and wraps instead of scrolling; a toggle at its end
-  switches to a sticky vertical rail of icons, and the orientation is stored
-  locally. Compact layouts show one row of icons that scrolls only sideways,
-  with only the active tab labelled, and keep the active tab in view. Every
-  tab keeps its label as the accessible name and tooltip. A toggle below the
-  wide vertical rail shows or hides the labels beside the icons; labels show
-  by default, and Settings, Metadata, Favorites, and the Workflows list each
-  store their own choice locally. Section headings are plain text,
-  and a switch or number field stays beside its label even on a phone.
+- Settings (`/settings`): the signed-in account's own settings as `SubNavTabs`
+  with an icon and a name: Account, which opens with the profile and ends
+  with data transfer; Playback; and Recommendations, which shows
+  recommendation activity above recommendation tuning. Account holds the
+  account's time zone: automatic, which follows the device, or one of the
+  IANA zones the browser knows plus the zone in use. Data transfer offers
+  personal JSON export and previewed import from a Kikoto or Kikoeru file, a
+  Kikoeru account, or an open-source Kikoeru database.
+- System (`/system`): the instance settings as the same tabs: Library,
+  Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users. `pages/settingsLocation`
+  keeps the open tab of both pages in the `tab` query parameter and scrolls
+  to a section a link names.
+- Both settings pages share one content width. A `SettingsSection` is a plain
+  heading over a hairline followed by
+  its fields as rows divided by hairlines. It has no card or border of its own
+  and tabs set sections apart with whitespace, so a field never sits in a
+  container inside a container; only a repeated object such as a source, a
+  proxy, a folder rule, or a user may be a card or table row. Section
+  headings are plain text, and a switch or number field stays beside its label
+  even on a phone.
   Fields save as the [design contract](../development/design.md) describes;
   `components/settings/AutosaveStatus` holds the section save state, and a
   typed number field reports a finished edit through `SettingsNumberInput`'s
   `onCommit`. Runtime settings save one change at a time and send only the
   changed fields.
-  Personal tags manage account-owned work, circle, and voice tags; data
-  transfer offers personal JSON export and previewed import from a Kikoto or
-  Kikoeru file, a Kikoeru account, or an open-source Kikoeru database. Account
-  holds the account's time zone: automatic, which follows the device, or one
-  of the IANA zones the browser knows plus the zone in use.
+- Tags (`/tags`): the account-owned work, circle, and voice tags, with rename,
+  merge, and delete.
 - Insights (`/insights`): the listening dashboard, composed by
   `pages/InsightsPage` from `features/listening-history`. One range
   switcher at the top drives the page: 30 days, 12 months, all time, or a
@@ -495,12 +584,11 @@ so a still-loading element never replaces it.
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
   `?view=custom`, `?view=tags`, `?view=circles`, and
-  `?view=aliases&voice=<id>` select those views. The shared icon rail shows group headings when expanded and
-  accessible group descriptions at all sizes. Wide layouts start with the
-  rail as the same row above the content that Settings uses
-  (`useRailOrientation` takes each page's default), and the view heading
-  beside the search shows only with the column rail, since the row names the
-  open view. The DLsite works and Custom works rail items and the filter
+  `?view=aliases&voice=<id>` select those views. `SubNavTabs` along the top of
+  the page holds the views, a divider setting the Works group apart from the
+  Entries group, and each tab's accessible description names its group. The row scrolls
+  sideways on a phone and keeps the open tab in view, and the header below it
+  holds the search without a view title, since the open tab names the view. The DLsite works and Custom works tabs and the filter
   options carry counts from `/api/maintenance/works/counts`, read as
   descriptions so the tab and filter names stay the labels; the page reloads
   them after the work table reports a change. `WorkMaintenance` keeps
@@ -510,7 +598,7 @@ so a still-loading element never replaces it.
   1280px, where the rows fold their states under the title, and a sheet
   below it. The page's Metadata settings
   popover holds the DLsite proxy shortcut and
-  links to Settings → Library (creator catalog freshness) and to the
+  links to System → Library (creator catalog freshness) and to the
   Metadata sync Run options (remote metadata fallback). The Tags table is
   keyed and ordered by shared tag ID, so its rows never depend on a
   language setting. The ID cell carries the DLsite genre id and, only for a
@@ -519,11 +607,12 @@ so a still-loading element never replaces it.
   and scrolls sideways inside its own box on narrow screens with the Manage
   column pinned to the right edge.
 
-- Workflows: a category-grouped workflow navigator beside the selected
-  workflow on wide screens, collapsible to an icon rail; on phones the navigator
-  is the landing list. Activity is the navigator's first entry and replaces
-  the selected workflow, with run details beside its list from 1280px.
-- Activity run details on the Workflows page, also reachable through notifications.
+- Workflows: one list of operations grouped by purpose, each a row with its
+  state and one run control; a row's options open below it, one at a time, on
+  every screen size.
+- Activity: the run log with its lists as `SubNavTabs`, the workflow filter
+  and search at the end of the row, and run details beside the list from
+  1280px, also reachable through notifications.
 - Global player dock.
 
 The work metadata editor freezes its initial normalized values and sends only
@@ -559,15 +648,19 @@ suggestion hook owns cancellation and debounce. The maintenance tag and circle
 dialogs keep transport separate from the work editor and preserve their loaded
 state and drafts on request failure.
 
-The personal Settings destinations open at `/settings?tab=tags` and
-`?tab=data`; `data` is an alias that opens the Account data section,
-`?tab=time-zone` opens the Account time zone section, and
-`?tab=recommendation` opens Recommendations. `/tags` and `/user-data` redirect
-there, and `/history` and `/settings?tab=history`
-redirect to `/insights`. Insights and the personal destinations require
-`library:read`, are reachable from mobile account actions and Quick actions,
-and load their own chunks independently of the global player. The administration tabs appear only for administrators and Demo,
-which sees every tab read-only.
+Personal tags are the Tags page at `/tags`. Settings opens Account at
+`/settings`; `?tab=playback` and `?tab=recommendation` open the other tabs,
+`?tab=data` opens the Account data section, and `?tab=time-zone` opens the
+Account time zone section. `/user-data` redirects to `/settings?tab=data`,
+`/settings?tab=tags` to `/tags`, and `/history` and `/settings?tab=history`
+to `/insights`. System opens Library at `/system` and its other tabs at
+`?tab=cache`, `proxy`, `llm`, `cleanup`, and `users`; `metadata` opens
+Library, and `asr` and `services` open ASR & LLM. A `/settings` link that
+names a System tab, `/users`, `/cleanup`, and the `/maintenance` tabs redirect
+to the matching System or Settings tab and keep the rest of the query.
+Insights, Tags, and the Account data section require `library:read`, and each
+page loads its own chunk independently of the global player. System appears
+only for administrators and Demo, which sees every tab read-only.
 The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep
 rewind preferences share that scope and update the resume cursor only when the
@@ -682,6 +775,18 @@ volatile queue with a diagnostic and a normal network loss window of up to
 - Keep work-summary and directory states independent. A media-stage failure
   must not discard an already rendered detail shell.
 - Prefer icons for compact controls and reserve text buttons for clear commands.
+- Give secondary navigation one of two forms, both from `components/ui/sub-nav`:
+  `SubNavTabs` along the top of a page for its views (Discover, Metadata,
+  Activity, Settings, and System), and a list beside the page for an
+  open-ended set of destinations (the Favorites shelf list composes
+  `SubNavColumn` and `subNavItemClassName` around its own entries). Tabs
+  that all carry an icon show it beside the name; `SubNavTabs` measures the
+  named row and, where the row is too narrow for it, folds the tabs to icons
+  that name only the open one before it scrolls sideways. Both forms keep
+  every destination's label as its accessible name, move and select with the
+  arrow keys, Home, and End, and keep the open destination in view. They offer
+  no options for their own placement or labels, and read no stored
+  preference.
 - Keep playback global so navigation does not interrupt the current queue.
 - Keep high-frequency playback position out of bridge and notification rebuild
   paths. Browser time rendering is sampled, Android bridge updates are
@@ -845,6 +950,19 @@ volatile queue with a diagnostic and a normal network loss window of up to
   summaries use Circle / Series, DL sales, segmented rating, known available
   alternate-language state, and a compact playback-history indicator when a
   persisted cursor exists.
+- The simple card is the `simple` layout of `CompactWorkCardShell`
+  (`components/work-card/CompactWorkCard`), which every surface with a card
+  mode reaches through `workCardLayout`. Its details, including the footer a
+  surface passes, mount on the card's first pointer or focus event, so a page
+  of resting cards measures no tags and holds no action controls. The
+  `.work-card-simple` rules in `styles.css` decide when mounted details show:
+  on hover for a fine pointer, while a control inside the card reports
+  `aria-expanded="true"`, or while the card sets `data-details-open`, which it
+  does for its toggle and for keyboard focus inside it. Keyboard focus is card
+  state because a control that a `:focus-visible` rule hides while focus moves
+  cannot take the focus. A control that opens a popover from a card footer
+  sets `aria-expanded`. A view model's `mark` puts the quick mark on
+  the simple card's cover.
 - Persist work-collection column settings as one shared browser preference,
   rather than separate page-local selections.
 - Scope account-bearing browser state by the configured server identity and
@@ -1078,9 +1196,9 @@ Tags offer an explicit merge action that preserves current concepts as manual
 additions to the fetched provider set. A DLsite family has its own accept
 action; the normal field save does not materialize sibling editions.
 
-Workflows lists Learn tag names (`metadata_genre_names`) in the Basic group
-after metadata sync. It is a read-only system workflow: its runs, progress and
-failures appear in Activity, and it has no run form.
+Learn tag names (`metadata_genre_names`) is a system workflow nobody starts
+by hand: Workflows does not list it, and its runs, progress and failures
+appear in Activity.
 
 ## Related Docs
 

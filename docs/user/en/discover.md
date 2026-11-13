@@ -326,8 +326,13 @@ sheet.
   next refresh.
 - Accounts that may sync metadata can turn **Refresh automatically** on or off,
   choose **Refresh every** (1 hour to 7 days; 24 hours by default), choose
-  whether each refresh checks Availability Watch, and **Refresh now**. **View
-  the latest run** opens the refresh in Activity.
+  whether each refresh checks Availability Watch, and **Refresh now**; this
+  does not need permission to change subscriptions. The notice after **Refresh
+  now** has **View run**.
+- **Latest refresh** shows how the last refresh stands, such as **Running** or
+  **Succeeded · 2 hr. ago**, or **Failed**, and opens that run in Activity,
+  where a failure's details are. It shows for everyone who can open the
+  settings; the time and the link need the permission to open Activity.
 
 ## Availability Watch
 
@@ -337,8 +342,9 @@ sheet.
   [Watch](#watch) view. The tab is shown to accounts that can open Workflows;
   changing the source needs the permission to sync metadata.
 - The subscription refresh checks the watch on its schedule; **Check now** in
-  Watch checks it at any time. Workflows keeps the watch's run history and
-  links here.
+  Watch checks it at any time. **Latest check** at the top of the tab shows
+  the last check from either, such as **Succeeded · 2 hr. ago**, and opens it
+  in Activity, which keeps the watch's run history.
 - A notification about newly available works opens **Watch** at its
   **Available** works with the works that check found already selected, so
   **Fetch** in the selection bar fetches them.
@@ -349,8 +355,12 @@ The **Rankings** tab lists every ranking Kikoto can follow. Accounts that may
 sync metadata change them; others can only read them.
 
 - The top line says that rankings are shared by every account and when one was
-  last pulled. **Refresh all** pulls every shown ranking now. **Latest DLsite
-  pull** and **Latest remote source pull** open those runs in Activity.
+  last pulled. **Refresh all** pulls every shown ranking now; its notice has
+  **View run**, or **View runs** when it queued several pulls. **Latest DLsite
+  pull** and, once a remote source's list is shown, **Latest remote source
+  pull** show how each last ended, such as **Failed · 2 hr. ago**, and open
+  that run in Activity. Accounts that cannot open Activity see the state
+  without a time or link.
 - **DLsite voice rankings** has, in the order of the Rankings toolbar, a row
   for 24 hours, 7 days, and 30 days, **Annual** for the year in progress,
   **Earlier years**, and **All time**. A pull of a DLsite ranking pulls each

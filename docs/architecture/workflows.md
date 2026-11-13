@@ -248,7 +248,7 @@ pairs, failures, and what remains.
 Metadata synchronization is a workflow. Metadata management owns the current
 attention list and the DLsite proxy shortcut; sync and its remote metadata
 fallback configuration live in Workflows, and creator catalog freshness in
-Settings → Library.
+System → Library.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family, or asks one
@@ -302,7 +302,7 @@ server still revalidates family availability. Each permission grants only its
 corresponding maintenance actions, without exposing settings to metadata-only
 operators. Metadata management chooses the Works group (All, attention
 categories, and Custom works) and the Entries group (Tags,
-Circles, and Voice actors) from the shared page icon rail. Work records use a
+Circles, and Voice actors) from the page's top tabs. Work records use a
 management table (code and title, circle, metadata, source, actions). The
 metadata cell reads OK, names the remote source that filled the metadata in
 the same neutral style, or flags not synced and metadata issues. The source
@@ -417,61 +417,64 @@ distributed request lock between separate application processes.
 
 ## Workflows Page
 
-The Workflows page lists the manually runnable built-in workflows and the
-preset workflows in one workflow list, grouped by a frontend-owned category
-keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
-tag names), Catalog sync (the catalog sync presets), Remote (Fetch and works on
-a source), and Discover (the DLsite and remote source ranking pulls,
-Availability Watch, and the subscription refresh). A `?workflow=` link to any
-other workflow adds a read-only entry for it, which stays with Basic.
-Activity is the list's first entry, above the categories, with the active and
-Needs attention counts beside it. The Discover
-group holds the workflows configured on the Discover page: their entries show
-the Latest run card with a link there, and have no Run options or triggers.
-Each entry is one line: its name, a dot on its icon for the latest run's
-status, and icons for the enabled automation that starts it (Startup,
-schedule, or folder watch). The status and automation are also the entry's
-accessible description. The page reads each listed workflow's
-latest run when it loads and again when the active queue or attention count
-changes; the per-workflow summaries have no timer of their own.
+The Workflows page (`/workflows`) lists what an administrator starts by
+hand: the manually runnable built-in workflows and the preset workflows. A
+frontend-owned table keyed by workflow code groups them by purpose: Library
+(local scan, local files, metadata sync), Catalogs (the catalog sync presets),
+and Remote sources (Fetch and works on a source). A workflow that another page
+runs and configures (the DLsite and remote source ranking pulls, Availability
+Watch, and the subscription refresh, all on the Discover page) and a system
+workflow nobody starts by hand, such as Learn tag names, are not operations:
+the page does not list them, and Activity keeps their runs.
 
-Wide layouts keep the list beside the selected workflow and can collapse it to
-an icon rail. The full workflow name stays the accessible name and tooltip, and the choice is stored locally
-for this page. The mobile navigation layout lands on the list and opens one
-workflow, or Activity, at a time: opening either adds a history entry, and the
-header back action returns to the list. The selected workflow remains the
-persisted and linked state (`?workflow=<code>`); Activity is shown in its place
-(`?activity=1`) without clearing it, so leaving Activity returns to that
-workflow.
+An operation at rest is one row: its name, one sentence, its state, and one
+run control. The state is one of never run, starting, queued, running with its
+progress (finished jobs for a bulk run, otherwise the stage out of the
+workflow's stages, and for a Fetch its transferred share), or how and when the
+latest run ended. A run that still waits for a candidate decision or a
+retryable metadata failure reads as needing review. Every state that has a run
+opens that run in Activity, so a failure stays on its operation until a later
+run replaces it and leads to its details.
 
-A status strip above the list shows the newest active run with its progress
-and the Needs attention count. It reads the global queue every few seconds
-while work is active and every 15 seconds otherwise; Demo reads it once. Both
-cells open Activity, the attention cell on Needs attention. A workflow's next
-start is stated by its triggers.
+An operation runs one run at a time on this page. Starting it marks the row as
+starting at once; the row follows the run through queued and running, and the
+run control returns when the run ends. The page reads the active queue every
+few seconds while work is active and every 15 seconds otherwise, and reloads
+each operation's latest run when the queue changes, so a run started by a
+trigger, at startup, or from another browser shows on its operation and holds
+its run control the same way. Demo reads both once. A hidden tab skips the
+poll and catches up when shown again.
 
-The selected workflow shows its name and description, its run form, a Latest
-run card, and its triggers. Each fact about a run appears once on the page: the
-card holds the latest run, and Activity holds every run. Starting a run keeps
-the workflow open; its Latest run card, list entry, and the status strip report
-the queued run.
+An operation whose untouched run form is complete (local scan, local files,
+metadata sync) runs with those defaults straight from its row. One that needs
+an input (Fetch, works on a source, the catalog sync presets) opens its
+options instead. **Options** opens, below the row and one operation at a time,
+what the row keeps off it:
 
-Run options form a run form that ends in a run bar holding Run, any workflow
-action, and the first reason Run is unavailable. The bar sticks above the
-page's fixed bottom controls while a long form scrolls.
-Preset option groups (Input, Filter, Actions) become columns once
-the form is wide enough. A workflow without run options keeps Run in its header.
-The Latest run card follows the form. It states the latest run's status,
-number, time, and duration, lists its stages, and holds its log, which stays
-folded for a success and opens by itself while a run is active and after a
-failed or partial one. A duration strip of the latest 20 runs closes the card;
-ordinary successes stay neutral so failures, partial results, and active runs
-stand out. **All runs** opens Activity narrowed to that workflow. Each trigger
-row states when it next starts the workflow.
+- The run form: the Run options, then a run bar holding Run, any workflow
+  action, and the first reason Run is unavailable. The bar sticks above the
+  page's fixed bottom controls while a long form scrolls, and takes the place
+  of the row's run control while the options are open. Preset option groups
+  (Input, Filter, Actions) become columns once the form is wide enough. An
+  operation that needs a compatible remote source shows a prompt to configure
+  one in place of its form while none is enabled.
+- The triggers that start it on their own, each stating when it next does. A
+  preset has none and links to Discover, where a subscription follows a circle,
+  series, or voice actor on a schedule.
+- A duration strip of its latest 20 runs, where ordinary successes stay
+  neutral so failures, partial results, and active runs stand out, and **All
+  runs**, which opens Activity narrowed to that operation.
+
+The open operation is the page's linked state (`?workflow=<code>`), which a
+run-form link from another page also carries with its prefilled target. A
+`?workflow=` link to a workflow that is not an operation leads to Activity
+narrowed to that workflow, and an unknown code is dropped. Phones show the same
+list; there is no landing view and no header back action. When runs need
+attention, one line above the list says how many and opens Activity on them.
 
 ## Workflow Permissions
 
-`workflows:run` opens the Workflows page; it is not an administrator
+`workflows:run` opens the Workflows and Activity pages; it is not an administrator
 capability on its own. Contributors and administrators hold it (see
 [Users](../user/en/settings.md#users)). Every capability below is checked by
 the backend.
@@ -531,8 +534,8 @@ the backend.
 
 ## Activity Summary
 
-Workflows shows Activity in place of the selected workflow, from the first
-entry of its workflow list or the status strip. Activity
+Activity (`/activity`) is a page of its own in the Manage group, open to the
+same accounts as Workflows. It is the run log: it
 lists every run as the administrators' diagnostic view; features with their
 own pages show their runs there too. The Translation page reads Translate with
 AI runs and items through `/api/translation/runs` and
@@ -544,20 +547,44 @@ Each returned translation run carries `canCancel`, which controls whether
 the Translation page offers the action.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
-Activity shows active runs above two server-paged views, Needs attention and
-History (`?view=history`). The active list and both views are global across
-workflow definitions, so a job submitted from one workflow remains visible
-while another definition is open. The Latest run card and list rows open full
-run details (`?run=<id>`) beside the list from 1280px and in place of it below;
-returning to the list keeps its scope. Opening a run is a history entry and
-leaves the selected workflow unchanged, so a run of a workflow outside the list
-needs no workflow context. A Latest run card's **All runs** opens Activity
-narrowed to that workflow (`?runsOf=<code>`), and its scope chip widens it to
-every workflow again; opening Activity from the list or the status strip is
-always global. `/activity` and `/runs` links redirect into Workflows with
-Activity shown. The header notification panel and Quick actions open this same
-surface. Events, candidates, progress, retries, and cancellation are available
-within the run details.
+Activity lists runs newest first in server-paged lists chosen by tabs: All
+(the default), Running, Needs attention, Failed, and History (`?view=<list>`).
+Running and Needs attention show their counts while they hold runs. A workflow
+filter narrows any list to one workflow (`?workflow=<code>`), including the
+workflows that are not operations, and a search field matches the workflow
+name, the trigger reason, and the run's subject (`?q=`). A workflow that the
+Discover page configures states so above its runs and links there. List rows
+open full run details (`?run=<id>`) beside the list from 1280px and in place
+of it below, where the mobile layout returns through the header back action;
+returning to the list keeps its filters. Opening a run is a history entry. An
+operation's state and its **All runs** on the Workflows page, the header
+notification panel, and Quick actions open this page. `/runs` and the
+addresses that showed Activity inside the Workflows page (`/workflows` with
+`?activity=1` or a bare `?run=`) redirect here with their list, their
+workflow scope (`?runsOf=`), and their run; earlier list names (`completed`,
+`review`) select History and Needs attention. Events, candidates, progress,
+retries, and cancellation are available within the run details.
+
+The four workflows the Discover page configures (the DLsite and remote source
+ranking pulls, Availability Watch, and the subscription refresh) have no row on
+the Workflows page, so each Discover settings panel states the workflow's
+latest run in one line: never run, queued or running, or how and when the run
+ended, with a link to that run in Activity. Every run of the workflow counts,
+whoever or whatever started it, so the Watch's line includes the checks a
+subscription refresh queued. The line shows for every account that can open
+the settings. The time and the link need `workflows:run`, which the run list
+and Activity require; an account without it sees the run's status as the
+settings endpoint reports it, without a time or link. A failed run is named
+as failed with its link always visible. The line never repeats the run's error
+text; the reason is in the run's details. A manual run from these settings
+(**Refresh all**, **Pull now**, **Refresh now** on the Rankings view and in the
+settings, and the Watch's checks) reports itself in a notice that opens the
+run it queued, or Activity's newest runs when it queued several, such as a
+DLsite pull and a remote source pull. Whether an account may start a run
+follows the endpoint's own permission and nothing more: `metadata:sync` for
+the subscription refresh and the ranking pulls; `workflows:run` with
+`metadata:sync` for an Availability Watch check. Demo shows the lines and
+starts nothing.
 
 A run record's `subject` names the one target the run acts on, read from its
 input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, folder edit, media
@@ -570,7 +597,7 @@ per-source cache cleanup. Runs over many targets have an empty subject. Run
 titles append the subject to the workflow name, and Activity search matches
 it.
 
-The active list contains running and queued jobs; Needs attention contains
+Running contains running and queued jobs; Needs attention contains
 terminal runs with unresolved candidates, pending metadata issues, or
 unacknowledged failures. A dedicated metadata-sync failure with recorded issue
 outcomes leaves attention when those issues are resolved. Unrecorded failures
@@ -659,8 +686,8 @@ request and keeps an enabled automatic list's next pull in the future;
 a later manual request remains due. A run that fails before it takes its
 lists consumes no request or due pull, and its target is dispatched again
 five minutes after the failure. The dispatcher is
-configured only through the lists: the Workflows page shows its next run but
-cannot edit, pause, or delete it.
+configured only through the lists: no page edits, pauses, or deletes its
+trigger.
 
 A pull whose every variant succeeded plans the list's next one an interval
 after it. A pull with any failed variant is retried after one hour, then two,
@@ -832,7 +859,7 @@ actor the graph read; their baselines come from the next successful catalog
 pull. Any other definition can be skipped or exported.
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as the selected workflow's run form.
+Workflows page renders it as that operation's run form.
 `POST /api/workflow-presets/{code}/runs`
 validates the inputs, checks that a selected source is an enabled compatible
 remote source, renders the tag template for this dispatch (`{date}`,
@@ -1235,7 +1262,7 @@ queues it after each refresh while its Availability Watch option is on, using
 the account that last configured the watch, and Check now on the Discover
 page's Watch view queues it directly, for the whole pool or for listed
 targets (`POST /api/availability-watch/run` with optional `targetIds`). The
-settings hold the source. Workflows lists its runs and links to that page.
+settings hold the source. Activity lists its runs and links to that page.
 Each execution snapshots the active targets it checks and records a normal
 workflow run, node runs (pool, family metadata, availability check, available
 works), and a durable job; only one check is queued or running at a time.
@@ -1427,8 +1454,8 @@ Discover page by a user with `metadata:sync`: on or off, an interval from
 1 to 168 hours (24 by default), and whether each refresh checks Availability
 Watch. Startup plans its first run. The trigger needs no owner: the run holds
 only refresh steps, and the Availability Watch run it queues uses the watch's
-configuring account. Workflows lists its runs and links to the Discover
-page; the trigger cannot be edited or deleted there. `POST
+configuring account. Activity lists its runs and links to the Discover
+page; no page edits or deletes the trigger. `POST
 /api/subscriptions/refresh` queues a run now; a run that is already queued or
 running is kept.
 

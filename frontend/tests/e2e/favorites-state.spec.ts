@@ -354,7 +354,7 @@ test("@desktop shelves edit their own list directly and list moves save without 
   await expect(page.getByRole("heading", { name: "All Favorites", level: 2 })).toBeVisible();
 });
 
-test("@desktop favorites puts shelves in a collapsible rail beside search and work controls", async ({ page }) => {
+test("@desktop favorites puts shelves in a named list beside search and work controls", async ({ page }) => {
   await mockFavorites(page);
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto("/favorites");
@@ -396,14 +396,11 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   );
   await page.getByRole("button", { name: "Exit selection", exact: true }).click();
 
-  // Hidden names keep each shelf's accessible name, and the choice survives a reload.
-  await page.getByRole("button", { name: "Hide tab names" }).click();
+  // The list always names its shelves and has no display toggles.
   await expect(shelves.getByRole("button", { name: /^Study/ })).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "Show tab names" }).click();
-  await expect(page.getByRole("button", { name: "Hide tab names" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /tab names/ })).toHaveCount(0);
 
-  // The rail stays at its sticky offset when the page reaches its end.
+  // The list stays at its sticky offset when the page reaches its end.
   await page.evaluate(() => window.scrollTo(0, 600));
   const stickyTop = (await shelves.boundingBox())!.y;
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));

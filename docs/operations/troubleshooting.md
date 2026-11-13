@@ -32,7 +32,7 @@
 
 ## Remote Sources Fail
 
-- Check the source endpoint in Settings.
+- Check the source endpoint in System -> Library.
 - Run or wait for a source availability check.
 - Confirm the source supports Kikoeru-compatible APIs.
 - Remember that source outages should not affect local or cached playback.

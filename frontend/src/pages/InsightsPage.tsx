@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { DemoListeningNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { ListeningHistoryPage, openLinkInPlace } from "@/features/listening-history/ListeningHistoryPage";
-import { personalTabPath, TIME_ZONE_SETTINGS_PATH } from "@/pages/personalTabs";
+import { TIME_ZONE_SETTINGS_PATH, YOUR_DATA_SETTINGS_PATH } from "@/pages/settingsPaths";
 
 /**
  * The account's own listening as one page: the listening dashboard, with the
@@ -23,7 +23,7 @@ export function InsightsPage({
   onOpenPath: (path: string) => void;
 }) {
   const { t } = useTranslation();
-  const dataPath = personalTabPath("data");
+  const dataPath = YOUR_DATA_SETTINGS_PATH;
   return (
     <div className="space-y-5">
       {demoMode && (

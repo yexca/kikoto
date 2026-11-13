@@ -11,18 +11,21 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import type { ListeningStatus, SourcePresenceItem, Work } from "@/lib/api";
 import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
 
+import { LibraryResultCount } from "./LibraryResultCount";
 import type { LocalLibraryScope } from "./libraryRoutes";
 import { LibraryWorkCard } from "./LibraryWorkCard";
 
 /**
  * The local or tracked works of the Library: the loaded page as cards with its
- * pagination, or its empty and load-failure states. A failure keeps the last
+ * pagination, or its empty and load-failure states. Results that fit one page
+ * state their count in place of the top page bar. A failure keeps the last
  * loaded cards on screen beside the retry.
  */
 export function LocalLibraryPanel({
   scope,
   works,
   pagination,
+  resultCount,
   loadError,
   isLoading,
   onRetry,
@@ -56,6 +59,8 @@ export function LocalLibraryPanel({
     totalPages: number;
     onPageChange: (page: number) => void;
   };
+  /** Null until the first page loads. */
+  resultCount: number | null;
   loadError: string;
   isLoading: boolean;
   onRetry: () => void;
@@ -87,9 +92,13 @@ export function LocalLibraryPanel({
   const mobileNavigationLayout = useMobileNavigationLayout();
   return (
     <div className="space-y-3">
-      {!loadError && !mobileNavigationLayout && (
-        <WorkCollectionPagination {...pagination} placement="top" compactMobile compactTop />
-      )}
+      {!loadError &&
+        !mobileNavigationLayout &&
+        (pagination.totalPages > 1 ? (
+          <WorkCollectionPagination {...pagination} placement="top" compactMobile compactTop />
+        ) : (
+          <LibraryResultCount value={resultCount} />
+        ))}
       {recommendationBadgesUnavailable && (
         <div role="status" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
           <span>{t("library.recommendationBadgesUnavailable")}</span>

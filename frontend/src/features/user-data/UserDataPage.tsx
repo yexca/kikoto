@@ -77,7 +77,7 @@ function ExportSection() {
       {status === "error" && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-3 bg-error-surface px-4 py-2.5 text-sm text-error-foreground"
+          className="flex items-center justify-between gap-3 rounded-md bg-error-surface px-3 py-2.5 text-sm text-error-foreground"
         >
           <span>{t("personal.userData.exportFailed")}</span>
           <Button size="sm" variant="outline" onClick={() => void download()}>
@@ -189,7 +189,7 @@ function ImportSection({ enabled }: { enabled: boolean }) {
         </NativeSelect>
       </SettingsRow>
       {state.source !== "kikoto" && (
-        <div className="px-4 py-3 text-xs text-muted-foreground">
+        <div className="py-3 text-xs text-muted-foreground">
           <p>{t(`personal.userData.sourceHints.${state.source}`)}</p>
           <p className="mt-2">{t("personal.userData.kikoeruMapping")}</p>
           <ul className="mt-1.5 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
@@ -256,7 +256,7 @@ function ImportSection({ enabled }: { enabled: boolean }) {
           )}
         </SettingsRow>
       )}
-      <fieldset className="px-4 py-3" disabled={locked}>
+      <fieldset className="py-3" disabled={locked}>
         <legend className="float-left mb-2 w-full text-sm font-medium">{t("personal.userData.conflict")}</legend>
         <div className="clear-both grid gap-2 sm:grid-cols-2">
           {userDataConflictPolicies.map((policy) => (
@@ -307,7 +307,7 @@ function RemoteLoadedSummary({
     Object.entries(remote.summary).map(([key, value]) => [key, formatNumber(value, resolvedLocale)]),
   );
   return (
-    <div role="status" className="flex items-start gap-2 px-4 py-3 text-sm">
+    <div role="status" className="flex items-start gap-2 py-3 text-sm">
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-foreground" aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-1">
         <p>{t("personal.userData.kikoeru.loaded", counts)}</p>
@@ -341,7 +341,7 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
     return (
       <div
         role="status"
-        className="flex items-start gap-2 bg-success-surface px-4 py-3 text-sm text-success-foreground"
+        className="flex items-start gap-2 rounded-md bg-success-surface px-3 py-3 text-sm text-success-foreground"
       >
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <span>{t("personal.userData.imported", state.result)}</span>
@@ -350,7 +350,10 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
   }
   if (state.importing.status === "error") {
     return (
-      <div role="alert" className="flex items-start gap-2 bg-error-surface px-4 py-3 text-sm text-error-foreground">
+      <div
+        role="alert"
+        className="flex items-start gap-2 rounded-md bg-error-surface px-3 py-3 text-sm text-error-foreground"
+      >
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <span>
           <span className="font-medium">{t("personal.userData.importFailed")}</span>
@@ -363,12 +366,12 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
   const preview = state.preview;
   if (preview.status === "idle") {
     return state.data ? null : (
-      <p className="px-4 py-3 text-xs text-muted-foreground">{t("personal.userData.previewStale")}</p>
+      <p className="py-3 text-xs text-muted-foreground">{t("personal.userData.previewStale")}</p>
     );
   }
   if (preview.status === "loading") {
     return (
-      <div role="status" className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+      <div role="status" className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
         {t("personal.userData.previewing")}
       </div>
@@ -378,7 +381,7 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
     return (
       <div
         role="alert"
-        className="flex items-center justify-between gap-3 bg-error-surface px-4 py-3 text-sm text-error-foreground"
+        className="flex items-center justify-between gap-3 rounded-md bg-error-surface px-3 py-3 text-sm text-error-foreground"
       >
         <span>
           <span className="font-medium">{t("personal.userData.previewFailed")}</span>
@@ -401,7 +404,7 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
     ["unmatchedProgress", result.unmatchedProgress],
   ] as const;
   return (
-    <section aria-label={t("personal.userData.preview")} className="space-y-3 px-4 py-3">
+    <section aria-label={t("personal.userData.preview")} className="space-y-3 py-3">
       <h3 className="text-sm font-medium">{t("personal.userData.preview")}</h3>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         {counts.map(([key, value]) => (

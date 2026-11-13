@@ -22,6 +22,7 @@ import {
 } from "./fixtures/api";
 import { playbackReportResultFixture } from "./fixtures/playback-reports";
 import { openWorkMetadataEditor } from "./fixtures/work-detail";
+import { showFullWorkCards } from "./fixtures/library-view";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
   page,
@@ -229,6 +230,7 @@ test("a library card rates its work and follows a rating set in work detail", as
     }
   });
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  await showFullWorkCards(page);
   await page.goto("/");
   const card = page.getByTestId("work-card").filter({ hasText: "Tagged mobile work" });
 
@@ -719,8 +721,10 @@ test("work detail prompts for missing metadata and refreshes after sync complete
 
   await expect.poll(() => metadataSyncControl.statusRequests).toBeGreaterThan(0);
   await expect.poll(() => metadataSyncControl.detailRequests).toBeGreaterThan(initialDetailRequests);
-  await expect(page.getByRole("group", { name: "Metadata language", exact: true })).toContainText("Japanese");
   await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
+  // A work with one metadata language and one edition shows no language or edition chip.
+  await expect(page.getByRole("button", { name: "Metadata language", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Directory edition", exact: true })).toHaveCount(0);
 });
 
 test("work detail names the remote source that filled a work DLsite does not have", async ({ page }) => {
@@ -807,6 +811,9 @@ test("local work detail lists Origin first and expands from local to all edition
     },
   ];
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    // The metadata editor entry shows only to an account that edits metadata.
+    authenticated: true,
+    permissions: ["library:read", "playback:use", "library:write"],
     detailTranslations,
     detailMetadataPresentation: {
       defaultVariantKey: "english-metadata",

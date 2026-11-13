@@ -1125,7 +1125,11 @@ history plays most.
 and `smart` lists. The system list has no stored items: it derives membership
 from a non-`none` Quick mark. `favorite_list_item` records the works a user
 added by hand to a user or smart list; those works are favorites, and
-`user_work_state.favorite` is true exactly when a work has such a row.
+`user_work_state.favorite` is true exactly when a work has such a row. An
+item's `created_at` is when the work joined the list, and a membership that
+stays keeps it. It orders the lists a work card and work detail name for a
+work: hand additions newest first, then the smart lists that hold the work
+only through their rule, in list order.
 A user list's `icon` is a short presentation key (lowercase letters, digits,
 and hyphens) that clients map to their own icon set; an empty or unknown key
 shows the default list icon, and the system list never reports one.

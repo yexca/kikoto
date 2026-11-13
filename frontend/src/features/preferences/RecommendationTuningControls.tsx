@@ -147,7 +147,7 @@ export function RecommendationPreviewPanel({
     { key: "dislikedTags", label: copy("exampleDislikedTags"), max: 10 },
   ];
   return (
-    <section className="rounded-md border bg-background p-4">
+    <section className="border-t pt-6">
       <h3 className="mb-4 text-sm font-semibold">{copy("preview")}</h3>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
         <div className="space-y-4">

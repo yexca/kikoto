@@ -117,7 +117,7 @@ Kikoto writes a `.kikoto-pool` marker into each selected folder. When a disk is
 not mounted, its folder is empty and has no marker, so the pool is shown as
 offline and scans leave its works unchanged instead of reporting them missing.
 Fetch stages and publishes inside the pool that receives the files, so each
-publication is a rename on one disk. Choose a Fetch pool in Settings -> Library
+publication is a rename on one disk. Choose a Fetch pool in System -> Library
 before fetching; until then Fetch explains what to configure.
 
 ### Record

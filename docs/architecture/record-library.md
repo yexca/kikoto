@@ -54,7 +54,7 @@ or served.
 
 Thumbnails are part of the transcode cache, under
 `transcodes/record-thumbs/` in the cache root. They share its quota and
-eviction, its usage in **Settings → Cleanup**, and its clear action: storing a
+eviction, its usage in **System → Cleanup**, and its clear action: storing a
 thumbnail reserves its size under the transcode cache limit, evicting the
 least recently used cache files first, and serving a thumbnail counts as a
 use. A thumbnail is named by asset, file size, and modification time, so a

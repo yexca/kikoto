@@ -73,7 +73,7 @@ Playback is handled by a global browser audio player.
   no audio, are left out, and Demo reads keyframes only when a video is
   played. Every other video is transcoded
   to six-second 720p H.264/AAC segments, by the CPU or, when an administrator
-  turns on a hardware encoder under Settings → Cache & Fetch and its test
+  turns on a hardware encoder under System → Cache & Fetch and its test
   encode succeeds, by an Intel GPU. A file whose GPU encode fails is encoded
   by the CPU instead, within the same request.
 - One continuous FFmpeg process produces the segments in order from where
@@ -144,7 +144,7 @@ Playback is handled by a global browser audio player.
   encoding, and produced with a conservative two-thread profile or the GPU
   encoder at up to 2800 kbit/s; copied video keeps the source picture. Video
   and audio conversions share a server-wide number of slots, two by default,
-  which an administrator sets from 1 to 5 under **Settings → Cache & Fetch**.
+  which an administrator sets from 1 to 5 under **System → Cache & Fetch**.
   FFprobe has a small fixed concurrency limit, and embedded subtitle
   extraction runs one at a time in a slot of its own. Each has a short,
   bounded wait queue; requests that cannot acquire a slot promptly are
@@ -153,8 +153,9 @@ Playback is handled by a global browser audio player.
   make both binaries available on the backend process `PATH`.
 - Clicking a playable file queues naturally sorted playable files in the same
   folder and starts the selected file at zero.
-- Work detail exposes fixed Resume instead of work-level Play. Resume is disabled
-  without a positive unfinished cursor.
+- Work detail leads with Resume when the work has a positive unfinished
+  cursor, and otherwise with Play, which queues the playable files of the
+  folder the Directory opens on and starts the first at zero.
 - Playback continues across navigation.
 - Entering Work detail while a matching work is actively playing selects the
   current playback source and opens that track's folder. A paused queue, an

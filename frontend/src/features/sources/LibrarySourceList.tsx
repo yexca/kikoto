@@ -76,7 +76,7 @@ export function LibrarySourceList({
       }
     >
       <GroupLabel>{t("maintenance.library.localGroup")}</GroupLabel>
-      <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3 py-3">
         <span
           className={cn("h-2.5 w-2.5 shrink-0 rounded-full", localDotClassNames[local.status])}
           aria-hidden="true"
@@ -112,7 +112,7 @@ export function LibrarySourceList({
         const host = remoteSourceHost(source) || t("maintenance.noEndpointConfigured");
         const checking = checkingSourceId === source.id;
         return (
-          <div key={source.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
+          <div key={source.id} className="flex min-w-0 items-center gap-3 py-3">
             <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", healthDotClassNames[health])} aria-hidden="true" />
             <button
               type="button"
@@ -182,7 +182,7 @@ export function LibrarySourceList({
         );
       })}
       {sources.length === 0 && (
-        <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
           <span className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
             <Globe className="h-5 w-5" />
           </span>
@@ -201,7 +201,7 @@ function GroupLabel({ id, children }: { id?: string; children: ReactNode }) {
   return (
     <h3
       id={id}
-      className="scroll-mt-24 bg-muted/30 px-4 py-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground"
+      className="scroll-mt-24 !border-t-0 pb-1.5 pt-4 text-2xs font-semibold uppercase tracking-wide text-muted-foreground"
     >
       {children}
     </h3>

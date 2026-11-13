@@ -99,7 +99,7 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
           {running ? t("cleanup.backup.running") : t("cleanup.backup.run")}
         </Button>
       </SettingsRow>
-      <p className="px-4 pb-3 text-xs text-muted-foreground">{t("cleanup.backup.policy")}</p>
+      <p className="pb-3 text-xs text-muted-foreground">{t("cleanup.backup.policy")}</p>
     </SettingsSection>
   );
 }

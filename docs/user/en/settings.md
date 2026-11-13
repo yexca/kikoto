@@ -1,11 +1,11 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings holds account controls, personal playback, recommendation, and tag preferences, and, for administrators, instance administration. Appearance is in the header appearance menu; UI language and the preferred metadata language are in the account menu behind your avatar, or behind **Sign in**.
+Settings holds the signed-in account's controls and its playback and recommendation preferences. Instance settings are the **System** page, which administrators and Demo see. On a wide screen Settings is in the **Personal** group of the sidebar and System in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
 
 ## Tabs
 
-Settings uses Account, Playback, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the tabs as one row above the settings. The row names every tab when there is room; otherwise it names the group holding the open tab (the personal or the administration tabs) and shows the other group as icons, and on the narrowest wide screens it names only the open tab. If even that does not fit, the row wraps onto a second line. The icon at the end of that row, **Show tabs beside**, moves the tabs into a column beside the settings with every tab named. Below the column, **Hide tab names** collapses it to icons, **Show tab names** expands it again, and **Show tabs above** returns to the row. Phones show the tabs as one row that scrolls sideways. Settings remembers both choices on that device.
+Settings shows its tabs along the top, each with an icon and a name: Account, Playback, and Recommendations. System shows Library, Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users the same way. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
 
 ## Saving
 
@@ -17,7 +17,7 @@ button of their own: the password change, library storage, folder
 preferences, recommendation tuning, the content safety policy, the proxy
 bypass list, and every dialog.
 
-`/maintenance`, `/users`, `/cleanup`, `/tags`, and `/user-data` links open the matching Settings tab. `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
+`/maintenance`, `/users`, and `/cleanup` links, and `/settings` links that name a System tab, open the matching System tab. `/user-data` opens **Your data** in Account, and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
 
 ## Account
 
@@ -32,7 +32,7 @@ bypass list, and every dialog.
   [Personal data](personal-data.md).
 
 Changing a password preserves the current session and revokes the user's other
-sessions. An administrator password reset from Settings -> Users revokes every
+sessions. An administrator password reset from System -> Users revokes every
 session for the target user. Role, enabled state, username, and user lifecycle
 management are not self-service account settings.
 
@@ -85,7 +85,7 @@ values.
 
 ## Language And Appearance
 
-Appearance is available only from the header menu, and the UI language from the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
+Appearance opens from the palette button in the header and holds mode, style, and color. The UI language is in the **Language** view of the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
 
 ### Multilingual titles
 
@@ -93,8 +93,8 @@ Kikoto uses the first preferred metadata language that has its own manual title 
 
 ## Demo Mode
 
-Demo mode keeps account-backed Settings read-only. The administration tabs, the
-Recommendations and Tags tabs, and the Your data section of Account
+Demo mode keeps account-backed Settings read-only. The System page, the
+Recommendations tab, the Tags page, and the Your data section of Account
 stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and
@@ -106,7 +106,9 @@ Playback preferences are isolated by server identity and
 authenticated user, or by the anonymous principal when anonymous access is
 enabled.
 
-## Administration
+## System
+
+The **System** page (`/system`) holds the instance settings. Administrators see it, and Demo sees it read-only.
 
 ### Library
 
@@ -271,7 +273,7 @@ Text-only mode matches literal keywords; it does not interpret meaning, translat
 
 ### Cleanup
 
-**Cleanup** (`/settings?tab=cleanup`) needs `downloads:manage` for cache
+**Cleanup** (`/system?tab=cleanup`) needs `downloads:manage` for cache
 sections and `sources:write` for database sections.
 
 - **Transcode cache** shows usage against its limit and offers a confirmed clear
@@ -345,7 +347,7 @@ anonymous development session.
 
 Metadata uses `/metadata`; `/work-management` links redirect there with their filters or settings context.
 
-The **Metadata** icon rail groups **Works** (DLsite works and Custom works) and **Entries** (Tags, Circles, Voice actors). **DLsite works** lists only works with a provider catalog code, such as a DLsite code, and opens on **All**; a filter row above its list switches between **All**, **Needs attention**, **Metadata issues**, and **No available source** (`/metadata?reason=catalog`, `all`, `metadata`, and `no_source`). Custom works appear only in **Custom works** and in the coverage of the [Translation page](translation.md#coverage). Wide screens show the views as one row above the list, so the tables keep the full width. The row names every view when there is room; otherwise it names the group holding the open view and shows the other group as icons, and on the narrowest wide screens it names only the open view. **Show tabs beside**, at the end of the row, moves the views into a column beside the list that names the groups and views, where **Hide tab names** keeps only icons and **Show tabs above** returns to the row; Metadata remembers both choices on that device. Phones show a scrollable icon row, and the filter row scrolls sideways when it does not fit. **DLsite works**, **Custom works**, and each filter show how many works they list; the **Needs attention**, **Metadata issues**, and **No available source** filters take the attention color while they list any. A short line under the filters says what the current view lists. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, shared tag edits, and circle identity edits.
+The **Metadata** page shows its views as tabs along the top, grouped as **Works** (DLsite works and Custom works) and, after a divider, **Entries** (Tags, Circles, Voice actors). **DLsite works** lists only works with a provider catalog code, such as a DLsite code, and opens on **All**; a filter row above its list switches between **All**, **Needs attention**, **Metadata issues**, and **No available source** (`/metadata?reason=catalog`, `all`, `metadata`, and `no_source`). Custom works appear only in **Custom works** and in the coverage of the [Translation page](translation.md#coverage). The tabs sit above the list, so the tables keep the full width; phones scroll the tab row sideways, and the filter row scrolls sideways when it does not fit. **DLsite works**, **Custom works**, and each filter show how many works they list; the **Needs attention**, **Metadata issues**, and **No available source** filters take the attention color while they list any. A short line under the filters says what the current view lists. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, shared tag edits, and circle identity edits.
 
 **Tags** (`/metadata?view=tags`) lists shared concepts by their shared tag **ID**, ordered by ID so the list never depends on a language setting. The ID cell shows the DLsite genre id below the tag ID when there is one, and **Hidden** or **Merged** below that only for a hidden or merged tag; an active tag shows no status. The columns are ID, Japanese, Simplified Chinese, Traditional Chinese, English, Korean, **Other names**, Works, and Manage. Each language column shows the name that language displays: its own manual name, then the all-language manual name (shown muted), then the DLsite dictionary name, then a remote source's name, or "—" when there is none. **Other names** lists every other known name once: names a manual name replaced, with their language, names without a language, and a stored name without name records. Search matches names, including remote-source names, and a numeric query also matches the tag ID or DLsite genre id. On narrow screens the table scrolls sideways inside its own box while the Manage button stays pinned to its right edge. Manage opens manual names for all languages or a locale, global hiding, merge-target selection, and undo of the merge mapping. **Circles** (`?view=circles`) lists circles by their DLsite maker id (RG code), ordered by code; maker ids a merge brought along appear below the primary one, and circles known only from a remote source follow, shown by their Kikoto id. The columns are Code, Name (beside the latest known work's cover), Known names, Works, and Manage, and search also matches maker ids. Manage supports a manual name that survives provider refresh, confirmed aliases, and reviewed merges that move works, maker ids, catalogs, snapshots, series, and personal circle data. Undo processes the latest merge first and refuses to replace later edits to affected records. **Voice actors** (`/metadata?view=aliases`, with `&voice=<id>` to open one person) lists people by Kikoto id, ordered by id, with the columns ID, Name (beside the latest work's cover), Aliases, Works, Status (catalog sync), and Manage; alias and duplicate management requires `metadata:sync`. Demo allows inspection while changes remain disabled.
 
@@ -365,12 +367,12 @@ Press a row, or its inspect button, to open the work inspector: beside the table
 
 Selecting works replaces the upper pagination with a selection bar holding **Retry metadata**, **Check sources**, and, in the views that allow it, **Delete local information**, each with the number of selected works it applies to, plus **Dismiss unavailable** while a selected work has a product reported unavailable. **Retry metadata** counts only eligible selections. You can also retry an affected edition from its details, including products reported unavailable. When an enabled remote source provides metadata, the selection bar offers **Fetch from** that source and each affected DLsite edition offers the same in its details; this asks only that source, as the detail page's `From <source name>` refresh does, without automatic remote fallback being enabled. Failed retries preserve existing metadata and manual overrides. A product DLsite no longer lists, such as a delisted work, stays unavailable however often it is retried: **Dismiss** in its edition details, or **Dismiss unavailable** in the selection bar, stops listing it as a metadata issue for everyone and clears its metadata-run notice. A failed update cannot be dismissed. A later sync that fails for the work lists it again. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** filter and, for custom works, in **Custom works**; the server rechecks availability and retains media files.
 
-**Open metadata issues** in Activity opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Workflows Activity. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
+**Open metadata issues** in Activity opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Activity. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
-choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
+choice as the DLsite scope under `System -> Proxy -> Proxy scope`, saved
 immediately. **Manage proxies** opens that section to add or reorder proxies.
-Below it, **Catalog freshness** opens `Settings -> Library`, and **Remote
+Below it, **Catalog freshness** opens `System -> Library`, and **Remote
 metadata fallback** opens the Metadata sync workflow, whose **Configure** holds
 that setting.
 

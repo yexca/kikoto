@@ -74,7 +74,7 @@ ends and are exported only when the user chooses to copy them.
 ## Anonymous Library Access
 
 Production mode requires authentication by default. A super administrator can
-enable anonymous Library browsing and media playback under Settings -> Users.
+enable anonymous Library browsing and media playback under System -> Users.
 While that setting is enabled, authentication still protects personal state,
 configuration, and mutations, but it is not a privacy boundary for the complete
 Library. Restrict network access when the collection itself must remain private.

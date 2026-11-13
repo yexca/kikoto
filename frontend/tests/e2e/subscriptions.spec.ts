@@ -12,6 +12,7 @@ import {
   rolePermissions,
   runtimeSettingsFixture,
   subscriptionLookupFixture,
+  subscriptionScheduleFixture,
   subscriptionViewFixture,
   workFixture,
   workflowRunDetailFixture,
@@ -20,16 +21,19 @@ import {
 } from "./fixtures/api";
 import type {
   CreatorSubscriptionLookup,
+  CreatorSubscriptionSchedule,
   RankingItem,
   RankingList,
   RankingOrder,
   RankingOverview,
   RankingPage,
+  RankingRefreshRun,
   RankingSnapshotRef,
   RankingTimeline,
   RankingVariant,
   ReleaseFeedPage,
   ShownWorksActionResult,
+  WorkflowRun,
   WorkflowRunDetail,
 } from "../../src/lib/api";
 import type { ForYouColumn, ForYouDraw, ForYouDrawRequest } from "../../src/lib/forYouApi";
@@ -39,7 +43,15 @@ type SubscriptionServer = {
   feed?: ReleaseFeedPage;
   lookup?: CreatorSubscriptionLookup;
   demo?: boolean;
+  /** The signed-in account's permissions; an administrator when absent. */
+  permissions?: string[];
   rankings?: RankingOverview;
+  /** The runs a ranking refresh queues. */
+  refreshRuns?: RankingRefreshRun[];
+  /** The subscription refresh schedule. */
+  schedule?: CreatorSubscriptionSchedule;
+  /** The newest run of each workflow, as the run list answers by workflow code. */
+  workflowRuns?: Record<string, WorkflowRun>;
   /**
    * Ranking pages by `<list>:<compare>` for the latest order and `<list>@<at>` for history,
    * where `<list>` is the list id, followed by `~<release>/<sort>` for an order other than the default.
@@ -251,7 +263,7 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       return;
     }
     if (url.pathname === "/api/rankings/refresh") {
-      await route.fulfill({ json: { runs: [] } });
+      await route.fulfill({ json: { runs: server.refreshRuns ?? [] } });
       return;
     }
     const rankingPage = /^\/api\/rankings\/(\d+)$/.exec(url.pathname);
@@ -281,6 +293,21 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
           ? { status: result.runId > 0 ? 202 : 200, json: result }
           : { status: 409, json: { error: "no remote source can be checked", code: "no_remote_source" } },
       );
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs") {
+      const latest = server.workflowRuns?.[url.searchParams.get("workflowCode") ?? ""];
+      await route.fulfill({
+        json: { runs: latest ? [latest] : [], page: 1, pageSize: 1, total: latest ? 1 : 0, viewTotals: { running: 0 } },
+      });
+      return;
+    }
+    if (url.pathname === "/api/subscriptions/refresh") {
+      await route.fulfill({ status: 202, json: { runId: 63, status: "queued" } });
+      return;
+    }
+    if (url.pathname === "/api/availability-watch") {
+      await route.fulfill({ json: { id: 1, sourceId: null, revision: 1, targets: [] } });
       return;
     }
     const run = /^\/api\/workflow-runs\/(\d+)(\/events)?(\/stream)?$/.exec(url.pathname);
@@ -349,7 +376,9 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
               permissions: ["library:read"],
               demoMode: true,
             })
-          : authenticatedStateFixture({ role: "admin", permissions: rolePermissions.admin }),
+          : server.permissions
+            ? authenticatedStateFixture({ role: "user", permissions: server.permissions })
+            : authenticatedStateFixture({ role: "admin", permissions: rolePermissions.admin }),
       });
       return;
     }
@@ -383,7 +412,9 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       return;
     }
     if (url.pathname === "/api/subscriptions") {
-      await route.fulfill({ json: subscriptionViewFixture() });
+      await route.fulfill({
+        json: subscriptionViewFixture(server.schedule ? { schedule: server.schedule } : {}),
+      });
       return;
     }
     if (url.pathname === "/api/for-you/draw" && server.forYouDraws) {
@@ -980,6 +1011,99 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
         .filter(Boolean),
     )
     .toEqual([2024, 2023]);
+});
+
+/** A run of a workflow that ended two hours ago. */
+function endedRun(id: number, workflowCode: string, status: string): WorkflowRun {
+  const at = new Date(Date.now() - 2 * 3600_000).toISOString();
+  return workflowRunFixture({ id, workflowCode, displayName: workflowCode, status, startedAt: at, finishedAt: at });
+}
+
+test("@desktop the settings state each workflow's latest run and open it in Activity", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const day = rankingListFixture();
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    rankings: rankingOverviewFixture({
+      lists: [day],
+      workflows: [
+        { code: "dlsite_popular_collection", nextRunAt: null, latestRun: { id: 61, status: "failed" } },
+        { code: "remote_popular_collection", nextRunAt: null, latestRun: null },
+      ],
+    }),
+    rankingPages: { "1:": rankingPageFixture(day, null, []) },
+    refreshRuns: [{ runId: 65, status: "queued", workflowCode: "dlsite_popular_collection" }],
+    schedule: subscriptionScheduleFixture({ latestRun: { id: 62, status: "succeeded" } }),
+    workflowRuns: {
+      dlsite_popular_collection: endedRun(61, "dlsite_popular_collection", "failed"),
+      creator_subscription_refresh: endedRun(62, "creator_subscription_refresh", "succeeded"),
+      availability_watch: endedRun(64, "availability_watch", "succeeded"),
+    },
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/discover?view=rankings&panel=rankings");
+  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+
+  // A failed pull is named with its time and opens its run. A remote workflow shows once a remote list exists.
+  const pull = settings.getByRole("group", { name: "Latest DLsite pull" });
+  await expect(pull).toContainText("Failed");
+  await expect(pull).toContainText("2 hr. ago");
+  await expect(settings.getByRole("group", { name: "Latest remote source pull" })).toHaveCount(0);
+
+  // A refresh's notice carries the run it queued.
+  await settings.getByRole("button", { name: "Refresh all" }).click();
+  await expect(page.getByText("Ranking pull queued.")).toBeVisible();
+  await page.getByRole("button", { name: "View run" }).click();
+  await expect(page).toHaveURL(/\/activity\?run=65$/);
+  await page.goto("/discover?view=rankings&panel=rankings");
+
+  await pull.getByRole("button", { name: "Open run #61 (Failed) in Activity" }).click();
+  await expect(page).toHaveURL(/\/activity\?run=61$/);
+
+  await page.goto("/discover?panel=subscriptions");
+  const refresh = settings.getByRole("group", { name: "Latest refresh" });
+  await expect(refresh).toContainText("Succeeded");
+  await settings.getByRole("button", { name: "Refresh now" }).click();
+  await expect(page.getByText("Refresh queued.")).toBeVisible();
+  await page.getByRole("button", { name: "View run" }).click();
+  await expect(page).toHaveURL(/\/activity\?run=63$/);
+
+  // The watch has no schedule of its own; its latest run is whichever ran last, a subscription refresh's included.
+  await page.goto("/discover?view=watch&panel=watch");
+  const check = settings.getByRole("group", { name: "Latest check" });
+  await expect(check).toContainText("Succeeded");
+  await check.getByRole("button", { name: "Open run #64 (Succeeded) in Activity" }).click();
+  await expect(page).toHaveURL(/\/activity\?run=64$/);
+});
+
+test("@desktop an account that only syncs metadata runs the refresh and sees its latest run without a link", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    permissions: ["library:read", "metadata:sync"],
+    schedule: subscriptionScheduleFixture({
+      latestRun: { id: 62, status: "failed" },
+      lastRunAt: "2026-10-14 09:00:00",
+      lastError: "upstream refused",
+    }),
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/discover?panel=subscriptions");
+  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const refresh = settings.getByRole("group", { name: "Latest refresh" });
+  await expect(refresh).toContainText("Failed");
+  await expect(refresh.getByRole("button")).toHaveCount(0);
+  await expect(settings.getByRole("button", { name: "Refresh now" })).toBeEnabled();
+  await expect(settings.getByRole("switch", { name: "Refresh automatically" })).toBeEnabled();
+  await settings.getByRole("button", { name: "Refresh now" }).click();
+  await expect.poll(() => server.requests.some((request) => request.path === "/api/subscriptions/refresh")).toBe(true);
+  // The notice has no run to open.
+  await expect(page.getByText("Refresh queued.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "View run" })).toHaveCount(0);
 });
 
 /** A page action's run as the page follows it. */

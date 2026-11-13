@@ -23,6 +23,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { ActivityRunSummary } from "@/features/workflows/ActivityRunSummary";
 import { formatRelativeTime, formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
+import { activityPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -195,14 +196,14 @@ export function NotificationCenter({
       if (canViewMetadataIssues) {
         return metadataSyncResultURL(notification.workflowRunId, notification.status !== "succeeded", canViewWorkflows);
       }
-      return canViewWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : "/";
+      return canViewWorkflows ? workflowActivityRunPath(notification.workflowRunId) : "/";
     }
     if (notification.type === "availability_watch_ready") {
       return `/discover?view=watch&dialog=ready&run=${notification.workflowRunId}`;
     }
     if (notification.type === "subscription_release") return "/discover";
     if (notification.type === "remote_track" && notification.status === "failed") {
-      return canViewWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : null;
+      return canViewWorkflows ? workflowActivityRunPath(notification.workflowRunId) : null;
     }
     const workPath = `/${encodeURIComponent(notification.workCode)}`;
     if (notification.type === "remote_track") {
@@ -219,7 +220,7 @@ export function NotificationCenter({
       return `/${encodeURIComponent(run.subject)}?view=local`;
     return canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
       ? metadataIssuesURL(run.id)
-      : `/workflows?activity=1&run=${run.id}`;
+      : workflowActivityRunPath(run.id);
   };
 
   const showAttention = canViewWorkflows && tab === "attention";
@@ -283,7 +284,7 @@ export function NotificationCenter({
           <button
             type="button"
             className="block w-full shrink-0 border-b bg-info-surface/40 px-3 py-2.5 text-left transition-colors hover:bg-info-surface/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            onClick={() => go("/workflows?activity=1")}
+            onClick={() => go(activityPath({ view: "running" }))}
           >
             <span className="mb-1.5 flex items-center justify-between gap-2 text-xs font-medium text-info-foreground">
               <span className="flex items-center gap-1.5">
@@ -399,7 +400,7 @@ export function NotificationCenter({
             <button
               type="button"
               className="flex h-9 w-full items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted"
-              onClick={() => go(tab === "attention" ? "/workflows?activity=1" : "/workflows?activity=1&view=history")}
+              onClick={() => go(activityPath(tab === "attention" ? { view: "attention" } : {}))}
             >
               <Activity className="h-4 w-4" />
               {t("notifications.openActivity")}

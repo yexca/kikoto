@@ -75,7 +75,7 @@ settings where they apply.
 
 ## Maintenance
 
-Settings -> Cleanup lists the record types that the database cleanup can
+System -> Cleanup lists the record types that the database cleanup can
 remove. Manual cleanup runs after confirmation and writes a `database.cleanup`
 audit entry.
 
@@ -130,7 +130,7 @@ backup is always complete.
 | --- | --- | --- |
 | `pre-migration` | At startup, before the first pending numbered migration of an existing database | 3 |
 | `scheduled` | By the workflow coordinator when the newest routine backup is older than 24 hours, checked hourly | 7 |
-| `manual` | **Back up now** in Settings -> Cleanup (`POST /api/maintenance/database/backups`) | 5 |
+| `manual` | **Back up now** in System -> Cleanup (`POST /api/maintenance/database/backups`) | 5 |
 
 A fresh install and an up-to-date database start without a pre-migration
 backup. Because numbered migrations cannot be reverted, startup stops without
@@ -140,7 +140,7 @@ configuration volume and start again. A direct backend run can instead point
 `/config/backups`. Routine
 backups run as `database_backup` workflow runs and appear in Activity; a
 manual backup also writes a `database.backup` audit entry. Only one backup can
-be queued or running. Settings lists backup names, kinds, sizes, and times
+be queued or running. Cleanup lists backup names, kinds, sizes, and times
 without revealing the backup directory. An in-memory or URI-configured
 database has no default backup directory and is backed up only when
 `KIKOTO_DB_BACKUP_DIR` is set.

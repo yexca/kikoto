@@ -85,6 +85,7 @@ export const subscriptionsEnglish = {
       label: "Actions for the shown works",
       button: "Actions",
       viewRun: "View run",
+      viewRuns: "View runs",
       metadata: {
         label: "Sync metadata",
         hint: "For shown works without metadata or synced over a day ago. Works Kikoto does not know yet are added.",
@@ -110,7 +111,7 @@ export const subscriptionsEnglish = {
         partial: "Source check finished; some works could not be checked.",
         failed: "The source check failed.",
         queueFailed: "The source check could not be queued.",
-        noSource: "No remote source can be checked. Add a compatible source in Settings first.",
+        noSource: "No remote source can be checked. Add a compatible source in System → Library first.",
       },
     },
     feed: {
@@ -204,9 +205,8 @@ export const subscriptionsEnglish = {
       availabilityWatch: "Check Availability Watch",
       availabilityWatchDescription: "Run the Availability Watch check after each refresh.",
       nextRun: "Next refresh:",
-      lastRun: "Last refresh:",
       off: "Off",
-      viewRun: "View the latest run",
+      latestRun: "Latest refresh",
       lastErrorNotice: "The last refresh needs attention. Open the latest run for details.",
       saveFailed: "The schedule could not be saved.",
       queued: "Refresh queued.",

@@ -1,16 +1,12 @@
 import {
   BellRing,
   BookCopy,
-  Cloud,
-  Compass,
   DatabaseZap,
   Download,
   FileAudio,
   Flame,
   FolderSearch,
-  FolderSync,
   Languages,
-  Library,
   ListChecks,
   Mic,
   Radar,
@@ -19,15 +15,6 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-
-import type { WorkflowCategory } from "./workflowCategories";
-
-export const workflowCategoryIcons: Record<WorkflowCategory, LucideIcon> = {
-  basic: Library,
-  catalog: FolderSync,
-  remote: Cloud,
-  discover: Compass,
-};
 
 const workflowIcons: Record<string, LucideIcon> = {
   local_library_scan: FolderSearch,

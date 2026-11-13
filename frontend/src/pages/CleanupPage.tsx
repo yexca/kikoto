@@ -74,7 +74,7 @@ export function CleanupPage({
     (cacheOverview?.orphanBytes ?? 0) + (cacheOverview?.transcode.bytes ?? 0) + (databaseOverview?.freeBytes ?? 0);
 
   return (
-    <div className="space-y-6" data-testid="cleanup-content">
+    <div className="space-y-10" data-testid="cleanup-content">
       {cacheOverview && databaseOverview && reclaimable > 0 && (
         <p className="px-1 text-sm text-muted-foreground" role="status">
           {t("cleanup.summary.total", { size: formatByteSize(reclaimable) })}
@@ -82,7 +82,7 @@ export function CleanupPage({
       )}
 
       {canManageCache && (
-        <div className="space-y-6">
+        <div className="space-y-10">
           <TranscodeCacheSection
             overview={cacheOverview}
             scanning={cacheScanning}
@@ -99,7 +99,7 @@ export function CleanupPage({
       )}
 
       {canManageDatabase && (
-        <div className="space-y-6">
+        <div className="space-y-10">
           <DatabaseCleanupSection
             overview={databaseOverview}
             scanning={databaseScanning}

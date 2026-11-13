@@ -5,57 +5,53 @@ import { useTranslation } from "react-i18next";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, assetURL, type Work } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 import { progressPercent, recentProgressLabel } from "./recentPlayback";
 
 const RECENTLY_PLAYED_LIMIT = 20;
 
-export function RecentlyPlayedPicker({ onOpen }: { onOpen: (work: Work) => void }) {
+/**
+ * The Library toolbar's Recently played button and the list it opens: a
+ * popover on wide layouts and a sheet on phones. Choosing a work opens it.
+ */
+export function RecentlyPlayedPicker({
+  phone,
+  size = "sm",
+  onOpen,
+}: {
+  phone: boolean;
+  /** Matches the button to an 8 or 10 unit toolbar row. */
+  size?: "sm" | "md";
+  onOpen: (work: Work) => void;
+}) {
   const { t } = useTranslation();
-  const mobile = useMobileNavigationLayout();
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [works, setWorks] = useState<Work[] | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  // Refresh on every open: playback keeps changing the list while the page stays mounted.
-  useEffect(() => {
-    if (!open) return;
-    const controller = new AbortController();
-    setFailed(false);
-    api
-      .listRecentlyPlayedWorks(RECENTLY_PLAYED_LIMIT, controller.signal)
-      .then((result) => setWorks(result.works))
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
-  }, [open]);
-
+  const title = t("library.recentlyPlayed");
   const openWork = (work: Work) => {
     setOpen(false);
     onOpen(work);
   };
-  const title = t("library.recentlyPlayed");
-  const list = <RecentlyPlayedList works={works} failed={failed} onOpen={openWork} />;
+  const list = <RecentlyPlayedWorks onOpen={openWork} />;
 
   return (
-    <div className="relative" ref={anchorRef}>
+    <div className="relative shrink-0" ref={anchorRef}>
       <Button
         type="button"
         variant="toolbar"
         size="icon-sm"
+        className={cn(size === "md" && "h-10 w-10")}
         title={title}
         aria-label={title}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <History className="h-4 w-4" />
+        <History className="h-4 w-4" aria-hidden="true" />
       </Button>
-      {mobile ? (
+      {phone ? (
         <MobileSheet open={open} onOpenChange={setOpen} ariaLabel={title}>
           <MobileSheetHeader>
             <h2 className="text-base font-semibold">{title}</h2>
@@ -71,7 +67,7 @@ export function RecentlyPlayedPicker({ onOpen }: { onOpen: (work: Work) => void 
           anchorRef={anchorRef}
           ariaLabel={title}
           onOpenChange={setOpen}
-          className="w-[22rem] p-1.5"
+          className="w-[min(22rem,calc(100vw-1.5rem))] p-1.5"
         >
           <p className="px-2 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">{title}</p>
           {list}
@@ -81,16 +77,27 @@ export function RecentlyPlayedPicker({ onOpen }: { onOpen: (work: Work) => void 
   );
 }
 
-function RecentlyPlayedList({
-  works,
-  failed,
-  onOpen,
-}: {
-  works: Work[] | null;
-  failed: boolean;
-  onOpen: (work: Work) => void;
-}) {
+/**
+ * The works played most recently, each with its last position. It loads
+ * whenever it mounts, which is each time the picker opens: playback keeps
+ * changing the list while the Library stays mounted.
+ */
+function RecentlyPlayedWorks({ onOpen }: { onOpen: (work: Work) => void }) {
   const { t } = useTranslation();
+  const [works, setWorks] = useState<Work[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .listRecentlyPlayedWorks(RECENTLY_PLAYED_LIMIT, controller.signal)
+      .then((result) => setWorks(result.works))
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+
   if (failed && !works) {
     return <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t("library.recentlyPlayedFailed")}</p>;
   }
@@ -109,6 +116,7 @@ function RecentlyPlayedList({
       {works.map((work) => (
         <li key={work.id}>
           <button
+            type="button"
             className="group flex w-full min-w-0 items-center gap-3 rounded-md p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onOpen(work)}
             aria-label={t("library.openWorkTitle", { title: work.title })}

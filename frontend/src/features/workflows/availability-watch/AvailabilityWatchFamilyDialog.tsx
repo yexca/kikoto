@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import i18n, { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
+import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { Modal } from "@/features/workflows/WorkflowPanelParts";
 import { assetURL, type AvailabilityWatchTarget } from "@/lib/api";
@@ -260,6 +261,5 @@ function watchTargetLocation(targetId: number) {
 }
 
 function openActivityRunID(runID: number) {
-  window.history.pushState({}, "", `/workflows?activity=1&run=${runID}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  openWorkflowPath(workflowActivityRunPath(runID));
 }

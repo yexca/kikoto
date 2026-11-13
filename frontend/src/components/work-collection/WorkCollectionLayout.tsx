@@ -25,6 +25,7 @@ import {
 
 export {
   discoverCardLayout,
+  discoverCardModes,
   DISCOVER_LAYOUT_STORE,
   workCardLayout,
   workCollectionClassName,
@@ -93,79 +94,20 @@ export function useWorkCollectionLayout(
  * mode leads because choosing one resets the other groups to its preset. The
  * popover stays open after a choice so several can be adjusted.
  */
-export function WorkCollectionDisplayPicker({
-  mobileColumns,
-  desktopColumns,
-  onMobileColumnsChange,
-  onDesktopColumnsChange,
-  showColumns = true,
-  view,
-  cardModes,
-  pageSize,
-  pageSizeOptions,
-  onPageSizeChange,
-  pageSizeLabels,
-  coverSources,
-}: {
-  mobileColumns: WorkCollectionColumnSetting;
-  desktopColumns: WorkCollectionColumnSetting;
-  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  showColumns?: boolean;
-  /** Passing it adds the grid or list choice for collections that draw both. */
-  view?: { mode: WorkCollectionViewMode; onChange: (mode: WorkCollectionViewMode) => void };
-  /**
-   * Adds the card mode choice; like columns, it is kept apart for narrow and
-   * wide screens. A new mode applies its preset to the other offered groups.
-   */
-  cardModes?: {
-    mobile: WorkCardMode;
-    desktop: WorkCardMode;
-    onMobileChange: (value: WorkCardMode) => void;
-    onDesktopChange: (value: WorkCardMode) => void;
-  };
-  pageSize?: number;
-  pageSizeOptions?: readonly number[];
-  onPageSizeChange?: (value: number) => void;
-  /** Wording for a page measured in something other than works, such as days. */
-  pageSizeLabels?: { heading: string; value: (value: number) => string };
-  /** Whether cover source marks show automatically (exceptions only), always, or never. */
-  coverSources?: { mode: SourceVisibilityMode; onChange: (mode: SourceVisibilityMode) => void };
-}) {
+export function WorkCollectionDisplayPicker(props: WorkCollectionDisplayOptionsProps) {
+  const { mobileColumns, desktopColumns, showColumns = true, view, pageSize, pageSizeOptions, pageSizeLabels } = props;
   const { t } = useTranslation("translation", { i18n });
   const [open, setOpen] = useState(false);
   const isWide = useIsWideLayout();
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const currentColumns = isWide ? desktopColumns : mobileColumns;
-  const columnOptions: readonly WorkCollectionColumnSetting[] = [
-    "auto",
-    ...(isWide ? workCollectionDesktopColumnOptions : workCollectionMobileColumnOptions),
-  ];
-  const setColumns = (value: WorkCollectionColumnSetting) => {
-    if (isWide) onDesktopColumnsChange(value);
-    else onMobileColumnsChange(value);
-  };
-  const paged = pageSize !== undefined && pageSizeOptions !== undefined && onPageSizeChange !== undefined;
-  const currentCardMode = isWide ? cardModes?.desktop : cardModes?.mobile;
-  const setCardMode = (value: WorkCardMode) => {
-    if (!cardModes) return;
-    chooseWorkCardMode(currentCardMode, value, {
-      setMode: isWide ? cardModes.onDesktopChange : cardModes.onMobileChange,
-      setDesktopColumns: isWide && showColumns ? onDesktopColumnsChange : undefined,
-      // A page measured in something other than works, such as days, keeps its size.
-      pageSizeOptions: paged && !pageSizeLabels ? pageSizeOptions : undefined,
-      setPageSize: onPageSizeChange,
-      setCoverSources: coverSources?.onChange,
-    });
-  };
-  const viewOptions = [
-    { value: "grid" as const, label: t("collection.gridView"), icon: LayoutGrid },
-    { value: "list" as const, label: t("collection.listView"), icon: ListIcon },
-  ];
   const summary = [
-    view ? viewOptions.find((option) => option.value === view.mode)?.label : null,
-    showColumns ? t("collection.columns", { label: columnSettingLabel(currentColumns, t) }) : null,
-    paged ? (pageSizeLabels?.value(pageSize) ?? t("collection.pageSize", { value: pageSize })) : null,
+    view ? t(view.mode === "grid" ? "collection.gridView" : "collection.listView") : null,
+    showColumns
+      ? t("collection.columns", { label: columnSettingLabel(isWide ? desktopColumns : mobileColumns, t) })
+      : null,
+    pageSize !== undefined && pageSizeOptions !== undefined
+      ? (pageSizeLabels?.value(pageSize) ?? t("collection.pageSize", { value: pageSize }))
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -193,81 +135,164 @@ export function WorkCollectionDisplayPicker({
         ariaLabel={t("collection.displayOptions")}
         className="flex w-[min(18rem,calc(100vw-1.5rem))] flex-col gap-3 p-3 text-sm"
       >
-        {cardModes && (
-          <DisplayOptionGroup label={t("collection.cardMode")}>
-            {workCardModes.map((mode) => (
-              <DisplayOptionButton
-                key={mode}
-                checked={currentCardMode === mode}
-                label={t(`collection.cardModeOptions.${mode}`)}
-                onSelect={() => setCardMode(mode)}
-              >
-                {t(`collection.cardModes.${mode}`)}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
-        {view && (
-          <DisplayOptionGroup label={t("collection.viewMode")}>
-            {viewOptions.map((option) => (
-              <DisplayOptionButton
-                key={option.value}
-                checked={view.mode === option.value}
-                label={option.label}
-                className="gap-1.5"
-                onSelect={() => view.onChange(option.value)}
-              >
-                <option.icon className="h-4 w-4" aria-hidden="true" />
-                {t(`collection.viewModes.${option.value}`)}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
-        {showColumns && (
-          <DisplayOptionGroup label={t("collection.columnsHeading")}>
-            {columnOptions.map((option) => (
-              <DisplayOptionButton
-                key={option}
-                checked={currentColumns === option}
-                label={columnOptionLabel(option, t)}
-                className={option === "auto" ? "flex-[1.6]" : undefined}
-                onSelect={() => setColumns(option)}
-              >
-                {columnSettingLabel(option, t)}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
-        {paged && (
-          <DisplayOptionGroup label={pageSizeLabels?.heading ?? t("collection.itemsPerPage")}>
-            {pageSizeOptions.map((option) => (
-              <DisplayOptionButton
-                key={option}
-                checked={pageSize === option}
-                label={pageSizeLabels?.value(option) ?? t("collection.perPageOption", { value: option })}
-                onSelect={() => onPageSizeChange(option)}
-              >
-                {option}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
-        {coverSources && (
-          <DisplayOptionGroup label={t("collection.coverSources")}>
-            {sourceVisibilityModes.map((mode) => (
-              <DisplayOptionButton
-                key={mode}
-                checked={coverSources.mode === mode}
-                label={t(`collection.coverSourceModes.${mode}`)}
-                onSelect={() => coverSources.onChange(mode)}
-              >
-                {t(`library.sourceVisibility.modes.${mode}`)}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
+        <WorkCollectionDisplayOptions {...props} />
       </AnchoredPopover>
     </div>
+  );
+}
+
+export type WorkCollectionDisplayOptionsProps = {
+  mobileColumns: WorkCollectionColumnSetting;
+  desktopColumns: WorkCollectionColumnSetting;
+  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  showColumns?: boolean;
+  /** Passing it adds the grid or list choice for collections that draw both. */
+  view?: { mode: WorkCollectionViewMode; onChange: (mode: WorkCollectionViewMode) => void };
+  /**
+   * Adds the card mode choice; like columns, it is kept apart for narrow and
+   * wide screens. A new mode applies its preset to the other offered groups.
+   */
+  cardModes?: {
+    mobile: WorkCardMode;
+    desktop: WorkCardMode;
+    onMobileChange: (value: WorkCardMode) => void;
+    onDesktopChange: (value: WorkCardMode) => void;
+    /** The modes on offer, every mode by default. */
+    options?: readonly WorkCardMode[];
+  };
+  pageSize?: number;
+  pageSizeOptions?: readonly number[];
+  onPageSizeChange?: (value: number) => void;
+  /** Wording for a page measured in something other than works, such as days. */
+  pageSizeLabels?: { heading: string; value: (value: number) => string };
+  /** Whether cover source marks show automatically (exceptions only), always, or never. */
+  coverSources?: { mode: SourceVisibilityMode; onChange: (mode: SourceVisibilityMode) => void };
+};
+
+/**
+ * The display option groups on their own, for a surface that holds them beside
+ * other controls, such as the Library's View panel.
+ */
+export function WorkCollectionDisplayOptions({
+  mobileColumns,
+  desktopColumns,
+  onMobileColumnsChange,
+  onDesktopColumnsChange,
+  showColumns = true,
+  view,
+  cardModes,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
+  pageSizeLabels,
+  coverSources,
+}: WorkCollectionDisplayOptionsProps) {
+  const { t } = useTranslation("translation", { i18n });
+  const isWide = useIsWideLayout();
+  const currentColumns = isWide ? desktopColumns : mobileColumns;
+  const columnOptions: readonly WorkCollectionColumnSetting[] = [
+    "auto",
+    ...(isWide ? workCollectionDesktopColumnOptions : workCollectionMobileColumnOptions),
+  ];
+  const setColumns = (value: WorkCollectionColumnSetting) => {
+    if (isWide) onDesktopColumnsChange(value);
+    else onMobileColumnsChange(value);
+  };
+  const paged = pageSize !== undefined && pageSizeOptions !== undefined && onPageSizeChange !== undefined;
+  const currentCardMode = isWide ? cardModes?.desktop : cardModes?.mobile;
+  const setCardMode = (value: WorkCardMode) => {
+    if (!cardModes) return;
+    chooseWorkCardMode(currentCardMode, value, {
+      setMode: isWide ? cardModes.onDesktopChange : cardModes.onMobileChange,
+      setDesktopColumns: isWide && showColumns ? onDesktopColumnsChange : undefined,
+      // A page measured in something other than works, such as days, keeps its size.
+      pageSizeOptions: paged && !pageSizeLabels ? pageSizeOptions : undefined,
+      setPageSize: onPageSizeChange,
+      setCoverSources: coverSources?.onChange,
+    });
+  };
+  const viewOptions = [
+    { value: "grid" as const, label: t("collection.gridView"), icon: LayoutGrid },
+    { value: "list" as const, label: t("collection.listView"), icon: ListIcon },
+  ];
+
+  return (
+    <>
+      {cardModes && (
+        <DisplayOptionGroup label={t("collection.cardMode")}>
+          {(cardModes.options ?? workCardModes).map((mode) => (
+            <DisplayOptionButton
+              key={mode}
+              checked={currentCardMode === mode}
+              label={t(`collection.cardModeOptions.${mode}`)}
+              onSelect={() => setCardMode(mode)}
+            >
+              {t(`collection.cardModes.${mode}`)}
+            </DisplayOptionButton>
+          ))}
+        </DisplayOptionGroup>
+      )}
+      {view && (
+        <DisplayOptionGroup label={t("collection.viewMode")}>
+          {viewOptions.map((option) => (
+            <DisplayOptionButton
+              key={option.value}
+              checked={view.mode === option.value}
+              label={option.label}
+              className="gap-1.5"
+              onSelect={() => view.onChange(option.value)}
+            >
+              <option.icon className="h-4 w-4" aria-hidden="true" />
+              {t(`collection.viewModes.${option.value}`)}
+            </DisplayOptionButton>
+          ))}
+        </DisplayOptionGroup>
+      )}
+      {showColumns && (
+        <DisplayOptionGroup label={t("collection.columnsHeading")}>
+          {columnOptions.map((option) => (
+            <DisplayOptionButton
+              key={option}
+              checked={currentColumns === option}
+              label={columnOptionLabel(option, t)}
+              className={option === "auto" ? "flex-[1.6]" : undefined}
+              onSelect={() => setColumns(option)}
+            >
+              {columnSettingLabel(option, t)}
+            </DisplayOptionButton>
+          ))}
+        </DisplayOptionGroup>
+      )}
+      {paged && (
+        <DisplayOptionGroup label={pageSizeLabels?.heading ?? t("collection.itemsPerPage")}>
+          {pageSizeOptions.map((option) => (
+            <DisplayOptionButton
+              key={option}
+              checked={pageSize === option}
+              label={pageSizeLabels?.value(option) ?? t("collection.perPageOption", { value: option })}
+              onSelect={() => onPageSizeChange(option)}
+            >
+              {option}
+            </DisplayOptionButton>
+          ))}
+        </DisplayOptionGroup>
+      )}
+      {coverSources && (
+        <DisplayOptionGroup label={t("collection.coverSources")}>
+          {sourceVisibilityModes.map((mode) => (
+            <DisplayOptionButton
+              key={mode}
+              checked={coverSources.mode === mode}
+              label={t(`collection.coverSourceModes.${mode}`)}
+              onSelect={() => coverSources.onChange(mode)}
+            >
+              {t(`library.sourceVisibility.modes.${mode}`)}
+            </DisplayOptionButton>
+          ))}
+        </DisplayOptionGroup>
+      )}
+    </>
   );
 }
 

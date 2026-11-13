@@ -43,6 +43,7 @@ import {
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { draftAfterSave, sectionSettings } from "@/pages/settingsDraft";
+import { systemSettingsPath } from "@/pages/settingsPaths";
 import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
@@ -401,7 +402,7 @@ export function MaintenancePage({
 
   if (!canManageSources && !canManageUsers && !canManageAccessPolicy) {
     return (
-      <section className="rounded-lg border bg-card p-5">
+      <section>
         <p className="text-sm text-muted-foreground">{t("maintenance.adminRequired")}</p>
       </section>
     );
@@ -414,7 +415,7 @@ export function MaintenancePage({
         {isSettingsLoading && activeTab !== "users" ? (
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
-          <div className="space-y-6">
+          <div className="space-y-10">
             <LibrarySourceList
               local={localLibraryEntry(libraryLayout, localSource?.displayName ?? t("maintenance.mainLocalLibrary"), t)}
               sources={remoteSources}
@@ -427,8 +428,6 @@ export function MaintenancePage({
               onCheck={checkSourceHealth}
               onToggleEnabled={toggleSourceEnabled}
             />
-
-            <SettingsGroupDivider label={t("maintenance.library.settingsGroup")} />
 
             <LibraryLayoutSection
               id="library-storage"
@@ -533,7 +532,7 @@ export function MaintenancePage({
             <StoragePaths settings={settings} remoteSources={remoteSources} />
           </div>
         ) : activeTab === "cache" && draft ? (
-          <div className="space-y-6">
+          <div className="space-y-10">
             <CacheFetchSettings
               draft={draft}
               readOnly={readOnly}
@@ -552,7 +551,7 @@ export function MaintenancePage({
             />
           </div>
         ) : activeTab === "proxy" && settings ? (
-          <div className="space-y-6">
+          <div className="space-y-10">
             <ProxySettingsSection
               proxy={settings.proxy}
               remoteSources={remoteSources}
@@ -568,7 +567,7 @@ export function MaintenancePage({
             afterPolicy={<LyricsAttributionSection readOnly={readOnly} />}
           />
         ) : activeTab === "users" ? (
-          <div className="space-y-6">
+          <div className="space-y-10">
             {canManageUsers && (
               <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
             )}
@@ -691,11 +690,11 @@ function CacheFetchSettings({
   const commitTransfer = (key: keyof RuntimeDraft) => () => void transferStatus.track(editor.commit(key));
   const commitPacing = (key: keyof RuntimeDraft) => () => void pacingStatus.track(editor.commit(key));
   const openCleanup = () => {
-    window.history.pushState({}, "", "/settings?tab=cleanup");
+    window.history.pushState({}, "", systemSettingsPath("cleanup"));
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   return (
-    <div className="space-y-6" data-testid="cache-configuration-card">
+    <div className="space-y-10" data-testid="cache-configuration-card">
       <SettingsSection title={t("maintenance.cache.policy")} action={<AutosaveStatus state={policyStatus.state} />}>
         <SettingsRow
           title={t("maintenance.cache.remotePlayback")}
@@ -903,12 +902,12 @@ function StoragePaths({ settings, remoteSources }: { settings: AppSettings | nul
     ]),
   ];
   return (
-    <div className="theme-card-surface overflow-hidden rounded-xl border bg-card">
+    <div className="border-y">
       <SettingsDisclosure title={t("maintenance.paths.title")} description={t("maintenance.paths.description")}>
         {rows.map(([label, value], index) => (
           <label
             key={`${label}:${index}`}
-            className="grid gap-1 px-4 py-2.5 sm:grid-cols-[12rem_minmax(0,1fr)] sm:items-center"
+            className="grid gap-1 py-2.5 sm:grid-cols-[12rem_minmax(0,1fr)] sm:items-center"
           >
             <span className="truncate text-xs font-medium text-muted-foreground">{label}</span>
             <input
@@ -952,24 +951,14 @@ function localLibraryEntry(
   };
 }
 
-/** Separates the overview at the top of a tab from the configuration sections below it. */
-function SettingsGroupDivider({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 px-1 pt-2">
-      <h2 className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
-      <span className="h-px flex-1 bg-border" aria-hidden="true" />
-    </div>
-  );
-}
-
 function SettingsSkeleton() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-6" role="status" aria-label={t("common.loading")}>
+    <div className="space-y-10" role="status" aria-label={t("common.loading")}>
       {Array.from({ length: 2 }, (_, index) => (
         <div key={index} className="space-y-2.5">
           <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-          <div className="space-y-3 rounded-xl border bg-card p-4">
+          <div className="space-y-3 border-t pt-4">
             <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
             <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
             <div className="h-9 w-full animate-pulse rounded bg-muted" />

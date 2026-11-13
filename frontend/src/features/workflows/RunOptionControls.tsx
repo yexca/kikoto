@@ -1,5 +1,5 @@
 import { AlertCircle, Info, Loader2, Play } from "lucide-react";
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -125,6 +125,9 @@ export type RunFormLayout = (parts: {
   blocker?: ReactNode;
 }) => ReactNode;
 
+/** What the run button says while its operation cannot start again, such as "Running"; "Queueing" without one. */
+export const RunBusyLabelContext = createContext<string | null>(null);
+
 export function WorkflowRunButton({
   running,
   disabled,
@@ -135,7 +138,8 @@ export function WorkflowRunButton({
   onClick: () => void;
 }) {
   const { t } = useTranslation();
-  const label = running ? t("workflowPage.queueing") : t("workflowPage.run");
+  const busyLabel = useContext(RunBusyLabelContext);
+  const label = running ? (busyLabel ?? t("workflowPage.queueing")) : t("workflowPage.run");
   return (
     <Button className="h-9 min-w-24 px-3" aria-label={label} disabled={running || disabled} onClick={onClick}>
       {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}

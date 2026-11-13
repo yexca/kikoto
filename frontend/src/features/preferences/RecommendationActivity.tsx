@@ -47,8 +47,8 @@ export function RecommendationActivity({ userId }: { userId: number }) {
   const bucketMax = Math.max(0, ...scoreBuckets.map((bucket) => telemetry?.scoreBuckets[bucket] ?? 0));
 
   return (
-    <section aria-labelledby={headingId} className="min-w-0 space-y-3">
-      <div className="px-1">
+    <section aria-labelledby={headingId} className="min-w-0">
+      <div className="border-b pb-2.5">
         <h2 id={headingId} className="text-sm font-semibold">
           {t("recommendationActivity.title")}
         </h2>
@@ -56,18 +56,22 @@ export function RecommendationActivity({ userId }: { userId: number }) {
           {t("recommendationActivity.description", { count: windowDays })}
         </p>
       </div>
-      <div className="theme-card-surface min-w-0 overflow-hidden rounded-xl border bg-card">
+      <div className="min-w-0">
         {failed ? (
-          <p className="px-4 py-4 text-sm text-muted-foreground">{t("maintenance.status.unavailable")}</p>
+          <p className="py-4 text-sm text-muted-foreground">{t("maintenance.status.unavailable")}</p>
         ) : !telemetry ? (
-          <div role="status" aria-label={t("common.loading")} className="h-48 animate-pulse bg-muted/40" />
+          <div
+            role="status"
+            aria-label={t("common.loading")}
+            className="mt-3 h-48 animate-pulse rounded-md bg-muted/40"
+          />
         ) : telemetry.totalEvents === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+          <p className="py-6 text-center text-sm text-muted-foreground">
             {t("recommendationActivity.empty", { count: windowDays })}
           </p>
         ) : (
           <div className="grid divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-            <div className="space-y-5 p-4">
+            <div className="space-y-5 py-4 lg:pr-5">
               <div className="space-y-3">
                 <h3 className="text-xs font-medium text-muted-foreground">{t("recommendationActivity.engagement")}</h3>
                 <dl className="space-y-3">
@@ -123,7 +127,7 @@ export function RecommendationActivity({ userId }: { userId: number }) {
                 </dl>
               </div>
             </div>
-            <figure className="flex min-w-0 flex-col gap-3 p-4">
+            <figure className="flex min-w-0 flex-col gap-3 py-4 lg:pl-5">
               <figcaption className="text-xs font-medium text-muted-foreground">
                 {t("maintenance.recommendation.impressionScores")}
               </figcaption>

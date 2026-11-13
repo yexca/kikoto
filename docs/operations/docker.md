@@ -46,7 +46,7 @@ default Compose mapping publishes it as host port `7655` on every host
 interface. For a
 host-only instance, change it to `127.0.0.1:7655:7659`. Otherwise protect the
 port with a host firewall, trusted VPN, or reverse proxy. Production requires
-sign-in by default; enabling anonymous access under Settings -> Users intentionally
+sign-in by default; enabling anonymous access under System -> Users intentionally
 exposes Library and media reads to every client that can reach the port.
 
 Default mounts:
@@ -159,7 +159,7 @@ has no Intel driver.
 
    The list should include `VAProfileH264Main` or `VAProfileH264High` with
    `VAEntrypointEncSlice` or `VAEntrypointEncSliceLP`.
-3. In **Settings → Cache & Fetch**, choose **Intel VA-API** as the hardware
+3. In **System → Cache & Fetch**, choose **Intel VA-API** as the hardware
    encoder and save. Change the render device only when the host has several
    GPUs; `ls /dev/dri` on the host lists them.
 

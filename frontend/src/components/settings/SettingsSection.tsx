@@ -5,8 +5,10 @@ import { wholeNumberFromInput } from "@/lib/numberInput";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
- * Grouped settings list: a plain heading outside a single card whose rows are
- * separated by hairlines. Pages compose sections instead of nesting cards.
+ * One settings section: a plain heading over a hairline, then its fields as
+ * rows separated by hairlines. A section has no card or border of its own, so
+ * a tab is a column of sections set apart by whitespace and a field never
+ * sits in a box inside a box.
  */
 export function SettingsSection({
   title,
@@ -27,8 +29,8 @@ export function SettingsSection({
 }) {
   const headingId = useId();
   return (
-    <section id={id} aria-labelledby={headingId} className={cn("min-w-0 space-y-3", className)}>
-      <div className="flex min-w-0 items-end justify-between gap-3 px-1">
+    <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
+      <div className="flex min-w-0 items-end justify-between gap-3 border-b pb-2.5">
         <div className="min-w-0">
           <h2 id={headingId} className="text-sm font-semibold text-foreground">
             {title}
@@ -37,10 +39,8 @@ export function SettingsSection({
         </div>
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
       </div>
-      <div className="theme-card-surface min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
-        <div className="divide-y">{children}</div>
-        {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3">{footer}</div>}
-      </div>
+      <div className="min-w-0 divide-y">{children}</div>
+      {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">{footer}</div>}
     </section>
   );
 }
@@ -65,7 +65,7 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col gap-2.5 px-4 py-3.5",
+        "flex min-w-0 flex-col gap-2.5 py-3.5",
         !stack && "sm:flex-row sm:items-center sm:justify-between sm:gap-6",
         // A switch or number field fits beside its label even on a phone, so those rows never stack.
         !stack && compactControlRowClassName,
@@ -95,11 +95,14 @@ export function SettingsDisclosure({
   defaultOpen = false,
   open,
   onToggle,
+  inset = false,
   children,
   className,
 }: {
   title: ReactNode;
   description?: ReactNode;
+  /** Pads the summary for a disclosure inside a bordered container, such as a dialog group. */
+  inset?: boolean;
   defaultOpen?: boolean;
   open?: boolean;
   onToggle?: (open: boolean) => void;
@@ -112,7 +115,12 @@ export function SettingsDisclosure({
       open={open ?? defaultOpen}
       onToggle={(event) => onToggle?.((event.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3.5 text-sm font-medium hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+      <summary
+        className={cn(
+          "flex cursor-pointer list-none items-center gap-2 py-3.5 text-sm font-medium hover:text-foreground marker:hidden",
+          inset && "px-4",
+        )}
+      >
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/disclosure:rotate-90" />
         <span className="min-w-0 flex-1">
           <span className="block">{title}</span>

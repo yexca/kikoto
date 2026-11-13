@@ -12,8 +12,8 @@ describe("metadata recovery destinations", () => {
     expect(metadataSyncResultURL(42, true, false)).toBe("/metadata?reason=metadata");
     expect(metadataSyncResultURL(42, true, true)).toBe("/metadata?reason=metadata&metadataRun=42");
   });
-  it("keeps successful and running results in their workflow when accessible", () => {
-    expect(metadataSyncResultURL(42, false, true)).toBe("/workflows?workflow=metadata_sync&activity=1&run=42");
+  it("opens successful and running results in Activity when accessible", () => {
+    expect(metadataSyncResultURL(42, false, true)).toBe("/activity?run=42");
     expect(metadataSyncResultURL(42, false, false)).toBe("/metadata");
     expect(metadataSyncResultURL(0, false, true)).toBe("/metadata");
   });

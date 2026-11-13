@@ -226,7 +226,8 @@ test("mobile reaches personal pages from the account menu without adding bottom 
 
   await page.getByRole("button", { name: "Account menu" }).click();
   await account.getByRole("button", { name: "Tags", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=tags$/);
+  await expect(page).toHaveURL(/\/tags$/);
+  await expect(page.getByRole("heading", { name: "Tags", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("list", { name: "Personal tags" }).getByText("Unused")).toBeVisible();
 
   // Your data is reached through Settings and Quick actions, not the account menu.
@@ -235,22 +236,44 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await expect(account.getByRole("button", { name: "Your data", exact: true })).toHaveCount(0);
 });
 
-test("@desktop personal pages are Settings tabs instead of sidebar entries", async ({ page }) => {
+test("@desktop personal pages sit in the sidebar's Personal group", async ({ page }) => {
   await mockPersonalData(page);
   await page.goto("/about");
   const sidebar = page.locator("aside nav");
-  for (const name of ["History", "Tags", "Your data", "Personal"]) {
+  const personal = sidebar.getByRole("button", { name: "Personal", exact: true });
+  await expect(personal).toHaveAttribute("aria-expanded", "false");
+  for (const name of ["History", "Insights", "Tags", "Your data", "Settings"]) {
     await expect(sidebar.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
+  // A listener has no Manage group, and the account panel repeats only the Insights and Tags shortcuts.
+  await expect(sidebar.getByRole("button", { name: "Manage", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "User menu" }).click();
+  const account = page.getByRole("dialog", { name: "Account" });
+  await expect(account.getByRole("button", { name: "About", exact: true })).toBeVisible();
+  for (const name of ["Insights", "Tags"]) {
+    await expect(account.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  await expect(account.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
+  await personal.click();
+  for (const name of ["Insights", "Tags", "Settings"]) {
+    await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
+  }
   await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  // Your data is a section of Account, and a listener sees no administration tabs.
-  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations", "Tags"]);
+  // Your data is a section of Account, and Settings holds no tags or administration tabs.
+  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
   await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
 
-  await tabs.getByRole("tab", { name: "Tags" }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=tags$/);
+  await sidebar.getByRole("button", { name: "Tags", exact: true }).click();
+  await expect(page).toHaveURL(/\/tags$/);
+  await expect(sidebar.getByRole("button", { name: "Tags", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("list", { name: "Personal tags" })).toBeVisible();
+
+  // A link to the former Settings tab opens the Tags page.
+  await page.goto("/settings?tab=tags");
+  await expect(page).toHaveURL(/\/tags$/);
   await expect(page.getByRole("list", { name: "Personal tags" })).toBeVisible();
 
   // The /user-data path opens the matching tab.
@@ -262,7 +285,7 @@ test("@desktop personal pages are Settings tabs instead of sidebar entries", asy
 
 test("merging a tag into a selected existing tag updates the list", async ({ page }) => {
   const log = await mockPersonalData(page);
-  await page.goto("/settings?tab=tags");
+  await page.goto("/tags");
 
   const list = page.getByRole("list", { name: "Personal tags" });
   await expect(list.getByRole("listitem")).toHaveCount(3);
@@ -291,7 +314,7 @@ test("merging a tag into a selected existing tag updates the list", async ({ pag
 
 test("a read-only account sees tags without rename, merge, or delete actions", async ({ page }) => {
   await mockPersonalData(page, { permissions: ["library:read", "playback:use"] });
-  await page.goto("/settings?tab=tags");
+  await page.goto("/tags");
   await expect(page.getByRole("list", { name: "Personal tags" }).getByRole("listitem")).toHaveCount(3);
   await expect(page.getByRole("button", { name: /^Merge / })).toHaveCount(0);
   await expect(page.getByText("Your account can view this page but cannot change it.")).toBeVisible();

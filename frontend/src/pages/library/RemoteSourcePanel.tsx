@@ -22,6 +22,7 @@ import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
 import type { SearchClause } from "@/lib/librarySearchClauses";
 
 import type { RemoteSourceViewState } from "./libraryBrowseModel";
+import { LibraryResultCount } from "./LibraryResultCount";
 import {
   remoteSourceBrowseModel,
   remoteSourcePanelModel,
@@ -312,9 +313,13 @@ export function RemoteSourcePanel({
   const remotePaginationProps = model.remotePaginationProps;
   // Phones show the page beside the result count in the toolbar instead.
   const mobileNavigationLayout = useMobileNavigationLayout();
-  const remoteTopPagination = (
-    <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
-  );
+  // Results that fit one page state their count in place of the top page bar.
+  const remoteTopPagination =
+    remotePaginationProps.totalPages > 1 ? (
+      <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
+    ) : (
+      <LibraryResultCount value={remotePaginationProps.totalItems} />
+    );
 
   return (
     <section className="space-y-3 pb-4 lg:pb-8">

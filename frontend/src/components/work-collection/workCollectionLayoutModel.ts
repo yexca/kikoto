@@ -14,15 +14,23 @@ export const workCollectionDesktopColumnOptions = [
   3, 4, 5, 6, 7, 8,
 ] as const satisfies readonly WorkCollectionColumnCount[];
 
-/** How much of a work each card shows, from the regular card down to the cover with its title. */
-export const workCardModes = ["full", "compact", "mini"] as const;
+/**
+ * How much of a work each card shows. Full shows every detail; simple keeps
+ * the cover, title, and credits at rest and brings the rest up on demand;
+ * compact and mini run down to the cover with its title.
+ */
+export const workCardModes = ["full", "simple", "compact", "mini"] as const;
 export type WorkCardMode = (typeof workCardModes)[number];
+
+/** Discover explains each card in a line above it and always shows its actions, so it leaves out simple. */
+export const discoverCardModes = ["full", "compact", "mini"] as const satisfies readonly WorkCardMode[];
 
 /**
  * The display settings a card mode starts from besides automatic wide-screen
  * columns: a mini cover fits more works per page and leaves out its source marks.
  */
 export const workCardModePresets: Record<WorkCardMode, { pageSize: number; coverSources: SourceVisibilityMode }> = {
+  simple: { pageSize: 24, coverSources: "auto" },
   full: { pageSize: 24, coverSources: "auto" },
   compact: { pageSize: 24, coverSources: "auto" },
   mini: { pageSize: 48, coverSources: "never" },
@@ -65,8 +73,8 @@ export type WorkCollectionColumnDefaults = Pick<StoredWorkCollectionLayout, "mob
 
 /**
  * Where a set of collections keeps its display choices and the card mode they
- * start in. The Library and the creator pages share the default store; Discover
- * keeps its own, starting with compact (row) cards.
+ * start in. The Library and the creator pages share the default store, starting
+ * with full cards; Discover keeps its own, starting with compact (row) cards.
  */
 export type WorkCollectionLayoutStore = { storageKey: string; cardMode: WorkCardMode };
 
@@ -89,6 +97,8 @@ type AutoColumns = { maximum: number; minWidth: string };
  */
 const autoColumns = {
   regular: { maximum: 5, minWidth: "16rem" },
+  // A simple card opens its details at the regular card's width.
+  simple: { maximum: 5, minWidth: "16rem" },
   // Discover lays row cards out on wide screens too; a row needs room beside its cover.
   row: { maximum: 3, minWidth: "22rem" },
   tile: { maximum: 6, minWidth: "13rem" },
@@ -114,14 +124,15 @@ export function workCollectionStyle(
 
 /**
  * The reduced card layout a mode uses at the current width, or null for the
- * regular card. Compact reads as rows in a single phone column and as short
- * tiles everywhere else.
+ * regular card. Simple is one layout at every width. Compact reads as rows in
+ * a single phone column and as short tiles everywhere else.
  */
 export function workCardLayout(
   mode: WorkCardMode,
   wide: boolean,
   mobileColumns: WorkCollectionColumnSetting,
 ): CompactWorkCardLayout | null {
+  if (mode === "simple") return "simple";
   if (mode === "mini") return "cover";
   if (mode === "compact") return wide || mobileColumns === 2 ? "tile" : "row";
   return null;

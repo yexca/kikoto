@@ -207,7 +207,7 @@ export function LLMSettingsSection({
           {loadState === "loading" ? (
             <EmptyState icon={<Loader2 className="h-5 w-5 animate-spin" />}>{t("maintenance.llm.loading")}</EmptyState>
           ) : loadState === "failed" ? (
-            <div role="alert" className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+            <div role="alert" className="flex flex-col items-center gap-3 py-8 text-center">
               <p className="max-w-sm text-sm text-error-foreground">{t("maintenance.llm.loadFailed")}</p>
               <Button variant="outline" size="sm" onClick={() => void load()}>
                 <RefreshCw className="h-4 w-4" />
@@ -218,7 +218,7 @@ export function LLMSettingsSection({
             <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.empty")}</EmptyState>
           ) : (
             providers.map((provider) => (
-              <div key={provider.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
+              <div key={provider.id} className="flex min-w-0 items-center gap-3 py-3">
                 <span
                   className={cn(
                     "hidden h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground sm:grid",
@@ -362,7 +362,7 @@ export function LLMSettingsSection({
 
 function EmptyState({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+    <div className="flex flex-col items-center gap-3 py-8 text-center">
       <span className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">{icon}</span>
       <p className="max-w-sm text-sm text-muted-foreground">{children}</p>
     </div>

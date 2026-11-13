@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { intlLocaleFor } from "@/i18n";
@@ -34,10 +34,13 @@ export function RunHistoryStrip({
   runs,
   now,
   onOpenRun,
+  action,
 }: {
   runs: WorkflowRun[];
   now: number;
   onOpenRun?: (run: WorkflowRun) => void;
+  /** Sits under the label, such as the link to every run. */
+  action?: ReactNode;
 }) {
   const { t } = useTranslation();
   const labels = useRunLabels();
@@ -53,7 +56,7 @@ export function RunHistoryStrip({
   const focusMoment = focus ? parseWorkflowTimestamp(focus.finishedAt || focus.startedAt || focus.createdAt) : null;
 
   return (
-    <div className="workflow-history-strip border-t px-4 py-3">
+    <div className="workflow-history-strip">
       <div className="workflow-history-label min-w-0">
         <div className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {t("workflowPage.console.runHistory")}
@@ -71,6 +74,7 @@ export function RunHistoryStrip({
             t("workflowPage.console.noRunsYet")
           )}
         </div>
+        {action && <div className="mt-1">{action}</div>}
       </div>
       {/* A pointer shortcut into the runs that All runs lists in Activity for every input. */}
       <div
@@ -97,7 +101,7 @@ export function RunHistoryStrip({
                 className={cn(
                   "w-full rounded-t-[3px] transition-colors",
                   barTone[run.status] ?? "bg-muted-foreground/20",
-                  hovered === run.id && "ring-2 ring-ring/40 ring-offset-1 ring-offset-card",
+                  hovered === run.id && "ring-2 ring-ring/40 ring-offset-1 ring-offset-background",
                 )}
                 style={{ height: `${height}%` }}
               />

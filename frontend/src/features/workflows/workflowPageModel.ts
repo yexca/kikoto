@@ -6,22 +6,11 @@ import type {
   SourcePresenceCheckOptions,
   SourcePresenceFilter,
   SourcePresenceLibrary,
-  WorkflowDefinition,
 } from "@/lib/api";
 
 /** Copy, built-in workflow tables, and run option types shared by the Workflows page panels. */
 
 export const workflowCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`workflowPage.${key}`, options);
-
-export function localizedWorkflowDefinition(definition: WorkflowDefinition) {
-  if (definition.scope !== "system") return definition;
-  const key = `workflowPage.builtInDefinitions.${definition.code}`;
-  return {
-    ...definition,
-    displayName: i18n.exists(`${key}.name`) ? i18n.t(`${key}.name`) : definition.displayName,
-    description: i18n.exists(`${key}.description`) ? i18n.t(`${key}.description`) : definition.description,
-  };
-}
 
 export type WorkflowNode = {
   id: string;

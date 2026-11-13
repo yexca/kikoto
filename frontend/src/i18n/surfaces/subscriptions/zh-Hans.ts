@@ -84,6 +84,7 @@ export const subscriptionsHans = {
       label: "当前作品的操作",
       button: "操作",
       viewRun: "查看运行",
+      viewRuns: "查看运行记录",
       metadata: {
         label: "同步元数据",
         hint: "针对没有元数据或同步已超过一天的作品。媒体库中没有的作品会被添加。",
@@ -109,7 +110,7 @@ export const subscriptionsHans = {
         partial: "来源检测已完成，部分作品未能检测。",
         failed: "来源检测失败。",
         queueFailed: "无法将来源检测加入队列。",
-        noSource: "没有可检测的远程来源。请先在设置中添加兼容来源。",
+        noSource: "没有可检测的远程来源。请先在「系统 → 媒体库」中添加兼容来源。",
       },
     },
     feed: {
@@ -196,9 +197,8 @@ export const subscriptionsHans = {
       availabilityWatch: "检查可用性监视",
       availabilityWatchDescription: "每次刷新后运行可用性监视检查。",
       nextRun: "下次刷新：",
-      lastRun: "上次刷新：",
       off: "关闭",
-      viewRun: "查看最近一次运行",
+      latestRun: "最近一次刷新",
       lastErrorNotice: "上次刷新需要处理，请打开最近一次运行查看详情。",
       saveFailed: "无法保存计划。",
       queued: "刷新已加入队列。",

@@ -2,11 +2,13 @@
 
 [English](../en/personal-data.md) · [简体中文](../zh-Hans/personal-data.md) · [繁體中文](../zh-Hant/personal-data.md) · [日本語](../ja/personal-data.md) · [한국어](../ko/personal-data.md)
 
-Sign in and open **Insights** in the sidebar for your listening calendar,
-report, and history. Personal tags are in **Settings → Tags**, and **Your
-data** is the last section of **Settings → Account**. Quick actions opens
-each one directly, and the account menu behind your avatar opens Insights and
-Tags. They show only your account's data.
+Sign in and open **Insights**, **Tags**, and **Settings** from the
+**Personal** group of the sidebar, or on a phone from the account menu behind
+your avatar. On a wide screen that menu also has Insights and Tags as
+shortcuts. Insights holds your listening calendar, report, and history,
+Tags holds your personal tags, and **Your data** is the last section of
+**Settings → Account**. Quick actions opens each one directly. They show only
+your account's data.
 
 ## Personal tags
 
@@ -156,7 +158,7 @@ Kikoto explains the risks and asks for confirmation:
 
 These requests never follow a redirect, so credentials reach only the address
 you chose. A manually entered address must be public unless you are an
-administrator or an administrator turns on **Settings → Library → Kikoeru
+administrator or an administrator turns on **System → Library → Kikoeru
 account import → Allow LAN addresses for every account**. That switch lets any
 signed-in account make the server connect to devices on its local network.
 Rows without a usable product code are skipped and counted, and at most two

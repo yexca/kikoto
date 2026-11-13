@@ -85,6 +85,7 @@ export const subscriptionsJapanese = {
       label: "表示中の作品の操作",
       button: "操作",
       viewRun: "実行を表示",
+      viewRuns: "実行の一覧を表示",
       metadata: {
         label: "メタデータを同期",
         hint: "メタデータがない作品と、同期から1日以上たった作品が対象です。ライブラリにない作品は追加されます。",
@@ -110,7 +111,7 @@ export const subscriptionsJapanese = {
         partial: "ソースの確認が完了しました。一部の作品は確認できませんでした。",
         failed: "ソースの確認に失敗しました。",
         queueFailed: "ソースの確認をキューに追加できませんでした。",
-        noSource: "確認できるリモートソースがありません。先に設定で互換ソースを追加してください。",
+        noSource: "確認できるリモートソースがありません。先に「システム → ライブラリ」で互換ソースを追加してください。",
       },
     },
     feed: {
@@ -203,9 +204,8 @@ export const subscriptionsJapanese = {
       availabilityWatch: "配信状況の監視をチェック",
       availabilityWatchDescription: "更新のたびに配信状況の監視のチェックを実行します。",
       nextRun: "次回の更新：",
-      lastRun: "前回の更新：",
       off: "オフ",
-      viewRun: "最新の実行を表示",
+      latestRun: "最新の更新",
       lastErrorNotice: "前回の更新に確認が必要です。詳細は最新の実行を開いてください。",
       saveFailed: "スケジュールを保存できませんでした。",
       queued: "更新をキューに追加しました。",

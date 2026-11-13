@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chooseWorkCardMode,
   discoverCardLayout,
+  discoverCardModes,
   DISCOVER_LAYOUT_STORE,
   LIBRARY_LAYOUT_STORE,
   storedWorkCollectionLayout,
   workCardLayout,
+  workCardModes,
   workCollectionStyle,
 } from "./workCollectionLayoutModel";
 
@@ -42,6 +44,25 @@ describe("stored work collection layout", () => {
     expect(storedWorkCollectionLayout("{", defaults).mobileCardMode).toBe("full");
   });
 
+  it("starts the Library and creator pages with full cards while keeping a stored choice", () => {
+    const { cardMode } = LIBRARY_LAYOUT_STORE;
+    expect(storedWorkCollectionLayout(null, defaults, cardMode)).toMatchObject({
+      mobileCardMode: "full",
+      desktopCardMode: "full",
+    });
+    // A layout stored with simple cards keeps them, and a width without a stored mode starts full.
+    expect(storedWorkCollectionLayout(JSON.stringify({ desktopCardMode: "simple" }), defaults, cardMode)).toMatchObject(
+      {
+        mobileCardMode: "full",
+        desktopCardMode: "simple",
+      },
+    );
+  });
+
+  it("offers full cards first and simple cards second", () => {
+    expect(workCardModes.slice(0, 2)).toEqual(["full", "simple"]);
+  });
+
   it("starts Discover with compact cards while keeping a stored choice", () => {
     const { storageKey, cardMode } = DISCOVER_LAYOUT_STORE;
     expect(storageKey).not.toBe(LIBRARY_LAYOUT_STORE.storageKey);
@@ -59,6 +80,16 @@ describe("work card layout", () => {
   it("uses the regular card for the full mode", () => {
     expect(workCardLayout("full", true, "auto")).toBeNull();
     expect(workCardLayout("full", false, 2)).toBeNull();
+  });
+
+  it("shows simple cards in one layout at every width", () => {
+    expect(workCardLayout("simple", true, "auto")).toBe("simple");
+    expect(workCardLayout("simple", false, 1)).toBe("simple");
+    expect(workCardLayout("simple", false, 2)).toBe("simple");
+  });
+
+  it("leaves the simple mode out of Discover's choices", () => {
+    expect(discoverCardModes).toEqual(["full", "compact", "mini"]);
   });
 
   it("shows compact cards as rows in one phone column and as tiles elsewhere", () => {
@@ -132,6 +163,10 @@ describe("work collection grid", () => {
     expect(regular["--mobile-grid-template"]).toContain("16rem");
     expect(covers["--mobile-grid-template"]).toBe("repeat(2, minmax(0, 1fr))");
     expect(workCollectionStyle(1, 6, "cover")).toEqual(workCollectionStyle(1, 6));
+  });
+
+  it("gives simple cards the full card's tracks, so their details open at its width", () => {
+    expect(workCollectionStyle("auto", "auto", "simple")).toEqual(workCollectionStyle("auto", "auto"));
   });
 
   it("fits up to five full, three row, six compact, and seven mini cards in automatic wide-screen columns", () => {

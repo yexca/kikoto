@@ -23,7 +23,7 @@ export function LibraryLayoutSection({
   const { t } = useTranslation();
   return (
     <SettingsSection id={id} title={t("librarySetup.title")} description={t("librarySetup.description")}>
-      <div className="px-4 py-3">
+      <div className="py-3.5">
         {layout ? (
           <div className="space-y-7">
             <LibraryLayoutEditor key={layoutKey(layout)} layout={layout} readOnly={readOnly} onSaved={onSaved} />

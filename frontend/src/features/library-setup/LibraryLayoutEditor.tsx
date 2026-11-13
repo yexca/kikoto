@@ -194,7 +194,7 @@ export function LibraryLayoutEditor({
         </div>
 
         {draft.mode === "standard" && layout.mode === "standard" && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">{t("librarySetup.dataFolder")}</span>
             {statusBadge("")}
             {reconnectButton("")}
@@ -211,12 +211,12 @@ export function LibraryLayoutEditor({
               {folders.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("librarySetup.noFolders")}</p>
               ) : (
-                <ul className="divide-y rounded-md border">
+                <ul className="divide-y border-y">
                   {folders.map((path) => {
                     const checked = draft.pools.includes(path);
                     const id = `library-pool-${path}`;
                     return (
-                      <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
+                      <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 py-2">
                         <Checkbox
                           id={id}
                           checked={checked}
