@@ -245,7 +245,7 @@ export function RecordsBrowser() {
           )}
           {shown.folders.length > 0 && (
             <RecordSection title={t("records.sections.folders")} count={shown.folders.length}>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
+              <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
                 {shown.folders.map((folder) => (
                   <RecordFolderTile key={folder.id} folder={folder} onOpen={openFolder} />
                 ))}

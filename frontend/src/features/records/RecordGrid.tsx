@@ -35,12 +35,15 @@ export const RecordFolderTile = memo(function RecordFolderTile({
 }) {
   const { t } = useTranslation();
   const items = folder.childCount + folder.assetCount;
+  // A poster is the folder's cover; a folder with only a backdrop shows that
+  // instead. The square crop suits both portrait posters and wide backdrops.
+  const cover = folder.artwork.posterUrl ?? folder.artwork.backdropUrl;
   return (
     <button type="button" className={`group flex min-w-0 flex-col gap-2 ${tileFocus}`} onClick={() => onOpen(folder)}>
-      <span className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg border bg-muted">
-        {folder.artwork.posterUrl ? (
+      <span className="relative block aspect-square w-full overflow-hidden rounded-lg border bg-muted">
+        {cover ? (
           <img
-            src={assetURL(folder.artwork.posterUrl)}
+            src={assetURL(cover)}
             alt=""
             loading="lazy"
             decoding="async"
@@ -48,12 +51,12 @@ export const RecordFolderTile = memo(function RecordFolderTile({
           />
         ) : (
           <span className="grid h-full w-full place-items-center bg-primary/5">
-            <Folder className="h-12 w-12 text-primary/70" strokeWidth={1.5} aria-hidden="true" />
+            <Folder className="h-8 w-8 text-primary/70" strokeWidth={1.5} aria-hidden="true" />
           </span>
         )}
       </span>
       <span className="min-w-0 px-0.5">
-        <span className="line-clamp-2 text-sm font-medium group-hover:text-primary">{folder.name}</span>
+        <span className="line-clamp-2 break-words text-sm font-medium group-hover:text-primary">{folder.name}</span>
         <span className="block text-xs text-muted-foreground">{t("records.itemCount", { count: items })}</span>
       </span>
     </button>

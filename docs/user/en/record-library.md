@@ -39,7 +39,8 @@ and numbers of videos and photos, with **Play** for the first video or
 folders show the same facts as a plain heading.
 
 The toolbar shows **All**, **Videos**, or **Photos** and sorts by name in either
-direction. Subfolders appear as posters, or as a folder when they have none;
+direction. Subfolders appear as square tiles that show their poster, their
+backdrop when they have no poster, or a folder icon when they have neither;
 videos as wide tiles with a frame from the video, their length, and a bar for
 how much you have watched; photos as square thumbnails. Thumbnails are made the
 first time a folder shows them, so a large folder can take a moment the first
