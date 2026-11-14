@@ -19,7 +19,7 @@ import {
   CreatorMoreMenu,
 } from "@/components/creator/CreatorDetailActions";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
-import { CreatorWorkCaption, CreatorWorkResultsBar } from "@/components/creator/CreatorWorkResults";
+import { CreatorWorkCaption } from "@/components/creator/CreatorWorkResults";
 import { CreatorWorkViewMenu } from "@/components/creator/CreatorWorkViewMenu";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
@@ -775,25 +775,34 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         coverUrl={creatorCoverUrl(detail)}
         aliases={detail.aliases}
         eyebrow={
-          <>
-            <span className="font-mono tracking-tight">#{detail.personId}</span>
-            {/* Sync attention and failed sources only matter to someone who can refresh the catalog. */}
-            {canForceRefreshCatalog && detail.syncState === "attention" && (
-              <CatalogSyncBadge state={detail.syncState} appearance="dot" />
-            )}
-            {canForceRefreshCatalog && failedRemoteSources > 0 && (
-              <RemoteSourceWarning
-                count={failedRemoteSources}
-                onOpen={
-                  canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
-                }
-              />
-            )}
-          </>
+          // Sync attention and failed sources only matter to someone who can refresh the catalog.
+          canForceRefreshCatalog && (detail.syncState === "attention" || failedRemoteSources > 0) ? (
+            <>
+              {detail.syncState === "attention" && <CatalogSyncBadge state={detail.syncState} appearance="dot" />}
+              {failedRemoteSources > 0 && (
+                <RemoteSourceWarning
+                  count={failedRemoteSources}
+                  onOpen={
+                    canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
+                  }
+                />
+              )}
+            </>
+          ) : undefined
         }
-        meta={<UserTagRow tags={detail.userTags} scope="voice" onSave={saveVoiceTags} className="mt-2.5" />}
         actions={
-          <CreatorActionRow label={t("detailActions.voiceActorActions")}>
+          <CreatorActionRow
+            label={t("detailActions.voiceActorActions")}
+            tags={
+              <UserTagRow
+                tags={detail.userTags}
+                scope="voice"
+                onSave={saveVoiceTags}
+                variant="chip"
+                className="contents"
+              />
+            }
+          >
             <CreatorFavoriteButton favorite={detail.favorite} onToggle={() => void toggleFavorite()} />
             <SubscribeButton
               target={{ kind: "voice", personId: detail.personId }}
@@ -809,16 +818,15 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         <CatalogStatStrip
           label={t("detailActions.voiceActorStatistics")}
           stats={[
-            { key: "available", label: t("content.available"), count: detail.playableWorks },
+            { key: "works", label: t("detailActions.works"), count: detail.knownWorks },
             { key: "local", label: t("detailActions.local"), count: detail.localWorks },
             { key: "remote", label: t("detailActions.remote"), count: detail.remoteWorks },
+            {
+              key: "missing",
+              label: t("detailActions.missing"),
+              count: Math.max(0, detail.knownWorks - detail.playableWorks),
+            },
           ]}
-          availability={{ total: detail.knownWorks, local: detail.localWorks, available: detail.playableWorks }}
-          availabilityLabel={t("creator.availabilityBreakdown", {
-            local: detail.localWorks,
-            remote: Math.max(0, detail.playableWorks - detail.localWorks),
-            missing: Math.max(0, detail.knownWorks - detail.playableWorks),
-          })}
           note={
             <CreatorCatalogNote
               refreshing={catalogRefreshActive}
@@ -843,7 +851,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           defaultFilter="all"
           filterOptions={voiceWorkFilterOptions(t)}
           onFilterChange={changeWorkFilter}
-          mobileCaption={<CreatorWorkCaption page={currentPage} total={totalWorks} totalPages={totalPages} />}
+          caption={<CreatorWorkCaption page={currentPage} total={totalWorks} totalPages={totalPages} />}
           view={
             <CreatorWorkViewMenu
               display={{
@@ -864,15 +872,6 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
               selection={{ active: selection.selectionMode, onToggle: selection.toggleSelectionMode }}
             />
           }
-        />
-        <CreatorWorkResultsBar
-          page={currentPage}
-          pageSize={pageSize}
-          total={totalWorks}
-          totalPages={totalPages}
-          refreshing={worksBusy}
-          refreshingLabel={t("creatorBrowse.refreshingVoiceWorks")}
-          onPageChange={changePage}
         />
         <CreatorWorkSelectionBar selection={selection} />
         {pageWorks.length > 0 ? (

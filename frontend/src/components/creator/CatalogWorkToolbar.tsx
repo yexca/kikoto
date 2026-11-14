@@ -9,9 +9,10 @@ import { dismissKeyboardOnEnter } from "@/lib/keyboard";
  * The toolbar of one circle or voice actor's works, holding at most five
  * controls: optional view tabs, the search field, the order, the availability
  * filter, and one View entry for everything else (display options and
- * selection). Wide layouts keep them on one row. A phone puts the tabs on
- * their own row, the search field full width below, and then the result
- * caption with the order, filter, and View at its end.
+ * selection), with the result caption before the order. Wide layouts keep
+ * them on one row. A phone puts the tabs on their own row, the search field
+ * full width below, and then the caption with the order, filter, and View at
+ * its end.
  */
 export function CatalogWorkToolbar<FilterValue extends string>({
   leading,
@@ -25,7 +26,7 @@ export function CatalogWorkToolbar<FilterValue extends string>({
   filterOptions,
   onFilterChange,
   view,
-  mobileCaption,
+  caption,
 }: {
   leading?: ReactNode;
   query: string;
@@ -40,8 +41,8 @@ export function CatalogWorkToolbar<FilterValue extends string>({
   onFilterChange: (value: FilterValue) => void;
   /** The View entry. */
   view: ReactNode;
-  /** The result caption a phone shows before the controls. */
-  mobileCaption?: ReactNode;
+  /** The result caption before the controls. */
+  caption?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -70,7 +71,7 @@ export function CatalogWorkToolbar<FilterValue extends string>({
           </button>
         )}
       </div>
-      {mobileCaption && <div className="min-w-0 flex-1 lg:hidden">{mobileCaption}</div>}
+      {caption && <div className="min-w-0 flex-1 lg:flex-none lg:px-1">{caption}</div>}
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {sort}
         <CollectionFilterPicker

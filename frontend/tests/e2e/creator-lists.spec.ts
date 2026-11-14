@@ -724,10 +724,10 @@ test("voice detail keeps quiet actions, statistics, and the View sheet on mobile
   await expect(summary.getByText("Soft", { exact: true })).toBeVisible();
   const statistics = summary.getByRole("group", { name: "Voice actor statistics" });
   await expect(statistics).toBeVisible();
-  await expect(statistics).toContainText("Local2");
-  await expect(statistics).toContainText("Remote1");
+  await expect(statistics.getByRole("term")).toHaveText(["Works", "Local", "Remote", "Missing"]);
+  await expect(statistics.getByRole("definition")).toHaveText(["5", "2", "1", "1"]);
+  // The counts keep to one line.
   const statisticItems = statistics.locator(":scope > *");
-  await expect(statisticItems).toHaveCount(3);
   const statisticTops = await statisticItems.evaluateAll((elements) =>
     elements.map((element) => Math.round(element.getBoundingClientRect().top)),
   );
@@ -762,6 +762,10 @@ test("voice detail keeps quiet actions, statistics, and the View sheet on mobile
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
+  // The personal tags sit beside the actions rather than on a row of their own.
+  const tagBox = await summary.getByText("Soft", { exact: true }).boundingBox();
+  const moreBox = await moreActions.boundingBox();
+  expect(Math.abs(tagBox!.y + tagBox!.height / 2 - (moreBox!.y + moreBox!.height / 2))).toBeLessThanOrEqual(4);
 
   await moreActions.click();
   const moreMenu = page.getByRole("menu", { name: "More voice actor actions" });
@@ -817,6 +821,16 @@ test("@desktop voice detail keeps labeled quiet actions and inline work controls
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
   await expect(actions.getByText("More", { exact: true })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Retry metadata" })).toHaveCount(0);
+  // Opening More with a click keeps the button's size and highlights no item until the keyboard moves focus.
+  const moreActions = actions.getByRole("button", { name: "More voice actor actions" });
+  const closedBox = await moreActions.boundingBox();
+  await moreActions.click();
+  const firstItem = page.getByRole("menu", { name: "More voice actor actions" }).getByRole("menuitem").first();
+  await expect(firstItem).toBeFocused();
+  expect(await moreActions.boundingBox()).toEqual(closedBox);
+  await page.mouse.move(0, 0);
+  await expect(firstItem).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Voice work availability:/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "View", exact: true })).toBeVisible();
@@ -930,8 +944,9 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
   const summary = page.getByRole("region", { name: "Circle summary" });
   const catalogCounts = summary.getByRole("group", { name: "Catalog availability" });
-  await expect(catalogCounts.getByRole("term")).toHaveText(["Available", "Local", "Remote", "Unavailable"]);
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1", "0", "1"]);
+  // A count of zero is left out, except the catalog's size.
+  await expect(catalogCounts.getByRole("term")).toHaveText(["Works", "Local", "Unavailable"]);
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
   await expect(catalogCounts.getByRole("button")).toHaveCount(0);
   // A synced catalog needs no note; its sync time is a detail of the refresh entry.
   await expect(summary.getByText("Catalog synced", { exact: false })).toHaveCount(0);
@@ -1157,7 +1172,7 @@ test("circle work card tags open a local Library search", async ({ page }) => {
   await expect(page).toHaveURL(/\/\?q=mytag%3A%22Personal\+tag%22$/);
 });
 
-test("@desktop circle detail keeps a frameless summary, content-width statistics, and source-aware return", async ({
+test("@desktop circle detail keeps a frameless summary, one-line statistics, and source-aware return", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -1171,19 +1186,18 @@ test("@desktop circle detail keeps a frameless summary, content-width statistics
   const summary = page.getByRole("region", { name: "Circle summary" });
   await expect(summary).toBeVisible();
   const catalogCounts = summary.getByRole("group", { name: "Catalog availability" });
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1", "0", "1"]);
-  // The summary draws no frame, and its statistics keep to the width of their content.
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
+  // The summary draws no frame, and its statistics share one line.
   const layout = await summary.evaluate((element) => {
     const counts = element.querySelector('[aria-label="Catalog availability"]');
+    const tops = Array.from(counts?.children ?? []).map((item) => Math.round(item.getBoundingClientRect().top));
     return {
       border: getComputedStyle(element).borderTopWidth,
-      summary: element.getBoundingClientRect().width,
-      strip: counts?.parentElement?.parentElement?.getBoundingClientRect().width ?? 0,
+      rows: new Set(tops).size,
     };
   });
   expect(layout.border).toBe("0px");
-  expect(layout.strip).toBeGreaterThan(0);
-  expect(layout.strip).toBeLessThan(layout.summary / 2);
+  expect(layout.rows).toBe(1);
 
   const actions = summary.getByRole("group", { name: "Circle actions" });
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
@@ -1196,6 +1210,13 @@ test("@desktop circle detail keeps a frameless summary, content-width statistics
     .locator(":scope button[aria-label]")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
   expect(actionOrder).toEqual(["Remove favorite", "Subscribe", "More circle actions"]);
+  // Wide layouts set the actions at the top right, beside the name rather than below it.
+  const [headingBox, actionsBox] = await Promise.all([
+    summary.getByRole("heading", { name: "Example Circle", exact: true }).boundingBox(),
+    actions.boundingBox(),
+  ]);
+  expect(actionsBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+  expect(actionsBox!.y).toBeLessThan(headingBox!.y + headingBox!.height);
 
   // The toolbar holds the view tabs, search, order, filter, and View; one page states its count.
   await expect(page.getByRole("textbox", { name: "Search catalog works" })).toBeVisible();
@@ -1208,7 +1229,7 @@ test("@desktop circle detail keeps a frameless summary, content-width statistics
   await page.getByRole("button", { name: "Catalog availability filter" }).click();
   await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();
   // The summary counts describe the whole catalog, whatever the works below are filtered to.
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1", "0", "1"]);
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
   await expect(page.getByRole("button", { name: "More circle actions" })).toBeVisible();
 });
 

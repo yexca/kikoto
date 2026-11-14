@@ -22,7 +22,7 @@ import {
   creatorQuietActionClassName,
 } from "@/components/creator/CreatorDetailActions";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
-import { CreatorWorkCaption, CreatorWorkResultsBar } from "@/components/creator/CreatorWorkResults";
+import { CreatorWorkCaption } from "@/components/creator/CreatorWorkResults";
 import { CreatorWorkViewMenu } from "@/components/creator/CreatorWorkViewMenu";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import {
@@ -260,7 +260,6 @@ export function CircleDetailPage({
     return circle.works;
   }, [circle.works]);
   const catalogOnlyCount = circle.works.filter((work) => work.catalogStatus !== "imported").length;
-  const availableWorkCount = circle.availableWorks ?? circle.works.filter((work) => work.local || work.remote).length;
   const totalWorkPages = Math.max(1, Math.ceil(circle.worksMeta.total / workPageSize));
   const currentWorkPage = Math.min(circle.worksMeta.page || workPage, totalWorkPages);
   const pagedWorks = filteredWorks;
@@ -664,9 +663,19 @@ export function CircleDetailPage({
             )}
           </>
         }
-        meta={<UserTagRow tags={circle.userTags} scope="circle" onSave={saveCircleTags} className="mt-2.5" />}
         actions={
-          <CreatorActionRow label={t("detailActions.circleActions")}>
+          <CreatorActionRow
+            label={t("detailActions.circleActions")}
+            tags={
+              <UserTagRow
+                tags={circle.userTags}
+                scope="circle"
+                onSave={saveCircleTags}
+                variant="chip"
+                className="contents"
+              />
+            }
+          >
             <CreatorFavoriteButton favorite={circle.favorite} onToggle={() => void toggleCircleFavorite()} />
             <SubscribeButton
               target={{ kind: "circle", circleId: circle.externalId }}
@@ -682,17 +691,11 @@ export function CircleDetailPage({
         <CatalogStatStrip
           label={t("sheets.catalogAvailability")}
           stats={[
-            { key: "available", label: t("content.available"), count: availableWorkCount },
+            { key: "works", label: t("detailActions.works"), count: circle.catalogWorks },
             { key: "local", label: t("detailActions.local"), count: circle.localWorks },
             { key: "remote", label: t("detailActions.remote"), count: circle.remoteWorks },
             { key: "unavailable", label: t("detailActions.unavailable"), count: circle.missingWorks },
           ]}
-          availability={{ total: circle.catalogWorks, local: circle.localWorks, available: availableWorkCount }}
-          availabilityLabel={t("creator.availabilityBreakdown", {
-            local: circle.localWorks,
-            remote: Math.max(0, availableWorkCount - circle.localWorks),
-            missing: circle.missingWorks,
-          })}
           note={
             <CreatorCatalogNote
               refreshing={refreshBusy}
@@ -737,7 +740,7 @@ export function CircleDetailPage({
           defaultFilter="all"
           filterOptions={circleAvailabilityOptions(t)}
           onFilterChange={changeAvailabilityFilter}
-          mobileCaption={
+          caption={
             showsWorks ? (
               <CreatorWorkCaption page={currentWorkPage} total={circle.worksMeta.total} totalPages={totalWorkPages} />
             ) : undefined
@@ -771,18 +774,6 @@ export function CircleDetailPage({
               })}
             </span>
           </div>
-        )}
-
-        {showsWorks && (
-          <CreatorWorkResultsBar
-            page={currentWorkPage}
-            pageSize={workPageSize}
-            total={circle.worksMeta.total}
-            totalPages={totalWorkPages}
-            refreshing={isLoading}
-            refreshingLabel={t("creatorBrowse.refreshingCircles")}
-            onPageChange={changeWorkPage}
-          />
         )}
 
         {isSeriesView ? (

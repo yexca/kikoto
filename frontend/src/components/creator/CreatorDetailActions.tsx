@@ -15,11 +15,26 @@ import { cn } from "@/lib/tailwindClassNames";
 export const creatorQuietActionClassName =
   "h-8 w-8 px-0 text-muted-foreground hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground aria-pressed:text-foreground sm:w-auto sm:gap-1.5 sm:px-2 sm:text-xs";
 
-/** The row of personal actions and the More menu under a creator summary. */
-export function CreatorActionRow({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * The row of personal actions and the More menu under a creator summary, with
+ * the personal tags as chips at its end, so the tags need no row of their own.
+ */
+export function CreatorActionRow({
+  label,
+  tags,
+  children,
+}: {
+  label: string;
+  /** The personal tag chips and their editor. */
+  tags?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2" role="group" aria-label={label}>
-      {children}
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2 lg:justify-end">
+      <div className="flex min-w-0 items-center gap-x-1 sm:gap-x-2" role="group" aria-label={label}>
+        {children}
+      </div>
+      {tags && <div className="flex min-w-0 flex-wrap items-center gap-1 sm:ml-1">{tags}</div>}
     </div>
   );
 }

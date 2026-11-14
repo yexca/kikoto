@@ -4,10 +4,10 @@ import { assetURL } from "@/lib/api";
 
 /**
  * Identity summary for a circle or voice actor, shaped like the work detail
- * Hero: the latest cover as a square portrait, the name and personal tags, an
- * optional summary such as catalog statistics, and the quiet action row. The
- * cover tint alone sets it apart from the page; it draws no frame, and the
- * summary keeps to the width of its content.
+ * Hero: the latest cover as a square portrait, the name, an optional summary
+ * such as the one-line catalog counts, and the quiet action row, which wide
+ * layouts set at the top right. The cover tint alone sets it apart from the
+ * page; it draws no frame.
  */
 export function CreatorDetailHeader({
   label,
@@ -15,7 +15,6 @@ export function CreatorDetailHeader({
   coverUrl,
   eyebrow,
   aliases = [],
-  meta,
   actions,
   children,
 }: {
@@ -24,7 +23,6 @@ export function CreatorDetailHeader({
   coverUrl?: string | null;
   eyebrow?: ReactNode;
   aliases?: string[];
-  meta?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
@@ -34,9 +32,9 @@ export function CreatorDetailHeader({
   const visibleAliases = aliases.filter((alias) => alias && alias !== name).slice(0, 4);
   return (
     <section aria-label={label} className="relative isolate overflow-clip rounded-xl bg-card">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-4 p-4 lg:gap-x-6 lg:p-5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-4 p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-6 lg:gap-y-2 lg:p-5">
         <CreatorPortrait name={name} cover={cover} onError={() => setImageFailed(true)} />
-        <div className="min-w-0 self-center lg:self-start">
+        <div className="min-w-0 self-center lg:self-end">
           {eyebrow && (
             <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
               {eyebrow}
@@ -48,11 +46,12 @@ export function CreatorDetailHeader({
               {visibleAliases.join(" / ")}
             </p>
           )}
-          {meta}
         </div>
-        {(children || actions) && (
-          <div className="col-span-2 flex min-w-0 flex-col gap-3 lg:col-span-1 lg:col-start-2 lg:-mt-1">
-            {children}
+        {children && (
+          <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:self-start">{children}</div>
+        )}
+        {actions && (
+          <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:max-w-sm lg:self-start">
             {actions}
           </div>
         )}
@@ -71,13 +70,13 @@ function CreatorPortrait({ name, cover, onError }: { name: string; cover: string
   const initial = Array.from(name.trim())[0] ?? "?";
   return (
     <div
-      className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:row-span-2 lg:h-32 lg:w-32"
+      className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:row-span-2 lg:h-24 lg:w-24"
       aria-hidden="true"
     >
       {cover ? (
         <img src={cover} alt="" className="h-full w-full object-cover" onError={onError} />
       ) : (
-        <span className="grid h-full w-full place-items-center text-2xl font-semibold text-secondary-foreground lg:text-4xl">
+        <span className="grid h-full w-full place-items-center text-2xl font-semibold text-secondary-foreground lg:text-3xl">
           {initial}
         </span>
       )}

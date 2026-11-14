@@ -208,10 +208,14 @@
 - A smart list's rule, new works, **Only new**, **Mark all as seen**, and
   **Edit rule** share one line under the shelf header. **Convert to regular
   list** moves into the list's editor.
-- Circle and voice actor pages open with a summary like the work detail Hero:
-  no frame, catalog counts with a short availability bar under a thin line,
-  and quiet **Favorite**, **Subscribe**, and **More** controls. Voice actor
-  pages show the same counts as circles.
+- Circle and voice actor pages open with a compact summary like the work
+  detail Hero: no frame, the catalog counts on one line (zero counts left
+  out), and quiet **Favorite**, **Subscribe**, and **More** controls followed
+  by the personal tags; wide layouts set those controls at the top right, so
+  the summary stays about as tall as the portrait. Voice actor pages show the
+  same counts as circles and no internal id.
+- **More** menus keep their button's size while open, and opening one with a
+  click no longer highlights its first entry.
 - **First pull**, **Refresh**, and **Retry metadata** move into **More** and
   show only to users allowed to refresh a catalog. A catalog that was never
   pulled says so under the counts with a **Pull the full catalog** link for
@@ -219,8 +223,8 @@
 - The circle and voice actor works toolbar is the search field, the order, the
   availability filter, and one **View** button holding the display options
   and **Select works**; on a phone the search field stays on show and **View**
-  opens as a sheet. Works that fit one page show their count without a page
-  bar.
+  opens as a sheet. A caption before the order states the matching works and
+  the page; only the bottom page bar turns pages.
 
 </details>
 

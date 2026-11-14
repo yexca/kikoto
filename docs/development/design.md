@@ -227,7 +227,8 @@ the availability filter, and one View entry. Search, order, and filter stay on
 show because they are used often; View holds the display options and selecting
 works for bulk Fetch or Fork, and opens as a popover on wide layouts and as a
 sheet on a phone. A new browse control on these pages joins View instead of the
-toolbar.
+toolbar. A caption before the order states how many works match and, from
+tablet width, the page; these pages have no top page bar, only the bottom one.
 
 Discover's four views read as one surface. They keep one card mode of their
 own, apart from the Library's, which starts at compact and offers full,
@@ -251,8 +252,7 @@ page number field. The bar's own width sets how many neighbors it shows: one
 on each side on a phone, up to four on a wide bar. Once the pages outnumber
 the bar's slots, it keeps the same number of items on every page, so the
 arrows stay in place while paging. Results that fit one page show no page
-bar; the Library and the circle and voice actor detail pages state their count
-where the top page bar would be.
+bar; the Library states its count where the top page bar would be.
 
 Work detail pages should show decision-level facts:
 
@@ -411,11 +411,14 @@ Desktop:
   like each source action, shows only to a viewer allowed to use it, so a
   listener sees no management control. The metadata-language and
   directory-edition chips appear only when there is another choice.
-- Circle and voice actor detail open with a summary shaped like the work
-  detail Hero: a cover tint with no frame, the portrait, the identity and
-  personal tags, the catalog counts with a short availability bar set off by a
-  hairline and only as wide as their content, and a quiet row of Favorite,
-  Subscribe, and More. These pages have no primary action. Catalog management
+- Circle and voice actor detail open with a compact summary shaped like the
+  work detail Hero: a cover tint with no frame, the portrait, the name and
+  aliases (a circle's maker code above them; a voice actor shows no internal
+  id), the catalog counts on one quiet line (the catalog's size, then each
+  availability with a nonzero count), and a quiet row of Favorite, Subscribe,
+  and More that ends with the personal tag chips and their editor. Wide
+  layouts set that row at the summary's top right, so the summary stays about
+  as tall as the portrait. These pages have no primary action. Catalog management
   (the first pull, Refresh, Retry metadata, the catalog sync dialog, and alias
   management) waits in More beside the personal cover choice, each entry only
   for a viewer allowed to use it. A note under the counts appears only while a

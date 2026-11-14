@@ -41,9 +41,9 @@ Voice pages present persisted person and credit data.
   one.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows the voice detail summary on the cover's tint without a frame: the
-  portrait, the name, aliases, and personal tags, then, under a thin line, the
-  **Available**, **Local**, and **Remote** counts of the known works beside a
-  short availability bar. Cache remains available to playback and filtering
+  portrait, the name, and aliases, then one line with the number of known
+  **Works** and their **Local**, **Remote**, and **Missing** counts; a count
+  of zero is left out. Cache remains available to playback and filtering
   data, but is not presented as Local.
 - Presents known and remote works with the same responsive grid and shared work
   cards as the Library. Selecting a DLsite tag or personal tag on a work card
@@ -65,7 +65,8 @@ Voice pages present persisted person and credit data.
   tags are aggregated in batches.
 - Keeps the summary's actions quiet: **Favorite**, the subscribe bell, and
   **More**, with no primary button; a phone shows them as icons named for
-  assistive technology. The bell subscribes to the voice actor's new works;
+  assistive technology. The personal tags and the button that edits them
+  follow on the same row. The bell subscribes to the voice actor's new works;
   see [Discover](discover.md#subscribing).
 - **More** holds **Change cover…** and, for users who may refresh catalogs,
   **Pull the full catalog** for a voice actor that was never pulled, otherwise
@@ -88,8 +89,9 @@ Voice pages present persisted person and credit data.
   **Cards** choice of **Full**, **Simple**, **Compact**, and **Mini** shared
   with the Library, the columns, the page size, and **Select works**; a newly
   chosen card mode starts from its [preset](library.md#current-behavior).
-  Works that fit one page show their count; more pages add the shared
-  pagination above and below the grid. On a phone the search field stays on
+  A caption before the sort button states how many works match and, from
+  tablet width, the page; more pages add the shared pagination below the
+  grid. On a phone the search field stays on
   show, followed by the work count with the sort button, the filter, and
   **View**, which opens as a sheet.
 - Treats the mobile detail back control as Up to the last

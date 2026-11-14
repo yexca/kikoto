@@ -265,12 +265,13 @@ and the Library remote source panel record remote Fetch and Fork runs through
 
 The circle and voice actor detail pages compose one summary and works toolbar
 from `components/creator`: `CreatorDetailHeader` lays out the frameless
-summary, `CatalogStatStrip` the content-width counts and their note,
-`CreatorDetailActions` the quiet Favorite control, the More menu (the shared
-`ActionMenu`), and the catalog note with its pull link, `CatalogWorkToolbar`
-the search, order, filter, and View row, `CreatorWorkViewMenu` the View popover
-or phone sheet around the shared display options, and `CreatorWorkResults` the
-result count or top page bar. Each page decides the More entries, the pull
+summary, `CatalogStatStrip` the one-line counts and their note,
+`CreatorDetailActions` the action row with the personal tags at its end, the
+quiet Favorite control, the More menu (the shared `ActionMenu`), and the
+catalog note with its pull link, `CatalogWorkToolbar` the search, order,
+filter, and View row, `CreatorWorkViewMenu` the View popover or phone sheet
+around the shared display options, and `CreatorWorkResults` the toolbar's
+result caption. Each page decides the More entries, the pull
 link, and the sync and failed-source marks from the viewer's permissions and
 passes nothing for one the viewer may not use, so those components never check
 permissions themselves. The subscribe button takes the same quiet look.

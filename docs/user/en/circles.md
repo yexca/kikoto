@@ -46,15 +46,16 @@ Circles represent makers, circles, and related party catalog state.
   the separate circle-entity list keeps its own controls. Selecting a DLsite
   tag or personal tag on a work card opens a local Library search for it.
 - Shows the circle detail summary on the cover's tint without a frame: the
-  portrait, the circle code linking to DLsite, the name, aliases, and personal
-  tags. Under a thin line, its **Available**, **Local**, **Remote**, and
-  **Unavailable** counts sit beside a short availability bar and describe the
-  whole catalog, whatever the works below are filtered to. A circle that was
-  never pulled states that only works the library already knows are listed.
-  Series cards carry the same availability bar.
+  portrait, the circle code linking to DLsite, the name, and aliases, then one
+  line with the number of catalog **Works** and their **Local**, **Remote**,
+  and **Unavailable** counts. A count of zero is left out, and the counts
+  describe the whole catalog, whatever the works below are filtered to. A
+  circle that was never pulled states that only works the library already
+  knows are listed. Series cards carry an availability bar.
 - Keeps the summary's actions quiet: **Favorite**, the subscribe bell, and
-  **More**. The page has no primary button. On a phone they show as icons
-  named for assistive technology.
+  **More**, followed on the same row by the personal tags and the button that
+  edits them. The page has no primary button. On a phone the actions show as
+  icons named for assistive technology.
 - The bell subscribes to the circle's new works, and the bell beside a series'
   DLsite link to that series; see [Discover](discover.md#subscribing). A
   series of a subscribed circle is already included.
@@ -81,9 +82,10 @@ Circles represent makers, circles, and related party catalog state.
   **View** holds the **Cards** choice of **Full**, **Simple**, **Compact**,
   and **Mini** shared with the Library, the columns, the page size, and
   **Select works**; a newly chosen card mode starts from its
-  [preset](library.md#current-behavior). Works that fit one page show their
-  count; more pages add the shared pagination above and below the grid. The
-  series overview lists series and offers no order.
+  [preset](library.md#current-behavior). A caption before the sort button
+  states how many works match and, from tablet width, the page; more pages add
+  the shared pagination below the grid. The series overview lists series and
+  offers no order.
 - On a phone the Works/Series switch takes its own row and the search field
   stays on show below it, followed by the work count with the sort button,
   the filter, and **View**, which opens as a sheet.
