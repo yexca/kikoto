@@ -455,8 +455,10 @@ Mobile:
   overflows a 360px screen. A caption under that row states the result count
   and page in place of a top pager.
 - The phone Favorites shelf puts, below its shelf row and a one-line shelf
-  header that states the result count and page: search, then the labeled sort
-  with Filters and the view utilities at the row's end.
+  header that states the result count and page: the labeled sort with Search,
+  Filters, and the view utilities at the row's end, then the Quick mark chips
+  in a horizontally scrollable row. Search opens its field above the row and
+  keeps it while a query is set.
 - Large touch targets.
 - Text inputs, textareas, and selects use at least 16px text on coarse
   pointers so iOS WebKit never zooms into a focused control. The viewport keeps

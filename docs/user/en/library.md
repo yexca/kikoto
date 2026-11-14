@@ -197,8 +197,8 @@ Favorites keeps only entity/search intent in the canonical URL. Its selected
 list, favorite filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
 `All Favorites` aggregates works with a Quick mark and works you added to any
-list. `Marked` is the fixed system list containing only works whose Quick mark
-is not Unmarked; its membership is derived and cannot be edited as a list.
+list. Its **Any mark** status filter shows only the works whose Quick mark is
+not Unmarked; a link to the Marked system list opens that filter.
 Other lists are user-created and keep explicit membership. The list button on a
 work card or on work detail, a list icon with a plus while the work is in no
 list, opens **Add to list**: your lists with a search field. On a card in
@@ -224,7 +224,7 @@ like in any list, and remove a matching work, which keeps it out of the list
 until you add it again. The list only gathers works already in your library.
 When works start to match later, the shelf shows how many are new and marks
 them **New** until you choose **Mark all as seen**; **Only new** shows just
-those works. **Convert to regular list** keeps the works the list shows now as
+those works. **Convert to regular list** in the list's editor keeps the works the list shows now as
 an ordinary list, makes all of them favorites, and removes the rule. A tag that
 is later hidden or deleted stays in the rule, crossed out, and matches no work.
 
@@ -239,8 +239,7 @@ filters** resets both. A work whose files belong to another language edition
 counts with that edition. The resource filter reads stored availability and
 does not request a live remote refresh.
 
-On wide screens a shelf list beside the results names All Favorites, Marked,
-your lists, and followed circles and voice actors with their counts, in the
+On wide screens a shelf list beside the results names All (the whole collection), your lists, and followed circles and voice actors with their counts, in the
 same column form as the Settings list. Each user list can show
 an icon chosen in its editor, which is what tells the lists apart at a glance;
 the list icon also appears in the add-to-list menus. The open shelf has a
@@ -248,13 +247,15 @@ one-line header: its icon, its name, and the result count with the page in
 place of a top page bar; a description shows as the name's tooltip. Search and
 the Filters, sort, display, and selection buttons sit beside the header, or
 below it on a narrower page. Phones show the same shelves as one scrollable row
-above that header, then the search field and one row with the named sort and
-the Filters, display, and selection buttons. Display options switch works
+above that header, then one row with the named sort and the Search, Filters,
+display, and selection buttons, and the Quick mark statuses with their counts as
+a scrollable chip row. Search opens a field above that row, which stays open
+while it holds a query; on phones Filters holds only the resource. Display options switch works
 between cards and a denser list with each work's resume point.
 
 **Add list** in the shelves and **Edit list** on a list's shelf open one list's
 editor: its name with the icon beside it, an optional description, the rule of a
-smart list, and **Delete list**. A name another list already uses is pointed out
+smart list with **Convert to regular list**, and **Delete list**. A name another list already uses is pointed out
 but allowed. **Edit lists** shows every list; **Move up** and **Move down**
 reorder them at once without leaving the open shelf, and opening a list there
 edits it and returns to all lists with **Back**.

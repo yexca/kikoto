@@ -3423,9 +3423,10 @@ export const surfaceKorean = {
 
   favorites: {
     all: "모든 즐겨찾기",
+    allShort: "전체",
+    search: "검색",
     lists: "즐겨찾기 목록",
     listTabs: "즐겨찾기 목록 탭",
-    quickMarkWorks: "빠른 표시가 있는 작품",
     exitSelection: "선택 종료",
     selectWorks: "작품 선택",
     editLists: "목록 관리",
@@ -3471,8 +3472,6 @@ export const surfaceKorean = {
     closeListEditor: "즐겨찾기 목록 편집기 닫기",
     editListsDescription: "목록을 정렬, 편집, 추가 또는 삭제합니다.",
     marked: "표시됨",
-    markedDescription: "시스템 목록 · 청취 상태를 따름",
-    fixed: "고정됨",
     noCustomLists: "사용자 지정 목록이 아직 없습니다.",
     done: "완료",
     moveUp: "위로 이동",
@@ -3513,6 +3512,7 @@ export const surfaceKorean = {
     voiceCount_one: "성우 {{count}}명",
     voiceCount_other: "성우 {{count}}명",
     allStatuses: "전체",
+    anyMark: "표시 있음",
     timeLeft: "{{time}} 남음",
     resume: "이어서 재생",
     editList: "목록 편집",

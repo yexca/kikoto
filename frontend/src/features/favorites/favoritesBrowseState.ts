@@ -3,13 +3,15 @@ import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientSto
 
 export type FavoriteEntity = "works" | "circles" | "voices";
 export type FavoriteAvailability = "all" | "available" | "local" | "remote" | "missing";
+/** A listening status, every work, or any Quick mark (`marked`), which the Marked system list also holds. */
+export type FavoriteStatusFilter = ListeningStatus | "all" | "marked";
 export const favoritePageSizeOptions = [24, 48, 96] as const;
 export type FavoritePageSize = (typeof favoritePageSizeOptions)[number];
 
 export type FavoritesBrowseState = {
   entity: FavoriteEntity;
   query: string;
-  status: ListeningStatus | "all";
+  status: FavoriteStatusFilter;
   availability: FavoriteAvailability;
   list: "all" | number;
   page: number;
@@ -35,8 +37,9 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
 const storageKey = "kikoto:favorites-browse:v3";
 
 const entities: FavoriteEntity[] = ["works", "circles", "voices"];
-const statuses: Array<ListeningStatus | "all"> = [
+const statuses: FavoriteStatusFilter[] = [
   "all",
+  "marked",
   "none",
   "want_to_listen",
   "listening",
@@ -64,9 +67,7 @@ export function favoritesBrowseStateFromSearch(
   return {
     entity: entities.includes(entity as FavoriteEntity) ? (entity as FavoriteEntity) : fallback.entity,
     query: params.has("q") ? (params.get("q") ?? "") : fallback.query,
-    status: statuses.includes(status as ListeningStatus | "all")
-      ? (status as ListeningStatus | "all")
-      : fallback.status,
+    status: statuses.includes(status as FavoriteStatusFilter) ? (status as FavoriteStatusFilter) : fallback.status,
     availability: availabilities.includes(availability as FavoriteAvailability)
       ? (availability as FavoriteAvailability)
       : fallback.availability,
@@ -105,9 +106,7 @@ export function favoritesBrowseStateFromValue(
   return {
     entity: entities.includes(entity as FavoriteEntity) ? (entity as FavoriteEntity) : fallback.entity,
     query: typeof state.query === "string" ? state.query : fallback.query,
-    status: statuses.includes(status as ListeningStatus | "all")
-      ? (status as ListeningStatus | "all")
-      : fallback.status,
+    status: statuses.includes(status as FavoriteStatusFilter) ? (status as FavoriteStatusFilter) : fallback.status,
     availability: availabilities.includes(availability as FavoriteAvailability)
       ? (availability as FavoriteAvailability)
       : fallback.availability,

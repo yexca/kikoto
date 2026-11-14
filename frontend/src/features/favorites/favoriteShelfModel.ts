@@ -1,4 +1,5 @@
 import type { FavoriteList, ListeningStatus, Work } from "@/lib/api";
+import type { FavoriteStatusFilter } from "./favoritesBrowseState";
 
 /** Status filters in shelf order; Unmarked only appears while it holds works or is selected. */
 export const favoriteStatusOrder: ListeningStatus[] = [
@@ -11,16 +12,24 @@ export const favoriteStatusOrder: ListeningStatus[] = [
 ];
 
 export type FavoriteStatusFilterOption = {
-  value: ListeningStatus | "all";
+  value: FavoriteStatusFilter;
   count: number;
 };
 
+/** Every work, any Quick mark, then each mark in shelf order. */
 export function favoriteStatusFilterOptions(
   statusCounts: Record<string, number>,
   shelfTotal: number,
-  selected: ListeningStatus | "all",
+  selected: FavoriteStatusFilter,
 ): FavoriteStatusFilterOption[] {
-  const options: FavoriteStatusFilterOption[] = [{ value: "all", count: shelfTotal }];
+  const marked = favoriteStatusOrder.reduce(
+    (sum, status) => (status === "none" ? sum : sum + Math.max(0, statusCounts[status] ?? 0)),
+    0,
+  );
+  const options: FavoriteStatusFilterOption[] = [
+    { value: "all", count: shelfTotal },
+    { value: "marked", count: marked },
+  ];
   for (const status of favoriteStatusOrder) {
     const count = statusCounts[status] ?? 0;
     if (status === "none" && count === 0 && selected !== "none") continue;

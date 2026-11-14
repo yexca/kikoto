@@ -1,4 +1,4 @@
-import { BookmarkCheck, Heart, Mic2, Pencil, Plus, UsersRound, Zap, type LucideIcon } from "lucide-react";
+import { Heart, Mic2, Pencil, Plus, UsersRound, Zap, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,7 +12,6 @@ import type { FavoriteEntity } from "./favoritesBrowseState";
 export type FavoriteShelfNavigation = {
   entity: FavoriteEntity;
   activeList: "all" | number;
-  markedList: FavoriteList | null;
   userLists: FavoriteList[];
   favoriteTotal: number;
   listCounts: Record<string, number>;
@@ -50,7 +49,8 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
   const works: ShelfItem[] = [
     {
       key: "all",
-      label: t("favorites.all"),
+      // The page already says Favorites; the open shelf's header keeps the full name.
+      label: t("favorites.allShort"),
       title: t("favorites.shelfAllDescription"),
       icon: Heart,
       count: worksCount(navigation.favoriteTotal),
@@ -58,18 +58,6 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
       onSelect: () => navigation.onWorksShelf("all"),
     },
   ];
-  if (navigation.markedList) {
-    const markedID = navigation.markedList.id;
-    works.push({
-      key: `list-${markedID}`,
-      label: t("favorites.marked"),
-      title: t("favorites.quickMarkWorks"),
-      icon: BookmarkCheck,
-      count: worksCount(navigation.listCounts[String(markedID)] ?? 0),
-      active: onWorks && navigation.activeList === markedID,
-      onSelect: () => navigation.onWorksShelf(markedID),
-    });
-  }
   const lists: ShelfItem[] = navigation.userLists.map((list) => {
     const newCount = navigation.newCounts[String(list.id)] ?? 0;
     const smartTitle = list.kind === "smart" ? t("favorites.smart.kind") : "";

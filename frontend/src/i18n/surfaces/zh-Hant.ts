@@ -3289,9 +3289,10 @@ export const surfaceHant = {
 
   favorites: {
     all: "全部收藏",
+    allShort: "全部",
+    search: "搜尋",
     lists: "收藏清單",
     listTabs: "收藏清單標籤",
-    quickMarkWorks: "帶有快速標記的作品",
     exitSelection: "結束選取",
     selectWorks: "選取作品",
     editLists: "管理清單",
@@ -3337,8 +3338,6 @@ export const surfaceHant = {
     closeListEditor: "關閉收藏清單編輯器",
     editListsDescription: "排序、編輯、加入或刪除清單。",
     marked: "已標記",
-    markedDescription: "系統清單 · 依收聽狀態變更",
-    fixed: "固定",
     noCustomLists: "尚無自訂清單。",
     done: "完成",
     moveUp: "上移",
@@ -3379,6 +3378,7 @@ export const surfaceHant = {
     voiceCount_one: "{{count}} 位聲優",
     voiceCount_other: "{{count}} 位聲優",
     allStatuses: "全部",
+    anyMark: "任意標記",
     timeLeft: "剩餘 {{time}}",
     resume: "繼續播放",
     editList: "編輯清單",

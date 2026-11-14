@@ -208,6 +208,12 @@ func TestListFavoriteWorksSeparatesMarkedFromUserListsAndPlaybackHistory(t *test
 		t.Fatalf("marked page = total %d works %#v, want only quick-marked work", markedPage.Total, markedPage.Works)
 	}
 
+	// The marked status filter on All Favorites holds the same works as the Marked list.
+	anyMarkPage := requestFavoriteWorksPage(t, server, "/api/favorite-works?page=1&pageSize=10&sort=code&direction=asc&status=marked")
+	if anyMarkPage.Total != 1 || len(anyMarkPage.Works) != 1 || anyMarkPage.Works[0].PrimaryCode != "RJ00000002" {
+		t.Fatalf("marked status = total %d works %#v, want only quick-marked work", anyMarkPage.Total, anyMarkPage.Works)
+	}
+
 	listPage := requestFavoriteWorksPage(t, server, "/api/favorite-works?page=1&pageSize=10&sort=code&direction=asc&listId=12")
 	if listPage.Total != 1 || len(listPage.Works) != 1 || listPage.Works[0].PrimaryCode != "RJ00000001" {
 		t.Fatalf("user list page = total %d works %#v, want only explicit list work", listPage.Total, listPage.Works)

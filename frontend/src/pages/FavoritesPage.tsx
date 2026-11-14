@@ -62,6 +62,7 @@ import {
   type FavoriteAvailability,
   type FavoriteEntity,
   type FavoritePageSize,
+  type FavoriteStatusFilter,
   type FavoritesBrowseState,
 } from "@/features/favorites/favoritesBrowseState";
 import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
@@ -115,7 +116,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
   const creators = useFavoriteCreators({ active, user: auth.user, notifyUnavailable });
   const [query, setQuery] = useState(initialBrowseState.query);
-  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
+  const [statusFilter, setStatusFilter] = useState<FavoriteStatusFilter>(initialBrowseState.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
   const [activeList, setActiveList] = useState<"all" | number>(initialBrowseState.list);
   const [page, setPage] = useState(initialBrowseState.page);
@@ -261,6 +262,14 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     target.focus({ preventScroll: true });
   }, [active, favoriteEntity, hasPendingRestoration, isLoading, works]);
 
+  // Marked is the any-mark filter on All Favorites; a restored entry that opened its list shows that.
+  useEffect(() => {
+    if (!markedList || activeList !== markedList.id) return;
+    setActiveList("all");
+    setStatusFilter((status) => (status === "all" || status === "none" ? "marked" : status));
+    setPage(1);
+  }, [activeList, markedList]);
+
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
   const hasWorkFilters = Boolean(query.trim()) || statusFilter !== "all" || availabilityFilter !== "all";
@@ -382,7 +391,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     if (favoriteEntity === "works") setPage(1);
   };
 
-  const changeStatusFilter = (value: ListeningStatus | "all") => {
+  const changeStatusFilter = (value: FavoriteStatusFilter) => {
     setStatusFilter(value);
     setPage(1);
   };
@@ -450,6 +459,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     onListDeleted: (listID) => {
       if (activeList === listID) setActiveList("all");
     },
+    onListConverted: () => setNewOnlyList(null),
   });
 
   const markSmartListSeen = async (listID: number) => {
@@ -459,17 +469,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       await reloadFavoriteLists();
     } catch (error) {
       toast.notify(toastFromError(error, t("favorites.smart.markSeenFailed")));
-    }
-  };
-
-  const convertSmartList = async (listID: number) => {
-    try {
-      await api.convertFavoriteList(listID);
-      setNewOnlyList(null);
-      await reloadFavoriteLists();
-      toast.success(t("favorites.smart.converted"));
-    } catch (error) {
-      toast.notify(toastFromError(error, t("favorites.smart.convertFailed")));
     }
   };
 
@@ -540,7 +539,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const navigation: FavoriteShelfNavigation = {
     entity: favoriteEntity,
     activeList,
-    markedList,
     userLists,
     favoriteTotal,
     listCounts,
@@ -623,10 +621,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         }
       />
     );
+  const statusOptions = favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter);
   const filterMenu = (
     <FavoriteFilterMenu
       status={statusFilter}
-      statusOptions={favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter)}
+      statusOptions={statusOptions}
       availability={availabilityFilter}
       compact={mobileNavigationLayout}
       onStatusChange={changeStatusFilter}
@@ -688,6 +687,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     {selectionToggle}
                   </>
                 }
+                status={
+                  favoriteEntity === "works"
+                    ? { options: statusOptions, value: statusFilter, onChange: changeStatusFilter }
+                    : null
+                }
               />
             </div>
           ) : (
@@ -721,7 +725,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               list={activeSmartList}
               newCount={newCounts[String(activeSmartList.id)] ?? 0}
               newOnly={newOnly}
-              workCount={listCounts[String(activeSmartList.id)] ?? 0}
               canEdit={!auth.demoMode}
               onToggleNewOnly={() => {
                 setNewOnlyList(newOnly ? null : activeSmartList.id);
@@ -729,7 +732,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               }}
               onMarkSeen={() => markSmartListSeen(activeSmartList.id)}
               onEditRule={() => listEditing.openManager(activeSmartList)}
-              onConvert={() => convertSmartList(activeSmartList.id)}
             />
           )}
 
@@ -842,7 +844,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         </div>
       </div>
       {listEditing.open && (
-        <FavoriteListManager markedList={markedList} lists={userLists} {...listEditing.managerProps} />
+        <FavoriteListManager lists={userLists} listCounts={listCounts} {...listEditing.managerProps} />
       )}
       <BrowseLoadingIndicator
         refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}

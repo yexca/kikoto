@@ -1123,7 +1123,8 @@ history plays most.
 
 `favorite_list` distinguishes a system `marked` list, ordinary `user` lists,
 and `smart` lists. The system list has no stored items: it derives membership
-from a non-`none` Quick mark. `favorite_list_item` records the works a user
+from a non-`none` Quick mark, and the favorite works listing's `marked` status
+filter applies the same rule to any list. `favorite_list_item` records the works a user
 added by hand to a user or smart list; those works are favorites, and
 `user_work_state.favorite` is true exactly when a work has such a row. An
 item's `created_at` is when the work joined the list, and a membership that

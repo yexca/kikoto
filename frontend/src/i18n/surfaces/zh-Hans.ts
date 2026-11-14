@@ -3282,9 +3282,10 @@ export const surfaceHans = {
 
   favorites: {
     all: "全部收藏",
+    allShort: "全部",
+    search: "搜索",
     lists: "收藏列表",
     listTabs: "收藏列表标签",
-    quickMarkWorks: "带有快速标记的作品",
     exitSelection: "退出选择",
     selectWorks: "选择作品",
     editLists: "管理列表",
@@ -3330,8 +3331,6 @@ export const surfaceHans = {
     closeListEditor: "关闭收藏列表编辑器",
     editListsDescription: "排序、编辑、添加或删除列表。",
     marked: "标记",
-    markedDescription: "系统列表 · 随收听状态变化",
-    fixed: "固定",
     noCustomLists: "还没有自定义列表。",
     done: "完成",
     moveUp: "上移",
@@ -3372,6 +3371,7 @@ export const surfaceHans = {
     voiceCount_one: "{{count}} 位声优",
     voiceCount_other: "{{count}} 位声优",
     allStatuses: "全部",
+    anyMark: "任意标记",
     timeLeft: "剩余 {{time}}",
     resume: "继续播放",
     editList: "编辑列表",

@@ -31,6 +31,7 @@ describe("favorite status filters", () => {
     const counts = { want_to_listen: 2, listening: 1, finished: 3 };
     expect(favoriteStatusFilterOptions(counts, 6, "all").map((option) => option.value)).toEqual([
       "all",
+      "marked",
       "want_to_listen",
       "listening",
       "finished",
@@ -39,6 +40,13 @@ describe("favorite status filters", () => {
     ]);
     expect(favoriteStatusFilterOptions(counts, 6, "none")).toContainEqual({ value: "none", count: 0 });
     expect(favoriteStatusFilterOptions({ ...counts, none: 4 }, 10, "all")).toContainEqual({ value: "none", count: 4 });
+  });
+
+  it("counts every marked work, but not unmarked list works, under any mark", () => {
+    expect(favoriteStatusFilterOptions({ listening: 2, finished: 3, none: 4 }, 9, "all")).toContainEqual({
+      value: "marked",
+      count: 5,
+    });
   });
 });
 

@@ -5,13 +5,14 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import type { FavoriteListDraft, FavoriteListManager } from "@/features/favorites/FavoriteListManager";
 import { api, type FavoriteList } from "@/lib/api";
 
-type FavoriteListManagerState = Omit<ComponentProps<typeof FavoriteListManager>, "markedList" | "lists">;
+type FavoriteListManagerState = Omit<ComponentProps<typeof FavoriteListManager>, "lists" | "listCounts">;
 
 /**
  * The list manager dialog's state and actions: creating, editing, ordering,
- * and deleting the user's lists. Every change reloads the lists through
- * `reloadLists`; `onShowList` opens a saved list and `onListDeleted` lets the
- * page leave a deleted list's shelf.
+ * deleting, and converting the user's lists. Every change reloads the lists
+ * through `reloadLists`; `onShowList` opens a saved list, `onListDeleted` lets
+ * the page leave a deleted list's shelf, and `onListConverted` lets it drop
+ * state that only a smart list has.
  */
 export function useFavoriteListEditing({
   userLists,
@@ -19,12 +20,14 @@ export function useFavoriteListEditing({
   reloadLists,
   onShowList,
   onListDeleted,
+  onListConverted,
 }: {
   userLists: FavoriteList[];
   setFavoriteLists: (update: (lists: FavoriteList[]) => FavoriteList[]) => void;
   reloadLists: () => Promise<FavoriteList[]>;
   onShowList: (list: "all" | number) => void;
   onListDeleted: (listID: number) => void;
+  onListConverted: (listID: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -113,6 +116,20 @@ export function useFavoriteListEditing({
     }
   };
 
+  /** Turns a smart list into a regular one; failures are reported and rethrown so the editor stays. */
+  const convertFromEditor = async (list: FavoriteList) => {
+    try {
+      await api.convertFavoriteList(list.id);
+      onListConverted(list.id);
+      await reloadLists();
+      toast.success(t("favorites.smart.converted"));
+    } catch (error) {
+      toast.notify(toastFromError(error, t("favorites.smart.convertFailed")));
+      throw error;
+    }
+    finishEdit();
+  };
+
   // Moves apply at once and save in order; only lists whose position changed are written.
   const move = (listID: number, direction: -1 | 1) => {
     const targetIndex = userLists.findIndex((list) => list.id === listID);
@@ -150,6 +167,7 @@ export function useFavoriteListEditing({
     onCancelDelete: () => setDeleteTarget(null),
     onConfirmDelete: () => void confirmDelete(),
     onDeleteFromEditor: deleteFromEditor,
+    onConvertFromEditor: convertFromEditor,
     onMove: move,
   };
 

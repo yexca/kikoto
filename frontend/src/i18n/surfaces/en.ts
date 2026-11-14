@@ -3488,9 +3488,10 @@ export const surfaceEnglish = {
 
   favorites: {
     all: "All Favorites",
+    allShort: "All",
+    search: "Search",
     lists: "Favorite lists",
     listTabs: "Favorite list tabs",
-    quickMarkWorks: "Works with a quick mark",
     exitSelection: "Exit selection",
     selectWorks: "Select works",
     editLists: "Edit lists",
@@ -3536,8 +3537,6 @@ export const surfaceEnglish = {
     closeListEditor: "Close favorite list editor",
     editListsDescription: "Order, edit, add, or delete your lists.",
     marked: "Marked",
-    markedDescription: "System list · follows listening status",
-    fixed: "Fixed",
     noCustomLists: "No custom lists yet.",
     done: "Done",
     moveUp: "Move up",
@@ -3578,6 +3577,7 @@ export const surfaceEnglish = {
     voiceCount_one: "{{count}} voice actor",
     voiceCount_other: "{{count}} voice actors",
     allStatuses: "All",
+    anyMark: "Any mark",
     timeLeft: "{{time}} left",
     resume: "Resume",
     editList: "Edit list",

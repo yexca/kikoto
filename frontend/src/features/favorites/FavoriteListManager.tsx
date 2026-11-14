@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, BookmarkCheck, Pencil, Plus, Trash2, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -17,8 +17,8 @@ export type { FavoriteListDraft } from "./FavoriteListEditor";
  * returns to the organizer only when it was opened from there.
  */
 export function FavoriteListManager({
-  markedList,
   lists,
+  listCounts,
   editor,
   editorReturnsToList,
   deleteTarget,
@@ -32,10 +32,12 @@ export function FavoriteListManager({
   onCancelDelete,
   onConfirmDelete,
   onDeleteFromEditor,
+  onConvertFromEditor,
   onMove,
 }: {
-  markedList: FavoriteList | null;
   lists: FavoriteList[];
+  /** Works each list shows now, keyed by list id. */
+  listCounts: Record<string, number>;
   editor: FavoriteList | "new" | null;
   /** Whether cancelling the editor goes back to the organizer rather than closing. */
   editorReturnsToList: boolean;
@@ -50,6 +52,7 @@ export function FavoriteListManager({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   onDeleteFromEditor: (list: FavoriteList) => Promise<void>;
+  onConvertFromEditor: (list: FavoriteList) => Promise<void>;
   onMove: (listID: number, direction: -1 | 1) => void;
 }) {
   const { t } = useTranslation();
@@ -73,6 +76,7 @@ export function FavoriteListManager({
           key={editor === "new" ? "new" : editor.id}
           list={editor === "new" ? null : editor}
           lists={lists}
+          workCount={editor === "new" ? 0 : (listCounts[String(editor.id)] ?? 0)}
           cancelLabel={editorReturnsToList ? t("favorites.backToLists") : t("content.cancel")}
           deleting={deleting}
           onCancel={onCancelEdit}
@@ -81,6 +85,7 @@ export function FavoriteListManager({
           }}
           onSave={onSave}
           onDelete={onDeleteFromEditor}
+          onConvert={onConvertFromEditor}
           onGuardChange={updateGuard}
         />
       ) : (
@@ -94,18 +99,6 @@ export function FavoriteListManager({
             closeLabel={t("favorites.closeListEditor")}
           />
           <DialogBody className="space-y-3">
-            {markedList && (
-              <div className="flex items-center gap-3 rounded-md border border-dashed bg-muted/30 px-3 py-2">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <BookmarkCheck className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{t("favorites.marked")}</div>
-                  <div className="truncate text-xs text-muted-foreground">{t("favorites.markedDescription")}</div>
-                </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{t("favorites.fixed")}</span>
-              </div>
-            )}
             {lists.length === 0 ? (
               <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
                 {t("favorites.noCustomLists")}

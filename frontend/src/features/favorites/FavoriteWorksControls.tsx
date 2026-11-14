@@ -2,6 +2,7 @@ import {
   ArrowDownAZ,
   ArrowDownZA,
   ArrowUpDown,
+  BookmarkCheck,
   Check,
   FilterX,
   Layers,
@@ -18,11 +19,11 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { quickMarkMeta } from "@/components/work-card/WorkCardShell";
-import type { FavoriteSort, ListeningStatus, SortDirection } from "@/lib/api";
+import type { FavoriteSort, SortDirection } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { cn } from "@/lib/tailwindClassNames";
 import type { FavoriteStatusFilterOption } from "./favoriteShelfModel";
-import type { FavoriteAvailability } from "./favoritesBrowseState";
+import type { FavoriteAvailability, FavoriteStatusFilter } from "./favoritesBrowseState";
 
 export function FavoriteSearchInput({
   value,
@@ -74,6 +75,8 @@ const favoriteResourceOptions: FavoriteAvailability[] = ["all", "available", "lo
  * count on the shelf, and resource availability. While either is set, the
  * button turns primary, carries the status's quick mark icon, and a wide
  * layout names the filters. The popover stays open so both can be set together.
+ * Phones show the status as a chip row of their own, so their popover holds
+ * only the resource.
  */
 export function FavoriteFilterMenu({
   status,
@@ -84,20 +87,24 @@ export function FavoriteFilterMenu({
   onAvailabilityChange,
   onClear,
 }: {
-  status: ListeningStatus | "all";
+  status: FavoriteStatusFilter;
   statusOptions: FavoriteStatusFilterOption[];
   availability: FavoriteAvailability;
-  /** Phones draw only the icon and keep the popover clear of the bottom navigation. */
+  /** Phones draw only the icon, leave the status to its chips, and keep the popover clear of the bottom navigation. */
   compact?: boolean;
-  onStatusChange: (value: ListeningStatus | "all") => void;
+  onStatusChange: (value: FavoriteStatusFilter) => void;
   onAvailabilityChange: (value: FavoriteAvailability) => void;
   onClear: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const statusLabel = (option: ListeningStatus | "all") =>
-    option === "all" ? t("favorites.allStatuses") : t(`library.status.${option}`);
+  const statusLabel = (option: FavoriteStatusFilter) =>
+    option === "all"
+      ? t("favorites.allStatuses")
+      : option === "marked"
+        ? t("favorites.anyMark")
+        : t(`library.status.${option}`);
   const resourceLabel = (option: FavoriteAvailability) => {
     switch (option) {
       case "available":
@@ -112,10 +119,14 @@ export function FavoriteFilterMenu({
         return t("favorites.allResources");
     }
   };
-  const active = status !== "all" || availability !== "all";
-  const meta = status === "all" ? null : quickMarkMeta(status);
-  const Icon = meta?.icon ?? ListFilter;
-  const value = [status !== "all" ? statusLabel(status) : "", availability !== "all" ? resourceLabel(availability) : ""]
+  const shownStatus = compact ? "all" : status;
+  const active = shownStatus !== "all" || availability !== "all";
+  const meta = shownStatus === "all" || shownStatus === "marked" ? null : quickMarkMeta(shownStatus);
+  const Icon = meta?.icon ?? (shownStatus === "marked" ? BookmarkCheck : ListFilter);
+  const value = [
+    shownStatus !== "all" ? statusLabel(shownStatus) : "",
+    availability !== "all" ? resourceLabel(availability) : "",
+  ]
     .filter(Boolean)
     .join(" · ");
   const label = active ? t("favorites.filtersValue", { value }) : t("favorites.filters");
@@ -150,24 +161,27 @@ export function FavoriteFilterMenu({
         bottomCollisionPadding={compact ? 168 : undefined}
         className="w-[min(16rem,calc(100vw-1.5rem))] p-1.5 text-sm"
       >
-        <FilterSection label={t("favorites.statusFilters")} heading={t("favorites.status")}>
-          {statusOptions.map((option) => {
-            const optionMeta = option.value === "all" ? null : quickMarkMeta(option.value);
-            const OptionIcon = optionMeta?.icon ?? Layers;
-            return (
-              <FilterOption
-                key={option.value}
-                selected={option.value === status}
-                muted={option.count === 0}
-                icon={<OptionIcon className={cn("h-4 w-4", optionMeta?.className)} />}
-                count={option.count}
-                onSelect={() => onStatusChange(option.value)}
-              >
-                {statusLabel(option.value)}
-              </FilterOption>
-            );
-          })}
-        </FilterSection>
+        {!compact && (
+          <FilterSection label={t("favorites.statusFilters")} heading={t("favorites.status")}>
+            {statusOptions.map((option) => {
+              const optionMeta =
+                option.value === "all" || option.value === "marked" ? null : quickMarkMeta(option.value);
+              const OptionIcon = optionMeta?.icon ?? (option.value === "marked" ? BookmarkCheck : Layers);
+              return (
+                <FilterOption
+                  key={option.value}
+                  selected={option.value === status}
+                  muted={option.count === 0}
+                  icon={<OptionIcon className={cn("h-4 w-4", optionMeta?.className)} />}
+                  count={option.count}
+                  onSelect={() => onStatusChange(option.value)}
+                >
+                  {statusLabel(option.value)}
+                </FilterOption>
+              );
+            })}
+          </FilterSection>
+        )}
         {/* Short names fit as wrapping chips, which keeps the popover within a phone screen. */}
         <FilterSection label={t("favorites.resourceFilters")} heading={t("favorites.resource")} chips>
           {favoriteResourceOptions.map((option) => {
@@ -196,7 +210,7 @@ export function FavoriteFilterMenu({
             <button
               type="button"
               className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onClear}
+              onClick={compact ? () => onAvailabilityChange("all") : onClear}
             >
               <FilterX className="h-4 w-4 shrink-0" aria-hidden="true" />
               {t("favorites.clearFilters")}
@@ -315,8 +329,9 @@ export function FavoriteSortControls({
         ? t("library.ascending")
         : t("library.descending");
   return (
-    <div className="relative" ref={anchorRef}>
-      <div className="inline-flex h-8 shrink-0 items-center rounded-[var(--control-radius)] border bg-background">
+    // The order's name truncates before a narrow phone row overflows.
+    <div className="relative min-w-0" ref={anchorRef}>
+      <div className="inline-flex h-8 min-w-0 max-w-full items-center rounded-[var(--control-radius)] border bg-background">
         <button
           type="button"
           className="inline-flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-l-[var(--control-radius)] px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -332,7 +347,7 @@ export function FavoriteSortControls({
         <Button
           variant="ghost"
           size="icon"
-          className="h-full w-8 rounded-l-none border-l text-muted-foreground"
+          className="h-full w-8 shrink-0 rounded-l-none border-l text-muted-foreground"
           disabled={disabled}
           onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc"))}
           aria-label={directionTitle}

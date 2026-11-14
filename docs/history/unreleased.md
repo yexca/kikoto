@@ -189,10 +189,21 @@
 - A Favorites shelf opens with a one-line header, its name with the result
   count and page, in place of the cover mosaic, the listened share, and the
   top page bar. Search and the work controls sit beside it on a wide screen.
+  The shelf list and the phone shelf row name the whole collection **All**.
+- On phones the Quick mark chips stay below the controls, and search opens
+  from an icon in the control row.
 - One **Filters** button on Favorites holds the listening status, with each
   status's count, and the resource filter, in place of the row of status tabs
-  or chips and the separate resource button; **Clear filters** resets both.
+  and the separate resource button; **Clear filters** resets both. On phones
+  it holds only the resource.
 - The **Continue listening** strip on Favorites is removed.
+- Marked is no longer a shelf of its own: the Filters status list starts with
+  **Any mark**, which shows the same works on any shelf, and a link to the
+  Marked list opens All Favorites with that filter. Edit lists no longer shows
+  the fixed Marked row.
+- A smart list's rule, new works, **Only new**, **Mark all as seen**, and
+  **Edit rule** share one line under the shelf header. **Convert to regular
+  list** moves into the list's editor.
 - Circle and voice actor pages open with a summary like the work detail Hero:
   no frame, catalog counts with a short availability bar under a thin line,
   and quiet **Favorite**, **Subscribe**, and **More** controls. Voice actor

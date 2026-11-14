@@ -3442,9 +3442,10 @@ export const surfaceJapanese = {
 
   favorites: {
     all: "すべてのお気に入り",
+    allShort: "すべて",
+    search: "検索",
     lists: "お気に入りリスト",
     listTabs: "お気に入りリストのタブ",
-    quickMarkWorks: "クイックマーク付きの作品",
     exitSelection: "選択を終了",
     selectWorks: "作品を選択",
     editLists: "リストを管理",
@@ -3490,8 +3491,6 @@ export const surfaceJapanese = {
     closeListEditor: "お気に入りリスト編集を閉じる",
     editListsDescription: "リストの並べ替え、編集、追加、削除を行います。",
     marked: "マーク済み",
-    markedDescription: "システムリスト · 再生状態に連動",
-    fixed: "固定",
     noCustomLists: "カスタムリストはまだありません。",
     done: "完了",
     moveUp: "上へ移動",
@@ -3532,6 +3531,7 @@ export const surfaceJapanese = {
     voiceCount_one: "{{count}} 人の声優",
     voiceCount_other: "{{count}} 人の声優",
     allStatuses: "すべて",
+    anyMark: "マークあり",
     timeLeft: "残り {{time}}",
     resume: "続きから再生",
     editList: "リストを編集",

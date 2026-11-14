@@ -43,6 +43,7 @@ async function mockFavorites(
   options: {
     delayedList?: { id: number; started: () => void; gate: Promise<void> };
     onFavoriteWorksRequest?: (availability: string) => void;
+    onFavoriteWorksSearch?: (search: URLSearchParams) => void;
     interactiveQuickMark?: boolean;
     onMembershipUpdate?: (body: unknown) => void;
   } = {},
@@ -129,6 +130,7 @@ async function mockFavorites(
     }
     if (url.pathname === "/api/favorite-works") {
       options.onFavoriteWorksRequest?.(url.searchParams.get("availability") ?? "");
+      options.onFavoriteWorksSearch?.(url.searchParams);
       const delayedList = options.delayedList;
       if (delayedList && url.searchParams.get("listId") === String(delayedList.id)) {
         delayedList.started();
@@ -358,8 +360,10 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   const filterButton = page.getByRole("button", { name: /^Filters/ });
-  await expect(shelves.getByRole("button", { name: /^All Favorites/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(shelves.getByRole("button", { name: /^Marked/ })).toBeVisible();
+  // The shelf list names the whole collection All; its header keeps All Favorites.
+  await expect(shelves.getByRole("button", { name: /^All\b/ })).toHaveAttribute("aria-pressed", "true");
+  // Marked is a status filter, not a shelf.
+  await expect(shelves.getByRole("button", { name: /^Marked/ })).toHaveCount(0);
   await expect(shelves.getByRole("button", { name: /^Circles/ })).toBeVisible();
   await expect(search).toBeVisible();
   await expect(filterButton).toHaveAccessibleName("Filters");
@@ -391,6 +395,9 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   await expect(resourceFilters.getByRole("button")).toHaveText(["All", "Available", "Local", "Remote", "Missing"]);
   await resourceFilters.getByRole("button", { name: "Remote" }).click();
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.availability)).toBe("remote");
+  await statusFilters.getByRole("button", { name: /^Any mark/ }).click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("marked");
+  await expect(filterButton).toHaveAccessibleName("Filters: Any mark · Remote");
   await statusFilters.getByRole("button", { name: /^Finished/ }).click();
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
   await expect(filterButton).toHaveAccessibleName("Filters: Finished · Remote");
@@ -489,17 +496,41 @@ test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async (
   await expect(listManager).toHaveCount(0);
 });
 
-test("mobile favorites stacks shelves, a one-line header with the result caption, search, and the control row", async ({
+test("mobile favorites stacks shelves, a one-line header, the control row with a search icon, and Quick mark chips", async ({
   page,
 }) => {
   await mockFavorites(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/favorites");
 
+  // Search opens from its icon; the Quick mark filters stay on show as chips.
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
-  await expect(search).toBeVisible();
+  await expect(search).toHaveCount(0);
+  const searchToggle = page.getByRole("button", { name: "Search", exact: true });
+  await searchToggle.click();
+  await expect(search).toBeFocused();
+  await expect(searchToggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("navigation", { name: "Favorite shelves" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
+  const statusChips = page.getByRole("group", { name: "Listening status filters" });
+  await expect
+    .poll(() =>
+      statusChips.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { overflowX: style.overflowX, overflowY: style.overflowY };
+      }),
+    )
+    .toEqual({ overflowX: "auto", overflowY: "hidden" });
+  await statusChips.getByRole("button", { name: /^Any mark/ }).click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("marked");
+  // The phone filter popover holds only the resource, since the chips show the status.
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  const phoneFilters = page.getByRole("dialog", { name: "Filters" });
+  await expect(phoneFilters.getByRole("region", { name: "Resource filters" })).toBeVisible();
+  await expect(phoneFilters.getByRole("region", { name: "Listening status filters" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await statusChips.getByRole("button", { name: /^Any mark/ }).click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("all");
   await expect(
     page.getByRole("button", { name: "Display options (Grid view · Columns: Auto · Items per page: 24)" }),
   ).toBeVisible();
@@ -662,10 +693,11 @@ test("switching favorite lists keeps the entire playlist row stable while works 
 
   const listTabs = page.getByRole("region", { name: "Favorite list tabs" });
   const firstWork = page.locator('[data-favorite-work-id="1"]').getByText("Favorite work 1", { exact: true });
+  const studyTab = listTabs.getByRole("button", { name: /^Study/ });
   const playlistButtons = [
     listTabs.locator("button").nth(0),
-    listTabs.locator("button").nth(1),
-    listTabs.locator("button").nth(2),
+    studyTab,
+    listTabs.getByRole("button", { name: /^Circles/ }),
     page.getByRole("button", { name: "Edit lists", exact: true }),
   ];
   await expect(playlistButtons[0]).toBeVisible();
@@ -679,9 +711,9 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
   const worksRegionBefore = await page.locator('[data-favorite-work-id="1"]').boundingBox();
 
-  await playlistButtons[2].click();
+  await studyTab.click();
   await listRequestStarted;
-  await expect(playlistButtons[2]).toHaveAttribute("aria-pressed", "true");
+  await expect(studyTab).toHaveAttribute("aria-pressed", "true");
   await expect(firstWork).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading favorite works" })).toHaveCount(0);
   for (const button of playlistButtons) await expect(button).toBeVisible();
@@ -705,10 +737,25 @@ test("unmarking a work refreshes All Favorites and removes it immediately", asyn
   await expect(page.getByText("Favorite work 1", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No favorite works yet" })).toBeVisible();
   const listTabs = page.getByRole("region", { name: "Favorite list tabs" });
-  await expect(listTabs.locator("button").nth(0)).toContainText("All Favorites");
+  await expect(listTabs.locator("button").nth(0)).toContainText("All");
   await expect(listTabs.locator("button").nth(0)).toContainText("0");
-  await expect(listTabs.locator("button").nth(1)).toContainText("Marked");
-  await expect(listTabs.locator("button").nth(1)).toContainText("0");
+  await expect(
+    page.getByRole("group", { name: "Listening status filters" }).getByRole("button", { name: /^Any mark/ }),
+  ).toContainText("0");
+});
+
+test("an entry that opened the Marked list shows All Favorites filtered to any mark", async ({ page }) => {
+  const requests: URLSearchParams[] = [];
+  await mockFavorites(page, { onFavoriteWorksSearch: (search) => requests.push(search) });
+  await page.goto("/favorites?list=1");
+
+  await expect(page.getByRole("heading", { name: "All Favorites", level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Listening status filters" }).getByRole("button", { name: /^Any mark/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => requests.at(-1)?.toString())
+    .toEqual(expect.stringMatching(/listId=all.*status=marked|status=marked.*listId=all/));
 });
 
 test("filters favorites by availability and keeps the selection out of the canonical URL", async ({ page }) => {
