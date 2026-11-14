@@ -214,24 +214,12 @@ export const surfaceKorean = {
     dlsiteFilter: "DLsite 작품 필터",
     workCount_one: "작품 {{count}}개",
     workCount_other: "작품 {{count}}개",
-    viewDescriptions: {
-      catalog: "카탈로그 메타데이터가 저장된 모든 작품입니다. 작품 계열마다 한 행입니다.",
-      all: "메타데이터나 파일 소스에 조치가 필요한 작품.",
-      metadata: "DLsite와 한 번도 동기화하지 않았거나 마지막 업데이트에 실패한 작품.",
-      no_source: "로컬 폴더, 캐시, 원격 소스 어디에서도 재생할 수 없는 작품.",
-      custom: "작품 코드가 없는 라이브러리 폴더에 보관하는 사용자 작품.",
-      translation: "각 작품이 대상 언어로 얼마나 갖춰져 있는지.",
-      tags: "공유 태그와 언어별 이름.",
-      circles: "메이커 ID 순 서클과 알려진 이름, 병합.",
-      aliases: "성우의 별칭과 중복 항목.",
-    },
     catalogDescription: "저장된 작품 메타데이터를 작품 계열별로 표시합니다.",
     catalogEmpty: "저장된 작품 메타데이터가 없습니다.",
 
     settings: "메타데이터 설정",
     voiceAliases: "성우",
     voiceAliasesTitle: "성우",
-    voiceAliasesDescription: "성우별 별칭을 검토하고 중복된 인물을 병합합니다. 검색은 이름과 별칭에 일치합니다.",
     searchVoices: "성우 검색",
     searchVoicesPlaceholder: "이름 또는 별칭",
     noMatchingVoices: "일치하는 성우가 없습니다",
@@ -680,8 +668,6 @@ export const surfaceKorean = {
     accessPolicySaveFailed: "접근 정책을 저장하지 못했습니다.",
     asr: {
       title: "음성 인식 서비스",
-      description:
-        "OpenAI 호환 전사 API로 로컬 트랙을 타임스탬프가 있는 가사로 전사합니다. 오디오는 누군가 전사를 시작할 때만 전송됩니다.",
       refresh: "새로 고침",
       add: "서비스 추가",
       addTitle: "음성 인식 서비스 추가",
@@ -783,7 +769,6 @@ export const surfaceKorean = {
       blocked: "차단",
       ruleFields: { title: "제목", description: "설명", tags: "태그", lyrics: "가사", all: "전체 텍스트" },
       title: "LLM 제공자",
-      description: "번역 모델을 구성합니다. 선택한 필드만 설정된 엔드포인트로 전송됩니다.",
       refresh: "새로 고침",
       provider: "제공자",
       providerDescription: "내장 서비스 또는 호환 프로토콜을 선택합니다.",
@@ -834,8 +819,6 @@ export const surfaceKorean = {
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
       attributionTitle: "AI 가사",
       attribution: "AI가 만든 가사에 모델 이름 표시",
-      attributionDescription:
-        "음성 인식이나 번역으로 작성한 가사 파일은 작성한 모델 이름을 가사 언어로 적은 줄로 시작합니다. 설정을 바꾼 뒤 작성되는 파일부터 적용됩니다.",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
       alwaysScanAllAgesDescription:
         "전체 연령 작품에도 추가 민감 키워드 검사를 합니다. 고민감 및 차단 규칙은 항상 검사합니다. LLM 텍스트 전용 모드에서는 적용 가능한 모든 키워드를 검사하며 이 옵션은 ASR에도 적용됩니다.",
@@ -936,18 +919,10 @@ export const surfaceKorean = {
       configuration: "구성",
       policy: "캐시 정책",
       remotePlayback: "원격 재생 캐시",
-      remotePlaybackDescription: "나중에 재생할 수 있도록 원격으로 재생한 미디어를 로컬에 보관합니다.",
       limit: "캐시 제한",
-      limitDescription: "관리되는 재생 캐시의 최대 총 크기입니다.",
       transcodeLimit: "트랜스코드 캐시 제한",
-      transcodeLimitDescription:
-        "변환된 오디오와 HLS 동영상 세그먼트가 공유하는 캐시 제한입니다. 가장 오래 사용되지 않은 파일부터 제거됩니다.",
       videoHardware: "동영상 변환",
       transcodeSlots: "동시 변환 수",
-      transcodeSlotsDescription:
-        "서버 전체에서 동시에 실행하는 동영상·오디오 재생 변환의 수입니다(1~5). 이를 넘는 변환은 잠시 기다린 뒤 서버가 바쁘다고 알립니다.",
-      videoHardwareDescription:
-        "변환하는 동영상을 Intel GPU로 인코딩할 수 있습니다. GPU가 꺼져 있거나 사용할 수 없거나 실패하면 CPU 인코더로 재생합니다.",
       videoHardwareEncoder: "하드웨어 인코더",
       videoHardwareEncoderDescription:
         "VA-API는 대부분의 Intel GPU에서 작동합니다. Quick Sync Video에는 GPU에 맞는 런타임이 필요합니다.",
@@ -974,8 +949,6 @@ export const surfaceKorean = {
       },
       transferSafety: "전송 안전",
       downloadLimit: "파일별 다운로드 제한",
-      downloadLimitDescription:
-        "가져오기, 재생 캐시 및 기타 원격 미디어 스트리밍에 적용되는 제한입니다. 표지는 20 MiB 고정 제한을 사용합니다.",
       stagingRetention: "실패한 스테이징 보존",
       stagingRetentionDescription:
         "실패하거나 취소된 가져오기의 게시되지 않은 스테이징 데이터가 이 기간을 넘으면 제거합니다.",
@@ -1185,8 +1158,6 @@ export const surfaceKorean = {
       exampleCircles: "일치하는 서클",
       exampleDislikedTags: "싫어하는 작품과 겹치는 태그",
       exampleFavorite: "즐겨찾기함",
-      exampleNote:
-        "일치 1건은 근거 작품 1개로 계산합니다. 실제 점수는 흔한 태그의 가중치를 낮추고 반복되는 근거를 강화합니다.",
       decreaseExample: "{{name}} 줄이기",
       increaseExample: "{{name}} 늘리기",
       ordering: "정렬 다양성",
@@ -1228,8 +1199,6 @@ export const surfaceKorean = {
       hideRemoteAddresses: "소스를 관리하지 않는 계정에서 주소 숨기기",
       hideRemoteAddressesDescription:
         "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 워크플로 실행에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
-      lyricsFilesDescription:
-        "가사 관리가 작품 폴더에 이미 있는 가사를 Kikoto의 lyrics_kikoto 폴더로 가져오는 방식입니다.",
       folderLyricsMode: "작품 폴더의 가사",
       folderLyricsModeDescription:
         "복사하면 작품 자체의 파일은 그대로 남고, 이동하면 원래 자리에서 옮겨집니다. 편집할 때마다 따로 고를 수도 있습니다.",
@@ -1268,7 +1237,6 @@ export const surfaceKorean = {
     },
     paths: {
       title: "저장 경로",
-      description: "런타임 기본값과 기존 소스 구성에서 파생된 읽기 전용 경로 미리보기입니다.",
       localDataRoot: "로컬 데이터 루트",
       cacheRoot: "캐시 루트",
       remoteCachePreview: "원격 캐시 경로 미리보기",
@@ -1277,8 +1245,6 @@ export const surfaceKorean = {
     },
     proxy: {
       title: "프록시",
-      description:
-        "요청은 위에서부터 차례로 프록시를 시도하고 처음 연결되는 프록시를 사용합니다. 모두 연결되지 않으면 직접 연결하지 않고 실패합니다.",
       add: "프록시 추가",
       empty: "프록시가 없습니다. 외부 요청은 직접 연결합니다.",
       localMachine: "이 컴퓨터",

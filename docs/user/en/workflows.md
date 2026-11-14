@@ -12,7 +12,7 @@ Workflows make backend actions inspectable.
   target is: Fetch from a work, a catalog sync from its circle, series, or
   voice actor, and a remote source's library work check from that source in
   [Library](settings.md#library) settings. There is no custom workflow editor.
-- A card shows what the operation does, its state, what starts it on its own,
+- A card shows the operation's name, its state, what starts it on its own,
   and **Run**. The state reads **Never run**, **Starting**, **Queued**,
   **Running** with its progress, or how the latest run ended and when, such as
   **Succeeded** or **Failed**; **Needs review** marks a run with items that

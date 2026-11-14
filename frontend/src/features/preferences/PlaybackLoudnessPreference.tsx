@@ -17,19 +17,13 @@ const modeLabelKeys = {
   full: "settings.loudnessFull",
 } as const satisfies Record<LoudnessNormalizationMode, string>;
 
-const modeDescriptionKeys = {
-  off: "settings.loudnessOffDescription",
-  attenuate: "settings.loudnessAttenuateDescription",
-  full: "settings.loudnessFullDescription",
-} as const satisfies Record<LoudnessNormalizationMode, string>;
-
 /** Per-account loudness normalization; off by default and applied to the next measured track at once. */
 export function PlaybackLoudnessPreference({ userId }: { userId: ClientPrincipalID }) {
   const { t } = useTranslation();
   const mode = useLoudnessNormalizationMode(userId);
   return (
-    <SettingsSection title={t("settings.loudness")} description={t("settings.loudnessDescription")}>
-      <SettingsRow title={t("settings.loudnessMode")} description={t(modeDescriptionKeys[mode])}>
+    <SettingsSection title={t("settings.loudness")}>
+      <SettingsRow title={t("settings.loudnessMode")}>
         <FloatingSelect
           ariaLabel={t("settings.loudnessMode")}
           value={mode}

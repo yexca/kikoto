@@ -363,22 +363,17 @@ const adminToolsJapanese = {
     saveFailed: "ソースを保存できませんでした。",
     enabledToast: "{{name}} を有効にしました。",
     disabledToast: "{{name}} を無効にしました。",
-    scanDepthDescription: "データルート（ストレージプールでは各プール）以下で作品を探すフォルダの階層数。",
     levels: "階層",
     days: "日",
     seconds: "秒",
     cleanupLinkTitle: "キャッシュの内容",
-    cleanupLinkDescription: "キャッシュ済みメディアとトランスコードは「クリーンアップ」タブで確認・削除できます。",
     pacingSummary: "基本遅延 {{base}} 秒、ランダム遅延は最大 {{random}} 秒",
-    pacingDescription: "リモートメディアのダウンロード遅延とレート制限時のバックオフ",
   },
   cleanup: {
     tab: "クリーンアップ",
     ofLimit: "/ {{limit}}",
     usageValue: "{{limit}} 中 {{used}} 使用（{{percent}}%）",
-    transcodeDescription: "再生用に作成された変換済み音声と HLS 動画セグメント。",
     transcodeUsage: "トランスコードキャッシュの使用量",
-    transcodeLru: "上限に達すると、最も長く使われていないファイルから自動で削除されます。",
     managedDescription:
       "再生用に保持しているリモートメディア。孤立ファイルはどの作品からも参照されていないファイルです。",
     summary: {
@@ -930,37 +925,22 @@ export const japaneseResource = {
         account: "アカウント",
         recommendations: "おすすめ",
         playback: "再生",
-        playbackDescription: "早送りまたは巻き戻しで移動する秒数を選択します。",
         seekForward: "早送り時間",
         seekBackward: "巻き戻し時間",
         seconds: "秒",
-        seekRange: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
         autosave: {
           saving: "保存中...",
           saved: "保存しました",
         },
         seekInvalid: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
         loudness: "ラウドネスの正規化",
-        loudnessDescription:
-          "トラック間の音量差をそろえます。各ローカルファイルは、正規化をオンにして初めて再生したときに一度だけ測定されます。",
         loudnessMode: "正規化",
         loudnessOff: "オフ",
-        loudnessOffDescription: "各トラックを元の音量で再生します。",
         loudnessAttenuate: "大きいトラックを下げる",
-        loudnessAttenuateDescription:
-          "大きいトラックを小さくし、小さいトラックはそのままにします。バックグラウンド再生中も働きます。",
         loudnessFull: "大きいトラックを下げ、小さいトラックを上げる",
-        loudnessFullDescription:
-          "Web Audio を使って小さいトラックも大きくします。モバイルアプリでは上げる処理は行われず、一部のブラウザはバックグラウンドで Web Audio を停止します。",
         playbackSources: "再生ソース",
-        playbackSourcesDescription:
-          "ローカルファイルとリモートストリームなど、複数の場所があるトラックに適用されます。既定ではオフです。",
         sourceSwitching: "ソースのクイック切り替え",
-        sourceSwitchingDescription:
-          "再生画面のシークバー下にあるソース表示から、現在のトラックの再生場所を切り替えられます。",
         sourceFallback: "失敗時に別のソースへ切り替え",
-        sourceFallbackDescription:
-          "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
         devicePrivacy: "このデバイスのプライバシー",
         devicePrivacyDescription: "このデバイス上のすべてのサーバーとアカウントに適用されます。",
         appSwitcherBlur: "バックグラウンドでぼかす",

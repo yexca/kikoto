@@ -478,9 +478,6 @@ export function ListeningHistoryPage({
           <h2 id="listening-profile-heading" className="text-base font-semibold">
             {t("personal.history.profile.heading")}
           </h2>
-          <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted-foreground">
-            {t("personal.history.profile.basis")}
-          </p>
         </div>
         {profile.status === "error" && (
           <InlineRetry
@@ -506,9 +503,6 @@ export function ListeningHistoryPage({
             <h2 id="listening-breakdown-heading" className="text-base font-semibold">
               {t("personal.history.breakdown.heading")}
             </h2>
-            <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted-foreground">
-              {t(`personal.history.breakdown.basis.${rank}`)}
-            </p>
           </div>
           <div className={segmentedListClassName()} role="group" aria-label={t("personal.history.breakdown.rankLabel")}>
             {BREAKDOWN_RANKS.map((option) => (

@@ -272,7 +272,6 @@ export function WorkflowsPage({
         code={code}
         icon={workflowIcon(code)}
         name={cardName(operation)}
-        summary={t(`workflowPage.operations.summaries.${code}`, { defaultValue: definition.description })}
         schedule={workflowTriggerSummary(triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id))}
         state={state}
         moreActive={Math.max(0, active.length - 1)}

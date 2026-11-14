@@ -293,6 +293,31 @@ Save button belongs only to a form whose fields must change together, such as
 a password change or a policy editor. A section with one field does not get a
 footer for its own button.
 
+## Helper Text
+
+The layout explains a surface before any sentence does: a heading names its
+section, a field's label names what it changes, a control's own value or
+option names show its choice, and grouping, order, and empty states show how
+the parts relate. A page, tab, section, or field carries no description that
+restates its title, explains how to operate an ordinary control, or describes
+the layout around it.
+
+A description belongs beside a field only when it states something the
+layout cannot show:
+
+- A consequence that is hard to undo, such as data that is moved, replaced,
+  or deleted.
+- Privacy or security exposure, such as which addresses an account receives
+  or which devices the server may reach.
+- A constraint that is not visible in the control, such as a minimum that
+  depends on another setting.
+- A difference between choices that their names do not convey.
+
+A range or format enforced by the control is shown when an entry is rejected,
+not before. Empty, loading, and failure states keep their own text, and
+content safety, legal acceptance, and destructive confirmations keep the copy
+that their decision needs.
+
 ## Failure and Recovery
 
 - Preserve the app shell and global player when a route or remote panel fails.

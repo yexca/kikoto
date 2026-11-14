@@ -73,6 +73,11 @@
   Actors, and Discover use the full width; the Personal and Manage pages and
   About share one centered column, with their tab rows spanning that column,
   instead of each picking its own width and alignment.
+- Insights, Settings, Workflows, Metadata, Translation, and System drop the
+  descriptions that restated a heading or a field's name. A description stays
+  where it warns of a hard-to-undo or privacy-relevant effect, and an
+  entry's allowed range shows when a value is rejected. Workflow cards show
+  each operation's name, state, automatic starts, and **Run**.
 
 </details>
 

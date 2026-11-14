@@ -222,7 +222,6 @@ export function TranslationPage({
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{t(`translationCenter.descriptions.${view}`)}</p>
       {loadError && (
         <div
           role="alert"

@@ -179,7 +179,6 @@ export function LLMSettingsSection({
 
         <SettingsSection
           title={t("maintenance.llm.title")}
-          description={t("maintenance.llm.description")}
           action={
             <>
               <Button

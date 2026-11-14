@@ -259,25 +259,12 @@ export const surfaceEnglish = {
     dlsiteFilter: "Filter DLsite works",
     workCount_one: "{{count}} work",
     workCount_other: "{{count}} works",
-    viewDescriptions: {
-      catalog: "Every work with saved catalog metadata, one row per work family.",
-      all: "Works whose metadata or file source needs action.",
-      metadata: "Works never synced with DLsite, or whose last update failed.",
-      no_source: "Works that no local folder, cache, or remote source can play.",
-      custom: "Your own works, kept in library folders without a work code.",
-      translation: "How completely each work reads in one target language.",
-      tags: "Shared tags and their names in every language.",
-      circles: "Circles by maker id, with their known names and merges.",
-      aliases: "Voice actors with their aliases and duplicates.",
-    },
     catalogDescription: "All saved work metadata, grouped by work family.",
     catalogEmpty: "No work metadata saved yet.",
 
     settings: "Metadata settings",
     voiceAliases: "Voice actors",
     voiceAliasesTitle: "Voice actors",
-    voiceAliasesDescription:
-      "Review alternate names for each voice actor and merge duplicate people. Searches match names and aliases.",
     searchVoices: "Search voice actors",
     searchVoicesPlaceholder: "Name or alias",
     noMatchingVoices: "No matching voice actors",
@@ -728,8 +715,6 @@ export const surfaceEnglish = {
     accessPolicySaveFailed: "Access policy could not be saved.",
     asr: {
       title: "ASR services",
-      description:
-        "Transcribe local tracks into timed lyrics through an OpenAI-compatible transcription endpoint. Audio is sent only when someone starts a transcription.",
       refresh: "Refresh",
       add: "Add service",
       addTitle: "Add ASR service",
@@ -834,7 +819,6 @@ export const surfaceEnglish = {
       blocked: "Blocked",
       ruleFields: { title: "Title", description: "Description", tags: "Tags", lyrics: "Lyrics", all: "All text" },
       title: "LLM providers",
-      description: "Configure translation models. Only the selected fields are sent to the configured endpoint.",
       refresh: "Refresh",
       provider: "Provider",
       providerDescription: "Choose a built-in service or a compatible protocol.",
@@ -884,8 +868,6 @@ export const surfaceEnglish = {
       policySaveFailed: "Content safety policy could not be saved.",
       attributionTitle: "AI lyrics",
       attribution: "Name the models in AI-made lyrics",
-      attributionDescription:
-        "Lyrics files written by speech recognition or translation start with a line, in the lyrics' language, naming the models that wrote them. The choice applies to files written after it changes.",
       alwaysScanAllAges: "Scan all-ages works too",
       alwaysScanAllAgesDescription:
         "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply. LLM text-only mode always checks every applicable keyword rule; this option still applies to ASR.",
@@ -1122,8 +1104,6 @@ export const surfaceEnglish = {
       exampleCircles: "Matching circles",
       exampleDislikedTags: "Tags shared with disliked works",
       exampleFavorite: "Favorited",
-      exampleNote:
-        "Each match stands for one supporting work. Real scores also give common tags less weight and strengthen repeated evidence.",
       decreaseExample: "Decrease {{name}}",
       increaseExample: "Increase {{name}}",
       ordering: "Ordering variety",
@@ -1166,8 +1146,6 @@ export const surfaceEnglish = {
       hideRemoteAddresses: "Hide addresses from accounts that do not manage sources",
       hideRemoteAddressesDescription:
         "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and workflow runs. Browsing, playback, covers, and text previews go through this server instead.",
-      lyricsFilesDescription:
-        "How Manage lyrics brings lyrics the work folder already holds into Kikoto's lyrics_kikoto folder.",
       folderLyricsMode: "Lyrics of the work folder",
       folderLyricsModeDescription:
         "Copying leaves the work's own files where they are; moving takes them out of their place. Each edit can still choose.",
@@ -1208,8 +1186,6 @@ export const surfaceEnglish = {
     },
     proxy: {
       title: "Proxy",
-      description:
-        "Requests try these proxies from top to bottom and use the first one that connects. If none connects, the request fails instead of connecting directly.",
       add: "Add proxy",
       empty: "No proxies. Outbound requests connect directly.",
       localMachine: "Local machine",
@@ -1299,18 +1275,10 @@ export const surfaceEnglish = {
       configuration: "Configuration",
       policy: "Cache policy",
       remotePlayback: "Cache remote playback",
-      remotePlaybackDescription: "Keep remotely played media on local storage for later playback.",
       limit: "Cache limit",
-      limitDescription: "Maximum total size of the managed playback cache.",
       transcodeLimit: "Transcode cache limit",
-      transcodeLimitDescription:
-        "Maximum cache size for converted audio and HLS video segments. Least recently used files are removed first.",
       videoHardware: "Video conversion",
       transcodeSlots: "Simultaneous conversions",
-      transcodeSlotsDescription:
-        "How many video and audio playback conversions run at once across the server, from 1 to 5. A conversion beyond this waits briefly, then reports the server as busy.",
-      videoHardwareDescription:
-        "Converted video can be encoded by an Intel GPU. Playback uses the CPU encoder whenever the GPU is off, unavailable, or fails.",
       videoHardwareEncoder: "Hardware encoder",
       videoHardwareEncoderDescription:
         "VA-API works with most Intel GPUs. Quick Sync Video needs a runtime that matches the GPU.",
@@ -1337,8 +1305,6 @@ export const surfaceEnglish = {
       },
       transferSafety: "Transfer safety",
       downloadLimit: "Per-file download limit",
-      downloadLimitDescription:
-        "Hard limit applied while streaming Fetch, playback-cache, and other remote media files. Covers use a fixed 20 MiB limit.",
       stagingRetention: "Failed staging retention",
       stagingRetentionDescription:
         "Remove unpublished staging data after failed or cancelled Fetch runs reach this age.",
@@ -1401,8 +1367,6 @@ export const surfaceEnglish = {
     },
     paths: {
       title: "Storage paths",
-      description:
-        "These resolved paths are read-only previews derived from runtime defaults and existing source configuration.",
       localDataRoot: "Local data root",
       cacheRoot: "Cache root",
       remoteCachePreview: "Remote cache path preview",

@@ -39,23 +39,17 @@ export const adminToolsEnglish = {
     saveFailed: "Source could not be saved.",
     enabledToast: "{{name}} enabled.",
     disabledToast: "{{name}} disabled.",
-    scanDepthDescription:
-      "How many folder levels below the data root, or below each storage pool, are searched for works.",
     levels: "levels",
     days: "days",
     seconds: "sec",
     cleanupLinkTitle: "Cache contents",
-    cleanupLinkDescription: "Review and clear cached media and transcodes in the Cleanup tab.",
     pacingSummary: "{{base}} s base delay, up to {{random}} s jitter",
-    pacingDescription: "Delays and rate-limit backoff for remote media downloads",
   },
   cleanup: {
     tab: "Cleanup",
     ofLimit: "of {{limit}}",
     usageValue: "{{used}} of {{limit}} ({{percent}}%)",
-    transcodeDescription: "Converted audio and HLS video segments created for playback.",
     transcodeUsage: "Transcode cache usage",
-    transcodeLru: "Least recently used files are evicted automatically when the limit is reached.",
     managedDescription: "Remote media kept for playback. Orphans are files no work references any more.",
     summary: {
       reclaimable: "{{size}} reclaimable",

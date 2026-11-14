@@ -128,7 +128,6 @@ export function ProxySettingsSection({
       <SettingsSection
         id="proxy"
         title={t("maintenance.proxy.title")}
-        description={t("maintenance.proxy.description")}
         action={
           <Button
             variant="outline"

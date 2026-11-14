@@ -88,7 +88,7 @@ export function TranscodeCacheSection({
   };
 
   return (
-    <SettingsSection title={t("maintenance.cache.transcodeCache")} description={t("cleanup.transcodeDescription")}>
+    <SettingsSection title={t("maintenance.cache.transcodeCache")}>
       <div className="space-y-3 py-4">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
@@ -118,7 +118,6 @@ export function TranscodeCacheSection({
               : t("maintenance.cache.scanning")
           }
         />
-        <p className="text-xs text-muted-foreground">{t("cleanup.transcodeLru")}</p>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 py-3">
         {status && <span className="mr-auto text-xs text-muted-foreground">{status}</span>}

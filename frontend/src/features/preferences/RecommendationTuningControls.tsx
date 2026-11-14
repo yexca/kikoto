@@ -198,7 +198,6 @@ export function RecommendationPreviewPanel({
             </div>
           </div>
           <RecommendationComposition components={breakdown.components} score={breakdown.score} threshold={threshold} />
-          <p className="text-xs text-muted-foreground">{copy("exampleNote")}</p>
         </div>
       </div>
     </section>

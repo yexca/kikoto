@@ -78,7 +78,7 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
       title={t("timeZone.title")}
       action={<AutosaveStatus state={autosave.state} />}
     >
-      <SettingsRow htmlFor="account-time-zone" title={t("timeZone.title")} description={t("timeZone.description")}>
+      <SettingsRow htmlFor="account-time-zone" title={t("timeZone.title")}>
         {failed ? (
           <span role="alert" className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("timeZone.loadFailed")}

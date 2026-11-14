@@ -788,9 +788,8 @@ test("Workflows shows Scan, Metadata, and Index above what runs now and next", a
     "Metadata",
     "Index",
   ]);
-  await expect(operation(page, "Scan")).toContainText("Find works in the data folders");
   await expect(operation(page, "Scan")).toContainText("At startup·Watching folders");
-  await expect(operation(page, "Scan")).toContainText("Checks every folder each time");
+  await expect(operation(page, "Scan").getByRole("switch", { name: "Full", exact: true })).toHaveCount(0);
   await expect(operation(page, "Metadata")).toContainText("Never run");
   await expect(operation(page, "Metadata").getByRole("switch", { name: "Full", exact: true })).toHaveAttribute(
     "aria-checked",

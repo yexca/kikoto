@@ -37,7 +37,7 @@ export function LyricsAttributionSection({ readOnly = false }: { readOnly?: bool
 
   return (
     <SettingsSection title={t("maintenance.llm.attributionTitle")}>
-      <SettingsRow title={t("maintenance.llm.attribution")} description={t("maintenance.llm.attributionDescription")}>
+      <SettingsRow title={t("maintenance.llm.attribution")}>
         <Switch
           checked={enabled ?? true}
           disabled={readOnly || saving || enabled === null}

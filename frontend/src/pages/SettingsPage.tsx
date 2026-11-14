@@ -372,7 +372,6 @@ export function SettingsPage({
         >
           <SettingsSection
             title={t("settings.playback")}
-            description={t("settings.playbackDescription")}
             action={<AutosaveStatus state={seekStatus.state} />}
             footer={
               seekError ? (
@@ -385,7 +384,6 @@ export function SettingsPage({
             <SeekRow
               id="seek-forward-seconds"
               label={t("settings.seekForward")}
-              description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
               unit={t("settings.seconds")}
               value={seekDraft.forward}
               onChange={(forward) => {
@@ -397,7 +395,6 @@ export function SettingsPage({
             <SeekRow
               id="seek-backward-seconds"
               label={t("settings.seekBackward")}
-              description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
               unit={t("settings.seconds")}
               value={seekDraft.backward}
               onChange={(backward) => {
@@ -454,7 +451,6 @@ function avatarInitial(name: string) {
 function SeekRow({
   id,
   label,
-  description,
   unit,
   value,
   onChange,
@@ -462,14 +458,13 @@ function SeekRow({
 }: {
   id: string;
   label: string;
-  description: string;
   unit: string;
   value: string;
   onChange: (value: string) => void;
   onCommit: () => void;
 }) {
   return (
-    <SettingsRow htmlFor={id} title={label} description={description}>
+    <SettingsRow htmlFor={id} title={label}>
       <SettingsNumberInput
         id={id}
         label={label}

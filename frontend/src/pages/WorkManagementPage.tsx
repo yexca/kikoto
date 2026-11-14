@@ -355,9 +355,6 @@ export function WorkManagementPage({
               onSelect={(next) => showWorks(next)}
             />
           )}
-          <p className="-mt-1 text-xs text-muted-foreground">
-            {t(`workManagement.viewDescriptions.${catalogReason ?? tabSelected}`)}
-          </p>
           {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (

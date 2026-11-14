@@ -214,13 +214,6 @@ export const translationHans = {
       history: "历史",
       coverage: "覆盖",
     },
-    descriptions: {
-      review: "所有作品中等待审核的 AI 翻译。能翻译某个类别的人即可审核该类别。",
-      running: "正在运行或已排队的翻译，按作品和语言显示。",
-      attention: "失败或结果未知的项目。可重新发送或忽略。",
-      history: "已完成的翻译写入了什么，按时间从新到旧排列，并显示所属作品。",
-      coverage: "每个作品在某种语言下的覆盖程度。可一起翻译所选作品。",
-    },
     running: "运行中",
     queued: "已排队",
     runStatus: {

@@ -214,24 +214,12 @@ export const surfaceJapanese = {
     dlsiteFilter: "DLsite 作品の絞り込み",
     workCount_one: "{{count}} 作品",
     workCount_other: "{{count}} 作品",
-    viewDescriptions: {
-      catalog: "カタログメタデータを保存したすべての作品。作品ファミリーごとに 1 行です。",
-      all: "メタデータまたはファイルソースの対応が必要な作品。",
-      metadata: "DLsite と一度も同期していない、または前回の更新に失敗した作品。",
-      no_source: "ローカルフォルダー、キャッシュ、リモートソースのどれからも再生できない作品。",
-      custom: "作品コードのないライブラリフォルダーで管理する独自の作品。",
-      translation: "各作品が目標言語でどこまで揃っているか。",
-      tags: "共有タグと各言語での名前。",
-      circles: "メーカー ID 順のサークルと、既知の名前や統合。",
-      aliases: "声優の別名と重複。",
-    },
     catalogDescription: "保存済みの作品メタデータを作品ファミリーごとに表示します。",
     catalogEmpty: "保存済みの作品メタデータはありません。",
 
     settings: "メタデータ設定",
     voiceAliases: "声優",
     voiceAliasesTitle: "声優",
-    voiceAliasesDescription: "声優ごとの別名を確認し、重複した人物を統合します。検索は名前と別名に一致します。",
     searchVoices: "声優を検索",
     searchVoicesPlaceholder: "名前または別名",
     noMatchingVoices: "一致する声優はありません",
@@ -682,8 +670,6 @@ export const surfaceJapanese = {
     accessPolicySaveFailed: "アクセス設定を保存できませんでした。",
     asr: {
       title: "音声認識サービス",
-      description:
-        "OpenAI 互換の文字起こし API を使い、ローカルのトラックをタイムスタンプ付きの歌詞に文字起こしします。音声は文字起こしを開始したときにだけ送信されます。",
       refresh: "再読み込み",
       add: "サービスを追加",
       addTitle: "音声認識サービスを追加",
@@ -785,7 +771,6 @@ export const surfaceJapanese = {
       blocked: "禁止",
       ruleFields: { title: "タイトル", description: "説明", tags: "タグ", lyrics: "歌詞", all: "すべてのテキスト" },
       title: "LLM プロバイダー",
-      description: "翻訳モデルを設定します。選択したフィールドだけが指定したエンドポイントに送信されます。",
       refresh: "更新",
       provider: "プロバイダー",
       providerDescription: "組み込みサービスまたは互換プロトコルを選択します。",
@@ -836,8 +821,6 @@ export const surfaceJapanese = {
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
       attributionTitle: "AI 歌詞",
       attribution: "AI が作成した歌詞にモデル名を記載",
-      attributionDescription:
-        "音声認識または翻訳で作成した歌詞ファイルの先頭に、作成したモデル名を歌詞の言語で記した行を入れます。変更後に作成するファイルに適用されます。",
       alwaysScanAllAges: "全年齢作品もスキャン",
       alwaysScanAllAgesDescription:
         "全年齢作品にも追加のセンシティブなキーワードチェックを行います。高センシティブ・禁止ルールは常に確認します。LLM のテキストのみのモードでは適用可能な全キーワードを確認し、この設定は ASR にも適用されます。",
@@ -938,18 +921,10 @@ export const surfaceJapanese = {
       configuration: "設定",
       policy: "キャッシュ方針",
       remotePlayback: "リモート再生をキャッシュ",
-      remotePlaybackDescription: "リモートで再生したメディアを後の再生用にローカル保存します。",
       limit: "キャッシュ上限",
-      limitDescription: "管理対象再生キャッシュの最大合計サイズです。",
       transcodeLimit: "変換キャッシュ上限",
-      transcodeLimitDescription:
-        "変換済み音声と HLS 動画セグメントが共有するキャッシュ上限です。最も長く未使用のファイルから削除します。",
       videoHardware: "動画の変換",
       transcodeSlots: "同時変換数",
-      transcodeSlotsDescription:
-        "サーバー全体で同時に実行する動画と音声の再生用変換の数です（1〜5）。これを超える変換は少し待ってから、サーバーが混雑していると伝えます。",
-      videoHardwareDescription:
-        "変換する動画を Intel GPU でエンコードできます。GPU がオフ、利用不可、または失敗したときは CPU のエンコーダーで再生します。",
       videoHardwareEncoder: "ハードウェアエンコーダー",
       videoHardwareEncoderDescription:
         "VA-API はほとんどの Intel GPU で動作します。Quick Sync Video には GPU に合ったランタイムが必要です。",
@@ -977,8 +952,6 @@ export const surfaceJapanese = {
       },
       transferSafety: "転送の安全性",
       downloadLimit: "ファイルごとのダウンロード上限",
-      downloadLimitDescription:
-        "Fetch、再生キャッシュ、その他のリモートメディアに適用する上限です。カバーは20 MiB固定です。",
       stagingRetention: "失敗した一時データの保持期間",
       stagingRetentionDescription: "失敗またはキャンセルしたFetchの未公開一時データを指定期間後に削除します。",
       downloadPacing: "リモートダウンロード間隔",
@@ -1187,8 +1160,6 @@ export const surfaceJapanese = {
       exampleCircles: "一致するサークル",
       exampleDislikedTags: "苦手な作品と共通のタグ",
       exampleFavorite: "お気に入り済み",
-      exampleNote:
-        "一致 1 件は根拠となる作品 1 件として数えます。実際のスコアでは、よくあるタグの重みが下がり、繰り返し現れる根拠は強まります。",
       decreaseExample: "{{name}}を減らす",
       increaseExample: "{{name}}を増やす",
       ordering: "並び順のばらつき",
@@ -1231,8 +1202,6 @@ export const surfaceJapanese = {
       hideRemoteAddresses: "ソースを管理しないアカウントからアドレスを隠す",
       hideRemoteAddressesDescription:
         "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやワークフローの実行に含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
-      lyricsFilesDescription:
-        "歌詞を管理 が、作品フォルダーにすでにある歌詞を Kikoto の lyrics_kikoto フォルダーに取り込む方法です。",
       folderLyricsMode: "作品フォルダーの歌詞",
       folderLyricsModeDescription:
         "コピーでは作品自身のファイルはそのまま残り、移動では元の場所から移されます。編集ごとに選ぶこともできます。",
@@ -1271,7 +1240,6 @@ export const surfaceJapanese = {
     },
     paths: {
       title: "ストレージパス",
-      description: "実行時のデフォルトと既存ソース設定から導出した読み取り専用のパスプレビューです。",
       localDataRoot: "ローカルデータルート",
       cacheRoot: "キャッシュルート",
       remoteCachePreview: "リモートキャッシュパスのプレビュー",
@@ -1280,8 +1248,6 @@ export const surfaceJapanese = {
     },
     proxy: {
       title: "プロキシ",
-      description:
-        "リクエストは上から順にプロキシを試し、最初に接続できたものを使います。どれにも接続できない場合は、直接接続せずに失敗します。",
       add: "プロキシを追加",
       empty: "プロキシはありません。外部へのリクエストは直接接続します。",
       localMachine: "このマシン",

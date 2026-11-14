@@ -121,8 +121,6 @@ export const personalHans = {
       },
       profile: {
         heading: "口味画像",
-        basis:
-          "你听的内容与资料库的对比。标签是收听时间占比高于资料库作品占比的那些；每个圆点表示你听的作品在资料库中所处的位置，按收听时长加权。",
         failed: "无法加载口味画像。",
         tags: "偏好标签",
         excess: "收听时长占比高出资料库占比的幅度",
@@ -217,11 +215,6 @@ export const personalHans = {
         failed: "无法加载收听日历。",
       },
       breakdown: {
-        basis: {
-          preference:
-            "按收听时间占比高出资料库作品占比的幅度排名；条形是前者，竖线是后者。一部作品会完整计入它的每个标签和声优。",
-          time: "按其作品的收听时长排名。一部作品会完整计入它的每个标签和声优。",
-        },
         rankLabel: "排名方式",
         ranks: {
           preference: "偏好度",
@@ -256,16 +249,11 @@ export const personalHans = {
     },
     userData: {
       exportTitle: "导出",
-      exportDescription:
-        "以 JSON 下载你的收听标记、个人评分和备注、续播位置、累计收听时长、作品标签、自定义标签定义和收藏列表。",
-      exportExcludes: "不包含媒体、来源、服务器信息、凭据、提供方元数据、原始收听会话和每日统计。",
       exportAction: "下载导出文件",
       exporting: "正在准备导出...",
       exported: "导出文件已保存。",
       exportFailed: "无法准备导出。",
       importTitle: "导入",
-      importDescription:
-        "按作品编号将作品与资料库中已有的作品和已知别名匹配。导入不会获取元数据，也不会添加资料库中尚不存在的作品。",
       source: "来源",
       sources: {
         kikoto: "Kikoto 导出文件",
@@ -390,7 +378,6 @@ export const personalHans = {
       },
       preview: "预览",
       previewing: "正在检查文件...",
-      previewStale: "更改文件、格式或冲突处理方式后，预览会更新。",
       previewCounts: {
         works: "文件中的作品",
         matchedWorks: "与资料库匹配",
@@ -419,8 +406,6 @@ export const personalHans = {
   },
   timeZone: {
     title: "时区",
-    description:
-      "收听报表里的一天从这个时区的午夜开始。「自动」跟随你正在使用的设备。已经记录的收听保留当时计入的日期。",
     auto: "自动（{{zone}}）",
     saveFailed: "无法保存时区。",
     loadFailed: "无法加载时区。",

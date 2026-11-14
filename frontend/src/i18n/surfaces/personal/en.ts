@@ -123,8 +123,6 @@ export const personalEnglish = {
       },
       profile: {
         heading: "Taste profile",
-        basis:
-          "What you listen to, compared with your Library. Tags are the ones that take a larger share of your listening time than of the Library's works; each marker shows where your works sit among the Library's, weighted by listening time.",
         failed: "The taste profile could not be loaded.",
         tags: "Preferred tags",
         excess: "Share of listening time above share of the Library",
@@ -222,11 +220,6 @@ export const personalEnglish = {
         failed: "The listening calendar could not be loaded.",
       },
       breakdown: {
-        basis: {
-          preference:
-            "Ranked by how far their share of your listening time exceeds their share of the library's works; the bar is the first and the mark is the second. A work counts in full toward each of its tags and voices.",
-          time: "Ranked by the listening time of their works. A work counts in full toward each of its tags and voices.",
-        },
         rankLabel: "Ranking",
         ranks: {
           preference: "Preference",
@@ -261,17 +254,11 @@ export const personalEnglish = {
     },
     userData: {
       exportTitle: "Export",
-      exportDescription:
-        "Download your listening marks, personal ratings and notes, resume positions, lifetime listening totals, work tags, custom tag definitions, and favorite lists as JSON.",
-      exportExcludes:
-        "Media, sources, server details, credentials, provider metadata, raw listening sessions, and daily statistics are not included.",
       exportAction: "Download export",
       exporting: "Preparing export...",
       exported: "Export saved.",
       exportFailed: "The export could not be prepared.",
       importTitle: "Import",
-      importDescription:
-        "Works match existing library works and known aliases by product code. Import never fetches metadata or adds works that are not already in the library.",
       source: "Source",
       sources: {
         kikoto: "Kikoto export file",
@@ -405,7 +392,6 @@ export const personalEnglish = {
       },
       preview: "Preview",
       previewing: "Checking the file...",
-      previewStale: "The preview updates when the file, format, or conflict choice changes.",
       previewCounts: {
         works: "Works in file",
         matchedWorks: "Matched in library",
@@ -435,8 +421,6 @@ export const personalEnglish = {
   },
   timeZone: {
     title: "Time zone",
-    description:
-      "A day in your listening report starts at midnight in this time zone. Automatic follows the device you are using. Listening already recorded keeps the day it was counted on.",
     auto: "Automatic ({{zone}})",
     saveFailed: "The time zone could not be saved.",
     loadFailed: "The time zone could not be loaded.",

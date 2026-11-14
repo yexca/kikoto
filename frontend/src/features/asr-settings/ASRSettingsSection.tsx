@@ -141,7 +141,6 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
     <div className="space-y-6">
       <SettingsSection
         title={t("maintenance.asr.title")}
-        description={t("maintenance.asr.description")}
         action={
           <>
             <Button

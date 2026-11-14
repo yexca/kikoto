@@ -12,8 +12,8 @@ import { OperationSchedule } from "./OperationSchedule";
 import { OperationStatus } from "./OperationStatus";
 
 /**
- * One operation as a card: what it does, what starts it on its own, its
- * state, and Run. An operation that runs incrementally offers Full beside Run,
+ * One operation as a card: its name, what starts it on its own, its state,
+ * and Run. An operation that runs incrementally offers Full beside Run,
  * which applies to the next run only. An operation with options of its own
  * opens them from the button beside its name and names them while they differ
  * from the defaults.
@@ -22,7 +22,6 @@ export function OperationCard({
   code,
   icon: Icon,
   name,
-  summary,
   schedule,
   state,
   moreActive,
@@ -38,7 +37,6 @@ export function OperationCard({
   code: string;
   icon: LucideIcon;
   name: string;
-  summary: string;
   /** What starts the operation on its own; null when it runs only by hand. */
   schedule: TriggerSummary | null;
   state: OperationState;
@@ -75,12 +73,9 @@ export function OperationCard({
     >
       <div className="flex min-w-0 items-start gap-3">
         <Icon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <h3 id={nameId} className="text-sm font-semibold leading-5">
-            {name}
-          </h3>
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{summary}</p>
-        </div>
+        <h3 id={nameId} className="min-w-0 flex-1 text-sm font-semibold leading-5">
+          {name}
+        </h3>
         {options && (
           <Button
             size="icon-sm"
@@ -100,7 +95,7 @@ export function OperationCard({
         {options?.summary && <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{options.summary}</p>}
       </div>
       <div className="mt-auto flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
-        {full ? (
+        {full && (
           <div className="flex min-w-0 items-center gap-2">
             <Switch
               id={fullId}
@@ -113,8 +108,6 @@ export function OperationCard({
               {t("workflowPage.cards.full")}
             </label>
           </div>
-        ) : (
-          <p className="min-w-0 text-xs text-muted-foreground">{t("workflowPage.cards.scanAlwaysFull")}</p>
         )}
         {locked ? (
           <Button size="sm" variant="outline" className="ml-auto min-w-[5.5rem]" disabled>

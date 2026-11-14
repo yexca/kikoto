@@ -477,8 +477,8 @@ export function MaintenancePage({
                 title={t("maintenance.library.scanDepth")}
                 description={
                   (settings?.localScanDepthMinimum ?? 1) > 1
-                    ? `${t("sourceSetup.scanDepthDescription")} ${t("librarySetup.scanDepthMinimum", { count: settings?.localScanDepthMinimum ?? 1 })}`
-                    : t("sourceSetup.scanDepthDescription")
+                    ? t("librarySetup.scanDepthMinimum", { count: settings?.localScanDepthMinimum ?? 1 })
+                    : undefined
                 }
               >
                 <SettingsNumberInput
@@ -495,7 +495,7 @@ export function MaintenancePage({
               </SettingsRow>
               <SettingsRow
                 title={t("maintenance.library.folderLyricsMode")}
-                description={`${t("maintenance.library.lyricsFilesDescription")} ${t("maintenance.library.folderLyricsModeDescription")}`}
+                description={t("maintenance.library.folderLyricsModeDescription")}
               >
                 <FloatingSelect
                   value={draft.folderLyricsMode}
@@ -736,10 +736,7 @@ function CacheFetchSettings({
   return (
     <div className="space-y-10" data-testid="cache-configuration-card">
       <SettingsSection title={t("maintenance.cache.policy")} action={<AutosaveStatus state={policyStatus.state} />}>
-        <SettingsRow
-          title={t("maintenance.cache.remotePlayback")}
-          description={t("maintenance.cache.remotePlaybackDescription")}
-        >
+        <SettingsRow title={t("maintenance.cache.remotePlayback")}>
           <Switch
             checked={draft.cacheEnabled}
             disabled={readOnly}
@@ -750,7 +747,7 @@ function CacheFetchSettings({
             aria-label={t("maintenance.cache.remotePlayback")}
           />
         </SettingsRow>
-        <SettingsRow title={t("maintenance.cache.limit")} description={t("maintenance.cache.limitDescription")}>
+        <SettingsRow title={t("maintenance.cache.limit")}>
           <SettingsNumberInput
             disabled={readOnly}
             label={t("maintenance.cache.limit")}
@@ -762,10 +759,7 @@ function CacheFetchSettings({
             onCommit={commitPolicy("cacheLimitGb")}
           />
         </SettingsRow>
-        <SettingsRow
-          title={t("maintenance.cache.transcodeLimit")}
-          description={t("maintenance.cache.transcodeLimitDescription")}
-        >
+        <SettingsRow title={t("maintenance.cache.transcodeLimit")}>
           <SettingsNumberInput
             disabled={readOnly}
             label={t("maintenance.cache.transcodeLimit")}
@@ -779,7 +773,7 @@ function CacheFetchSettings({
           />
         </SettingsRow>
         {canManageCleanup && (
-          <SettingsRow title={t("sourceSetup.cleanupLinkTitle")} description={t("sourceSetup.cleanupLinkDescription")}>
+          <SettingsRow title={t("sourceSetup.cleanupLinkTitle")}>
             <Button variant="outline" size="sm" onClick={openCleanup}>
               <Eraser className="h-4 w-4" />
               {t("cleanup.tab")}
@@ -793,10 +787,7 @@ function CacheFetchSettings({
         title={t("maintenance.cache.transferSafety")}
         action={<AutosaveStatus state={transferStatus.state} />}
       >
-        <SettingsRow
-          title={t("maintenance.cache.downloadLimit")}
-          description={t("maintenance.cache.downloadLimitDescription")}
-        >
+        <SettingsRow title={t("maintenance.cache.downloadLimit")}>
           <SettingsNumberInput
             disabled={readOnly}
             label={t("maintenance.cache.downloadLimit")}
@@ -836,7 +827,6 @@ function CacheFetchSettings({
             base: draft.remoteDelayBaseSeconds,
             random: draft.remoteDelayRandomSeconds,
           })}
-          description={t("sourceSetup.pacingDescription")}
         >
           <SettingsRow
             title={t("maintenance.cache.baseDelay")}
@@ -943,7 +933,7 @@ function StoragePaths({ settings, remoteSources }: { settings: AppSettings | nul
   ];
   return (
     <div className="border-y">
-      <SettingsDisclosure title={t("maintenance.paths.title")} description={t("maintenance.paths.description")}>
+      <SettingsDisclosure title={t("maintenance.paths.title")}>
         {rows.map(([label, value], index) => (
           <label
             key={`${label}:${index}`}

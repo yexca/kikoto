@@ -63,8 +63,8 @@ function ExportSection() {
   };
 
   return (
-    <SettingsSection title={t("personal.userData.exportTitle")} description={t("personal.userData.exportDescription")}>
-      <SettingsRow title={t("personal.userData.exportAction")} description={t("personal.userData.exportExcludes")}>
+    <SettingsSection title={t("personal.userData.exportTitle")}>
+      <SettingsRow title={t("personal.userData.exportAction")}>
         <Button variant="outline" onClick={() => void download()} disabled={status === "running"}>
           {status === "running" ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -165,7 +165,6 @@ function ImportSection({ enabled }: { enabled: boolean }) {
   return (
     <SettingsSection
       title={t("personal.userData.importTitle")}
-      description={t("personal.userData.importDescription")}
       footer={
         <Button onClick={() => void runImport()} disabled={!enabled || !canImport(state)}>
           {importing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
@@ -364,11 +363,7 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
     );
   }
   const preview = state.preview;
-  if (preview.status === "idle") {
-    return state.data ? null : (
-      <p className="py-3 text-xs text-muted-foreground">{t("personal.userData.previewStale")}</p>
-    );
-  }
+  if (preview.status === "idle") return null;
   if (preview.status === "loading") {
     return (
       <div role="status" className="flex items-center gap-2 py-3 text-sm text-muted-foreground">

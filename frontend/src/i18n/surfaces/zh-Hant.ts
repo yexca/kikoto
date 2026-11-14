@@ -204,24 +204,12 @@ export const surfaceHant = {
     dlsiteFilter: "篩選 DLsite 作品",
     workCount_one: "{{count}} 部作品",
     workCount_other: "{{count}} 部作品",
-    viewDescriptions: {
-      catalog: "所有已儲存目錄中繼資料的作品，每個作品系列一列。",
-      all: "中繼資料或檔案來源需要處理的作品。",
-      metadata: "從未與 DLsite 同步，或上次更新失敗的作品。",
-      no_source: "本機資料夾、快取和遠端來源都無法播放的作品。",
-      custom: "保存在不含作品編號的媒體庫資料夾中的自訂作品。",
-      translation: "每部作品在目標語言下的完整程度。",
-      tags: "共用標籤及其各語言名稱。",
-      circles: "依社團編號排列的社團，含已知名稱與合併。",
-      aliases: "聲優的別名與重複項目。",
-    },
     catalogDescription: "依作品系列彙整顯示所有已儲存的作品中繼資料。",
     catalogEmpty: "尚無已儲存的作品中繼資料。",
 
     settings: "中繼資料設定",
     voiceAliases: "聲優",
     voiceAliasesTitle: "聲優",
-    voiceAliasesDescription: "檢視每位聲優的別名並合併重複人物。搜尋會比對名稱與別名。",
     searchVoices: "搜尋聲優",
     searchVoicesPlaceholder: "名稱或別名",
     noMatchingVoices: "沒有符合的聲優",
@@ -660,7 +648,6 @@ export const surfaceHant = {
     accessPolicySaveFailed: "無法儲存存取原則。",
     asr: {
       title: "語音辨識服務",
-      description: "透過 OpenAI 相容的轉寫介面，將本機音軌轉寫為帶時間軸的歌詞。只有在有人開始轉寫時才會傳送音訊。",
       refresh: "重新整理",
       add: "新增服務",
       addTitle: "新增語音辨識服務",
@@ -755,7 +742,6 @@ export const surfaceHant = {
       blocked: "禁止",
       ruleFields: { title: "標題", description: "描述", tags: "標籤", lyrics: "歌詞", all: "全部文字" },
       title: "LLM 服務商",
-      description: "設定翻譯模型。只有選取的欄位會傳送到設定的端點。",
       refresh: "重新整理",
       provider: "服務商",
       providerDescription: "選擇內建服務或相容協定。",
@@ -805,8 +791,6 @@ export const surfaceHant = {
       policySaveFailed: "無法儲存內容安全策略。",
       attributionTitle: "AI 歌詞",
       attribution: "在 AI 產生的歌詞中標明模型",
-      attributionDescription:
-        "由語音辨識或翻譯產生的歌詞檔案，開頭會有一行以歌詞語言寫出的、標明產生模型的文字。變更後產生的檔案適用此選擇。",
       alwaysScanAllAges: "也掃描全年齡作品",
       alwaysScanAllAgesDescription:
         "對全年齡作品也執行額外的敏感關鍵字檢查。高敏感和禁止規則一律檢查。LLM 僅檢查文字模式一律檢查所有適用關鍵字，此選項仍適用於 ASR。",
@@ -903,17 +887,10 @@ export const surfaceHant = {
       configuration: "設定",
       policy: "快取原則",
       remotePlayback: "快取遠端播放",
-      remotePlaybackDescription: "將遠端播放的媒體儲存在本機，以供後續播放。",
       limit: "快取上限",
-      limitDescription: "託管播放快取的最大總大小。",
       transcodeLimit: "轉碼快取上限",
-      transcodeLimitDescription: "轉換後的音訊與 HLS 影片分段共用的快取上限。最久未使用的檔案優先移除。",
       videoHardware: "影片轉換",
       transcodeSlots: "同時轉換數",
-      transcodeSlotsDescription:
-        "整個伺服器同時執行的影片和音訊播放轉換數量，範圍 1 到 5。超出的轉換會短暫等待，然後提示伺服器忙碌。",
-      videoHardwareDescription:
-        "可以用 Intel GPU 編碼需要轉換的影片。GPU 關閉、無法使用或失敗時，播放使用 CPU 編碼器。",
       videoHardwareEncoder: "硬體編碼器",
       videoHardwareEncoderDescription: "VA-API 適用於大多數 Intel GPU。Quick Sync Video 需要與 GPU 相符的執行階段。",
       videoHardwareNone: "關閉（CPU）",
@@ -939,7 +916,6 @@ export const surfaceHant = {
       },
       transferSafety: "傳輸安全",
       downloadLimit: "單檔下載上限",
-      downloadLimitDescription: "對取得、播放快取和其他遠端媒體串流套用硬性上限。封面使用固定的 20 MiB 上限。",
       stagingRetention: "失敗暫存保留時間",
       stagingRetentionDescription: "取得失敗或取消後，未發佈的暫存資料超過此時間將被移除。",
       downloadPacing: "遠端下載節奏",
@@ -1145,7 +1121,6 @@ export const surfaceHant = {
       exampleCircles: "相符的社團",
       exampleDislikedTags: "與不喜歡作品共有的標籤",
       exampleFavorite: "已收藏",
-      exampleNote: "每個相符項目按一部支持作品計算。實際分數還會降低常見標籤的權重，並強化重複出現的依據。",
       decreaseExample: "減少{{name}}",
       increaseExample: "增加{{name}}",
       ordering: "排序變化",
@@ -1187,7 +1162,6 @@ export const surfaceHant = {
       hideRemoteAddresses: "對不管理來源的帳號隱藏位址",
       hideRemoteAddressesDescription:
         "開啟後，沒有來源管理權限的帳號和未登入的訪客不會收到來源的 API、網站或備用位址、作品在來源網站上的連結，以及曲目和工作流程執行中的上游網址。瀏覽、播放、封面和文字預覽改由本伺服器轉送。",
-      lyricsFilesDescription: "管理歌詞如何把作品資料夾中已有的歌詞放入 Kikoto 的 lyrics_kikoto 資料夾。",
       folderLyricsMode: "作品資料夾中的歌詞",
       folderLyricsModeDescription: "複製會把作品本身的檔案留在原處；移動會把它們從原位置移走。每次編輯仍可個別選擇。",
       creatorCatalogs: "創作者目錄",
@@ -1224,7 +1198,6 @@ export const surfaceHant = {
     },
     paths: {
       title: "儲存路徑",
-      description: "這些解析後的路徑是根據執行階段預設值和現有來源設定產生的唯讀預覽。",
       localDataRoot: "本機資料根目錄",
       cacheRoot: "快取根目錄",
       remoteCachePreview: "遠端快取路徑預覽",
@@ -1233,8 +1206,6 @@ export const surfaceHant = {
     },
     proxy: {
       title: "代理",
-      description:
-        "要求會由上到下依序嘗試這些代理，並使用第一個能連線的代理。全部無法連線時要求會失敗，而不會改為直接連線。",
       add: "新增代理",
       empty: "沒有代理。外部要求將直接連線。",
       localMachine: "本機",
