@@ -233,6 +233,10 @@
   and **Select works**; on a phone the search field stays on show and **View**
   opens as a sheet. A caption before the order states the matching works and
   the page; only the bottom page bar turns pages.
+- The image viewer zooms to any size up to eight times actual size with the
+  mouse wheel, a trackpad or two-finger pinch, and the `+`, `-`, and `0`
+  keys, keeping the point under the pointer or fingers in place. A click
+  still switches between fit and actual size.
 
 </details>
 

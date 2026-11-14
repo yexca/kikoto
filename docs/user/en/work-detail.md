@@ -554,9 +554,12 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   metric.
 - Opens previews in a file viewer that steps through the folder's files of the
   same kind with header controls, arrow keys, swipes on phones, or an image
-  filmstrip. Images sit on a dark stage that fits the window or shows actual
-  size around the clicked point with drag panning, and report their
-  dimensions; video uses the same stage. Text opens in a reading view, and LRC,
+  filmstrip. Images sit on a dark stage that fits the window and report their
+  dimensions. A click shows actual size around the clicked point and a second
+  click fits again; the mouse wheel, a trackpad or two-finger pinch, and the
+  `+`, `-`, and `0` keys zoom to any size up to eight times actual size around
+  the pointer or fingers, and dragging pans. Video uses the same stage. Text
+  opens in a reading view, and LRC,
   WebVTT, and SRT files show time-stamped lines, with LRC header tags and a Raw
   text toggle, parsed the same way as the player's lyrics. The viewer offers
   Copy for text, Download for local and cached files, and Set cover for local

@@ -502,6 +502,91 @@ test("image viewer steps through the folder's images and confirms a cover change
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("@desktop image viewer zooms to any scale with the wheel and returns to fit", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const mediaItems = [mediaFixture(1, "01.mp3", "RJ00000000/Main/01.mp3", "audio"), imageFixture(2, "scan.png")];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.route("**/api/media/2/asset**", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><rect width="100%" height="100%" fill="#888"/></svg>',
+    }),
+  );
+  await page.goto("/RJ00000000");
+  await page.getByRole("button", { name: "Show folders" }).click();
+  await page
+    .getByRole("dialog", { name: "Folders" })
+    .getByRole("button", { name: /^Images/ })
+    .click();
+  await page.getByTestId("directory-file-row").filter({ hasText: "scan.png" }).click();
+
+  const viewer = page.getByRole("dialog", { name: "scan.png" });
+  const image = viewer.getByRole("img", { name: "scan.png" });
+  await expect(viewer.getByText(/1600 × 1200/)).toBeVisible();
+  // Layout width ignores the dialog's opening zoom transform.
+  const layoutWidth = () => image.evaluate((element) => element.clientWidth);
+  const fitted = await layoutWidth();
+  expect(fitted).toBeLessThan(1600);
+
+  // Each wheel step zooms a little further, past the fitted size but not straight to actual size.
+  const box = (await image.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -100);
+  await expect(viewer.getByRole("button", { name: "Fit to window" })).toBeVisible();
+  await expect.poll(layoutWidth).toBeGreaterThan(fitted);
+  const stepped = await layoutWidth();
+  expect(stepped).toBeLessThan(1600);
+  await page.mouse.wheel(0, -100);
+  await expect.poll(layoutWidth).toBeGreaterThan(stepped);
+
+  await page.keyboard.press("0");
+  await expect(viewer.getByRole("button", { name: "Actual size" })).toBeVisible();
+  await expect.poll(layoutWidth).toBe(fitted);
+});
+
+test("image viewer pinches to any scale on phones", async ({ page }) => {
+  const mediaItems = [mediaFixture(1, "01.mp3", "RJ00000000/Main/01.mp3", "audio"), imageFixture(2, "scan.png")];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.route("**/api/media/2/asset**", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><rect width="100%" height="100%" fill="#888"/></svg>',
+    }),
+  );
+  await page.goto("/RJ00000000");
+  await page.getByRole("button", { name: "Show folders" }).click();
+  await page
+    .getByRole("dialog", { name: "Folders" })
+    .getByRole("button", { name: /^Images/ })
+    .click();
+  await page.getByTestId("directory-file-row").filter({ hasText: "scan.png" }).click();
+
+  const viewer = page.getByRole("dialog", { name: "scan.png" });
+  const image = viewer.getByRole("img", { name: "scan.png" });
+  await expect(viewer.getByText(/1600 × 1200/)).toBeVisible();
+  const layoutWidth = () => image.evaluate((element) => element.clientWidth);
+  const fitted = await layoutWidth();
+
+  // Two fingers spreading apart from the middle of the image zoom it in step with the gesture.
+  const box = (await image.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const touch = await page.context().newCDPSession(page);
+  const fingers = (spread: number) => [
+    { x: x - spread, y, id: 1 },
+    { x: x + spread, y, id: 2 },
+  ];
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: fingers(20) });
+  for (const spread of [30, 40, 50, 60]) {
+    await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: fingers(spread) });
+  }
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+  await expect(viewer.getByRole("button", { name: "Fit to window" })).toBeVisible();
+  await expect.poll(layoutWidth).toBeGreaterThan(fitted * 2.5);
+  await expect.poll(layoutWidth).toBeLessThan(fitted * 3.5);
+});
+
 test("@desktop file viewer opens above the floating full player", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio"), imageFixture(2, "cover.jpg", "")];
