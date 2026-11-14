@@ -978,10 +978,17 @@ test("Workflows lists what is started by hand and leaves Discover's workflows to
     "Sync work metadata",
   ]);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
-  // At rest an operation shows no options, triggers, or run history.
+  // At rest an operation shows no options or triggers, only what starts it on its own.
   await expect(page.getByRole("region", { name: "Run options", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+  await expect(operation(page, "Scan local library")).toContainText("At startup·Watching folders");
   await expect(operation(page, "Sync work metadata")).toContainText("Never run");
+  await expect(operation(page, "Sync work metadata")).not.toContainText("Fetch titles, covers");
+  // What an operation does opens with its options.
+  await openWorkflow(page, "Sync work metadata");
+  await expect(operation(page, "Sync work metadata")).toContainText(
+    "Fetch titles, covers, circles, and tags for works in the library.",
+  );
 
   // An operation's state opens its latest run in Activity, and Back returns to Workflows.
   await operation(page, "Scan local library")

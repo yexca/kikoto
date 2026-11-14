@@ -10,8 +10,12 @@ Workflows make backend actions inspectable.
   work metadata), **Catalogs** (the catalog sync presets), and **Remote
   sources** (Fetch and Check works on a source). There is no custom workflow
   editor.
-- Each operation is one row: its name, one sentence about it, its state, and
-  a run control. The state reads **Never run**, **Starting**, **Queued**,
+- Each operation is one row: its name, what starts it on its own, its state,
+  and a run control. The line under the name lists its automatic starts, such
+  as **At startup**, **Watching folders**, or **Every 6 hours**, with when the
+  next scheduled run is due, or says **Automatic runs paused** when every
+  trigger is off. An operation that runs only by hand has no such line. The
+  state reads **Never run**, **Starting**, **Queued**,
   **Running** with its progress, or how the latest run ended and when, such as
   **Succeeded** or **Failed**. **Needs review** marks a run with items that
   wait for a decision. Select the state to open that run in Activity.
@@ -26,8 +30,9 @@ Workflows make backend actions inspectable.
   or in another browser shows on its operation the same way. An operation that
   needs an input, such as a work code or a circle, shows **Run…**, which opens
   its options.
-- **Options** opens, below the row, the operation's Run options with their own
-  **Run**, its triggers, and its run history. One operation is open at a time.
+- **Options** opens, below the row, one sentence on what the operation does
+  with **All runs**, its Run options with their own **Run**, and its triggers.
+  One operation is open at a time.
   Phones show the same list.
 - When runs need attention, a line at the top of Workflows says how many and
   opens them in Activity.
@@ -173,10 +178,7 @@ administrators.
   **Run** on the row uses the defaults: no follow-up run for the local scan,
   Incremental for local work files, and all works from DLsite with Missing or
   outdated for metadata sync.
-- **Run history** closes the options: a bar chart of the latest 20 runs'
-  durations, oldest first. Ordinary successes stay neutral so failures and
-  partial runs stand out; hover a bar for its details and select it to open
-  the run. **All runs** opens Activity with only this operation's runs; choose
+- **All runs** opens Activity with only this operation's runs; choose
   **All workflows** in Activity's menu to show every workflow again. A run's
   steps and its log are in its details in Activity.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and

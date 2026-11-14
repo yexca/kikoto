@@ -776,34 +776,6 @@
     background-clip: content-box;
   }
 
-  /* Run history strip: the label stacks above the bars in a narrow panel and sits beside them when wide. */
-  .workflow-history {
-    container-type: inline-size;
-  }
-
-  .workflow-history-strip {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  @container (min-width: 44rem) {
-    .workflow-history-strip {
-      flex-direction: row;
-      align-items: flex-end;
-      gap: 1.5rem;
-    }
-
-    .workflow-history-label {
-      width: 14rem;
-      flex-shrink: 0;
-    }
-
-    .workflow-history-bars {
-      flex: 1 1 0%;
-    }
-  }
-
   /* Run form: a narrow panel stacks each label above its control instead of beside it. */
   .workflow-options {
     container-type: inline-size;

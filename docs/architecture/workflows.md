@@ -427,8 +427,11 @@ Watch, and the subscription refresh, all on the Discover page) and a system
 workflow nobody starts by hand, such as Learn tag names, are not operations:
 the page does not list them, and Activity keeps their runs.
 
-An operation at rest is one row: its name, one sentence, its state, and one
-run control. The state is one of never run, starting, queued, running with its
+An operation at rest is one row: its name, what starts it on its own, its
+state, and one run control. The line under the name lists its enabled
+triggers (at startup, watching folders, each interval schedule) with the
+soonest next scheduled run, says automatic runs are paused when every trigger
+is off, and is absent for an operation that runs only by hand. The state is one of never run, starting, queued, running with its
 progress (finished jobs for a bulk run, otherwise the stage out of the
 workflow's stages, and for a Fetch its transferred share), or how and when the
 latest run ended. A run that still waits for a candidate decision or a
@@ -462,6 +465,9 @@ an input (Fetch, works on a source, the catalog sync presets) opens its
 options instead. **Options** opens, below the row and one operation at a time,
 what the row keeps off it:
 
+- One sentence on what the operation does, beside **All runs**, which opens
+  Activity narrowed to that operation. A run's history, steps, and log are in
+  Activity.
 - The run form: the Run options, then a run bar holding Run, any workflow
   action, and the first reason Run is unavailable. The bar sticks above the
   page's fixed bottom controls while a long form scrolls, and takes the place
@@ -472,9 +478,6 @@ what the row keeps off it:
 - The triggers that start it on their own, each stating when it next does. A
   preset has none and links to Discover, where a subscription follows a circle,
   series, or voice actor on a schedule.
-- A duration strip of its latest 20 runs, where ordinary successes stay
-  neutral so failures, partial results, and active runs stand out, and **All
-  runs**, which opens Activity narrowed to that operation.
 
 The open operation is the page's linked state (`?workflow=<code>`), which a
 run-form link from another page also carries with its prefilled target. A

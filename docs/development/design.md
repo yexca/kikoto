@@ -273,16 +273,17 @@ field rhythm, and destructive-action placement. No form, table, or section
 defines its own width.
 
 A page of operations lists them in sections like settings sections, one row
-each. At rest a row holds only what answers "what is this, how is it, and can
-I start it": a name, one sentence, a state, and one quiet run control. No row
+each. At rest a row holds only what answers "what is this, does it run on its
+own, how is it, and can I start it": a name, a line naming its automatic
+starts (none for a manual operation), a state, and one quiet run control. No row
 is the page's primary action. The state names idle, queued, running with its
 progress, and how and when the last run ended; a failed or waiting outcome
 keeps its status color on the row and leads to the run's details. A running
 operation shows so on its row, wherever the run was started. An operation that
 covers the whole library cannot be started again until its run ends; one that
 acts on a target accepts another target meanwhile, so the page never blocks
-work the backend would queue. Options, schedules, and history open below the
-row on demand, one operation at a time, and the primary Run sits with the
+work the backend would queue. What it does, its options, and its schedules
+open below the row on demand, one operation at a time, and the primary Run sits with the
 options it will use. A new operation is a new row in a section, not a new
 destination or a card.
 

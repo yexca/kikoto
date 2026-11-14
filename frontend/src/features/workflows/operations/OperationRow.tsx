@@ -3,21 +3,24 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import type { TriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import type { WorkflowRun } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
 import type { OperationState } from "./operationModel";
+import { OperationSchedule } from "./OperationSchedule";
 import { OperationStatus } from "./OperationStatus";
 
 /**
- * One operation. At rest it is a name, one sentence, its state, and one run
- * control; its options, schedule, and run history open below it on demand.
+ * One operation. At rest it is a name, what starts it on its own, its state,
+ * and one run control; what it does, its options, and its triggers open below
+ * it on demand.
  */
 export function OperationRow({
   code,
   icon: Icon,
   name,
-  summary,
+  schedule,
   state,
   moreActive,
   locked,
@@ -34,7 +37,8 @@ export function OperationRow({
   code: string;
   icon: LucideIcon;
   name: string;
-  summary: string;
+  /** What starts the operation on its own; null when it runs only by hand. */
+  schedule: TriggerSummary | null;
   state: OperationState;
   moreActive: number;
   /** The operation cannot be started now, such as while an exclusive operation runs. */
@@ -81,7 +85,7 @@ export function OperationRow({
             <h3 id={nameId} className="text-sm font-medium leading-5">
               {name}
             </h3>
-            <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{summary}</p>
+            <OperationSchedule summary={schedule} />
           </div>
           <OperationStatus
             state={state}

@@ -6,6 +6,7 @@ import {
   workflowSystemTriggerConfig,
   workflowSystemTriggerConfigBlockers,
   workflowSystemTriggerConfigPayload,
+  workflowTriggerSummary,
 } from "./workflowTriggerModel";
 
 function trigger(configJson: string): WorkflowTrigger {
@@ -51,5 +52,40 @@ describe("source presence trigger config", () => {
     expect(
       workflowSystemTriggerConfigBlockers("source_presence_check", { ...config, sourceId: 1, limit: 1001 }),
     ).toHaveLength(1);
+  });
+});
+
+describe("workflowTriggerSummary", () => {
+  const scheduled = (minutes: number, nextRunAt: string | null, enabled = true): WorkflowTrigger => ({
+    ...trigger("{}"),
+    scheduleJson: JSON.stringify({ intervalMinutes: minutes }),
+    nextRunAt,
+    enabled,
+  });
+
+  it("names what starts an operation on its own and when it next runs", () => {
+    expect(
+      workflowTriggerSummary([
+        { ...trigger("{}"), triggerType: "startup" },
+        { ...trigger("{}"), triggerType: "filesystem_event", enabled: false },
+        scheduled(1440, "2026-07-15T00:00:00Z"),
+        scheduled(360, "2026-07-14T06:00:00Z"),
+        scheduled(90, null, false),
+      ]),
+    ).toEqual({
+      startup: true,
+      watching: false,
+      intervals: [
+        { unit: "hours", count: 6 },
+        { unit: "days", count: 1 },
+      ],
+      nextRunAt: "2026-07-14T06:00:00Z",
+      paused: false,
+    });
+  });
+
+  it("tells a manual-only operation from one whose triggers are all off", () => {
+    expect(workflowTriggerSummary([])).toBeNull();
+    expect(workflowTriggerSummary([scheduled(45, null, false)])).toMatchObject({ paused: true, intervals: [] });
   });
 });

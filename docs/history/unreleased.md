@@ -83,19 +83,22 @@
 
 - **Workflows** is one list of what you start by hand, grouped
   into Library, Catalogs, and Remote sources. Each operation is a row with its
-  name, one sentence, its state, and a run control, on phones as well, where
+  name, what starts it on its own (such as at startup or every 6 hours, with
+  the next scheduled run), its state, and a run control, on phones as well, where
   the page no longer starts with a list to choose a workflow from.
 - **Run** starts an operation with its default options and the row shows the
   run at once. The local scan and local work files cannot be started again
   until their run ends; Fetch, metadata sync, works on a source, and the
   catalog syncs can queue another target while one runs, and the row counts
   the runs it is not showing. A run started by a schedule, at startup, or in
-  another browser shows on its operation the same way. A failure stays on the operation and opens its run in Activity.
-- **Options** opens an operation's Run options, triggers, and run history
-  below its row. Operations that need an input, such as Fetch and the catalog
+  another browser shows on its operation the same way. A failure stays on the
+  operation and opens its run in Activity.
+- **Options** opens, below its row, one sentence on what the operation does
+  with **All runs** for its runs in Activity, its Run options, and its
+  triggers. Operations that need an input, such as Fetch and the catalog
   syncs, open their options from **Run…**.
-- The status strip, the workflow list, and the **Latest run** card with its
-  stage list and streaming log are removed. A run's steps and log are in its
+- The status strip, the workflow list, the run duration chart, and the
+  **Latest run** card with its stage list and streaming log are removed. A run's steps and log are in its
   details in Activity.
 - The ranking pulls, Availability Watch, the subscription refresh, and Learn
   tag names are no longer listed; they are run from Discover or on their own,

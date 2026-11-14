@@ -1,5 +1,5 @@
 import { TriangleAlert } from "lucide-react";
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
@@ -19,7 +19,6 @@ import {
 import { OperationPanel } from "@/features/workflows/operations/OperationPanel";
 import { OperationRow } from "@/features/workflows/operations/OperationRow";
 import { useOperationRuns } from "@/features/workflows/operations/useOperationRuns";
-import { workflowHistorySize } from "@/features/workflows/RunHistoryStrip";
 import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
 import {
   activityPath,
@@ -36,7 +35,7 @@ import {
   type SystemRunOptions,
 } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import type { CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
+import { workflowTriggerSummary, type CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
 import { api, type WorkflowDefinition, type WorkflowPreset, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -105,15 +104,10 @@ export function WorkflowsPage({
   const [remoteSourceAvailability, setRemoteSourceAvailability] = useState<"loading" | "available" | "unavailable">(
     "loading",
   );
-  const [recentRuns, setRecentRuns] = useState<WorkflowRun[]>([]);
   const fetchWorkspace = useRemoteFetchWorkspace({
-    onWorksChanged: () => {
-      void refreshRecentRuns("remote_work_fetch");
-      setRevision((value) => value + 1);
-    },
+    onWorksChanged: () => setRevision((value) => value + 1),
   });
   const workflowMetaRequestSeq = useRef(0);
-  const recentRunsRequestSeq = useRef(0);
 
   const refresh = () => {
     const seq = ++workflowMetaRequestSeq.current;
@@ -204,28 +198,7 @@ export function WorkflowsPage({
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
 
-  const refreshRecentRuns = useCallback((workflowCode: string) => {
-    const seq = ++recentRunsRequestSeq.current;
-    return api
-      .listWorkflowRuns(1, workflowHistorySize, "", "", workflowCode)
-      .then((page) => {
-        if (seq === recentRunsRequestSeq.current) setRecentRuns(page.runs);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  // The open operation's run history reloads when its newest run changes, here or anywhere else.
   const openOperationCode = openOperation?.definition.code;
-  const openRun = openOperationCode ? runs.runOf(openOperationCode) : undefined;
-  const openRunSignature = openRun ? `${openRun.id}:${openRun.status}` : "";
-  useEffect(() => setRecentRuns([]), [openOperationCode]);
-  useEffect(() => {
-    if (!openOperationCode) return;
-    void refreshRecentRuns(openOperationCode);
-    return () => {
-      recentRunsRequestSeq.current += 1;
-    };
-  }, [openOperationCode, openRunSignature, refreshRecentRuns]);
 
   // A requested run that never shows up stops holding its operation.
   useEffect(() => {
@@ -423,6 +396,7 @@ export function WorkflowsPage({
       kind === "remote_fetch" && fetchWorkspace.isBusy ? { runId: null } : listed ? undefined : requested,
     );
     const locked = operationLocked(operation, state);
+    const operationTriggers = triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id);
     const expanded = openOperationCode === code;
     const permitted = kindPermitted(kind);
     const allowed = kindAllowed(kind);
@@ -433,11 +407,7 @@ export function WorkflowsPage({
         code={code}
         icon={workflowIcon(code)}
         name={t(`workflowPage.builtInDefinitions.${code}.name`, { defaultValue: definition.displayName })}
-        summary={t(`workflowPage.operations.summaries.${code}`, {
-          defaultValue: t(`workflowPage.builtInDefinitions.${code}.description`, {
-            defaultValue: definition.description,
-          }),
-        })}
+        schedule={workflowTriggerSummary(operationTriggers)}
         state={state}
         moreActive={Math.max(0, active.length - 1)}
         locked={locked}
@@ -452,10 +422,14 @@ export function WorkflowsPage({
       >
         <OperationPanel
           operation={operation}
+          summary={t(`workflowPage.operations.summaries.${code}`, {
+            defaultValue: t(`workflowPage.builtInDefinitions.${code}.description`, {
+              defaultValue: definition.description,
+            }),
+          })}
           state={state}
           preset={preset}
-          triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)}
-          recentRuns={recentRuns}
+          triggers={operationTriggers}
           allowed={allowed}
           readOnly={readOnly}
           canManageTriggers={!readOnly && definition.id > 0 && permitted}
@@ -465,7 +439,6 @@ export function WorkflowsPage({
           onRunRemoteFetch={runRemoteFetch}
           onRunPreset={(inputs) => runPreset(operation, inputs)}
           onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
-          onOpenRun={openActivityRun}
           onOpenRuns={() => openWorkflowPath(activityPath({ workflow: code }))}
           onOpenRemoteSourceSettings={openRemoteSourcesSettings}
           onCreateTrigger={(triggerType, anchor) => createAutomationTrigger(definition, triggerType, anchor)}

@@ -11,10 +11,8 @@ import {
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { RemoteFetchRunPanel } from "@/features/workflows/run-forms/RemoteFetchRunPanel";
 import { SourcePresenceRunPanel } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
-import { RunHistoryStrip } from "@/features/workflows/RunHistoryStrip";
 import { RunBusyLabelContext, type RunFormLayout } from "@/features/workflows/RunOptionControls";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
-import { useNow } from "@/features/workflows/useRunClock";
 import { WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
 import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import {
@@ -27,21 +25,21 @@ import {
   supportedAutomationTriggerTypes,
   type CreatableAutomationTriggerType,
 } from "@/features/workflows/workflowTriggerModel";
-import type { WorkflowPreset, WorkflowRun, WorkflowTrigger } from "@/lib/api";
+import type { WorkflowPreset, WorkflowTrigger } from "@/lib/api";
 
 import { operationLocked, type Operation, type OperationState } from "./operationModel";
 
 /**
- * What an operation keeps off its row: the options of the next run with the
- * run bar that uses them, the triggers that start it on their own, and its
- * recent runs.
+ * What an operation keeps off its row: what it does with a link to its runs
+ * in Activity, the options of the next run with the run bar that uses them,
+ * and the triggers that start it on their own.
  */
 export function OperationPanel({
   operation,
+  summary,
   state,
   preset,
   triggers,
-  recentRuns,
   allowed,
   readOnly,
   canManageTriggers,
@@ -51,7 +49,6 @@ export function OperationPanel({
   onRunRemoteFetch,
   onRunPreset,
   onTriggerRunOptionsChange,
-  onOpenRun,
   onOpenRuns,
   onOpenRemoteSourceSettings,
   onCreateTrigger,
@@ -59,11 +56,11 @@ export function OperationPanel({
   onToggleTrigger,
 }: {
   operation: Operation;
+  /** One sentence on what the operation does. */
+  summary: string;
   state: OperationState;
   preset: WorkflowPreset | null;
   triggers: WorkflowTrigger[];
-  /** The operation's recent runs, newest first. */
-  recentRuns: WorkflowRun[];
   allowed: boolean;
   /** Demo opens run forms and triggers for inspection; running and saving stay disabled. */
   readOnly: boolean;
@@ -74,7 +71,6 @@ export function OperationPanel({
   onRunRemoteFetch: (options: RemoteFetchRunOptions) => Promise<boolean>;
   onRunPreset: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange: (options: CurrentTriggerRunOptions) => void;
-  onOpenRun: (run: WorkflowRun) => void;
   /** Opens Activity on this operation's runs. */
   onOpenRuns: () => void;
   onOpenRemoteSourceSettings: () => void;
@@ -85,7 +81,6 @@ export function OperationPanel({
   const { t } = useTranslation();
   const { definition, kind } = operation;
   const running = operationLocked(operation, state);
-  const now = useNow(true, 30_000);
   const busyLabel =
     state.phase === "queued"
       ? t("workflowActivity.status.queued")
@@ -165,6 +160,13 @@ export function OperationPanel({
 
   return (
     <div className="grid min-w-0 gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+        <p className="min-w-0 flex-1 basis-60 py-1.5 text-sm text-muted-foreground">{summary}</p>
+        <Button size="sm" variant="ghost" className="-mr-2 shrink-0 px-2" onClick={onOpenRuns}>
+          <List className="h-4 w-4" aria-hidden />
+          {t("workflowPage.operations.allRuns")}
+        </Button>
+      </div>
       <RunBusyLabelContext.Provider value={busyLabel}>{runForm}</RunBusyLabelContext.Provider>
       {preset ? (
         <WorkflowSection title={workflowCopy("triggers")} label={workflowCopy("workflowAutomations")}>
@@ -191,19 +193,6 @@ export function OperationPanel({
           />
         )
       )}
-      <section className="workflow-history min-w-0" aria-label={t("workflowPage.console.runHistory")}>
-        <RunHistoryStrip
-          runs={recentRuns}
-          now={now}
-          onOpenRun={onOpenRun}
-          action={
-            <Button size="sm" variant="ghost" className="-ml-2 px-2" onClick={onOpenRuns}>
-              <List className="h-4 w-4" aria-hidden />
-              {t("workflowPage.operations.allRuns")}
-            </Button>
-          }
-        />
-      </section>
     </div>
   );
 }

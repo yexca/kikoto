@@ -70,6 +70,50 @@ export function workflowTriggerCondition(trigger: WorkflowTrigger) {
   return trigger.triggerType.replace(/_/g, " ");
 }
 
+/** How an operation starts on its own, in the words its row uses. */
+export type TriggerSummary = {
+  startup: boolean;
+  watching: boolean;
+  /** Interval schedules, as a count of days, hours, or minutes, shortest first. */
+  intervals: { unit: "days" | "hours" | "minutes"; count: number }[];
+  /** The soonest next run among the interval schedules. */
+  nextRunAt: string | null;
+  /** Every trigger is switched off. */
+  paused: boolean;
+};
+
+/** What an operation's enabled triggers start it on, or null when it has none and runs only by hand. */
+export function workflowTriggerSummary(triggers: WorkflowTrigger[]): TriggerSummary | null {
+  if (triggers.length === 0) return null;
+  const enabled = triggers.filter((trigger) => trigger.enabled);
+  const schedules = enabled.filter((trigger) => trigger.triggerType === "schedule");
+  const minutes = [
+    ...new Set(
+      schedules
+        .map((trigger) => parseJSONRecord(trigger.scheduleJson).intervalMinutes)
+        .filter((value): value is number => typeof value === "number" && value > 0),
+    ),
+  ].sort((left, right) => left - right);
+  const nextRunAt =
+    schedules
+      .map((trigger) => trigger.nextRunAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? null;
+  return {
+    startup: enabled.some((trigger) => trigger.triggerType === "startup"),
+    watching: enabled.some((trigger) => trigger.triggerType === "filesystem_event"),
+    intervals: minutes.map((value) =>
+      value % 1440 === 0
+        ? { unit: "days", count: value / 1440 }
+        : value % 60 === 0
+          ? { unit: "hours", count: value / 60 }
+          : { unit: "minutes", count: value },
+    ),
+    nextRunAt,
+    paused: enabled.length === 0,
+  };
+}
+
 export function workflowTriggerNextRun(trigger: WorkflowTrigger) {
   if (!trigger.enabled) return workflowCopy("paused");
   if (trigger.triggerType === "startup") return workflowCopy("nextServiceStart");
