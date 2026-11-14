@@ -21,15 +21,15 @@ bypass list, and every dialog.
 
 ## Account
 
-- Update the authenticated user's display name.
-- Change an account-managed user's password after verifying the current
-  password and confirming the replacement.
+- Select the edit icon beside your name and username to open the account dialog,
+  update your display name, or change an account-managed user's password after
+  verifying the current password and confirming the replacement.
 - Username and role are visible but read-only.
 - **Time zone** decides where a day starts in your listening report and in
   **New releases** on Discover. **Automatic** follows the device you are using; choosing
   a zone uses it on every device. See [Insights](personal-data.md#insights).
-- **Your data** at the end of Account exports and imports personal data; see
-  [Personal data](personal-data.md).
+- **Your data** at the end of Account opens **Export** and **Import** dialogs
+  for personal data; see [Personal data](personal-data.md).
 
 Changing a password preserves the current session and revokes the user's other
 sessions. An administrator password reset from System -> Users revokes every

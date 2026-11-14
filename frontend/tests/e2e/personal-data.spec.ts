@@ -265,7 +265,8 @@ test("@desktop personal pages sit in the sidebar's Personal group", async ({ pag
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
   // Your data is a section of Account, and Settings holds no tags or administration tabs.
   await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
-  await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible();
 
   await sidebar.getByRole("button", { name: "Tags", exact: true }).click();
   await expect(page).toHaveURL(/\/tags$/);
@@ -281,7 +282,13 @@ test("@desktop personal pages sit in the sidebar's Personal group", async ({ pag
   await page.goto("/user-data");
   await expect(page).toHaveURL(/\/settings\?tab=data$/);
   await expect(tabs.getByRole("tab", { name: "Account" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("button", { name: "Download export" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeInViewport();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportDialog = page.getByRole("dialog", { name: "Export", exact: true });
+  await expect(exportDialog).toContainText("listening marks, ratings, notes");
+  await expect(exportDialog.getByRole("button", { name: "Download export", exact: true })).toBeVisible();
+  await exportDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(exportDialog).toHaveCount(0);
 });
 
 test("merging a tag into a selected existing tag updates the list", async ({ page }) => {
@@ -326,35 +333,37 @@ test("import previews the chosen file, recovers from a failed preview, and impor
 }) => {
   const log = await mockPersonalData(page, { failFirstPreview: true });
   await page.goto("/settings?tab=data");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import", exact: true });
 
-  const importButton = page.getByRole("button", { name: "Import", exact: true });
+  const importButton = dialog.getByRole("button", { name: "Import", exact: true });
   await expect(importButton).toBeDisabled();
-  await page.getByLabel("JSON file").setInputFiles({
+  await dialog.getByLabel("JSON file").setInputFiles({
     name: "kikoto-user-data.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(exportFile)),
   });
 
-  const failure = page.getByRole("alert").filter({ hasText: "Preview failed" });
+  const failure = dialog.getByRole("alert").filter({ hasText: "Preview failed" });
   await expect(failure).toBeVisible();
   await expect(failure).not.toContainText("/data/private");
   await expect(importButton).toBeDisabled();
   await failure.getByRole("button", { name: "Retry" }).click();
 
-  const preview = page.getByRole("region", { name: "Preview" });
+  const preview = dialog.getByRole("region", { name: "Preview" });
   await expect(preview).toContainText("Matched in library");
   await preview.getByText("Not in the library (1)").click();
   await expect(preview.getByText(syntheticWorkCode("RJ", 2))).toBeVisible();
   expect(log.previewBodies.at(-1)).toEqual({ format: "kikoto", data: exportFile, conflict: "keep" });
   expect(log.importBodies).toHaveLength(0);
 
-  await page.getByRole("radio", { name: /Overwrite with imported/ }).check();
+  await dialog.getByRole("radio", { name: /Overwrite with imported/ }).check();
   await expect.poll(() => log.previewBodies.at(-1)?.conflict).toBe("overwrite");
   await expect(preview).toBeVisible();
   await expect(importButton).toBeEnabled();
   await importButton.click();
 
-  await expect(page.getByRole("status").filter({ hasText: "Imported 1 works" }).first()).toBeVisible();
+  await expect(dialog.getByRole("status").filter({ hasText: "Imported 1 works" }).first()).toBeVisible();
   expect(log.importBodies).toEqual([{ format: "kikoto", data: exportFile, conflict: "overwrite" }]);
   await expect(importButton).toBeDisabled();
 });
@@ -362,25 +371,28 @@ test("import previews the chosen file, recovers from a failed preview, and impor
 test("Kikoeru credentials leave the browser only after the risk notice is confirmed", async ({ page }) => {
   const log = await mockPersonalData(page);
   await page.goto("/settings?tab=data");
-  await page.getByLabel("Source", { exact: true }).selectOption({ label: "Kikoeru account" });
-  await expect(page.getByLabel("Server", { exact: true })).toHaveValue("1");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import", exact: true });
 
-  const passwordMode = page.getByRole("radio", { name: "Name and password" });
+  await dialog.getByLabel("Source", { exact: true }).selectOption({ label: "Kikoeru account" });
+  await expect(dialog.getByLabel("Server", { exact: true })).toHaveValue("1");
+
+  const passwordMode = dialog.getByRole("radio", { name: "Name and password" });
   await passwordMode.click();
   const notice = page.getByRole("alertdialog", { name: "Before connecting to a Kikoeru server" });
   await expect(notice.getByRole("button", { name: "Continue" })).toBeDisabled();
   await notice.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("radio", { name: "None" })).toBeChecked();
-  await expect(page.getByRole("textbox", { name: "Password", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("radio", { name: "None" })).toBeChecked();
+  await expect(dialog.getByRole("textbox", { name: "Password", exact: true })).toHaveCount(0);
 
   await passwordMode.click();
   await notice.getByRole("checkbox", { name: "I understand these risks" }).click();
   await notice.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("textbox", { name: "User name", exact: true }).fill("synthetic-user");
-  await page.getByRole("textbox", { name: "Password", exact: true }).fill("synthetic-password");
-  await page.getByRole("button", { name: "Read account data" }).click();
+  await dialog.getByRole("textbox", { name: "User name", exact: true }).fill("synthetic-user");
+  await dialog.getByRole("textbox", { name: "Password", exact: true }).fill("synthetic-password");
+  await dialog.getByRole("button", { name: "Read account data" }).click();
 
-  await expect(page.getByText("Read 2 works and 1 lists.")).toBeVisible();
+  await expect(dialog.getByText("Read 2 works and 1 lists.")).toBeVisible();
   expect(log.kikoeruBodies).toEqual([
     {
       sourceId: 1,
@@ -389,19 +401,91 @@ test("Kikoeru credentials leave the browser only after the risk notice is confir
       playlistNames: { liked: "Kikoeru Liked", marked: "Kikoeru Marked" },
     },
   ]);
-  await expect(page.getByRole("textbox", { name: "Password", exact: true })).toHaveValue("");
-  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Matched in library");
+  await expect(dialog.getByRole("textbox", { name: "Password", exact: true })).toHaveValue("");
+  await expect(dialog.getByRole("region", { name: "Preview" })).toContainText("Matched in library");
   expect(log.previewBodies.at(-1)).toEqual({ format: "kikoto", data: exportFile, conflict: "keep" });
 });
 
 test("an invalid file never reaches the server", async ({ page }) => {
   const log = await mockPersonalData(page);
   await page.goto("/settings?tab=data");
-  await page.getByLabel("JSON file").setInputFiles({
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Import", exact: true });
+  await dialog.getByLabel("JSON file").setInputFiles({
     name: "broken.json",
     mimeType: "application/json",
     buffer: Buffer.from("{not json"),
   });
-  await expect(page.getByText("The file is not valid JSON.")).toBeVisible();
+  await expect(dialog.getByText("The file is not valid JSON.")).toBeVisible();
   expect(log.previewBodies).toHaveLength(0);
+});
+
+test("account edit dialog updates display name and password together", async ({ page }) => {
+  await mockPersonalData(page);
+  let displayName = "Listener";
+  const updates: Array<Record<string, unknown>> = [];
+  await page.route("**/api/auth/me", async (route) => {
+    const request = route.request();
+    if (request.method() === "PATCH") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      updates.push(body);
+      if (typeof body.displayName === "string") displayName = body.displayName;
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: 1,
+            username: "listener",
+            displayName,
+            role: "user",
+            permissions: ["library:read", "playback:use", "favorites:write", "tags:write"],
+            devMode: true,
+          },
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "listener",
+          displayName,
+          role: "user",
+          permissions: ["library:read", "playback:use", "favorites:write", "tags:write"],
+          devMode: true,
+        },
+      },
+    });
+  });
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Edit account", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit account", exact: true });
+  const saveButton = dialog.getByRole("button", { name: "Save", exact: true });
+  await expect(saveButton).toBeDisabled();
+
+  await dialog.getByLabel("Display name", { exact: true }).fill("Updated Listener");
+  await dialog.getByLabel("Current password", { exact: true }).fill("example-old-password");
+  await dialog.getByLabel("New password", { exact: true }).fill("example-new-password");
+  await dialog.getByLabel("Confirm new password", { exact: true }).fill("example-different-password");
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("New passwords do not match.");
+  expect(updates).toHaveLength(0);
+
+  await dialog.getByLabel("Confirm new password", { exact: true }).fill("example-new-password");
+  await saveButton.click();
+
+  await expect(dialog).toHaveCount(0);
+  expect(updates).toEqual([
+    {
+      displayName: "Updated Listener",
+      currentPassword: "example-old-password",
+      newPassword: "example-new-password",
+    },
+  ]);
+  await expect(page.getByRole("region", { name: "Account" })).toContainText("Updated Listener");
 });

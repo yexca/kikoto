@@ -1,9 +1,10 @@
-import { AlertTriangle, CheckCircle2, Download, FileJson, Loader2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileJson, Loader2, Upload, X } from "lucide-react";
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/i18n/format";
@@ -33,29 +34,52 @@ import {
 
 export function UserDataPage({ canImportData, demoMode }: { canImportData: boolean; demoMode: boolean }) {
   const { t } = useTranslation();
+  const [dialog, setDialog] = useState<"export" | "import" | null>(null);
+
   return (
-    <div className="space-y-6">
-      {!demoMode && !canImportData && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
-      <ExportSection />
-      <ImportSection enabled={canImportData} />
-    </div>
+    <>
+      <SettingsSection
+        title={t("nav.userData")}
+        description={!demoMode && !canImportData ? t("personal.readOnlyAccount") : undefined}
+        action={
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog("export")}>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {t("personal.userData.exportTitle")}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog("import")}>
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              {t("personal.userData.importTitle")}
+            </Button>
+          </>
+        }
+      />
+      {dialog === "export" && <ExportDialog onClose={() => setDialog(null)} />}
+      {dialog === "import" && (
+        <ImportDialog enabled={canImportData} demoMode={demoMode} onClose={() => setDialog(null)} />
+      )}
+    </>
   );
 }
 
-function ExportSection() {
+function ExportDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
+  const running = status === "running";
 
   const download = async () => {
-    if (status === "running") return;
+    if (running) return;
     setStatus("running");
     try {
       const data = await userDataApi.exportData();
       const result = await saveUserDataExport(data, userDataExportFileName());
       setStatus("idle");
       // Cancelling the save picker is a choice, not a failure.
-      if (result === "saved") toast.success(t("personal.userData.exported"));
+      if (result === "saved") {
+        toast.success(t("personal.userData.exported"));
+        onClose();
+      }
     } catch (error) {
       setStatus("error");
       toast.notify(toastFromError(error, t("personal.userData.exportFailed")));
@@ -63,33 +87,45 @@ function ExportSection() {
   };
 
   return (
-    <SettingsSection title={t("personal.userData.exportTitle")}>
-      <SettingsRow title={t("personal.userData.exportAction")}>
-        <Button variant="outline" onClick={() => void download()} disabled={status === "running"}>
-          {status === "running" ? (
+    <Dialog onClose={onClose} size="md" dismissible={!running}>
+      <DialogHeader
+        icon={<Download className="h-4 w-4" aria-hidden="true" />}
+        title={t("personal.userData.exportTitle")}
+        onClose={running ? undefined : onClose}
+        closeLabel={t("common.close")}
+      />
+      <DialogBody className="space-y-3">
+        <p className="text-sm leading-6 text-muted-foreground">{t("personal.userData.exportDescription")}</p>
+        {status === "error" && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-md bg-error-surface px-3 py-2.5 text-sm text-error-foreground"
+          >
+            <span>{t("personal.userData.exportFailed")}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void download()}>
+              {t("common.retry")}
+            </Button>
+          </div>
+        )}
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={running}>
+          {t("common.cancel")}
+        </Button>
+        <Button type="button" size="sm" onClick={() => void download()} disabled={running}>
+          {running ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
             <Download className="h-4 w-4" aria-hidden="true" />
           )}
-          {status === "running" ? t("personal.userData.exporting") : t("personal.userData.exportAction")}
+          {running ? t("personal.userData.exporting") : t("personal.userData.exportAction")}
         </Button>
-      </SettingsRow>
-      {status === "error" && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 rounded-md bg-error-surface px-3 py-2.5 text-sm text-error-foreground"
-        >
-          <span>{t("personal.userData.exportFailed")}</span>
-          <Button size="sm" variant="outline" onClick={() => void download()}>
-            {t("common.retry")}
-          </Button>
-        </div>
-      )}
-    </SettingsSection>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
-function ImportSection({ enabled }: { enabled: boolean }) {
+function ImportDialog({ enabled, demoMode, onClose }: { enabled: boolean; demoMode: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const ids = useId();
@@ -163,131 +199,150 @@ function ImportSection({ enabled }: { enabled: boolean }) {
   };
 
   return (
-    <SettingsSection
-      title={t("personal.userData.importTitle")}
-      footer={
-        <Button onClick={() => void runImport()} disabled={!enabled || !canImport(state)}>
+    <Dialog onClose={onClose} size="xl" dismissible={!importing}>
+      <DialogHeader
+        icon={<Upload className="h-4 w-4" aria-hidden="true" />}
+        title={t("personal.userData.importTitle")}
+        onClose={importing ? undefined : onClose}
+        closeLabel={t("common.close")}
+      />
+      <DialogBody>
+        {!demoMode && !enabled && <p className="mb-3 text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
+        <div className="min-w-0 divide-y">
+          <SettingsRow title={t("personal.userData.source")} htmlFor={`${ids}-source`}>
+            <NativeSelect
+              id={`${ids}-source`}
+              className="w-full sm:w-56"
+              value={state.source}
+              disabled={locked}
+              onChange={(event) =>
+                dispatch({ type: "sourceChanged", source: event.target.value as UserDataImportSource })
+              }
+            >
+              {userDataImportSources.map((source) => (
+                <option key={source} value={source}>
+                  {t(`personal.userData.sources.${source}`)}
+                </option>
+              ))}
+            </NativeSelect>
+          </SettingsRow>
+          {state.source !== "kikoto" && (
+            <div className="py-3 text-xs text-muted-foreground">
+              <p>{t(`personal.userData.sourceHints.${state.source}`)}</p>
+              <p className="mt-2">{t("personal.userData.kikoeruMapping")}</p>
+              <ul className="mt-1.5 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
+                {kikoeruStatusMapping.map(([source, target]) => (
+                  <li key={source}>
+                    <span className="font-mono">{source}</span> → {t(`library.status.${target}`)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {state.source === "kikoeruAccount" && <KikoeruAccountPanel disabled={locked} onLoaded={onRemoteLoaded} />}
+          {state.source === "kikoeruDatabase" && <KikoeruDatabasePanel disabled={locked} onLoaded={onRemoteLoaded} />}
+          {state.remote && (
+            <RemoteLoadedSummary
+              remote={state.remote}
+              disabled={importing}
+              onClear={() => dispatch({ type: "cleared" })}
+            />
+          )}
+          {fileSource && (
+            <SettingsRow title={t("personal.userData.file")} description={t("personal.userData.fileHint")} stack>
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+                <input
+                  ref={inputRef}
+                  id={`${ids}-file`}
+                  type="file"
+                  accept="application/json,.json"
+                  className="sr-only"
+                  aria-label={t("personal.userData.file")}
+                  disabled={locked}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    fileRef.current = file;
+                    dispatch({ type: "fileSelected", file: { name: file.name, size: file.size } });
+                  }}
+                />
+                <Button type="button" variant="outline" disabled={locked} onClick={() => inputRef.current?.click()}>
+                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                  {t("personal.userData.chooseFile")}
+                </Button>
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                  {state.file ? state.file.name : t("personal.userData.noFile")}
+                </span>
+                {state.file && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("personal.userData.clearFile")}
+                    title={t("personal.userData.clearFile")}
+                    disabled={importing}
+                    onClick={() => {
+                      fileRef.current = null;
+                      dispatch({ type: "cleared" });
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {state.reading && <p className="text-xs text-muted-foreground">{t("personal.userData.reading")}</p>}
+              {state.fileError && (
+                <p role="alert" className="text-xs text-error-foreground">
+                  {t(`personal.userData.fileErrors.${state.fileError}`)}
+                </p>
+              )}
+            </SettingsRow>
+          )}
+          <fieldset className="py-3" disabled={locked}>
+            <legend className="float-left mb-2 w-full text-sm font-medium">{t("personal.userData.conflict")}</legend>
+            <div className="clear-both grid gap-2 sm:grid-cols-2">
+              {userDataConflictPolicies.map((policy) => (
+                <label
+                  key={policy}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50",
+                    state.conflict === policy && "border-primary/60 bg-primary/5",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`${ids}-conflict`}
+                    className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+                    checked={state.conflict === policy}
+                    onChange={() => dispatch({ type: "conflictChanged", conflict: policy as UserDataConflictPolicy })}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{t(`personal.userData.conflicts.${policy}`)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t(`personal.userData.conflictHints.${policy}`)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <ImportPreviewPanel
+            state={state}
+            onRetry={() => dispatch({ type: "previewStarted", revision: state.revision })}
+          />
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={importing}>
+          {t("common.close")}
+        </Button>
+        <Button type="button" size="sm" onClick={() => void runImport()} disabled={!enabled || !canImport(state)}>
           {importing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {importing ? t("personal.userData.importing") : t("personal.userData.importAction")}
         </Button>
-      }
-    >
-      <SettingsRow title={t("personal.userData.source")} htmlFor={`${ids}-source`}>
-        <NativeSelect
-          id={`${ids}-source`}
-          className="w-full sm:w-56"
-          value={state.source}
-          disabled={locked}
-          onChange={(event) => dispatch({ type: "sourceChanged", source: event.target.value as UserDataImportSource })}
-        >
-          {userDataImportSources.map((source) => (
-            <option key={source} value={source}>
-              {t(`personal.userData.sources.${source}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </SettingsRow>
-      {state.source !== "kikoto" && (
-        <div className="py-3 text-xs text-muted-foreground">
-          <p>{t(`personal.userData.sourceHints.${state.source}`)}</p>
-          <p className="mt-2">{t("personal.userData.kikoeruMapping")}</p>
-          <ul className="mt-1.5 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
-            {kikoeruStatusMapping.map(([source, target]) => (
-              <li key={source}>
-                <span className="font-mono">{source}</span> → {t(`library.status.${target}`)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {state.source === "kikoeruAccount" && <KikoeruAccountPanel disabled={locked} onLoaded={onRemoteLoaded} />}
-      {state.source === "kikoeruDatabase" && <KikoeruDatabasePanel disabled={locked} onLoaded={onRemoteLoaded} />}
-      {state.remote && (
-        <RemoteLoadedSummary remote={state.remote} disabled={importing} onClear={() => dispatch({ type: "cleared" })} />
-      )}
-      {fileSource && (
-        <SettingsRow title={t("personal.userData.file")} description={t("personal.userData.fileHint")} stack>
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            <input
-              ref={inputRef}
-              id={`${ids}-file`}
-              type="file"
-              accept="application/json,.json"
-              className="sr-only"
-              aria-label={t("personal.userData.file")}
-              disabled={locked}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (!file) return;
-                fileRef.current = file;
-                dispatch({ type: "fileSelected", file: { name: file.name, size: file.size } });
-              }}
-            />
-            <Button variant="outline" disabled={locked} onClick={() => inputRef.current?.click()}>
-              <FileJson className="h-4 w-4" aria-hidden="true" />
-              {t("personal.userData.chooseFile")}
-            </Button>
-            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-              {state.file ? state.file.name : t("personal.userData.noFile")}
-            </span>
-            {state.file && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("personal.userData.clearFile")}
-                title={t("personal.userData.clearFile")}
-                disabled={importing}
-                onClick={() => {
-                  fileRef.current = null;
-                  dispatch({ type: "cleared" });
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          {state.reading && <p className="text-xs text-muted-foreground">{t("personal.userData.reading")}</p>}
-          {state.fileError && (
-            <p role="alert" className="text-xs text-error-foreground">
-              {t(`personal.userData.fileErrors.${state.fileError}`)}
-            </p>
-          )}
-        </SettingsRow>
-      )}
-      <fieldset className="py-3" disabled={locked}>
-        <legend className="float-left mb-2 w-full text-sm font-medium">{t("personal.userData.conflict")}</legend>
-        <div className="clear-both grid gap-2 sm:grid-cols-2">
-          {userDataConflictPolicies.map((policy) => (
-            <label
-              key={policy}
-              className={cn(
-                "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50",
-                state.conflict === policy && "border-primary/60 bg-primary/5",
-              )}
-            >
-              <input
-                type="radio"
-                name={`${ids}-conflict`}
-                className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
-                checked={state.conflict === policy}
-                onChange={() => dispatch({ type: "conflictChanged", conflict: policy as UserDataConflictPolicy })}
-              />
-              <span className="min-w-0">
-                <span className="block font-medium">{t(`personal.userData.conflicts.${policy}`)}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {t(`personal.userData.conflictHints.${policy}`)}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <ImportPreviewPanel
-        state={state}
-        onRetry={() => dispatch({ type: "previewStarted", revision: state.revision })}
-      />
-    </SettingsSection>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -318,6 +373,7 @@ function RemoteLoadedSummary({
         )}
       </div>
       <Button
+        type="button"
         variant="ghost"
         size="icon-sm"
         aria-label={t("personal.userData.kikoeru.clearLoaded")}
@@ -383,7 +439,7 @@ function ImportPreviewPanel({ state, onRetry }: { state: UserDataImportState; on
           {" · "}
           {t(`personal.userData.requestErrors.${preview.error}`)}
         </span>
-        <Button size="sm" variant="outline" onClick={onRetry}>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
           {t("common.retry")}
         </Button>
       </div>

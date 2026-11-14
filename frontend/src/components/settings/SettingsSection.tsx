@@ -23,23 +23,28 @@ export function SettingsSection({
   description?: ReactNode;
   action?: ReactNode;
   footer?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   id?: string;
 }) {
   const headingId = useId();
   return (
     <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
-      <div className="flex min-w-0 items-end justify-between gap-3 border-b pb-2.5">
+      <div
+        className={cn(
+          "flex min-w-0 justify-between gap-3 border-b pb-2.5",
+          children !== undefined ? "items-end" : "flex-wrap items-center",
+        )}
+      >
         <div className="min-w-0">
           <h2 id={headingId} className="text-sm font-semibold text-foreground">
             {title}
           </h2>
           {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
         </div>
-        {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+        {action && <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2">{action}</div>}
       </div>
-      <div className="min-w-0 divide-y">{children}</div>
+      {children !== undefined && <div className="min-w-0 divide-y">{children}</div>}
       {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">{footer}</div>}
     </section>
   );

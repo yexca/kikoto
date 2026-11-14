@@ -1573,8 +1573,13 @@ test("password forms tell password managers whose credential each field holds", 
 
   // Changing the viewer's own password names their account so the saved sign-in is updated.
   await page.goto("/settings");
-  const passwordForm = page.locator("form").filter({ has: page.getByLabel("Current password", { exact: true }) });
+  await page.getByRole("button", { name: "Edit account", exact: true }).click();
+  const accountDialog = page.getByRole("dialog", { name: "Edit account", exact: true });
+  const passwordForm = accountDialog
+    .locator("form")
+    .filter({ has: page.getByLabel("Current password", { exact: true }) });
   await expect(passwordForm.locator('input[autocomplete="username"]')).toHaveValue("admin");
+  await accountDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
   // Another user's account must never be filled from or saved as the viewer's sign-in.
   await page.goto("/system?tab=users");

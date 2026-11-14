@@ -249,6 +249,8 @@ export const personalHant = {
     },
     userData: {
       exportTitle: "匯出",
+      exportDescription:
+        "將你的個人資料匯出為 JSON 檔案，包含收聽標記、評分、備註、續播進度、累計收聽時長、個人標籤與收藏清單。不包含媒體檔案、來源設定、憑證與每日統計。",
       exportAction: "下載匯出檔案",
       exporting: "正在準備匯出...",
       exported: "匯出檔案已儲存。",

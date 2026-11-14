@@ -251,6 +251,8 @@ export const personalJapanese = {
     },
     userData: {
       exportTitle: "エクスポート",
+      exportDescription:
+        "再生マーク、評価、メモ、再生位置、累計再生時間、個人タグ、お気に入りリストを JSON ファイルとしてダウンロードします。メディアファイル、ソース設定、認証情報、日別履歴は含まれません。",
       exportAction: "エクスポートをダウンロード",
       exporting: "エクスポートを準備中...",
       exported: "エクスポートを保存しました。",

@@ -253,6 +253,8 @@ export const personalKorean = {
     },
     userData: {
       exportTitle: "내보내기",
+      exportDescription:
+        "감상 표시, 평점, 메모, 이어 듣기 위치, 누적 감상 시간, 개인 태그, 즐겨찾기 목록을 JSON 파일로 다운로드합니다. 미디어 파일, 소스 설정, 자격 증명, 일별 기록은 포함되지 않습니다.",
       exportAction: "내보내기 다운로드",
       exporting: "내보내기 준비 중...",
       exported: "내보내기를 저장했습니다.",

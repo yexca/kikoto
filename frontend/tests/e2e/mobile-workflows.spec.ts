@@ -1992,7 +1992,7 @@ test("initial setup creates the first administrator with the setup token", async
 
   await page.getByLabel("Setup token").fill(" synthetic-setup-token ");
   await page.getByRole("button", { name: "Create administrator" }).click();
-  await expect(page.getByLabel("Current password")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit account", exact: true })).toBeVisible();
   expect(submissions.at(-1)).toEqual({
     setupToken: "synthetic-setup-token",
     username: "synthetic-admin",
@@ -2015,11 +2015,10 @@ test("settings identifies an environment-managed root password", async ({ page }
   );
 
   await page.goto("/settings");
-  await expect(page.getByRole("region", { name: "Password" }).getByRole("status")).toContainText(
-    "KIKOTO_ROOT_PASSWORD",
-  );
-  await expect(page.getByLabel("Current password")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Change password", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit account", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit account", exact: true });
+  await expect(dialog.getByRole("status")).toContainText("KIKOTO_ROOT_PASSWORD");
+  await expect(dialog.getByLabel("Current password")).toHaveCount(0);
 });
 
 test("demo settings keeps account and workflows read-only while allowing appearance changes", async ({ page }) => {
@@ -2046,7 +2045,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(notice).toHaveText(demoNotice);
   const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
   await expect(settingsTabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
-  await expect(page.getByRole("button", { name: "Download export", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
   const noticeBackground = await notice.evaluate((element) => getComputedStyle(element).backgroundColor);
   await settingsTabs.getByRole("tab", { name: "Recommendations", exact: true }).click();
   await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);

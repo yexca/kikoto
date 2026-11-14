@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -76,28 +76,29 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
       id={ACCOUNT_TIME_ZONE_SECTION_ID}
       className="scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]"
       title={t("timeZone.title")}
-      action={<AutosaveStatus state={autosave.state} />}
-    >
-      <SettingsRow htmlFor="account-time-zone" title={t("timeZone.title")}>
-        {failed ? (
-          <span role="alert" className="flex items-center gap-2 text-sm text-muted-foreground">
-            {t("timeZone.loadFailed")}
-            <Button type="button" variant="outline" size="sm" onClick={() => setAttempt((value) => value + 1)}>
-              {t("common.retry")}
-            </Button>
-          </span>
-        ) : (
-          <TimeZoneSelect
-            id="account-time-zone"
-            value={draft}
-            followLabel={t("timeZone.auto", { zone: device })}
-            inUse={[saved, device]}
-            disabled={readOnly || saving || saved === null}
-            ariaLabel={t("timeZone.title")}
-            onChange={choose}
-          />
-        )}
-      </SettingsRow>
-    </SettingsSection>
+      action={
+        <>
+          <AutosaveStatus state={autosave.state} />
+          {failed ? (
+            <span role="alert" className="flex items-center gap-2 text-sm text-muted-foreground">
+              {t("timeZone.loadFailed")}
+              <Button type="button" variant="outline" size="sm" onClick={() => setAttempt((value) => value + 1)}>
+                {t("common.retry")}
+              </Button>
+            </span>
+          ) : (
+            <TimeZoneSelect
+              id="account-time-zone"
+              value={draft}
+              followLabel={t("timeZone.auto", { zone: device })}
+              inUse={[saved, device]}
+              disabled={readOnly || saving || saved === null}
+              ariaLabel={t("timeZone.title")}
+              onChange={choose}
+            />
+          )}
+        </>
+      }
+    />
   );
 }

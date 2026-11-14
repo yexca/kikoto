@@ -9,17 +9,15 @@ import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
-import { FastForward, KeyRound, LoaderCircle, Sparkles, UserRound, type LucideIcon } from "lucide-react";
-import { lazy, Suspense, useEffect, useState, type ComponentProps, type FormEvent } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { FastForward, Pencil, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { toastFromError, useToast } from "@/components/ui/toast";
-import { Input } from "@/components/ui/input";
+import { type CurrentUser } from "@/lib/api";
 import { supportsNativePrivacy } from "@/lib/nativePrivacy";
-import { api, type CurrentUser } from "@/lib/api";
-import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { AccountTimeZoneSection } from "@/features/time-zone/AccountTimeZoneSection";
+import { AccountEditDialog } from "@/pages/AccountEditDialog";
 import {
   settingsPageClassName,
   settingsPanelClassName,
@@ -36,12 +34,6 @@ import {
   storePlaybackSeekPreferences,
   type PlaybackSeekPreferences,
 } from "@/player/playbackPreferences";
-
-const emptyPasswordDraft: PasswordChangeDraft = {
-  currentPassword: "",
-  newPassword: "",
-  confirmPassword: "",
-};
 
 // Your data loads its own chunk so Settings does not download it up front.
 const UserDataPage = lazy(() =>
@@ -80,13 +72,8 @@ export function SettingsPage({
   data?: ComponentProps<typeof UserDataPage>;
   onAccountUpdated: () => Promise<void>;
 }) {
-  const toast = useToast();
   const { t } = useTranslation();
-  const [displayName, setDisplayName] = useState(user.displayName || user.username);
-  const [passwordDraft, setPasswordDraft] = useState<PasswordChangeDraft>(emptyPasswordDraft);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [isProfileSaving, setIsProfileSaving] = useState(false);
-  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+  const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const { tab: activeTab, select: selectTab } = useSettingsLocation<SettingsTab>(
     "/settings",
     "account",
@@ -100,12 +87,7 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
-  const profileStatus = useAutosaveStatus();
   const seekStatus = useAutosaveStatus();
-
-  useEffect(() => {
-    setDisplayName(user.displayName || user.username);
-  }, [user.displayName, user.username]);
 
   useEffect(() => {
     const preferences = getStoredPlaybackSeekPreferences(user.id);
@@ -179,54 +161,6 @@ export function SettingsPage({
     void seekStatus.track(Promise.resolve(true));
   };
 
-  // Saved when the field's edit is finished; a failure returns the field to the saved name.
-  const saveProfile = async (nextDisplayName: string) => {
-    setIsProfileSaving(true);
-    try {
-      await api.updateCurrentAccount({ displayName: nextDisplayName });
-      await onAccountUpdated();
-      return true;
-    } catch (error) {
-      setDisplayName(user.displayName || user.username);
-      toast.notify(toastFromError(error, t("account.profileUpdateFailed")));
-      return false;
-    } finally {
-      setIsProfileSaving(false);
-    }
-  };
-
-  const commitDisplayName = () => {
-    const nextDisplayName = displayName.trim() || user.username;
-    if (readOnly || isProfileSaving || nextDisplayName === (user.displayName || user.username)) return;
-    void profileStatus.track(saveProfile(nextDisplayName));
-  };
-
-  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const validationError = validatePasswordChange(passwordDraft);
-    setPasswordError(validationError ? t(passwordErrorKey(validationError), { defaultValue: validationError }) : null);
-    if (validationError) return;
-    setIsPasswordSaving(true);
-    try {
-      await api.updateCurrentAccount({
-        currentPassword: passwordDraft.currentPassword,
-        newPassword: passwordDraft.newPassword,
-      });
-      await onAccountUpdated();
-      setPasswordDraft(emptyPasswordDraft);
-      toast.success(t("account.passwordChanged"));
-    } catch (error) {
-      toast.notify(toastFromError(error, t("account.passwordChangeFailed")));
-    } finally {
-      setIsPasswordSaving(false);
-    }
-  };
-
-  const updatePassword = (field: keyof PasswordChangeDraft, value: string) => {
-    setPasswordDraft((current) => ({ ...current, [field]: value }));
-    setPasswordError(null);
-  };
-
   const navItems: SubNavItem<SettingsTab>[] = settingsTabs.map((tab) => ({
     value: tab.id,
     label: t(tab.labelKey),
@@ -236,7 +170,6 @@ export function SettingsPage({
   }));
 
   const savedDisplayName = user.displayName || user.username;
-  const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
 
   return (
     <div className={settingsPageClassName}>
@@ -249,7 +182,7 @@ export function SettingsPage({
           role="tabpanel"
           aria-labelledby="settings-tab-account"
         >
-          <SettingsSection title={t("settings.account")} action={<AutosaveStatus state={profileStatus.state} />}>
+          <SettingsSection title={t("settings.account")}>
             <div className="flex min-w-0 items-center gap-3 py-4">
               <span
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary"
@@ -257,7 +190,7 @@ export function SettingsPage({
               >
                 {avatarInitial(savedDisplayName)}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{savedDisplayName}</div>
                 <div className="truncate text-xs text-muted-foreground">
                   @{user.username}
@@ -267,98 +200,37 @@ export function SettingsPage({
                   {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
                 </div>
               </div>
-            </div>
-            <SettingsRow title={t("settings.displayName")} htmlFor="account-display-name">
-              <Input
-                id="account-display-name"
-                className="w-full sm:w-64"
-                value={displayName}
-                autoComplete="name"
-                disabled={readOnly || isProfileSaving}
-                onChange={(event) => setDisplayName(event.target.value)}
-                onBlur={commitDisplayName}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") commitDisplayName();
-                }}
-              />
-            </SettingsRow>
-          </SettingsSection>
-          {passwordManagedByEnvironment ? (
-            <SettingsSection title={t("settings.password")}>
-              <div className="py-3 text-sm text-muted-foreground" role="status">
-                <Trans
-                  i18nKey="settings.rootPasswordManaged"
-                  components={{
-                    env: <code className="font-mono text-foreground" />,
-                    file: <code className="font-mono text-foreground" />,
-                  }}
-                />
-              </div>
-            </SettingsSection>
-          ) : (
-            <form onSubmit={changePassword}>
-              <SettingsSection
-                title={t("settings.password")}
-                footer={
-                  <>
-                    <span
-                      className="mr-auto min-h-5 text-sm text-destructive"
-                      id="password-error"
-                      role={passwordError ? "alert" : undefined}
-                    >
-                      {passwordError}
-                    </span>
-                    <Button type="submit" size="sm" disabled={readOnly || isPasswordSaving}>
-                      {isPasswordSaving ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <KeyRound className="h-4 w-4" />
-                      )}
-                      {t("settings.changePassword")}
-                    </Button>
-                  </>
-                }
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={t("settings.editAccount")}
+                title={t("settings.editAccount")}
+                onClick={() => setIsAccountDialogOpen(true)}
               >
-                {/* Names the account so password managers update its saved sign-in. */}
-                <input type="text" name="username" autoComplete="username" value={user.username} readOnly hidden />
-                <PasswordField
-                  id="current-password"
-                  label={t("settings.currentPassword")}
-                  value={passwordDraft.currentPassword}
-                  autoComplete="current-password"
-                  disabled={readOnly || isPasswordSaving}
-                  onChange={(value) => updatePassword("currentPassword", value)}
-                />
-                <PasswordField
-                  id="new-password"
-                  label={t("settings.newPassword")}
-                  value={passwordDraft.newPassword}
-                  autoComplete="new-password"
-                  disabled={readOnly || isPasswordSaving}
-                  onChange={(value) => updatePassword("newPassword", value)}
-                />
-                <PasswordField
-                  id="confirm-password"
-                  label={t("settings.confirmNewPassword")}
-                  value={passwordDraft.confirmPassword}
-                  autoComplete="new-password"
-                  disabled={readOnly || isPasswordSaving}
-                  onChange={(value) => updatePassword("confirmPassword", value)}
-                />
-              </SettingsSection>
-            </form>
-          )}
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </SettingsSection>
           <AccountTimeZoneSection readOnly={readOnly} />
           {data && (
-            <section
+            <div
               id="settings-section-data"
               className="scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]"
-              aria-label={t("nav.userData")}
             >
               <Suspense fallback={null}>
                 <UserDataPage {...data} />
               </Suspense>
-            </section>
+            </div>
+          )}
+          {isAccountDialogOpen && (
+            <AccountEditDialog
+              user={user}
+              readOnly={readOnly}
+              onAccountUpdated={onAccountUpdated}
+              onClose={() => setIsAccountDialogOpen(false)}
+            />
           )}
         </div>
       )}
@@ -425,25 +297,6 @@ export function SettingsPage({
   );
 }
 
-function passwordErrorKey(message: string) {
-  switch (message) {
-    case "Current password is required.":
-      return "settings.passwordErrors.currentRequired";
-    case "New password is required.":
-      return "settings.passwordErrors.newRequired";
-    case "New password must be at least 8 characters.":
-      return "settings.passwordErrors.tooShort";
-    case "New password must differ from your current password.":
-      return "settings.passwordErrors.unchanged";
-    case "Confirm your new password.":
-      return "settings.passwordErrors.confirmRequired";
-    case "New passwords do not match.":
-      return "settings.passwordErrors.mismatch";
-    default:
-      return message;
-  }
-}
-
 function avatarInitial(name: string) {
   return Array.from(name.trim())[0]?.toUpperCase() ?? "?";
 }
@@ -475,38 +328,6 @@ function SeekRow({
         describedBy="seek-preferences-error"
         onChange={(_, text) => onChange(text)}
         onCommit={onCommit}
-      />
-    </SettingsRow>
-  );
-}
-
-function PasswordField({
-  id,
-  label,
-  value,
-  autoComplete,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  autoComplete: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <SettingsRow title={label} htmlFor={id}>
-      <Input
-        id={id}
-        name={id}
-        className="w-full sm:w-64"
-        type="password"
-        value={value}
-        autoComplete={autoComplete}
-        disabled={disabled}
-        aria-describedby="password-error"
-        onChange={(event) => onChange(event.target.value)}
       />
     </SettingsRow>
   );

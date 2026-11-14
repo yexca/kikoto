@@ -254,6 +254,8 @@ export const personalEnglish = {
     },
     userData: {
       exportTitle: "Export",
+      exportDescription:
+        "Download your personal data as a JSON file, including listening marks, ratings, notes, resume positions, listening totals, personal tags, and favorite lists. Media files, source settings, credentials, and daily history are not included.",
       exportAction: "Download export",
       exporting: "Preparing export...",
       exported: "Export saved.",

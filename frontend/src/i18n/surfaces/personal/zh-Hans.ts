@@ -249,6 +249,8 @@ export const personalHans = {
     },
     userData: {
       exportTitle: "导出",
+      exportDescription:
+        "将你的个人数据导出为 JSON 文件，包含收听标记、评分、备注、续播进度、累计收听时长、个人标签以及收藏列表。不包含媒体文件、来源设置、凭据和每日统计。",
       exportAction: "下载导出文件",
       exporting: "正在准备导出...",
       exported: "导出文件已保存。",

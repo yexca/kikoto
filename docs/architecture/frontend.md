@@ -532,13 +532,14 @@ so a still-loading element never replaces it.
 - Circles.
 - Voice actors.
 - Settings (`/settings`): the signed-in account's own settings as `SubNavTabs`
-  with an icon and a name: Account, which opens with the profile and ends
-  with data transfer; Playback; and Recommendations, which shows
-  recommendation activity above recommendation tuning. Account holds the
-  account's time zone: automatic, which follows the device, or one of the
-  IANA zones the browser knows plus the zone in use. Data transfer offers
-  personal JSON export and previewed import from a Kikoto or Kikoeru file, a
-  Kikoeru account, or an open-source Kikoeru database.
+  with an icon and a name: Account, which opens with the profile row (whose
+  edit button opens the display-name and password dialog), time zone, and
+  **Your data**; Playback; and Recommendations, which shows recommendation
+  activity above recommendation tuning. Account holds the account's time zone:
+  automatic, which follows the device, or one of the IANA zones the browser
+  knows plus the zone in use. **Your data** opens dialogs for personal JSON
+  export and previewed import from a Kikoto or Kikoeru file, a Kikoeru account,
+  or an open-source Kikoeru database.
 - System (`/system`): the instance settings as the same tabs: Library,
   Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users. `pages/settingsLocation`
   keeps the open tab of both pages in the `tab` query parameter and scrolls
