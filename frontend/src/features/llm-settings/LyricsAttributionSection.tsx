@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -36,15 +36,17 @@ export function LyricsAttributionSection({ readOnly = false }: { readOnly?: bool
   };
 
   return (
-    <SettingsSection title={t("maintenance.llm.attributionTitle")}>
-      <SettingsRow title={t("maintenance.llm.attribution")}>
+    <SettingsSection
+      title={t("maintenance.llm.attributionTitle")}
+      description={t("maintenance.llm.attribution")}
+      action={
         <Switch
           checked={enabled ?? true}
           disabled={readOnly || saving || enabled === null}
           aria-label={t("maintenance.llm.attribution")}
           onCheckedChange={(next) => void save(next)}
         />
-      </SettingsRow>
-    </SettingsSection>
+      }
+    />
   );
 }

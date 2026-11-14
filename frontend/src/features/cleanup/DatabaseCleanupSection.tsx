@@ -381,8 +381,8 @@ export function DatabaseOptimizeSection({
   };
 
   return (
-    <SettingsSection title={t("cleanup.optimize.title")}>
-      <SettingsRow
+    <>
+      <SettingsSection
         title={t("cleanup.optimize.compact")}
         description={
           result ||
@@ -393,17 +393,18 @@ export function DatabaseOptimizeSection({
               })
             : t("maintenance.cache.scanning"))
         }
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={readOnly || running || !overview}
-          onClick={() => setConfirming(true)}
-        >
-          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {running ? t("cleanup.optimize.running") : t("cleanup.optimize.run")}
-        </Button>
-      </SettingsRow>
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={readOnly || running || !overview}
+            onClick={() => setConfirming(true)}
+          >
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {running ? t("cleanup.optimize.running") : t("cleanup.optimize.run")}
+          </Button>
+        }
+      />
       {confirming && (
         <Dialog onClose={() => setConfirming(false)} size="md" role="alertdialog" dismissible={!running}>
           <DialogHeader
@@ -421,7 +422,7 @@ export function DatabaseOptimizeSection({
           </DialogFooter>
         </Dialog>
       )}
-    </SettingsSection>
+    </>
   );
 }
 

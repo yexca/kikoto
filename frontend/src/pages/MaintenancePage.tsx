@@ -514,25 +514,24 @@ export function MaintenancePage({
 
             <SettingsSection
               title={t("maintenance.library.creatorCatalogs")}
-              action={<AutosaveStatus state={catalogStatus.state} />}
-            >
-              <SettingsRow
-                title={t("maintenance.library.catalogFreshnessDays")}
-                description={t("maintenance.library.catalogFreshnessDescription")}
-              >
-                <SettingsNumberInput
-                  disabled={readOnly}
-                  label={t("maintenance.library.catalogFreshnessDays")}
-                  value={draft.catalogFreshnessDays}
-                  min={1}
-                  max={365}
-                  integer
-                  unit={t("sourceSetup.days")}
-                  onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
-                  onCommit={() => void catalogStatus.track(runtimeEditor.commit("catalogFreshnessDays"))}
-                />
-              </SettingsRow>
-            </SettingsSection>
+              description={t("maintenance.library.catalogFreshnessDescription")}
+              action={
+                <>
+                  <AutosaveStatus state={catalogStatus.state} />
+                  <SettingsNumberInput
+                    disabled={readOnly}
+                    label={t("maintenance.library.catalogFreshnessDays")}
+                    value={draft.catalogFreshnessDays}
+                    min={1}
+                    max={365}
+                    integer
+                    unit={t("sourceSetup.days")}
+                    onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
+                    onCommit={() => void catalogStatus.track(runtimeEditor.commit("catalogFreshnessDays"))}
+                  />
+                </>
+              }
+            />
 
             <SettingsSection
               title={t("maintenance.library.networkPrivacy")}
@@ -608,24 +607,23 @@ export function MaintenancePage({
               ) : (
                 <SettingsSection
                   title={t("maintenance.access.instance")}
-                  action={<AutosaveStatus state={accessStatus.state} />}
-                >
-                  <SettingsRow
-                    title={t("maintenance.access.anonymous")}
-                    description={t("maintenance.access.anonymousDescription")}
-                  >
-                    <Switch
-                      checked={anonymousAccessEnabled}
-                      disabled={isAccessPolicySaving}
-                      onCheckedChange={(enabled) => {
-                        // Opening the library to visitors without an account is confirmed first.
-                        if (enabled) setConfirmAnonymousAccess(true);
-                        else void accessStatus.track(saveAccessPolicy(false));
-                      }}
-                      aria-label={t("maintenance.access.anonymous")}
-                    />
-                  </SettingsRow>
-                </SettingsSection>
+                  description={t("maintenance.access.anonymousDescription")}
+                  action={
+                    <>
+                      <AutosaveStatus state={accessStatus.state} />
+                      <Switch
+                        checked={anonymousAccessEnabled}
+                        disabled={isAccessPolicySaving}
+                        onCheckedChange={(enabled) => {
+                          // Opening the library to visitors without an account is confirmed first.
+                          if (enabled) setConfirmAnonymousAccess(true);
+                          else void accessStatus.track(saveAccessPolicy(false));
+                        }}
+                        aria-label={t("maintenance.access.anonymous")}
+                      />
+                    </>
+                  }
+                />
               ))}
             {confirmAnonymousAccess && (
               <Dialog onClose={() => setConfirmAnonymousAccess(false)} layer="sheet" size="lg" role="alertdialog">

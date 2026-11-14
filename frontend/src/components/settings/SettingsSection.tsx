@@ -28,12 +28,13 @@ export function SettingsSection({
   id?: string;
 }) {
   const headingId = useId();
+  const hasChildren = children !== undefined && children !== null && children !== false;
   return (
     <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
       <div
         className={cn(
           "flex min-w-0 justify-between gap-3 border-b pb-2.5",
-          children !== undefined ? "items-end" : "flex-wrap items-center",
+          hasChildren ? "items-end" : "flex-wrap items-center",
         )}
       >
         <div className="min-w-0">
@@ -44,7 +45,7 @@ export function SettingsSection({
         </div>
         {action && <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2">{action}</div>}
       </div>
-      {children !== undefined && <div className="min-w-0 divide-y">{children}</div>}
+      {hasChildren && <div className="min-w-0 divide-y">{children}</div>}
       {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">{footer}</div>}
     </section>
   );
