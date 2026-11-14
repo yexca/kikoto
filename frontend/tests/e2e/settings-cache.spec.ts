@@ -1107,6 +1107,68 @@ test("remote source deep links open the requested source configuration", async (
   await expect(page).toHaveURL(/\/system\?tab=library$/);
 });
 
+test("libraries lists one card per storage pool and opens storage settings in a dialog", async ({ page }) => {
+  let layout: LibraryLayout = {
+    mode: "pools",
+    configured: true,
+    locked: true,
+    onboardingCompleted: true,
+    hasLegacyWorkflows: false,
+    pools: [
+      { path: "pool-a", online: true, canReconnect: false },
+      { path: "pool-b", online: false, canReconnect: true },
+    ],
+    candidates: ["pool-a", "pool-b", "pool-c"],
+    fetchPool: "pool-a",
+    localScanTriggers: { startupScan: true, watchFolders: false },
+  };
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/library/layout", async (route) => {
+    if (route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON() as {
+        mode: "standard" | "pools";
+        pools?: string[];
+        fetchPool?: string;
+      };
+      layout = {
+        ...layout,
+        mode: payload.mode,
+        fetchPool: payload.fetchPool ?? "",
+        pools: (payload.pools ?? []).map((path) => ({ path, online: true, canReconnect: false })),
+      };
+      await route.fulfill({ json: layout });
+      return;
+    }
+    await route.fulfill({ json: layout });
+  });
+  await page.route("**/api/library/pools/reconnect", async (route) => {
+    layout = {
+      ...layout,
+      pools: layout.pools.map((pool) => ({ ...pool, online: true, canReconnect: false })),
+    };
+    await route.fulfill({ json: layout });
+  });
+
+  await page.goto("/system?tab=library");
+  const libraries = page.getByRole("region", { name: "Libraries", exact: true });
+  await expect(page.getByRole("region", { name: "Library storage", exact: true })).toHaveCount(0);
+  await expect(libraries.getByText("/data/pool-a", { exact: true })).toBeVisible();
+  await expect(libraries.getByText("/data/pool-b", { exact: true })).toBeVisible();
+  await expect(libraries.getByText("Fetch pool", { exact: true })).toBeVisible();
+
+  await libraries.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await expect(libraries.getByRole("button", { name: "Reconnect", exact: true })).toHaveCount(0);
+
+  await libraries.getByRole("button", { name: "Library storage", exact: true }).click();
+  const storageDialog = page.getByRole("dialog", { name: "Library storage" });
+  await expect(storageDialog).toBeVisible();
+  await storageDialog.getByRole("checkbox", { name: "Use pool-c as a storage pool" }).click();
+  await storageDialog.getByRole("button", { name: "Save library storage", exact: true }).click();
+
+  await expect(storageDialog).toHaveCount(0);
+  await expect(libraries.getByText("/data/pool-c", { exact: true })).toBeVisible();
+});
+
 test("routing drag order becomes the saved internal priority", async ({ page }) => {
   const settingsPayloads: Record<string, unknown>[] = [];
   await mockCacheSettings(

@@ -1,6 +1,5 @@
 import { ArrowRight, Eraser, HardDriveDownload, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
@@ -15,14 +14,14 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { libraryLayoutSummary } from "@/features/library-setup/libraryLayoutSummary";
-import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
+import { LegacyWorkflowMigrationReview } from "@/features/library-setup/LegacyWorkflowMigrationReview";
+import { LibraryStorageDialog } from "@/features/library-setup/LibraryStorageDialog";
 import { useLibraryLayout } from "@/features/library-setup/useLibraryLayout";
 import { VideoHardwareSettingsSection } from "@/features/video-hardware/VideoHardwareSettingsSection";
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
-import { LibrarySourceList, type LocalLibraryEntry } from "@/features/sources/LibrarySourceList";
+import { LibrarySourceList } from "@/features/sources/LibrarySourceList";
 import { KikoeruImportAccessRow } from "@/features/user-data/KikoeruImportAccessRow";
 import { useSourcePresenceCheckSlots } from "@/features/workflows/source-presence/useSourcePresenceCheckSlots";
 import {
@@ -39,7 +38,6 @@ import {
   type AppSettings,
   type FileSource,
   type FolderLyricsMode,
-  type LibraryLayout,
   type VideoHardwareAcceleration,
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -145,6 +143,8 @@ export function MaintenancePage({
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
+  const [reconnectingPool, setReconnectingPool] = useState<string | null>(null);
   const [savingSource, setSavingSource] = useState(false);
   const [checkingSourceId, setCheckingSourceId] = useState<number | null>(null);
   const [togglingSourceId, setTogglingSourceId] = useState<number | null>(null);
@@ -409,6 +409,20 @@ export function MaintenancePage({
     }
   };
 
+  const reconnectPool = async (path: string) => {
+    if (readOnly) return;
+    setReconnectingPool(path);
+    try {
+      const next = await api.reconnectLibraryPool(path);
+      libraryLayout.setLayout(next);
+      toast.success(t("librarySetup.reconnected"));
+    } catch (error) {
+      toast.notify(toastFromError(error, t("librarySetup.reconnectFailed")));
+    } finally {
+      setReconnectingPool(null);
+    }
+  };
+
   if (!canManageSources && !canManageUsers && !canManageAccessPolicy) {
     return (
       <section>
@@ -426,7 +440,12 @@ export function MaintenancePage({
         ) : activeTab === "library" && draft ? (
           <div className="space-y-10">
             <LibrarySourceList
-              local={localLibraryEntry(libraryLayout, localSource?.displayName ?? t("maintenance.mainLocalLibrary"), t)}
+              localName={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
+              layout={libraryLayout.layout}
+              layoutFailed={libraryLayout.failed}
+              reconnectingPool={reconnectingPool}
+              onConfigureStorage={() => setIsStorageModalOpen(true)}
+              onReconnectPool={reconnectPool}
               sources={remoteSources}
               checkingSourceId={checkingSourceId}
               togglingSourceId={togglingSourceId}
@@ -438,16 +457,16 @@ export function MaintenancePage({
               onToggleEnabled={toggleSourceEnabled}
               renderSourceCheck={sourceChecks.renderSourceCheck}
               onOpenSourceCheck={sourceChecks.onOpenSourceCheck}
+              legacyWorkflowReview={
+                !readOnly && libraryLayout.layout?.hasLegacyWorkflows ? (
+                  <section className="space-y-3">
+                    <h3 className="text-sm font-semibold">{t("librarySetup.workflowMigration.title")}</h3>
+                    <LegacyWorkflowMigrationReview />
+                  </section>
+                ) : undefined
+              }
             />
             {sourceChecks.dialog}
-
-            <LibraryLayoutSection
-              id="library-storage"
-              layout={libraryLayout.layout}
-              failed={libraryLayout.failed}
-              readOnly={readOnly}
-              onSaved={libraryLayout.setLayout}
-            />
 
             <SettingsSection
               title={t("maintenance.library.local")}
@@ -634,6 +653,15 @@ export function MaintenancePage({
         ) : null}
       </fieldset>
 
+      {isStorageModalOpen && (
+        <LibraryStorageDialog
+          layout={libraryLayout.layout}
+          failed={libraryLayout.failed}
+          readOnly={readOnly}
+          onSaved={libraryLayout.setLayout}
+          onClose={() => setIsStorageModalOpen(false)}
+        />
+      )}
       {isSourceModalOpen && (
         <RemoteSourceDialog
           source={draftSource}
@@ -932,35 +960,6 @@ function StoragePaths({ settings, remoteSources }: { settings: AppSettings | nul
       </SettingsDisclosure>
     </div>
   );
-}
-
-/** The local library's row in the library overview: its storage mode and whether its storage is online. */
-function localLibraryEntry(
-  { layout, failed }: { layout: LibraryLayout | null; failed: boolean },
-  name: string,
-  t: TFunction,
-): LocalLibraryEntry {
-  const onConfigure = () =>
-    document.getElementById("library-storage")?.scrollIntoView({ block: "start", behavior: "smooth" });
-  if (!layout) {
-    return {
-      name,
-      detail: failed ? t("librarySetup.loadFailed") : t("common.loading"),
-      status: "unknown",
-      onConfigure,
-    };
-  }
-  const summary = libraryLayoutSummary(layout);
-  const state =
-    summary.mode === "pools"
-      ? t("maintenance.library.poolsOnline", { online: summary.online, total: summary.total })
-      : t(summary.online > 0 ? "librarySetup.online" : "librarySetup.offline");
-  return {
-    name,
-    detail: `${t(`librarySetup.modes.${summary.mode}.name`)} · ${state}`,
-    status: summary.total === 0 ? "unknown" : summary.online === summary.total ? "online" : "offline",
-    onConfigure,
-  };
 }
 
 function SettingsSkeleton() {

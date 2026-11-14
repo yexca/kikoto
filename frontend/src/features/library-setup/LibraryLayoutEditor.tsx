@@ -36,12 +36,16 @@ export function LibraryLayoutEditor({
   readOnly,
   saveLabel,
   onSaved,
+  onDone,
+  onCancel,
   onContinue,
 }: {
   layout: LibraryLayout;
   readOnly: boolean;
   saveLabel?: string;
   onSaved: (layout: LibraryLayout) => void;
+  onDone?: () => void;
+  onCancel?: () => void;
   onContinue?: () => void;
 }) {
   const { t } = useTranslation();
@@ -103,6 +107,7 @@ export function LibraryLayoutEditor({
       setDraft(draftFromLayout(next));
       onSaved(next);
       toast.success(t("librarySetup.saved"));
+      onDone?.();
     } catch (error) {
       reportSaveError(error);
     } finally {
@@ -123,6 +128,7 @@ export function LibraryLayoutEditor({
       );
       window.dispatchEvent(new Event(SITE_MAINTENANCE_EVENT));
       setMigrationPreview(null);
+      onDone?.();
     } catch (error) {
       reportSaveError(error);
     } finally {
@@ -258,7 +264,12 @@ export function LibraryLayoutEditor({
             {saveError}
           </p>
         )}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {onCancel && (
+            <Button variant="outline" size="sm" disabled={saving} onClick={onCancel}>
+              {t("maintenance.cancel")}
+            </Button>
+          )}
           <Button
             size="sm"
             disabled={readOnly || saving || (!dirty && !onContinue) || poolsInvalid}
@@ -278,6 +289,7 @@ export function LibraryLayoutEditor({
       {migrationPreview && (
         <Dialog
           onClose={() => setMigrationPreview(null)}
+          layer="overlay-nested"
           size="sm"
           ariaLabel={t("librarySetup.migration.confirmTitle")}
         >

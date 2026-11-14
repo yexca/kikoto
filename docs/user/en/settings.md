@@ -112,12 +112,14 @@ The **System** page (`/system`) holds the instance settings. Administrators see 
 
 ### Library
 
-Library opens with **Libraries**, every library the server reads: the local
-library with its storage mode and whether its storage is online, then each
-configured remote source. The settings follow below it: library storage,
-**Local library**, **Creator catalogs**, **Network and privacy**, and
-read-only storage paths. Selecting the local library jumps to **Library
-storage**.
+Library opens with **Libraries**, a card list of every library the server reads:
+the local storage first (a single card in Standard mode, or one card per pool
+in Storage pools mode with Online/Offline and Fetch pool badges plus
+**Reconnect** when an unmounted folder can be re-marked), followed by each
+configured remote source. **Library storage** or selecting any local card opens
+the storage configuration dialog. The settings follow below it: **Local
+library**, **Creator catalogs**, **Network and privacy**, and read-only storage
+paths.
 
 - **Hide addresses from accounts that do not manage sources**, under
   **Network and privacy**, is on by default. While it is
@@ -134,11 +136,11 @@ storage**.
   private address for a Kikoeru account import; turning this on, after a
   confirmation, lets every account do so.
 
-- **Library storage** shows the library mode (Standard or Storage pools), each
-  pool with an Online or Offline badge, and the Fetch pool. Pools can be added
-  or, while they hold no works, removed; the mode itself is fixed once the
-  library holds local works. **Reconnect** marks an existing folder again
-  after an operator confirmed the right disk is mounted there.
+- **Library storage** (opened from **Libraries**) configures the library mode
+  (Standard or Storage pools), which pools are active, and the Fetch pool.
+  Pools can be added or, while they hold no works, removed; the mode itself is
+  fixed once the library holds local works. **Reconnect** marks an existing
+  folder again after an operator confirmed the right disk is mounted there.
 - **Local library** holds **Scan depth** and **Lyrics of the work folder**.
   Scan depth cannot be set below the level where Fetch saves works;
   scans always reach at least that level, so Fetched works are never reported
