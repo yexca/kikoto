@@ -29,33 +29,31 @@ record/
 
 ## Browsing
 
-Record shows one folder at a time. The path above it names the folder and
-leads back to any folder that contains it. The address keeps the open folder,
-so browser Back, Forward, and reload return to the same place.
+Record shows one folder at a time. The path bar at the top names the folder and
+leads back to any folder that contains it, with **Continue watching** and
+**Scan** (or **Refresh** when your account cannot scan) at the right end. The
+address keeps the open folder, so browser Back, Forward, and reload return to
+the same place; Backspace also steps up one folder.
 
-A folder with backdrop artwork opens with a banner that shows its poster, name,
-and numbers of videos and photos, with **Play** for the first video or
-**Continue from** the time where you left the video you watched last. Other
-folders show the same facts as a plain heading.
+Items are ordered naturally by name: subfolders first, then videos, then
+photos. Group headings appear when a folder holds more than one kind of item.
+Subfolders appear as square tiles that show their poster, their backdrop when
+they have no poster, or a folder icon when they have neither; videos as wide
+tiles with a frame from the video, their length, and a bar for how much you
+have watched; photos as square thumbnails. Thumbnails are made the first time a
+folder shows them, so a large folder can take a moment the first time. Subtitle,
+metadata, and other files stay hidden, and so do the folder's artwork images.
 
-The toolbar shows **All**, **Videos**, or **Photos** and sorts by name in either
-direction. Subfolders appear as square tiles that show their poster, their
-backdrop when they have no poster, or a folder icon when they have neither;
-videos as wide tiles with a frame from the video, their length, and a bar for
-how much you have watched; photos as square thumbnails. Thumbnails are made the
-first time a folder shows them, so a large folder can take a moment the first
-time. Subtitle, metadata, and other files stay hidden, and so do the folder's
-artwork images. **Refresh** reads the folder again.
-
-At the top level, **Continue watching** lists the videos you stopped part way
-through, most recent first, with the folder each one is in. Selecting one plays
-it from where you stopped, and closing the player returns to the top level.
+From any folder, **Continue watching** opens a list of the videos you stopped
+part way through, most recent first, with the folder each one is in. Selecting
+one plays it from where you stopped, and closing the player returns to the
+folder where you opened it.
 
 ## Scanning and artwork
 
-Choose **Scan** in the toolbar; it needs library write access. Beside it the
-page shows when the root was last scanned and, after you start a scan, whether
-it is queued, running, or finished. The scan is queued as a durable
+Choose **Scan** at the top right of the path bar; it needs library write access.
+Hovering it shows when the root was last scanned, and while a scan runs it
+shows whether it is queued, running, or finished. The scan is queued as a durable
 workflow and coalesces with an existing scan. It indexes regular files by
 extension, skips links and Kikoto transaction directories, and keeps previous
 rows when the root is offline or a scan is partial. Only a complete walk marks

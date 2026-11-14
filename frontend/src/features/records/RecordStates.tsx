@@ -119,24 +119,26 @@ export function RecordRetryNotice({
 export function RecordEmptyNotice({
   neverScanned,
   canScan,
+  scanning = false,
   onScan,
 }: {
   neverScanned: boolean;
   canScan: boolean;
+  scanning?: boolean;
   onScan: () => void;
 }) {
   const { t } = useTranslation();
   if (neverScanned) {
     return (
       <RecordNotice
-        icon={<ScanLine className="h-4 w-4" />}
+        icon={scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
         title={t("records.notScannedTitle")}
         message={canScan ? t("records.notScannedMessage") : t("records.notScannedNeedsWrite")}
       >
         {canScan && (
-          <Button onClick={onScan}>
-            <ScanLine className="h-4 w-4" />
-            {t("records.scan")}
+          <Button disabled={scanning} onClick={onScan}>
+            {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
+            {scanning ? t("records.scanStatus.running") : t("records.scan")}
           </Button>
         )}
       </RecordNotice>

@@ -228,25 +228,27 @@ entry pages, features, and tests import.
 `features/records` owns the Record surface, which `pages/RecordsPage` mounts
 through the feature's `RecordsBrowser` entry. It initializes the independent
 record root when permitted and browses it one folder at a time through
-`recordsApi`. `recordsLocation` keeps the open folder, the All, Videos, or
-Photos filter, the name order, and an open video (`?play=`) or photo
+`recordsApi`, ordering subfolders, videos, and photos by natural name.
+`recordsLocation` keeps the open folder and an open video (`?play=`) or photo
 (`?photo=`) in the `/records` URL. Opening a folder or an overlay pushes a
-history entry; the filter, the order, and previous or next inside an overlay
-replace it; closing an overlay the page opened goes back, and closing one
-opened from a pasted link replaces it with its folder. Each entry carries the
-breadcrumb trail with the artwork the parent listing reported, and a pasted
-folder link recovers the trail by walking from the root along a child's
-relative path. Scan follows the queued run through the root's scan generation
-and last-scanned time with bounded polling. Tiles show the server's
-thumbnails, falling back to an icon for a video and to the full image for a
-photo, and the folder's artwork images stay out of the photos. Saved progress
-arrives with the folder listing; `useRecordProgress` overlays the positions the
-player saves during the visit, so tiles and the folder header's Continue
-update without reading the folder again. At the root, a Continue watching row
-lists the viewer's unfinished videos and opens one over its own folder in a new
+history entry; previous or next inside an overlay replaces it; closing an
+overlay the page opened goes back, and closing one opened from a pasted link
+replaces it with its folder. Each entry carries the breadcrumb trail, and a
+pasted folder link recovers the trail by walking from the root along a child's
+relative path. The single-row header places the breadcrumb on the left and the
+Continue watching picker and Scan (or Refresh without `library:write`) on the
+right. Scan follows the queued run through the root's scan generation and
+last-scanned time with bounded polling. Tiles show the server's thumbnails,
+falling back to an icon for a video and to the full image for a photo, and the
+folder's artwork images stay out of the photos. Group headings appear only when
+a folder contains more than one kind of item. Saved progress arrives with the
+folder listing; `useRecordProgress` overlays the positions the player saves
+during the visit, so tiles update without reading the folder again.
+`RecordContinuePicker` lists the viewer's unfinished videos in a popover on
+wide screens or a sheet on phones and opens one over its own folder in a new
 entry (`openFolderVideoNavigation`), resuming without asking, so closing it
-returns to the root. The full-screen `RecordVideoPlayer` asks whether to
-continue from a saved position and saves progress through
+returns to the folder where it was opened. The full-screen `RecordVideoPlayer`
+asks whether to continue from a saved position and saves progress through
 `RecordProgressTracker` every ten seconds, on pause, at the end, and when it
 closes. A same-name subtitle sidecar the server serves as WebVTT becomes the
 video's `<track>`, a WebVTT file before a SubRip one. `RecordPhotoViewer`

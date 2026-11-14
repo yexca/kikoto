@@ -1,7 +1,7 @@
 import type { RecordAsset, RecordFolder } from "@/lib/api";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
-import type { RecordCrumb, RecordKindFilter, RecordSortOrder } from "./recordsLocation";
+import type { RecordCrumb } from "./recordsLocation";
 
 /** What the grid shows for one folder: subfolders, then videos, then photos. */
 export type RecordFolderView = {
@@ -29,9 +29,8 @@ function playable(asset: RecordAsset) {
   return asset.availability === "available" && Boolean(asset.streamUrl);
 }
 
-function byName<T extends { name: string }>(sort: RecordSortOrder) {
-  return (left: T, right: T) =>
-    sort === "name-desc" ? naturalNameCompare(right.name, left.name) : naturalNameCompare(left.name, right.name);
+function byName<T extends { name: string }>(left: T, right: T) {
+  return naturalNameCompare(left.name, right.name);
 }
 
 export function isFolderArtwork(asset: Pick<RecordAsset, "kind" | "name">) {
@@ -44,15 +43,11 @@ export function isFolderArtwork(asset: Pick<RecordAsset, "kind" | "name">) {
  * file whose base name matches a video becomes that video's subtitle, WebVTT
  * first, when the server serves it.
  */
-export function recordFolderView(
-  folders: readonly RecordFolder[],
-  assets: readonly RecordAsset[],
-  sort: RecordSortOrder,
-): RecordFolderView {
-  const videos = assets.filter((asset) => asset.kind === "video" && playable(asset)).sort(byName(sort));
+export function recordFolderView(folders: readonly RecordFolder[], assets: readonly RecordAsset[]): RecordFolderView {
+  const videos = assets.filter((asset) => asset.kind === "video" && playable(asset)).sort(byName);
   const photos = assets
     .filter((asset) => asset.kind === "image" && playable(asset) && !isFolderArtwork(asset))
-    .sort(byName(sort));
+    .sort(byName);
   const vttByBase = new Map<string, RecordAsset>();
   for (const asset of assets) {
     const ext = extension(asset.name);
@@ -66,16 +61,7 @@ export function recordFolderView(
     const match = vttByBase.get(baseName(video.name).toLocaleLowerCase());
     if (match) subtitles.set(video.id, match);
   }
-  return { folders: [...folders].sort(byName(sort)), videos, photos, subtitles };
-}
-
-/** The sections the active filter shows; subfolders stay visible so the tree remains navigable. */
-export function filteredRecordView(view: RecordFolderView, filter: RecordKindFilter): RecordFolderView {
-  return {
-    ...view,
-    videos: filter === "photos" ? [] : view.videos,
-    photos: filter === "videos" ? [] : view.photos,
-  };
+  return { folders: [...folders].sort(byName), videos, photos, subtitles };
 }
 
 export function formatPlaybackTime(value: number) {

@@ -2,20 +2,13 @@ import { ChevronRight, Clapperboard, Loader2, RefreshCw, ScanLine } from "lucide
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { FloatingSelect } from "@/components/ui/floating-select";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import type { RecordRoot } from "@/lib/api";
+import type { RecordAsset, RecordRoot } from "@/lib/api";
 
+import { RecordContinuePicker } from "./RecordContinuePicker";
+import type { RecordCrumb } from "./recordsLocation";
 import type { RecordScanState } from "./useRecordScan";
-import {
-  recordKindFilters,
-  recordSortOrders,
-  type RecordCrumb,
-  type RecordKindFilter,
-  type RecordSortOrder,
-} from "./recordsLocation";
 
 /** The folder path from the root; every step but the current folder opens it. */
 export function RecordBreadcrumb({
@@ -29,7 +22,10 @@ export function RecordBreadcrumb({
   const { t } = useTranslation();
   const steps = [{ id: 0, name: t("nav.record") }, ...trail];
   return (
-    <nav aria-label={t("records.breadcrumb")} className="app-scrollbar min-w-0 overflow-x-auto overflow-y-hidden">
+    <nav
+      aria-label={t("records.breadcrumb")}
+      className="app-scrollbar min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+    >
       <ol className="flex w-max items-center gap-0.5 text-sm">
         {steps.map((step, index) => {
           const current = index === steps.length - 1;
@@ -84,77 +80,80 @@ function scanStatusText(
   }
 }
 
-/** Filter, order, Refresh, and Scan with its inline state. */
+/** Single-row header: breadcrumb on the left, Continue watching and Scan on the right. */
 export function RecordsToolbar({
+  trail,
   root,
-  filter,
-  sort,
+  continueAssets,
+  phone,
   refreshing,
   canScan,
   scan,
-  onFilter,
-  onSort,
+  onOpenCrumb,
+  onOpenContinue,
   onRefresh,
   onScan,
 }: {
+  trail: readonly RecordCrumb[];
   root: RecordRoot;
-  filter: RecordKindFilter;
-  sort: RecordSortOrder;
+  continueAssets: readonly RecordAsset[];
+  phone: boolean;
   refreshing: boolean;
   canScan: boolean;
   scan: RecordScanState;
-  onFilter: (filter: RecordKindFilter) => void;
-  onSort: (sort: RecordSortOrder) => void;
+  onOpenCrumb: (index: number) => void;
+  onOpenContinue: (video: RecordAsset) => void;
   onRefresh: () => void;
   onScan: () => void;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const scanBusy = scan.status === "queueing" || scan.status === "queued" || scan.status === "running";
+  const statusText = scanStatusText(t, scan, root, resolvedLocale);
+  const showInlineStatus = scan.status !== "idle";
+
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <div role="group" aria-label={t("records.filter")} className={segmentedListClassName()}>
-        {recordKindFilters.map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={filter === value}
-            className={segmentedItemClassName(filter === value, "touch-target")}
-            onClick={() => onFilter(value)}
+    <div className="flex items-center gap-2">
+      <RecordBreadcrumb trail={trail} onOpenCrumb={onOpenCrumb} />
+      <div className="flex shrink-0 items-center gap-2">
+        {showInlineStatus && (
+          <p
+            role="status"
+            className={`sr-only text-xs sm:not-sr-only ${
+              scan.status === "failed" ? "text-error-foreground" : "text-muted-foreground"
+            }`}
           >
-            {t(`records.filters.${value}`)}
-          </button>
-        ))}
-      </div>
-      <FloatingSelect
-        value={sort}
-        ariaLabel={t("records.sort")}
-        options={recordSortOrders.map((value) => ({ value, label: t(`records.sorts.${value}`) }))}
-        onValueChange={(value) => onSort(value as RecordSortOrder)}
-        className="w-auto"
-      />
-      <div className="ml-auto flex min-w-0 items-center gap-2">
-        <p
-          role="status"
-          className={`min-w-0 text-xs ${scan.status === "failed" ? "text-error-foreground" : "text-muted-foreground"}`}
-        >
-          {scanBusy && <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin align-[-2px]" aria-hidden="true" />}
-          {scanStatusText(t, scan, root, resolvedLocale)}
-        </p>
-        <Button
-          variant="toolbar"
-          size="icon"
-          aria-label={t("records.refresh")}
-          title={t("records.refresh")}
-          disabled={refreshing}
-          onClick={onRefresh}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-        </Button>
-        {canScan && (
-          <Button variant="outline" size="sm" disabled={scanBusy} onClick={onScan}>
-            <ScanLine className="h-4 w-4" />
-            {t("records.scan")}
+            {statusText}
+          </p>
+        )}
+        <RecordContinuePicker assets={continueAssets} phone={phone} onOpen={onOpenContinue} />
+        {canScan ? (
+          <Button
+            variant="toolbar"
+            size="sm"
+            className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] px-0 sm:w-auto sm:px-3"
+            aria-label={t("records.scan")}
+            title={statusText}
+            disabled={scanBusy}
+            onClick={onScan}
+          >
+            {scanBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <ScanLine className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="hidden sm:inline">{t("records.scan")}</span>
+          </Button>
+        ) : (
+          <Button
+            variant="toolbar"
+            size="icon"
+            aria-label={t("records.refresh")}
+            title={t("records.refresh")}
+            disabled={refreshing}
+            onClick={onRefresh}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
           </Button>
         )}
       </div>

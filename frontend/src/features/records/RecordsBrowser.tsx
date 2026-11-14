@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type RecordAsset, type RecordFolder, type RecordProgress, type RecordRoot } from "@/lib/api";
 
-import { RecordFolderHeader, type RecordPrimaryAction } from "./RecordFolderHeader";
 import { RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
 import {
@@ -15,9 +15,8 @@ import {
   RecordRetryNotice,
   RecordSetupNotice,
 } from "./RecordStates";
-import { RecordBreadcrumb, RecordsToolbar } from "./RecordsToolbar";
+import { RecordsToolbar } from "./RecordsToolbar";
 import { RecordVideoPlayer } from "./RecordVideoPlayer";
-import { continueCandidate } from "./recordProgress";
 import {
   closeOverlayNavigation,
   openCrumbNavigation,
@@ -25,11 +24,8 @@ import {
   openFolderVideoNavigation,
   openOverlayNavigation,
   stepOverlayNavigation,
-  updateViewNavigation,
-  type RecordKindFilter,
-  type RecordSortOrder,
 } from "./recordsLocation";
-import { crumbFromFolder, filteredRecordView, recordFolderView, siblingIds } from "./recordsModel";
+import { crumbFromFolder, recordFolderView, siblingIds } from "./recordsModel";
 import { useRecordRoot, useRecordTree } from "./useRecordLibrary";
 import { useRecordContinue, useRecordProgress } from "./useRecordProgress";
 import { useRecordScan } from "./useRecordScan";
@@ -37,10 +33,11 @@ import { useRecordsLocation } from "./useRecordsLocation";
 
 const noVideos: readonly RecordAsset[] = [];
 
-/** The folder path a Continue watching tile names under its title. */
-function folderCaption(relativePath: string | undefined) {
-  const parts = (relativePath ?? "").split("/").filter(Boolean);
-  return parts.slice(0, -1).join(" › ");
+function isEditableElement(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
 /**
@@ -51,6 +48,7 @@ function folderCaption(relativePath: string | undefined) {
 export function RecordsBrowser() {
   const auth = useAuth();
   const { t } = useTranslation();
+  const phone = useMobileNavigationLayout();
   const enabled = !auth.demoMode;
   const canScan = auth.hasPermission("library:write");
   const { location, historyState, navigate } = useRecordsLocation();
@@ -68,39 +66,20 @@ export function RecordsBrowser() {
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
 
   const listing = tree.status === "ready" && tree.folderId === location.folderId ? tree : null;
-  const view = useMemo(
-    () => (listing ? recordFolderView(listing.folders, listing.assets, location.sort) : null),
-    [listing, location.sort],
-  );
-  const shown = view ? filteredRecordView(view, location.filter) : null;
-  const current = trail.length > 0 ? trail[trail.length - 1] : null;
+  const view = useMemo(() => (listing ? recordFolderView(listing.folders, listing.assets) : null), [listing]);
 
   const { progress, remember } = useRecordProgress(location.folderId, view?.videos ?? noVideos);
-  // The Continue watching row belongs to the root and is read again whenever
-  // the root shows without an overlay, as after the player closes.
   const [savedToken, setSavedToken] = useState(0);
-  const continueAssets = useRecordContinue(
-    enabled && online && location.folderId === 0 && location.overlay === null,
-    savedToken,
-  );
-
-  // The header offers Continue from the most recent unfinished video in the folder.
-  const videoIds = useMemo(() => (view ? view.videos.map((video) => video.id) : []), [view]);
-  const candidate = continueCandidate(videoIds, progress);
-  const primaryAction: RecordPrimaryAction | null = candidate
-    ? { kind: "continue", videoId: candidate.id, position: candidate.position }
-    : view && view.videos.length > 0
-      ? { kind: "play", videoId: view.videos[0].id }
-      : null;
+  const continueAssets = useRecordContinue(enabled && online && location.overlay === null, savedToken);
 
   const openFolder = useStableCallback((folder: RecordFolder) => {
     navigate((at) => openFolderNavigation(at, trail, crumbFromFolder(folder)));
     window.scrollTo({ top: 0 });
   });
-  const openCrumb = (index: number) => {
+  const openCrumb = useStableCallback((index: number) => {
     navigate((at) => openCrumbNavigation(at, trail, index));
     window.scrollTo({ top: 0 });
-  };
+  });
   const openVideo = useStableCallback((id: number) => {
     setAutoResumeId(null);
     navigate((at, state) => openOverlayNavigation(at, state, { kind: "video", assetId: id }));
@@ -113,8 +92,6 @@ export function RecordsBrowser() {
     navigate((at, state) => stepOverlayNavigation(at, state, id));
   };
   const closeOverlay = () => navigate((at, state) => closeOverlayNavigation(at, state));
-  const setFilter = (filter: RecordKindFilter) => navigate((at, state) => updateViewNavigation(at, state, { filter }));
-  const setSort = (sort: RecordSortOrder) => navigate((at, state) => updateViewNavigation(at, state, { sort }));
   const rememberProgress = useStableCallback((id: number, value: RecordProgress) => {
     remember(id, value);
     setSavedToken((token) => token + 1);
@@ -141,6 +118,19 @@ export function RecordsBrowser() {
       setInitializing("failed");
     }
   };
+
+  useEffect(() => {
+    if (!online || trail.length === 0 || location.overlay !== null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (isEditableElement(event.target)) return;
+      if (document.querySelector("[role='dialog'], [aria-modal='true']")) return;
+      event.preventDefault();
+      openCrumb(trail.length - 2);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [location.overlay, online, openCrumb, trail.length]);
 
   if (!enabled) return <RecordDemoNotice />;
   if (rootState.status === "loading") return <RecordLoading label={t("records.loading")} />;
@@ -180,33 +170,49 @@ export function RecordsBrowser() {
   const overlayPhoto =
     overlay?.kind === "photo" && view ? (view.photos.find((photo) => photo.id === overlay.assetId) ?? null) : null;
   const isEmpty = view !== null && view.folders.length + view.videos.length + view.photos.length === 0;
+  const scanBusy =
+    scan.state.status === "queueing" || scan.state.status === "queued" || scan.state.status === "running";
+  const sectionCount = view
+    ? (view.folders.length > 0 ? 1 : 0) + (view.videos.length > 0 ? 1 : 0) + (view.photos.length > 0 ? 1 : 0)
+    : 0;
+  const showSectionHeadings = sectionCount > 1;
+
+  const foldersGrid = view && view.folders.length > 0 && (
+    <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
+      {view.folders.map((folder) => (
+        <RecordFolderTile key={folder.id} folder={folder} onOpen={openFolder} />
+      ))}
+    </div>
+  );
+
+  const videosGrid = view && view.videos.length > 0 && (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-3 xl:grid-cols-4">
+      {view.videos.map((video) => (
+        <RecordVideoTile key={video.id} video={video} progress={progress.get(video.id)} onOpen={openVideo} />
+      ))}
+    </div>
+  );
+
+  const photosGrid = view && view.photos.length > 0 && (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      {view.photos.map((photo) => (
+        <RecordPhotoTile key={photo.id} photo={photo} onOpen={openPhoto} />
+      ))}
+    </div>
+  );
 
   return (
-    <div className="space-y-5">
-      <RecordBreadcrumb trail={trail} onOpenCrumb={openCrumb} />
-      {view && (
-        <RecordFolderHeader
-          name={current ? current.name || t("records.unknownFolder") : t("nav.record")}
-          posterUrl={current?.posterUrl}
-          backdropUrl={current?.backdropUrl}
-          videoCount={view.videos.length}
-          photoCount={view.photos.length}
-          action={primaryAction}
-          onPlay={(action) => {
-            navigate((at, state) => openOverlayNavigation(at, state, { kind: "video", assetId: action.videoId }));
-            setAutoResumeId(action.kind === "continue" ? action.videoId : null);
-          }}
-        />
-      )}
+    <div className="space-y-4">
       <RecordsToolbar
+        trail={trail}
         root={root}
-        filter={location.filter}
-        sort={location.sort}
+        continueAssets={continueAssets}
+        phone={phone}
         refreshing={pending}
         canScan={canScan}
         scan={scan.state}
-        onFilter={setFilter}
-        onSort={setSort}
+        onOpenCrumb={openCrumb}
+        onOpenContinue={openContinue}
         onRefresh={refresh}
         onScan={startScan}
       />
@@ -217,69 +223,40 @@ export function RecordsBrowser() {
           message={t("records.folderErrorMessage")}
           onRetry={reloadTree}
         />
-      ) : !shown || !view ? (
+      ) : !view ? (
         <RecordLoading label={t("records.loadingFolder")} />
       ) : isEmpty ? (
         <RecordEmptyNotice
           neverScanned={location.folderId === 0 && !root.lastScannedAt}
           canScan={canScan}
+          scanning={scanBusy}
           onScan={startScan}
         />
       ) : (
         <div className="space-y-8">
-          {location.folderId === 0 && continueAssets.length > 0 && (
-            <RecordSection title={t("records.sections.continue")} count={continueAssets.length}>
-              <div className="app-scrollbar -mx-1 flex gap-3 overflow-x-auto overflow-y-hidden px-1 pb-1">
-                {continueAssets.map((video) => (
-                  <div key={video.id} className="w-[min(16rem,70vw)] shrink-0">
-                    <RecordVideoTile
-                      video={video}
-                      progress={video.progress}
-                      caption={folderCaption(video.relativePath)}
-                      onOpen={() => openContinue(video)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </RecordSection>
-          )}
-          {shown.folders.length > 0 && (
-            <RecordSection title={t("records.sections.folders")} count={shown.folders.length}>
-              <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
-                {shown.folders.map((folder) => (
-                  <RecordFolderTile key={folder.id} folder={folder} onOpen={openFolder} />
-                ))}
-              </div>
-            </RecordSection>
-          )}
-          {location.filter !== "photos" &&
-            (shown.videos.length > 0 ? (
-              <RecordSection title={t("records.sections.videos")} count={shown.videos.length}>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-3 xl:grid-cols-4">
-                  {shown.videos.map((video) => (
-                    <RecordVideoTile
-                      key={video.id}
-                      video={video}
-                      progress={progress.get(video.id)}
-                      onOpen={openVideo}
-                    />
-                  ))}
-                </div>
+          {foldersGrid &&
+            (showSectionHeadings ? (
+              <RecordSection title={t("records.sections.folders")} count={view.folders.length}>
+                {foldersGrid}
               </RecordSection>
             ) : (
-              location.filter === "videos" && <p className="text-sm text-muted-foreground">{t("records.noVideos")}</p>
+              foldersGrid
             ))}
-          {location.filter !== "videos" &&
-            (shown.photos.length > 0 ? (
-              <RecordSection title={t("records.sections.photos")} count={shown.photos.length}>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {shown.photos.map((photo) => (
-                    <RecordPhotoTile key={photo.id} photo={photo} onOpen={openPhoto} />
-                  ))}
-                </div>
+          {videosGrid &&
+            (showSectionHeadings ? (
+              <RecordSection title={t("records.sections.videos")} count={view.videos.length}>
+                {videosGrid}
               </RecordSection>
             ) : (
-              location.filter === "photos" && <p className="text-sm text-muted-foreground">{t("records.noPhotos")}</p>
+              videosGrid
+            ))}
+          {photosGrid &&
+            (showSectionHeadings ? (
+              <RecordSection title={t("records.sections.photos")} count={view.photos.length}>
+                {photosGrid}
+              </RecordSection>
+            ) : (
+              photosGrid
             ))}
         </div>
       )}

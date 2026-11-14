@@ -12,14 +12,15 @@
   sidebar. It reads its own `/record` mount, starts after an administrator
   initializes the root, and never adds files to the audio Library or to a
   work.
-- Record browses one folder at a time under a path that leads back to every
-  parent, and the address keeps the open folder for Back, Forward, and reload.
-  Folders with artwork open with a poster and backdrop banner and **Play** or
-  **Continue from**; videos, photos, and subfolders can be filtered and
-  sorted.
+- Record browses one folder at a time under a path bar that leads back to every
+  parent, with **Continue watching** and **Scan** on the right, and the address
+  keeps the open folder for Back, Forward, and reload. Items are ordered
+  naturally by name, and **Continue watching** opens from any folder to resume
+  videos you stopped part way through.
 - Videos play in a full-screen player that steps through the folder, offers to
   continue where you stopped, saves the position per account, and pauses the
-  global audio player. Photos open full screen with arrow keys and swipes.
+  global audio player. A `.vtt` or UTF-8 `.srt` file named like a video plays
+  as its subtitles. Photos open full screen with arrow keys and swipes.
 - A scan reads each video's length and size. Video tiles show a frame from the
   video and photos show small thumbnails, both made the first time a folder
   shows them; folder artwork images stay out of the photos.
@@ -29,9 +30,6 @@
   Cleanup** removes them with the rest of the cache, and a complete Record scan
   removes the thumbnails of files that are gone. A removed thumbnail is made
   again the next time a folder shows it.
-- **Continue watching** at the top of Record lists the videos you stopped part
-  way through and resumes them. A `.vtt` or UTF-8 `.srt` file named like a
-  video plays as its subtitles.
 
 </details>
 

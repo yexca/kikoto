@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RecordAsset, RecordFolder } from "@/lib/api";
 
-import { filteredRecordView, folderPathFromChildren, formatPlaybackTime, recordFolderView } from "./recordsModel";
+import { folderPathFromChildren, formatPlaybackTime, recordFolderView } from "./recordsModel";
 
 function asset(id: number, name: string, kind: RecordAsset["kind"], streamUrl?: string): RecordAsset {
   return {
@@ -36,25 +36,18 @@ describe("recordFolderView", () => {
   ];
 
   it("orders by natural name and hides non-media files and folder artwork", () => {
-    const view = recordFolderView([folder(9, "B"), folder(8, "a")], assets, "name");
+    const view = recordFolderView([folder(9, "B"), folder(8, "a")], assets);
     expect(view.folders.map((item) => item.name)).toEqual(["a", "B"]);
     expect(view.videos.map((item) => item.id)).toEqual([2, 1]);
     expect(view.photos.map((item) => item.id)).toEqual([4]);
-    expect(recordFolderView([], assets, "name-desc").videos.map((item) => item.id)).toEqual([1, 2]);
   });
 
   it("pairs a served same-name subtitle with each video, WebVTT before SubRip", () => {
-    const view = recordFolderView([], assets, "name");
+    const view = recordFolderView([], assets);
     expect([...view.subtitles].map(([video, subtitle]) => [video, subtitle.id])).toEqual([
       [2, 3],
       [1, 6],
     ]);
-  });
-
-  it("keeps folders visible under a kind filter", () => {
-    const view = recordFolderView([folder(8, "a")], assets, "name");
-    const photos = filteredRecordView(view, "photos");
-    expect([photos.folders.length, photos.videos.length, photos.photos.length]).toEqual([1, 0, 1]);
   });
 });
 

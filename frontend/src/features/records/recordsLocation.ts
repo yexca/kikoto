@@ -1,25 +1,16 @@
 /**
- * The Record page location. The URL names the open folder, the grid filter and
- * order, and an open video or photo overlay; the history entry carries the
- * breadcrumb trail that led to the folder so Back and reload restore it
- * without another lookup.
+ * The Record page location. The URL names the open folder and an open video or
+ * photo overlay; the history entry carries the breadcrumb trail that led to
+ * the folder so Back and reload restore it without another lookup.
  */
 
 export const RECORDS_PATH = "/records";
-
-export const recordKindFilters = ["all", "videos", "photos"] as const;
-export type RecordKindFilter = (typeof recordKindFilters)[number];
-
-export const recordSortOrders = ["name", "name-desc"] as const;
-export type RecordSortOrder = (typeof recordSortOrders)[number];
 
 export type RecordOverlay = { kind: "video" | "photo"; assetId: number };
 
 export type RecordsLocation = {
   /** The open folder; 0 is the record root. */
   folderId: number;
-  filter: RecordKindFilter;
-  sort: RecordSortOrder;
   overlay: RecordOverlay | null;
 };
 
@@ -48,14 +39,10 @@ function positiveId(value: string | null) {
 
 export function readRecordsLocation(search: string): RecordsLocation {
   const params = new URLSearchParams(search);
-  const filter = params.get("kind");
-  const sort = params.get("sort");
   const play = positiveId(params.get("play"));
   const photo = positiveId(params.get("photo"));
   return {
     folderId: positiveId(params.get("folder")) ?? 0,
-    filter: recordKindFilters.includes(filter as RecordKindFilter) ? (filter as RecordKindFilter) : "all",
-    sort: recordSortOrders.includes(sort as RecordSortOrder) ? (sort as RecordSortOrder) : "name",
     overlay: play ? { kind: "video", assetId: play } : photo ? { kind: "photo", assetId: photo } : null,
   };
 }
@@ -64,8 +51,6 @@ export function readRecordsLocation(search: string): RecordsLocation {
 export function recordsHref(location: RecordsLocation) {
   const params = new URLSearchParams();
   if (location.folderId > 0) params.set("folder", String(location.folderId));
-  if (location.filter !== "all") params.set("kind", location.filter);
-  if (location.sort !== "name") params.set("sort", location.sort);
   if (location.overlay)
     params.set(location.overlay.kind === "video" ? "play" : "photo", String(location.overlay.assetId));
   const query = params.toString();
@@ -116,7 +101,7 @@ function withoutOverlayMarker(state: unknown) {
   return next;
 }
 
-/** Opens a child folder as a new history entry; the filter and order carry over. */
+/** Opens a child folder as a new history entry. */
 export function openFolderNavigation(
   current: RecordsLocation,
   trail: readonly RecordCrumb[],
@@ -144,15 +129,6 @@ export function openCrumbNavigation(
   };
 }
 
-/** Changes the filter or order in place, so Back leaves the folder rather than undoing a toggle. */
-export function updateViewNavigation(
-  current: RecordsLocation,
-  state: unknown,
-  change: Partial<Pick<RecordsLocation, "filter" | "sort">>,
-): RecordsNavigation {
-  return { mode: "replace", href: recordsHref({ ...current, ...change }), state: stateRecord(state) };
-}
-
 /** Opens a video or photo over the folder as its own entry, so Back closes it. */
 export function openOverlayNavigation(
   current: RecordsLocation,
@@ -168,9 +144,10 @@ export function openOverlayNavigation(
 }
 
 /**
- * Opens a video in its own folder, as Continue watching does from the root.
+ * Opens a video in its own folder, as Continue watching does.
  * The player sits over that folder in a new entry, so closing it goes back to
- * the place it was opened from; the folder's trail is recovered from its listing.
+ * the folder where it was opened; the player's folder trail is recovered from
+ * its listing.
  */
 export function openFolderVideoNavigation(
   current: RecordsLocation,

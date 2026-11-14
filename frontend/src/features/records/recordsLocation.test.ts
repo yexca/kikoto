@@ -11,7 +11,6 @@ import {
   recordTrailFromState,
   recordsHref,
   stepOverlayNavigation,
-  updateViewNavigation,
   type RecordCrumb,
 } from "./recordsLocation";
 
@@ -19,33 +18,29 @@ const family: RecordCrumb = { id: 3, name: "Family" };
 const trip: RecordCrumb = { id: 7, name: "Summer Trip", posterUrl: "/poster", backdropUrl: "/backdrop" };
 
 describe("Record location", () => {
-  it("round-trips the folder, view, and overlay through the URL and keeps defaults out of it", () => {
+  it("round-trips the folder and overlay through the URL and keeps defaults out of it", () => {
     expect(recordsHref(readRecordsLocation(""))).toBe("/records");
-    const location = readRecordsLocation("?folder=7&kind=photos&sort=name-desc&photo=12");
+    const location = readRecordsLocation("?folder=7&photo=12");
     expect(location).toEqual({
       folderId: 7,
-      filter: "photos",
-      sort: "name-desc",
       overlay: { kind: "photo", assetId: 12 },
     });
-    expect(recordsHref(location)).toBe("/records?folder=7&kind=photos&sort=name-desc&photo=12");
+    expect(recordsHref(location)).toBe("/records?folder=7&photo=12");
   });
 
-  it("ignores malformed values instead of opening another folder", () => {
+  it("ignores malformed or legacy view values instead of opening another folder", () => {
     expect(readRecordsLocation("?folder=-2&kind=music&sort=size&play=1.5")).toEqual({
       folderId: 0,
-      filter: "all",
-      sort: "name",
       overlay: null,
     });
   });
 
   it("opens a child folder as a new entry that carries its breadcrumb trail", () => {
-    const current = readRecordsLocation("?folder=3&kind=videos");
+    const current = readRecordsLocation("?folder=3");
     const navigation = openFolderNavigation(current, [family], trip);
     expect(navigation).toEqual({
       mode: "push",
-      href: "/records?folder=7&kind=videos",
+      href: "/records?folder=7",
       state: historyStateWithRecordTrail({}, [family, trip]),
     });
     if (navigation.mode === "back") throw new Error("expected a push");
@@ -67,15 +62,6 @@ describe("Record location", () => {
       href: "/records?folder=3",
     });
     expect(openCrumbNavigation(current, [family, trip], -1)).toMatchObject({ mode: "push", href: "/records" });
-  });
-
-  it("changes the filter and order in place", () => {
-    const current = readRecordsLocation("?folder=7");
-    expect(updateViewNavigation(current, { kept: 1 }, { sort: "name-desc" })).toEqual({
-      mode: "replace",
-      href: "/records?folder=7&sort=name-desc",
-      state: { kept: 1 },
-    });
   });
 
   it("closes an overlay it opened by going back to the folder entry below it", () => {
@@ -101,10 +87,10 @@ describe("Record location", () => {
     expect(closeOverlayNavigation(pasted, null)).toEqual({ mode: "replace", href: "/records?folder=7", state: {} });
   });
 
-  it("opens a Continue watching video over its own folder, and closing it goes back to the root", () => {
-    const root = readRecordsLocation("?kind=photos");
-    const open = openFolderVideoNavigation(root, 7, 21);
-    expect(open).toMatchObject({ mode: "push", href: "/records?folder=7&kind=photos&play=21" });
+  it("opens a Continue watching video over its own folder, and closing it goes back", () => {
+    const current = readRecordsLocation("?folder=3");
+    const open = openFolderVideoNavigation(current, 7, 21);
+    expect(open).toMatchObject({ mode: "push", href: "/records?folder=7&play=21" });
     if (open.mode === "back") throw new Error("expected a push");
     expect(recordTrailFromState(open.state, 7)).toBeNull();
     expect(closeOverlayNavigation(readRecordsLocation("?folder=7&play=21"), open.state).mode).toBe("back");

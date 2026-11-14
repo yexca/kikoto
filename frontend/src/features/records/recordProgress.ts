@@ -80,19 +80,3 @@ export function watchedFraction(progress: RecordProgress | undefined): number | 
   if (duration === undefined || progress.positionSeconds <= 0) return null;
   return Math.min(1, Math.max(0, progress.positionSeconds / duration));
 }
-
-/** The video a folder's Continue action resumes: the most recently played unfinished one. */
-export function continueCandidate(
-  videoIds: readonly number[],
-  progress: ReadonlyMap<number, RecordProgress>,
-): { id: number; position: number } | null {
-  let best: { id: number; position: number; playedAt: string } | null = null;
-  for (const id of videoIds) {
-    const entry = progress.get(id);
-    const position = resumePosition(entry);
-    if (position === null || !entry) continue;
-    const playedAt = entry.lastPlayedAt ?? "";
-    if (!best || playedAt > best.playedAt) best = { id, position, playedAt };
-  }
-  return best ? { id: best.id, position: best.position } : null;
-}

@@ -5,7 +5,6 @@ import type { RecordProgress } from "@/lib/api";
 import {
   RECORD_PROGRESS_SAVE_INTERVAL_MS,
   RecordProgressTracker,
-  continueCandidate,
   resumePosition,
   watchedFraction,
 } from "./recordProgress";
@@ -82,15 +81,5 @@ describe("saved progress", () => {
     expect(watchedFraction({ positionSeconds: 30, completed: false })).toBeNull();
     expect(watchedFraction({ positionSeconds: 30, durationSeconds: 120, completed: false })).toBe(0.25);
     expect(watchedFraction({ positionSeconds: 0, completed: true })).toBe(1);
-  });
-
-  it("continues the most recently played unfinished video", () => {
-    const progress = new Map<number, RecordProgress>([
-      [1, { positionSeconds: 40, completed: false, lastPlayedAt: "2026-01-02 10:00:00" }],
-      [2, { positionSeconds: 60, completed: false, lastPlayedAt: "2026-01-03 10:00:00" }],
-      [3, { positionSeconds: 70, completed: true, lastPlayedAt: "2026-01-04 10:00:00" }],
-    ]);
-    expect(continueCandidate([1, 2, 3], progress)).toEqual({ id: 2, position: 60 });
-    expect(continueCandidate([3], progress)).toBeNull();
   });
 });
