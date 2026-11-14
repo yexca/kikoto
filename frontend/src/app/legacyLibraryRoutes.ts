@@ -78,6 +78,17 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     }
   }
   // Subscriptions is the Discover page; its query names the same view.
+  // Followed circles and voice actors are the Favorite view of their own pages.
+  if (path === "/favorites") {
+    const params = new URLSearchParams(search);
+    const entity = params.get("entity");
+    if (entity === "circles" || entity === "voices") {
+      const target = new URLSearchParams({ filter: "favorite" });
+      const query = params.get("q")?.trim();
+      if (query) target.set("q", query);
+      return `/${entity}?${target}`;
+    }
+  }
   if (path === "/subscriptions") return `/discover${normalizedSearch(search)}`;
   if (path === "/history") return "/insights";
   if (path === "/user-data") return "/settings?tab=data";

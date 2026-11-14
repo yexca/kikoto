@@ -40,6 +40,13 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/library/no-source/")).toBe("/metadata?reason=no_source");
   });
 
+  it("opens followed circles and voice actors on their own pages' Favorite view", () => {
+    expect(legacyLibraryRedirect("/favorites", "?entity=circles")).toBe("/circles?filter=favorite");
+    expect(legacyLibraryRedirect("/favorites", "?entity=voices&q=Example")).toBe("/voices?filter=favorite&q=Example");
+    expect(legacyLibraryRedirect("/favorites", "?q=Example")).toBeNull();
+    expect(legacyLibraryRedirect("/favorites")).toBeNull();
+  });
+
   it("moves obsolete database scopes to the normal Library", () => {
     expect(legacyLibraryRedirect("/library/all")).toBe("/");
     expect(legacyLibraryRedirect("/library/remote", "?q=voice")).toBe("/?q=voice");

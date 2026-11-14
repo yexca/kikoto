@@ -1,4 +1,4 @@
-import { Heart, Mic2, Pencil, Plus, UsersRound, Zap, type LucideIcon } from "lucide-react";
+import { Heart, Pencil, Plus, Zap, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,10 +7,8 @@ import { Button } from "@/components/ui/button";
 import { SubNavActiveMark, SubNavColumn, SubNavHeading, subNavItemClassName } from "@/components/ui/sub-nav";
 import type { FavoriteList } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
-import type { FavoriteEntity } from "./favoritesBrowseState";
 
 export type FavoriteShelfNavigation = {
-  entity: FavoriteEntity;
   activeList: "all" | number;
   userLists: FavoriteList[];
   favoriteTotal: number;
@@ -19,11 +17,8 @@ export type FavoriteShelfNavigation = {
   newCounts: Record<string, number>;
   /** Counts stay hidden until the works counts arrive for this account. */
   worksCountsKnown: boolean;
-  circleCount: number | null;
-  voiceCount: number | null;
   listsLoading: boolean;
   onWorksShelf: (list: "all" | number) => void;
-  onCreatorShelf: (entity: Exclude<FavoriteEntity, "works">) => void;
   onEditLists: () => void;
   onAddList: () => void;
 };
@@ -45,19 +40,16 @@ type ShelfItem = {
 function useShelfItems(navigation: FavoriteShelfNavigation) {
   const { t } = useTranslation();
   const worksCount = (value: number) => (navigation.worksCountsKnown ? value : null);
-  const onWorks = navigation.entity === "works";
-  const works: ShelfItem[] = [
-    {
-      key: "all",
-      // The page already says Favorites; the open shelf's header keeps the full name.
-      label: t("favorites.allShort"),
-      title: t("favorites.shelfAllDescription"),
-      icon: Heart,
-      count: worksCount(navigation.favoriteTotal),
-      active: onWorks && navigation.activeList === "all",
-      onSelect: () => navigation.onWorksShelf("all"),
-    },
-  ];
+  const all: ShelfItem = {
+    key: "all",
+    // The page already says Favorites; the open shelf's header keeps the full name.
+    label: t("favorites.allShort"),
+    title: t("favorites.shelfAllDescription"),
+    icon: Heart,
+    count: worksCount(navigation.favoriteTotal),
+    active: navigation.activeList === "all",
+    onSelect: () => navigation.onWorksShelf("all"),
+  };
   const lists: ShelfItem[] = navigation.userLists.map((list) => {
     const newCount = navigation.newCounts[String(list.id)] ?? 0;
     const smartTitle = list.kind === "smart" ? t("favorites.smart.kind") : "";
@@ -75,47 +67,22 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
       count: worksCount(navigation.listCounts[String(list.id)] ?? 0),
       smart: list.kind === "smart",
       newCount: navigation.worksCountsKnown ? newCount : 0,
-      active: onWorks && navigation.activeList === list.id,
+      active: navigation.activeList === list.id,
       onSelect: () => navigation.onWorksShelf(list.id),
     };
   });
-  const creators: ShelfItem[] = [
-    {
-      key: "circles",
-      label: t("creatorBrowse.circles"),
-      title: t("favorites.circleShelfDescription"),
-      icon: UsersRound,
-      count: navigation.circleCount,
-      active: navigation.entity === "circles",
-      onSelect: () => navigation.onCreatorShelf("circles"),
-    },
-    {
-      key: "voices",
-      label: t("creatorBrowse.voiceActors"),
-      title: t("favorites.voiceShelfDescription"),
-      icon: Mic2,
-      count: navigation.voiceCount,
-      active: navigation.entity === "voices",
-      onSelect: () => navigation.onCreatorShelf("voices"),
-    },
-  ];
-  return { works, lists, creators };
+  return { all, lists };
 }
 
 /**
- * The wide-layout shelf list: works shelves, the user's lists, then followed
- * creators, in the same column form as every other page's secondary navigation.
+ * The wide-layout shelf list: the whole collection, then the user's lists, in
+ * the same column form as every other page's secondary navigation.
  * A list's chosen icon tells the lists apart; every item shows its name.
  */
 export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelfNavigation }) {
   const { t } = useTranslation();
-  const { works, lists, creators } = useShelfItems(navigation);
+  const { all, lists } = useShelfItems(navigation);
   const sections: { key: string; heading: string; content: ReactNode; actions?: ReactNode }[] = [
-    {
-      key: "works",
-      heading: t("detailActions.works"),
-      content: works.map((item) => <ShelfSidebarItem key={item.key} item={item} />),
-    },
     {
       key: "lists",
       heading: t("favorites.myLists"),
@@ -153,17 +120,15 @@ export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelf
         </>
       ),
     },
-    {
-      key: "creators",
-      heading: t("favorites.creators"),
-      content: creators.map((item) => <ShelfSidebarItem key={item.key} item={item} />),
-    },
   ];
 
   return (
     <SubNavColumn>
       <nav aria-label={t("favorites.shelves")} className="app-scrollbar min-h-0 overflow-y-auto">
         <div className="grid gap-4">
+          <div className="grid gap-0.5">
+            <ShelfSidebarItem item={all} />
+          </div>
           {sections.map((section) => (
             <ShelfSection key={section.key} heading={section.heading} actions={section.actions}>
               {section.content}
@@ -276,9 +241,9 @@ function ShelfSkeletonRows() {
 /** The compact shelf row: one scrollable strip of every shelf, ending with list editing. */
 export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNavigation }) {
   const { t } = useTranslation();
-  const { works, lists, creators } = useShelfItems(navigation);
+  const { all, lists } = useShelfItems(navigation);
   const stripRef = useRef<HTMLDivElement>(null);
-  const activeKey = [...works, ...lists, ...creators].find((item) => item.active)?.key ?? "";
+  const activeKey = [all, ...lists].find((item) => item.active)?.key ?? "";
 
   // Only the strip scrolls, e.g. after a deep link to a later list; the page keeps its position.
   useEffect(() => {
@@ -307,11 +272,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
             ))
           ) : (
             <>
-              {[...works, ...lists].map((item) => (
-                <ShelfChip key={item.key} item={item} />
-              ))}
-              <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-border" />
-              {creators.map((item) => (
+              {[all, ...lists].map((item) => (
                 <ShelfChip key={item.key} item={item} />
               ))}
             </>

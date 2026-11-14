@@ -1,8 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { cn } from "@/lib/tailwindClassNames";
-
 /**
  * The open shelf in one line: its icon, its name with any edit action, and a
  * caption with the result count and page. The shelf list already shows every
@@ -16,7 +14,6 @@ export function FavoriteShelfHeader({
   description,
   caption,
   actions,
-  compact = false,
 }: {
   icon: LucideIcon;
   title: string;
@@ -24,17 +21,12 @@ export function FavoriteShelfHeader({
   /** Null while the result count is still unknown. */
   caption: string | null;
   actions?: ReactNode;
-  /** The phone header uses a smaller name. */
-  compact?: boolean;
 }) {
   return (
     <header className="flex min-h-9 min-w-0 items-center gap-2.5">
       <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
       <h2
-        className={cn(
-          "min-w-0 truncate font-semibold tracking-tight",
-          compact ? "text-lg leading-7" : "text-xl leading-8",
-        )}
+        className="min-w-0 truncate text-xl font-semibold leading-8 tracking-tight"
         title={description ? `${title} · ${description}` : title}
       >
         {title}

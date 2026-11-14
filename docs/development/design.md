@@ -454,8 +454,8 @@ Mobile:
   played and View as icons; the order's name truncates before the row
   overflows a 360px screen. A caption under that row states the result count
   and page in place of a top pager.
-- The phone Favorites shelf puts, below its shelf row and a one-line shelf
-  header that states the result count and page: the labeled sort with Search,
+- The phone Favorites shelf puts, below its shelf row, whose selected chip
+  names the open shelf in place of a header: the labeled sort with Search,
   Filters, and the view utilities at the row's end, then the Quick mark chips
   in a horizontally scrollable row. Search opens its field above the row and
   keeps it while a query is set.

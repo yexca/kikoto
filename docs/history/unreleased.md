@@ -191,7 +191,8 @@
   top page bar. Search and the work controls sit beside it on a wide screen.
   The shelf list and the phone shelf row name the whole collection **All**.
 - On phones the Quick mark chips stay below the controls, and search opens
-  from an icon in the control row.
+  from an icon in the control row. The shelf row names the open shelf, so
+  phones show no header line.
 - One **Filters** button on Favorites holds the listening status, with each
   status's count, and the resource filter, in place of the row of status tabs
   and the separate resource button; **Clear filters** resets both. On phones
@@ -201,6 +202,9 @@
   **Any mark**, which shows the same works on any shelf, and a link to the
   Marked list opens All Favorites with that filter. Edit lists no longer shows
   the fixed Marked row.
+- Followed circles and voice actors leave Favorites: they are the **Favorite**
+  view of the Circles and Voice Actors pages, and a link to the former
+  Favorites creator shelves opens that view.
 - A smart list's rule, new works, **Only new**, **Mark all as seen**, and
   **Edit rule** share one line under the shelf header. **Convert to regular
   list** moves into the list's editor.

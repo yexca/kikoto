@@ -239,15 +239,20 @@ filters** resets both. A work whose files belong to another language edition
 counts with that edition. The resource filter reads stored availability and
 does not request a live remote refresh.
 
-On wide screens a shelf list beside the results names All (the whole collection), your lists, and followed circles and voice actors with their counts, in the
-same column form as the Settings list. Each user list can show
+Followed circles and voice actors are the **Favorite** view of the Circles and
+Voice Actors pages; `/favorites?entity=circles` and `/favorites?entity=voices`
+open that view.
+
+On wide screens a shelf list beside the results names All (the whole
+collection) and your lists with their counts, in the same column form as the
+Settings list. Each user list can show
 an icon chosen in its editor, which is what tells the lists apart at a glance;
 the list icon also appears in the add-to-list menus. The open shelf has a
 one-line header: its icon, its name, and the result count with the page in
 place of a top page bar; a description shows as the name's tooltip. Search and
 the Filters, sort, display, and selection buttons sit beside the header, or
-below it on a narrower page. Phones show the same shelves as one scrollable row
-above that header, then one row with the named sort and the Search, Filters,
+below it on a narrower page. Phones show the same shelves as one scrollable row whose selected chip names
+the open shelf in place of the header, then one row with the named sort and the Search, Filters,
 display, and selection buttons, and the Quick mark statuses with their counts as
 a scrollable chip row. Search opens a field above that row, which stays open
 while it holds a query; on phones Filters holds only the resource. Display options switch works

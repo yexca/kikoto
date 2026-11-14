@@ -414,8 +414,9 @@ configuration, and their shared state live in
 `features/workflows/availability-watch`.
 
 The Favorites page keeps data loading, browse state, and history restoration.
-The shelf list, shelf header, controls, card and list views, creator shelves,
-and list management live in `features/favorites`. List icons come from a
+The shelf list, shelf header, controls, card and list views, and list
+management live in `features/favorites`. Followed circles and voice actors are
+the Favorite filter of their own list pages. List icons come from a
 shared catalog in `components/favorite-list`, so the work card's list menu and
 Favorites draw the same icon for a stored key.
 

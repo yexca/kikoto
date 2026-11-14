@@ -1,4 +1,4 @@
-import { BookmarkCheck, Heart, Mic2, Pencil, UsersRound } from "lucide-react";
+import { BookmarkCheck, Heart, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,7 +18,6 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
-import { FavoriteCreatorShelf } from "@/features/favorites/FavoriteCreatorShelf";
 import type { FavoriteListMembershipChanges } from "@/features/favorites/FavoriteListMembershipPicker";
 import { FavoriteListManager } from "@/features/favorites/FavoriteListManager";
 import { FavoriteMobileControls } from "@/features/favorites/FavoriteMobileControls";
@@ -45,7 +44,6 @@ import {
 } from "@/features/favorites/FavoriteWorksControls";
 import { favoriteShelfKind, favoriteStatusFilterOptions } from "@/features/favorites/favoriteShelfModel";
 import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
-import { useFavoriteCreators } from "@/features/favorites/useFavoriteCreators";
 import { useFavoriteListEditing } from "@/features/favorites/useFavoriteListEditing";
 import { useFavoriteLists } from "@/features/favorites/useFavoriteLists";
 import { useFavoriteWorks } from "@/features/favorites/useFavoriteWorks";
@@ -60,7 +58,6 @@ import {
   readFavoritesBrowseState,
   writeFavoritesBrowseState,
   type FavoriteAvailability,
-  type FavoriteEntity,
   type FavoritePageSize,
   type FavoriteStatusFilter,
   type FavoritesBrowseState,
@@ -113,8 +110,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     markedList,
     userLists,
   } = useFavoriteLists({ active, user: auth.user, notifyUnavailable });
-  const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
-  const creators = useFavoriteCreators({ active, user: auth.user, notifyUnavailable });
   const [query, setQuery] = useState(initialBrowseState.query);
   const [statusFilter, setStatusFilter] = useState<FavoriteStatusFilter>(initialBrowseState.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
@@ -138,7 +133,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const mobileNavigationLayout = useMobileNavigationLayout();
   const browseState: FavoritesBrowseState = {
-    entity: favoriteEntity,
     query,
     status: statusFilter,
     availability: availabilityFilter,
@@ -166,7 +160,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       };
     },
     restore: ({ browse, entry }) => {
-      setFavoriteEntity(browse.entity);
       setQuery(browse.query);
       setStatusFilter(browse.status);
       setAvailabilityFilter(browse.availability);
@@ -213,7 +206,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (!active || hasPendingRestoration() || window.location.pathname !== "/favorites") return;
     const browseState: FavoritesBrowseState = {
-      entity: favoriteEntity,
       query,
       status: statusFilter,
       availability: availabilityFilter,
@@ -238,7 +230,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     activeList,
     auth.user,
     availabilityFilter,
-    favoriteEntity,
     favoritesStorageScope,
     hasPendingRestoration,
     page,
@@ -255,12 +246,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
-    if (!active || hasPendingRestoration() || isLoading || favoriteEntity !== "works" || !anchor) return;
+    if (!active || hasPendingRestoration() || isLoading || !anchor) return;
     const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${anchor.workID}"]`);
     pendingAnchor.current = null;
     if (!target) return;
     target.focus({ preventScroll: true });
-  }, [active, favoriteEntity, hasPendingRestoration, isLoading, works]);
+  }, [active, hasPendingRestoration, isLoading, works]);
 
   // Marked is the any-mark filter on All Favorites; a restored entry that opened its list shows that.
   useEffect(() => {
@@ -296,7 +287,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   const openWork = (work: Work) => {
     const browseState = {
-      entity: favoriteEntity,
       query,
       status: statusFilter,
       availability: availabilityFilter,
@@ -371,24 +361,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   };
 
   const openWorksShelf = (list: "all" | number) => {
-    if (favoriteEntity !== "works") {
-      setFavoriteEntity("works");
-      setQuery("");
-    }
     setActiveList(list);
-    setPage(1);
-  };
-
-  const openCreatorShelf = (entity: Exclude<FavoriteEntity, "works">) => {
-    if (favoriteEntity === entity) return;
-    setFavoriteEntity(entity);
-    setQuery("");
     setPage(1);
   };
 
   const changeFavoriteQuery = (value: string) => {
     setQuery(value);
-    if (favoriteEntity === "works") setPage(1);
+    setPage(1);
   };
 
   const changeStatusFilter = (value: FavoriteStatusFilter) => {
@@ -452,10 +431,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     userLists,
     setFavoriteLists,
     reloadLists: reloadFavoriteLists,
-    onShowList: (list) => {
-      setActiveList(list);
-      if (favoriteEntity !== "works") setFavoriteEntity("works");
-    },
+    onShowList: (list) => setActiveList(list),
     onListDeleted: (listID) => {
       if (activeList === listID) setActiveList("all");
     },
@@ -537,27 +513,18 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   }
 
   const navigation: FavoriteShelfNavigation = {
-    entity: favoriteEntity,
     activeList,
     userLists,
     favoriteTotal,
     listCounts,
     newCounts,
-    worksCountsKnown: favoriteWorks.shelfCountsKnown,
-    circleCount: creators.hasSnapshot ? creators.favoriteCircles.length : null,
-    voiceCount: creators.hasSnapshot ? creators.favoriteVoices.length : null,
+    worksCountsKnown: hasWorksSnapshot,
     listsLoading: areFavoriteListsLoading,
     onWorksShelf: openWorksShelf,
-    onCreatorShelf: openCreatorShelf,
     onEditLists: () => listEditing.openManager(),
     onAddList: () => listEditing.openManager("new"),
   };
-  const searchPlaceholder =
-    favoriteEntity === "works"
-      ? t("library.searchPlaceholder")
-      : favoriteEntity === "circles"
-        ? t("creatorBrowse.searchCircles")
-        : t("creatorBrowse.searchVoices");
+  const searchPlaceholder = t("library.searchPlaceholder");
   const format = numberFormat(resolvedLocale);
   const worksCaption = hasWorksSnapshot
     ? [
@@ -569,58 +536,40 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         .filter(Boolean)
         .join(" · ")
     : null;
-  const shelfHeader =
-    favoriteEntity === "works" ? (
-      <FavoriteShelfHeader
-        compact={mobileNavigationLayout}
-        icon={activeUserList ? favoriteListIcon(activeUserList) : shelfKind === "marked" ? BookmarkCheck : Heart}
-        title={
-          shelfKind === "all"
-            ? t("favorites.all")
-            : shelfKind === "marked"
-              ? t("favorites.marked")
-              : (activeUserList?.name ?? t("favorites.lists"))
-        }
-        description={
-          shelfKind === "all"
-            ? t("favorites.shelfAllDescription")
-            : shelfKind === "marked"
-              ? t("favorites.markedShelfDescription")
-              : activeUserList?.description
-        }
-        caption={worksCaption}
-        actions={
-          activeUserList ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 text-muted-foreground"
-              onClick={() => listEditing.openManager(activeUserList)}
-              aria-label={t("favorites.editList")}
-              title={t("favorites.editList")}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          ) : undefined
-        }
-      />
-    ) : (
-      <FavoriteShelfHeader
-        compact={mobileNavigationLayout}
-        icon={favoriteEntity === "circles" ? UsersRound : Mic2}
-        title={favoriteEntity === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors")}
-        description={
-          favoriteEntity === "circles" ? t("favorites.circleShelfDescription") : t("favorites.voiceShelfDescription")
-        }
-        caption={
-          creators.hasSnapshot
-            ? favoriteEntity === "circles"
-              ? t("favorites.circleCount", { count: creators.favoriteCircles.length })
-              : t("favorites.voiceCount", { count: creators.favoriteVoices.length })
-            : null
-        }
-      />
-    );
+  const shelfTitle =
+    shelfKind === "all"
+      ? t("favorites.all")
+      : shelfKind === "marked"
+        ? t("favorites.marked")
+        : (activeUserList?.name ?? t("favorites.lists"));
+  const shelfHeader = (
+    <FavoriteShelfHeader
+      icon={activeUserList ? favoriteListIcon(activeUserList) : shelfKind === "marked" ? BookmarkCheck : Heart}
+      title={shelfTitle}
+      description={
+        shelfKind === "all"
+          ? t("favorites.shelfAllDescription")
+          : shelfKind === "marked"
+            ? t("favorites.markedShelfDescription")
+            : activeUserList?.description
+      }
+      caption={worksCaption}
+      actions={
+        activeUserList ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            onClick={() => listEditing.openManager(activeUserList)}
+            aria-label={t("favorites.editList")}
+            title={t("favorites.editList")}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : undefined
+      }
+    />
+  );
   const statusOptions = favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter);
   const filterMenu = (
     <FavoriteFilterMenu
@@ -674,12 +623,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               <div data-toast-avoid>
                 <FavoriteShelfStrip navigation={navigation} />
               </div>
-              {shelfHeader}
+              {/* The shelf row above names the open shelf, so a phone draws no header line. */}
+              <h2 className="sr-only">{shelfTitle}</h2>
               <FavoriteMobileControls
                 query={query}
                 placeholder={searchPlaceholder}
                 onQueryChange={changeFavoriteQuery}
-                sort={favoriteEntity === "works" ? sortControls : null}
+                sort={sortControls}
                 actions={
                   <>
                     {filterMenu}
@@ -687,11 +637,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     {selectionToggle}
                   </>
                 }
-                status={
-                  favoriteEntity === "works"
-                    ? { options: statusOptions, value: statusFilter, onChange: changeStatusFilter }
-                    : null
-                }
+                status={{ options: statusOptions, value: statusFilter, onChange: changeStatusFilter }}
               />
             </div>
           ) : (
@@ -708,19 +654,17 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   onChange={changeFavoriteQuery}
                   className="min-w-0 flex-1 @min-[60rem]:w-64 @min-[60rem]:flex-none @min-[80rem]:w-80"
                 />
-                {favoriteEntity === "works" && (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {filterMenu}
-                    {sortControls}
-                    {displayPicker}
-                    {selectionToggle}
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {filterMenu}
+                  {sortControls}
+                  {displayPicker}
+                  {selectionToggle}
+                </div>
               </div>
             </div>
           )}
 
-          {favoriteEntity === "works" && activeSmartList && (
+          {activeSmartList && (
             <SmartListPanel
               list={activeSmartList}
               newCount={newCounts[String(activeSmartList.id)] ?? 0}
@@ -735,121 +679,99 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             />
           )}
 
-          {favoriteEntity !== "works" && (
-            <FavoriteCreatorShelf
-              kind={favoriteEntity}
-              query={query}
-              isLoading={creators.isLoading}
-              hasSnapshot={creators.hasSnapshot}
-              loadError={creators.loadError}
-              circles={creators.favoriteCircles}
-              voices={creators.favoriteVoices}
-              onRetry={creators.reload}
-              onCircleChange={creators.changeCircle}
-              onVoiceChange={creators.changeVoice}
+          {selectionMode && (
+            <FavoriteSelectionBar
+              selectedWorks={selectedWorks}
+              pageWorkCount={works.length}
+              userLists={userLists}
+              mobile={mobileNavigationLayout}
+              busy={isBulkUpdating}
+              onSelectPage={() => togglePagedSelection(true)}
+              onClear={() => setSelectedWorkIDs(new Set())}
+              onExit={() => {
+                setSelectedWorkIDs(new Set());
+                setSelectionMode(false);
+              }}
+              onListCreated={() => void api.listFavoriteLists().then(setFavoriteLists, () => undefined)}
+              onSave={applyListMembership}
             />
           )}
 
-          {favoriteEntity === "works" && (
+          {hasWorksSnapshot && worksLoadError && (
+            <FavoriteLoadError message={worksLoadError} compact onRetry={reloadWorks} />
+          )}
+          {!hasWorksSnapshot ? (
+            worksLoadError ? (
+              <FavoriteLoadError message={worksLoadError} onRetry={reloadWorks} />
+            ) : viewMode === "list" ? (
+              <FavoriteWorkListSkeleton label={t("favorites.loadingWorks")} />
+            ) : (
+              <WorkCollectionLoadingState
+                label={t("favorites.loadingWorks")}
+                mobileColumns={mobileColumns}
+                desktopColumns={desktopColumns}
+              />
+            )
+          ) : works.length > 0 ? (
             <>
-              {selectionMode && (
-                <FavoriteSelectionBar
-                  selectedWorks={selectedWorks}
-                  pageWorkCount={works.length}
-                  userLists={userLists}
-                  mobile={mobileNavigationLayout}
-                  busy={isBulkUpdating}
-                  onSelectPage={() => togglePagedSelection(true)}
-                  onClear={() => setSelectedWorkIDs(new Set())}
-                  onExit={() => {
-                    setSelectedWorkIDs(new Set());
-                    setSelectionMode(false);
-                  }}
-                  onListCreated={() => void api.listFavoriteLists().then(setFavoriteLists, () => undefined)}
-                  onSave={applyListMembership}
+              {viewMode === "list" ? (
+                <FavoriteWorkList
+                  works={works}
+                  selectedWorkIDs={selectedWorkIDs}
+                  selectionActive={selectionMode}
+                  isListSaving={isBulkUpdating}
+                  busy={isLoading}
+                  handlers={itemHandlers}
+                  newWorkIDs={newWorkIDs}
                 />
-              )}
-
-              {hasWorksSnapshot && worksLoadError && (
-                <FavoriteLoadError message={worksLoadError} compact onRetry={reloadWorks} />
-              )}
-              {!hasWorksSnapshot ? (
-                worksLoadError ? (
-                  <FavoriteLoadError message={worksLoadError} onRetry={reloadWorks} />
-                ) : viewMode === "list" ? (
-                  <FavoriteWorkListSkeleton label={t("favorites.loadingWorks")} />
-                ) : (
-                  <WorkCollectionLoadingState
-                    label={t("favorites.loadingWorks")}
-                    mobileColumns={mobileColumns}
-                    desktopColumns={desktopColumns}
-                  />
-                )
-              ) : works.length > 0 ? (
-                <>
-                  {viewMode === "list" ? (
-                    <FavoriteWorkList
-                      works={works}
-                      selectedWorkIDs={selectedWorkIDs}
-                      selectionActive={selectionMode}
-                      isListSaving={isBulkUpdating}
-                      busy={isLoading}
-                      handlers={itemHandlers}
-                      newWorkIDs={newWorkIDs}
-                    />
-                  ) : (
-                    <FavoriteWorkGrid
-                      works={works}
-                      selectedWorkIDs={selectedWorkIDs}
-                      selectionActive={selectionMode}
-                      isListSaving={isBulkUpdating}
-                      busy={isLoading}
-                      mobileColumns={mobileColumns}
-                      desktopColumns={desktopColumns}
-                      handlers={itemHandlers}
-                      onUserTagOpen={openCardUserTag}
-                      newWorkIDs={newWorkIDs}
-                    />
-                  )}
-                  <WorkCollectionPagination
-                    placement="bottom"
-                    page={currentPage}
-                    pageSize={pageSize}
-                    totalItems={totalWorks}
-                    totalPages={totalPages}
-                    onPageChange={changePage}
-                  />
-                </>
               ) : (
-                <EmptyFavorites
-                  reason={
-                    hasWorkFilters || newOnly
-                      ? "filtered"
-                      : activeSmartList
-                        ? "smart"
-                        : shelfKind === "list"
-                          ? "list"
-                          : "shelf"
-                  }
-                  onClearFilters={() => {
-                    clearFilters();
-                    setNewOnlyList(null);
-                  }}
-                  onBrowseLibrary={browseLibrary}
-                  onEditRule={activeSmartList ? () => listEditing.openManager(activeSmartList) : undefined}
+                <FavoriteWorkGrid
+                  works={works}
+                  selectedWorkIDs={selectedWorkIDs}
+                  selectionActive={selectionMode}
+                  isListSaving={isBulkUpdating}
+                  busy={isLoading}
+                  mobileColumns={mobileColumns}
+                  desktopColumns={desktopColumns}
+                  handlers={itemHandlers}
+                  onUserTagOpen={openCardUserTag}
+                  newWorkIDs={newWorkIDs}
                 />
               )}
+              <WorkCollectionPagination
+                placement="bottom"
+                page={currentPage}
+                pageSize={pageSize}
+                totalItems={totalWorks}
+                totalPages={totalPages}
+                onPageChange={changePage}
+              />
             </>
+          ) : (
+            <EmptyFavorites
+              reason={
+                hasWorkFilters || newOnly
+                  ? "filtered"
+                  : activeSmartList
+                    ? "smart"
+                    : shelfKind === "list"
+                      ? "list"
+                      : "shelf"
+              }
+              onClearFilters={() => {
+                clearFilters();
+                setNewOnlyList(null);
+              }}
+              onBrowseLibrary={browseLibrary}
+              onEditRule={activeSmartList ? () => listEditing.openManager(activeSmartList) : undefined}
+            />
           )}
         </div>
       </div>
       {listEditing.open && (
         <FavoriteListManager lists={userLists} listCounts={listCounts} {...listEditing.managerProps} />
       )}
-      <BrowseLoadingIndicator
-        refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}
-        label={t("favorites.refreshing")}
-      />
+      <BrowseLoadingIndicator refreshing={isLoading && hasWorksSnapshot} label={t("favorites.refreshing")} />
     </section>
   );
 }

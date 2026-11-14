@@ -364,7 +364,8 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   await expect(shelves.getByRole("button", { name: /^All\b/ })).toHaveAttribute("aria-pressed", "true");
   // Marked is a status filter, not a shelf.
   await expect(shelves.getByRole("button", { name: /^Marked/ })).toHaveCount(0);
-  await expect(shelves.getByRole("button", { name: /^Circles/ })).toBeVisible();
+  // Followed circles and voice actors live on their own pages, not among the shelves.
+  await expect(shelves.getByRole("button", { name: /^Circles/ })).toHaveCount(0);
   await expect(search).toBeVisible();
   await expect(filterButton).toHaveAccessibleName("Filters");
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
@@ -425,10 +426,6 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(async () => (await shelves.boundingBox())!.y).toBe(stickyTop);
   await page.evaluate(() => window.scrollTo(0, 0));
-
-  await shelves.getByRole("button", { name: /^Circles/ }).click();
-  await expect(page.getByPlaceholder("Search circles")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Filters/ })).toHaveCount(0);
 });
 
 test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async ({ page }) => {
@@ -496,7 +493,7 @@ test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async (
   await expect(listManager).toHaveCount(0);
 });
 
-test("mobile favorites stacks shelves, a one-line header, the control row with a search icon, and Quick mark chips", async ({
+test("mobile favorites stacks the shelf row, the control row with a search icon, and Quick mark chips", async ({
   page,
 }) => {
   await mockFavorites(page);
@@ -573,10 +570,11 @@ test("mobile favorites stacks shelves, a one-line header, the control row with a
   await mobileListDialog.getByRole("button", { name: "Back", exact: true }).click();
   await mobileListManager.getByRole("button", { name: "Done", exact: true }).click();
 
-  // The header caption states the result page in place of a top pager.
+  // The shelf row names the open shelf; the phone draws no header line and keeps only the bottom pager.
+  await expect(page.getByRole("heading", { name: "Study", level: 2 })).toBeAttached();
   await expect(
     page.locator("header").filter({ has: page.getByRole("heading", { name: "Study", level: 2 }) }),
-  ).toContainText("Page 1 of 2");
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Previous page" })).toHaveCount(1);
 
   const toolbar = page.locator("[data-toast-avoid]:visible").filter({ has: search }).first();
@@ -584,15 +582,7 @@ test("mobile favorites stacks shelves, a one-line header, the control row with a
   expect(toolbarBox).not.toBeNull();
   expect(toolbarBox!.y).toBeGreaterThanOrEqual(0);
   expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(mobileViewport!.height);
-
-  await mobileListScroller.getByRole("button", { name: /^Circles/ }).click();
-  const circleSearch = page.getByPlaceholder("Search circles");
-  await expect(circleSearch).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Filters/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Sort:/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Display options/ })).toHaveCount(0);
-  await circleSearch.fill("Example");
-  await expect(circleSearch).toHaveValue("Example");
+  await expect(mobileListScroller.getByRole("button", { name: /^Circles/ })).toHaveCount(0);
 });
 
 test("mobile favorites pagination returns to the page top", async ({ page }) => {
@@ -603,14 +593,14 @@ test("mobile favorites pagination returns to the page top", async ({ page }) => 
   await nextPage.scrollIntoViewIfNeeded();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
   await nextPage.click();
-  await expect(page.getByText(/Page 2 of 2/).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.page)).toBe(2);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
 });
 
 test("favorites detail Back and mobile tab switches preserve filters, selection, and scroll", async ({ page }) => {
   await mockFavorites(page);
   await page.goto(
-    "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
+    "/favorites?status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
   );
   await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Sort: Sales" }).click();
@@ -666,7 +656,6 @@ test("favorites detail Back and mobile tab switches preserve filters, selection,
   const restoredState = await page.evaluate(() => window.history.state?.favoritesBrowseState);
   expect(restoredState).toEqual(
     expect.objectContaining({
-      entity: "works",
       status: "listening",
       availability: "local",
       list: 2,
@@ -694,20 +683,16 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   const listTabs = page.getByRole("region", { name: "Favorite list tabs" });
   const firstWork = page.locator('[data-favorite-work-id="1"]').getByText("Favorite work 1", { exact: true });
   const studyTab = listTabs.getByRole("button", { name: /^Study/ });
-  const playlistButtons = [
-    listTabs.locator("button").nth(0),
-    studyTab,
-    listTabs.getByRole("button", { name: /^Circles/ }),
-    page.getByRole("button", { name: "Edit lists", exact: true }),
-  ];
+  const editLists = page.getByRole("button", { name: "Edit lists", exact: true });
+  const playlistButtons = [listTabs.locator("button").nth(0), studyTab, editLists];
   await expect(playlistButtons[0]).toBeVisible();
   await expect(firstWork).toBeVisible();
-  await playlistButtons[3].click();
+  await editLists.click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
   await listManager.getByRole("button", { name: "Done", exact: true }).click();
   // Normalize horizontal scroll before measuring; click() may reveal a partially clipped tab.
-  await playlistButtons[2].scrollIntoViewIfNeeded();
+  await studyTab.scrollIntoViewIfNeeded();
   const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
   const worksRegionBefore = await page.locator('[data-favorite-work-id="1"]').boundingBox();
 
