@@ -1,17 +1,18 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { assetURL, type RecordAsset } from "@/lib/api";
 
 import { RecordOverlay } from "./RecordOverlay";
 import { baseName } from "./recordsModel";
 
-/** A horizontal touch swipe longer than this steps to the neighbouring photo. */
-const swipeThresholdPx = 48;
-
-/** The full-screen photo viewer: previous and next by button, arrow key, or touch swipe. */
+/**
+ * The full-screen photo viewer: previous and next by button, arrow key, or
+ * touch swipe, and zoom by click, wheel, pinch, or keys. Each photo opens fitted.
+ */
 export function RecordPhotoViewer({
   photo,
   index,
@@ -30,7 +31,8 @@ export function RecordPhotoViewer({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const swipe = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const [zoomState, setZoomState] = useState<{ id: number; zoom: ImageZoom }>({ id: photo.id, zoom: "fit" });
+  const zoom = zoomState.id === photo.id ? zoomState.zoom : "fit";
   const title = baseName(photo.name);
 
   // Warm the neighbours so stepping shows them without a blank frame.
@@ -74,33 +76,19 @@ export function RecordPhotoViewer({
           </p>
         </div>
       </div>
-      <div
-        className="relative grid min-h-0 flex-1 touch-pan-y select-none place-items-center"
-        onPointerDown={(event) => {
-          if (event.pointerType !== "mouse")
-            swipe.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-        }}
-        onPointerCancel={() => {
-          swipe.current = null;
-        }}
-        onPointerUp={(event) => {
-          const start = swipe.current;
-          swipe.current = null;
-          if (!start || start.pointerId !== event.pointerId) return;
-          const dx = event.clientX - start.x;
-          const dy = event.clientY - start.y;
-          if (Math.abs(dx) < swipeThresholdPx || Math.abs(dx) < Math.abs(dy)) return;
-          const target = dx < 0 ? next : previous;
-          if (target) onStep(target.id);
-        }}
-      >
-        <img
+      <div className="relative flex min-h-0 flex-1 select-none">
+        <ZoomableImage
           key={photo.id}
           src={photo.streamUrl ? assetURL(photo.streamUrl) : undefined}
           alt={title}
-          decoding="async"
-          draggable={false}
-          className="max-h-full max-w-full object-contain duration-150 animate-in fade-in-0"
+          zoom={zoom}
+          onZoomChange={(value) => setZoomState({ id: photo.id, zoom: value })}
+          onSwipe={(direction) => {
+            const target = direction > 0 ? next : previous;
+            if (target) onStep(target.id);
+          }}
+          className="flex-1"
+          imageClassName="duration-150 animate-in fade-in-0"
         />
         <Button
           variant="ghost"

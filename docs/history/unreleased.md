@@ -20,7 +20,8 @@
 - Videos play in a full-screen player that steps through the folder, offers to
   continue where you stopped, saves the position per account, and pauses the
   global audio player. A `.vtt` or UTF-8 `.srt` file named like a video plays
-  as its subtitles. Photos open full screen with arrow keys and swipes.
+  as its subtitles. Photos open full screen with arrow keys and swipes, and
+  zoom like the work image viewer.
 - A scan reads each video's length and size. Video tiles show a frame from the
   video and photos show small thumbnails, both made the first time a folder
   shows them; folder artwork images stay out of the photos.

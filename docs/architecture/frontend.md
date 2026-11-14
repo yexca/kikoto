@@ -252,7 +252,9 @@ asks whether to continue from a saved position and saves progress through
 `RecordProgressTracker` every ten seconds, on pause, at the end, and when it
 closes. A same-name subtitle sidecar the server serves as WebVTT becomes the
 video's `<track>`, a WebVTT file before a SubRip one. `RecordPhotoViewer`
-steps through photos by button, arrow key, or touch swipe. Both overlays are
+steps through photos by button, arrow key, or touch swipe and shows each photo
+in the shared `ZoomableImage`, the same zoomable stage as the work file viewer.
+Both overlays are
 modal dialogs over authenticated asset routes and never play through the
 global audio player; a record video that starts playing pauses it through
 `usePlayer`.

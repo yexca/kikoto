@@ -80,4 +80,7 @@ paused after the player closes.
 
 Select a photo to view it full screen. Step through the folder's photos with
 the arrow buttons, the arrow keys, or a sideways swipe, and close it with Back
-or Esc.
+or Esc. A photo opens fitted to the screen; a click shows actual size and a
+second click fits again, and the mouse wheel, a trackpad or two-finger pinch,
+and the `+`, `-`, and `0` keys zoom to any size up to eight times actual size.
+Drag to pan a zoomed photo.
