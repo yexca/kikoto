@@ -7,7 +7,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { api, type WorkflowPreset } from "@/lib/api";
 
@@ -63,8 +63,8 @@ export function CatalogSyncDialog({
       toast.notify({
         kind: "success",
         message: workflowCopy("catalogSyncQueued", { id: result.runId }),
-        actionLabel: canOpenActivity ? t("nav.activity") : undefined,
-        onAction: canOpenActivity ? () => openWorkflowPath(workflowActivityRunPath(result.runId)) : undefined,
+        actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
+        onAction: canOpenActivity ? () => openWorkflowPath(workflowRunPath(result.runId)) : undefined,
       });
       onClose();
     } catch (error) {

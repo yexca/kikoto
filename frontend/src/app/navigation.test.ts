@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import { canAccessPage, navigationGroups, navigationLabel, navItems, visibleNavigationItems } from "./navigation";
 
 describe("navigation access and labels", () => {
-  it("orders the Manage group Workflows, Activity, Metadata, Translation, System", () => {
+  it("orders the Manage group Workflows, Metadata, Translation, System", () => {
     expect(navItems.filter((item) => item.group === "manage").map((item) => item.id)).toEqual([
       "workflows",
-      "activity",
       "metadata",
       "translation",
       "system",
@@ -25,10 +24,10 @@ describe("navigation access and labels", () => {
     expect(navigationLabel(item, (key) => key)).toBe(item.label);
   });
 
-  it("offers Activity as a Manage destination behind the workflow permission", () => {
+  it("offers Workflows, which holds every run, behind the workflow permission", () => {
     const visible = visibleNavigationItems({ state: "authenticated", hasPermission: () => true });
-    expect(visible.find((item) => item.id === "activity")).toMatchObject({ path: "/activity", group: "manage" });
-    expect(canAccessPage("activity", "authenticated", (permission) => permission !== "workflows:run")).toBe(false);
+    expect(visible.find((item) => item.id === "workflows")).toMatchObject({ path: "/workflows", group: "manage" });
+    expect(canAccessPage("workflows", "authenticated", (permission) => permission !== "workflows:run")).toBe(false);
   });
 
   it("places Insights, Tags, and Settings in Personal and closes the sidebar with About", () => {

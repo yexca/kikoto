@@ -1,53 +1,48 @@
-import { TriangleAlert } from "lucide-react";
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { CalendarPlus, ChevronDown, Compass } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { usePageHeaderBack } from "@/app/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { contentPageClassName } from "@/components/ui/page-width";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { metadataSyncSources } from "@/features/workflows/metadataSyncModel";
+import { MetadataOptionsDialog } from "@/features/workflows/operations/MetadataOptionsDialog";
 import {
-  groupOperations,
+  metadataRunOptionsChanged,
+  metadataRunPayload,
+  readMetadataRunOptions,
+  usableMetadataRunOptions,
+  writeMetadataRunOptions,
+  type MetadataRunOptions,
+} from "@/features/workflows/operations/metadataRunOptions";
+import { OperationCard } from "@/features/workflows/operations/OperationCard";
+import {
   operationLocked,
   operationState,
   operationsFromDefinitions,
   type Operation,
-  type OperationGroupEntry,
 } from "@/features/workflows/operations/operationModel";
-import { OperationPanel } from "@/features/workflows/operations/OperationPanel";
-import { OperationRow } from "@/features/workflows/operations/OperationRow";
 import { useOperationRuns } from "@/features/workflows/operations/useOperationRuns";
-import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
-import {
-  activityPath,
-  openWorkflowPath,
-  OPERATIONS_PATH,
-  workflowActivityRunPath,
-} from "@/features/workflows/workflowLinks";
-import {
-  parseNodes,
-  workflowCopy,
-  type CurrentTriggerRunOptions,
-  type SystemRunOptions,
-} from "@/features/workflows/workflowPageModel";
+import { RunDetail } from "@/features/workflows/RunDetail";
+import { AttentionRuns, RunningRuns } from "@/features/workflows/runs/NowRuns";
+import { WorkflowRuns } from "@/features/workflows/runs/WorkflowRuns";
+import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/triggers/NextTriggers";
+import { TriggerDialog } from "@/features/workflows/triggers/TriggerDialog";
+import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation";
+import { openWorkflowPath } from "@/features/workflows/workflowLinks";
+import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import { workflowTriggerSummary, type CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
+import { discoverManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
+import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { api, type WorkflowDefinition, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
-
-// The editor is bound to the operation and run options shown when it opened, not to one opened later.
-type TriggerEditorState =
-  | {
-      mode: "create";
-      definitionId: number;
-      triggerType: CreatableAutomationTriggerType;
-      runOptions: CurrentTriggerRunOptions | null;
-    }
-  | { mode: "edit"; definitionId: number; trigger: WorkflowTrigger; runOptions: CurrentTriggerRunOptions | null }
-  | null;
+import { systemSettingsPath } from "@/pages/settingsPaths";
 
 /** A run requested here that the run list has not shown yet; `runId` is null until the request answers. */
 type PendingRun = { runId: number | null };
@@ -55,14 +50,13 @@ type PendingRun = { runId: number | null };
 /** How long a requested run may stay unlisted before its operation stops waiting for it. */
 const pendingRunTimeoutMs = 20_000;
 
-function openCodeFromLocation() {
-  return new URLSearchParams(window.location.search).get("workflow")?.trim() ?? "";
-}
+type TriggerDialogState = { trigger: WorkflowTrigger | null } | null;
 
 /**
- * Workflows: what an administrator starts by hand, grouped by what it is
- * for. An operation shows its state and one run control; its options,
- * triggers, and run history open below it. Every run is in Activity.
+ * Workflows: the library maintenance an administrator starts by hand, as
+ * three cards (Scan, Metadata, and Index), above every workflow's runs: Now
+ * holds what runs, what needs attention, and what triggers run next, and
+ * History the runs that ended. One run's details open beside the list.
  */
 export function WorkflowsPage({
   canRun,
@@ -76,35 +70,42 @@ export function WorkflowsPage({
   const toast = useToast();
   const { t } = useTranslation();
   const auth = useAuth();
+  const location = useWorkflowsLocation();
+  const mobile = useMobileNavigationLayout();
+  const operationsHeadingId = useId();
   const [revision, setRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
-  const [openCode, setOpenCode] = useState(openCodeFromLocation);
   const [pending, setPending] = useState<Record<string, PendingRun>>({});
-  const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
-  const triggerAnchorRef = useRef<HTMLElement | null>(null);
-  const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
-  const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
-  const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
-  const [workflowMetaError, setWorkflowMetaError] = useState("");
-  const workflowMetaRequestSeq = useRef(0);
+  const [fullChoices, setFullChoices] = useState<Record<string, boolean>>({});
+  const [triggerDialog, setTriggerDialog] = useState<TriggerDialogState>(null);
+  const [metadataOptions, setMetadataOptions] = useState<MetadataRunOptions>(readMetadataRunOptions);
+  const [metadataOptionsOpen, setMetadataOptionsOpen] = useState(false);
+  const metadataSources = useMetadataSyncSources(canSyncMetadata);
+  const capableSources = metadataSources.sources ? metadataSyncSources(metadataSources.sources) : null;
+  // Sources switched off or removed since the options were saved drop out of the fallback.
+  const metadataRun = usableMetadataRunOptions(metadataOptions, capableSources);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const requestSeq = useRef(0);
 
   const refresh = () => {
-    const seq = ++workflowMetaRequestSeq.current;
-    setIsWorkflowMetaLoading(true);
-    setWorkflowMetaError("");
+    const seq = ++requestSeq.current;
+    setIsLoading(true);
+    setLoadError("");
     Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers()])
       .then(([nextDefinitions, nextTriggers]) => {
-        if (seq !== workflowMetaRequestSeq.current) return;
+        if (seq !== requestSeq.current) return;
         setDefinitions(nextDefinitions);
         setTriggers(nextTriggers);
-        setHasWorkflowMetaSnapshot(true);
+        setHasSnapshot(true);
       })
       .catch(() => {
-        if (seq === workflowMetaRequestSeq.current) setWorkflowMetaError(workflowCopy("metadataLoadFailed"));
+        if (seq === requestSeq.current) setLoadError(workflowCopy("metadataLoadFailed"));
       })
       .finally(() => {
-        if (seq === workflowMetaRequestSeq.current) setIsWorkflowMetaLoading(false);
+        if (seq === requestSeq.current) setIsLoading(false);
       });
   };
 
@@ -112,45 +113,21 @@ export function WorkflowsPage({
     refresh();
   }, []);
 
-  // The open operation is the page's linked state (`?workflow=<code>`).
-  useEffect(() => {
-    const sync = () => setOpenCode(openCodeFromLocation());
-    window.addEventListener(NAVIGATION_EVENT, sync);
-    window.addEventListener("popstate", sync);
-    return () => {
-      window.removeEventListener(NAVIGATION_EVENT, sync);
-      window.removeEventListener("popstate", sync);
-    };
-  }, []);
-
   const operations = useMemo(() => operationsFromDefinitions(definitions), [definitions]);
-  const groups = useMemo(() => groupOperations(operations), [operations]);
   const codes = useMemo(() => operations.map((operation) => operation.definition.code), [operations]);
   const runs = useOperationRuns({ codes, refreshKey: revision, staticDemo: auth.demoMode });
-  const openOperation = operations.find((operation) => operation.definition.code === openCode) ?? null;
 
-  // A link to a workflow that is not an operation leads to its runs in Activity; an unknown code is dropped.
+  // A run that starts or ends moves its trigger's next run, so Next reloads with the queue.
+  const queueSignature = runs.activeRuns.map((run) => run.id).join(",");
+  const lastQueue = useRef(queueSignature);
   useEffect(() => {
-    if (!openCode || !hasWorkflowMetaSnapshot || openOperation) return;
-    const known = definitions.some((definition) => definition.code === openCode);
-    window.history.replaceState(
-      window.history.state,
-      "",
-      known ? activityPath({ workflow: openCode }) : OPERATIONS_PATH,
-    );
-    window.dispatchEvent(new Event(NAVIGATION_EVENT));
-  }, [definitions, hasWorkflowMetaSnapshot, openCode, openOperation]);
-
-  const toggleOperation = (code: string, open: boolean) => {
-    window.history.replaceState(
-      window.history.state,
-      "",
-      open ? `${OPERATIONS_PATH}?${new URLSearchParams({ workflow: code })}` : OPERATIONS_PATH,
-    );
-    window.dispatchEvent(new Event(NAVIGATION_EVENT));
-  };
-
-  const openOperationCode = openOperation?.definition.code;
+    if (lastQueue.current === queueSignature) return;
+    lastQueue.current = queueSignature;
+    api
+      .listWorkflowTriggers()
+      .then(setTriggers)
+      .catch(() => undefined);
+  }, [queueSignature]);
 
   // A requested run that never shows up stops holding its operation.
   useEffect(() => {
@@ -159,18 +136,31 @@ export function WorkflowsPage({
     return () => window.clearTimeout(timer);
   }, [pending]);
 
-  const openActivityRun = (run: Pick<WorkflowRun, "id">) => openWorkflowPath(workflowActivityRunPath(run.id));
+  const watched = useWorkflowRunWatcher(location.runId, !auth.demoMode);
+  const openRun = watched.run?.id === location.runId ? watched.run : null;
+  usePageHeaderBack({
+    label: t("workflowActivity.backToHistory"),
+    onBack: location.backToList,
+    enabled: mobile && location.runId !== null,
+  });
+  const refreshRun = async () => {
+    await watched.refresh(true);
+    setRevision((value) => value + 1);
+  };
+  const selectRun = (run: Pick<WorkflowRun, "id">) => location.openRun(run.id);
 
   /**
    * Marks the operation as starting at once, then waits for the run list to
    * show the run the request created. An operation that runs per target says
-   * when its new run waits behind another of its runs, which its row keeps
+   * when its new run waits behind another of its runs, which its card keeps
    * showing.
    */
   const startRun = async (operation: Operation, request: () => Promise<{ runId: number }>, failure: string) => {
     const code = operation.definition.code;
     const active = runs.activeRunsOf(code);
     setPending((current) => ({ ...current, [code]: { runId: null } }));
+    // Full applies to the run it was chosen for.
+    setFullChoices((current) => ({ ...current, [code]: false }));
     try {
       const result = await request();
       setPending((current) => ({ ...current, [code]: { runId: result.runId } }));
@@ -179,8 +169,8 @@ export function WorkflowsPage({
         toast.notify({
           kind: "info",
           message: t("workflowPage.operations.queuedBehind", { id: result.runId }),
-          actionLabel: t("nav.activity"),
-          onAction: () => openActivityRun({ id: result.runId }),
+          actionLabel: t("workflowPage.viewRun"),
+          onAction: () => selectRun({ id: result.runId }),
         });
     } catch (error) {
       setPending((current) => {
@@ -192,66 +182,26 @@ export function WorkflowsPage({
     }
   };
 
-  const runOperation = async (operation: Operation, options: SystemRunOptions) => {
+  const runOperation = (operation: Operation, full: boolean) => {
     if (operation.kind === "local_scan")
-      return startRun(
-        operation,
-        () => api.runLocalScan({ followUpRun: options.followUpRun ?? false }),
-        workflowCopy("localScanCreateFailed"),
-      );
+      return startRun(operation, () => api.runLocalScan({ followUpRun: false }), workflowCopy("localScanCreateFailed"));
     if (operation.kind === "local_media_index")
       return startRun(
         operation,
-        () => api.runLocalMediaIndex({ mode: options.localMediaIndexMode ?? "incremental" }),
+        () => api.runLocalMediaIndex({ mode: full ? "full" : "incremental" }),
         workflowCopy("localMediaIndexCreateFailed"),
       );
-    if (operation.kind === "metadata_sync")
-      return startRun(
-        operation,
-        () => api.runDLsiteSync(options.metadataSync),
-        workflowCopy("metadataSyncCreateFailed"),
-      );
+    return startRun(
+      operation,
+      () => api.runDLsiteSync(metadataRunPayload(metadataRun, full)),
+      workflowCopy("metadataSyncCreateFailed"),
+    );
   };
 
-  /** Every operation scans or syncs the library, so starting, configuring, or scheduling one needs `metadata:sync`. */
+  /** Every operation scans or syncs the library, so starting or scheduling one needs `metadata:sync`. */
   const permitted = !readOnly && canRun && canSyncMetadata;
 
-  const createAutomationTrigger = (
-    definition: WorkflowDefinition,
-    triggerType: CreatableAutomationTriggerType,
-    anchor?: HTMLElement | null,
-  ) => {
-    triggerAnchorRef.current = anchor ?? null;
-    setTriggerEditor({
-      mode: "create",
-      definitionId: definition.id,
-      triggerType,
-      runOptions: currentTriggerRunOptions,
-    });
-  };
-
-  const editAutomationTrigger = (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => {
-    triggerAnchorRef.current = anchor ?? null;
-    setTriggerEditor({
-      mode: "edit",
-      definitionId: trigger.workflowDefinitionId,
-      trigger,
-      runOptions: currentTriggerRunOptions,
-    });
-  };
-
-  const closeTriggerEditor = () => {
-    triggerAnchorRef.current = null;
-    setTriggerEditor(null);
-  };
-  // A definition that disappears after a refresh closes its editor instead of retargeting it.
-  const triggerEditorDefinition = triggerEditor
-    ? (definitions.find((definition) => definition.id === triggerEditor.definitionId) ?? null)
-    : null;
-  const triggerEditorRunOptions =
-    triggerEditor && triggerEditor.runOptions?.code === triggerEditorDefinition?.code ? triggerEditor.runOptions : null;
-
-  const toggleAutomationTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
+  const toggleTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
     try {
       const saved = await api.updateWorkflowTrigger(trigger.id, {
@@ -275,188 +225,278 @@ export function WorkflowsPage({
     }
   };
 
-  const renderOperation = (operation: Operation) => {
+  const cardName = (operation: Operation) =>
+    t(`workflowPage.cards.names.${operation.definition.code}`, { defaultValue: operation.definition.displayName });
+  const workflowName = (code: string, fallback: string) =>
+    t(`workflowPage.builtInDefinitions.${code}.name`, { defaultValue: fallback });
+  const definitionsById = useMemo(
+    () => new Map(definitions.map((definition) => [definition.id, definition])),
+    [definitions],
+  );
+  const triggerOwner = (trigger: WorkflowTrigger): NextTriggerOwner => {
+    const operation = operations.find((item) => item.definition.id === trigger.workflowDefinitionId);
+    if (operation) return { name: cardName(operation), editable: true, path: null };
+    const definition = definitionsById.get(trigger.workflowDefinitionId);
+    const code = definition?.code ?? trigger.workflowCode;
+    return {
+      name: workflowName(code, definition?.displayName ?? code),
+      editable: false,
+      path:
+        discoverManagedWorkflows[code]?.path ??
+        (code === "source_presence_check" ? systemSettingsPath("library") : null),
+    };
+  };
+  const operationTriggers = triggers.filter((trigger) =>
+    operations.some((operation) => operation.definition.id === trigger.workflowDefinitionId),
+  );
+
+  const workflowOptions = definitions
+    .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const managed = discoverManagedWorkflows[location.workflowCode];
+
+  const renderCard = (operation: Operation) => {
     const { definition } = operation;
     const code = definition.code;
     const run = runs.runOf(code);
     const active = runs.activeRunsOf(code);
-    // A requested run is listed once it is active, even while the row follows an older running one.
+    // A requested run is listed once it is active, even while the card follows an older running one.
     const requested = pending[code];
     const listed = requested?.runId != null && active.some((item) => item.id >= (requested.runId ?? 0));
     const state = operationState(run, listed ? undefined : requested);
     const locked = operationLocked(operation, state);
-    const operationTriggers = triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id);
-    const expanded = openOperationCode === code;
-    const allowed = permitted;
-    const defaults = operation.defaults;
+    const full = fullChoices[code] ?? false;
     return (
-      <OperationRow
+      <OperationCard
         key={definition.id}
         code={code}
         icon={workflowIcon(code)}
-        name={t(`workflowPage.builtInDefinitions.${code}.name`, { defaultValue: definition.displayName })}
-        schedule={workflowTriggerSummary(operationTriggers)}
+        name={cardName(operation)}
+        summary={t(`workflowPage.operations.summaries.${code}`, { defaultValue: definition.description })}
+        schedule={workflowTriggerSummary(triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id))}
         state={state}
         moreActive={Math.max(0, active.length - 1)}
-        locked={locked}
         stageCount={parseNodes(definition.definitionJson).length}
-        expanded={expanded}
-        runAllowed={allowed && !locked}
+        locked={locked}
+        runAllowed={permitted}
         runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
-        onRun={() => void runOperation(operation, defaults())}
-        onToggle={(open) => toggleOperation(code, open)}
-        onOpenRun={openActivityRun}
-      >
-        <OperationPanel
-          operation={operation}
-          summary={t(`workflowPage.operations.summaries.${code}`, {
-            defaultValue: t(`workflowPage.builtInDefinitions.${code}.description`, {
-              defaultValue: definition.description,
-            }),
-          })}
-          state={state}
-          triggers={operationTriggers}
-          allowed={allowed}
-          readOnly={readOnly}
-          canManageTriggers={!readOnly && definition.id > 0 && permitted}
-          onRun={(options) => runOperation(operation, options)}
-          onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
-          onOpenRuns={() => openWorkflowPath(activityPath({ workflow: code }))}
-          onCreateTrigger={(triggerType, anchor) => createAutomationTrigger(definition, triggerType, anchor)}
-          onEditTrigger={editAutomationTrigger}
-          onToggleTrigger={toggleAutomationTrigger}
-        />
-      </OperationRow>
+        full={
+          operation.kind === "local_scan"
+            ? null
+            : {
+                checked: full,
+                hint: t(`workflowPage.cards.fullHint.${code}`),
+                onChange: (checked) => setFullChoices((current) => ({ ...current, [code]: checked })),
+              }
+        }
+        options={
+          operation.kind === "metadata_sync"
+            ? {
+                label: t("workflowPage.cards.metadataOptions"),
+                summary: metadataOptionsSummary(),
+                onOpen: () => setMetadataOptionsOpen(true),
+              }
+            : undefined
+        }
+        onRun={() => void runOperation(operation, full)}
+        onOpenRun={selectRun}
+      />
     );
   };
 
+  /** What the Metadata card's runs change from the defaults, in one line. */
+  const metadataOptionsSummary = () => {
+    if (!metadataRunOptionsChanged(metadataRun)) return null;
+    const names = new Map((capableSources ?? []).map((source) => [source.id, source.displayName]));
+    const fallback = metadataRun.remoteMetadataFallback;
+    return [
+      fallback.enabled
+        ? t("workflowPage.cards.fallbackSummary", {
+            sources: fallback.sourceIds.map((id) => names.get(id) ?? `#${id}`).join(" → "),
+          })
+        : null,
+      metadataRun.purchaseBonusAutoLink ? null : t("workflowPage.cards.bonusOff"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+
+  const runOpen = location.runId !== null;
+  // Library folds while a run is open and opens again with the list; a choice in between holds until then.
+  const [libraryChoice, setLibraryChoice] = useState<{ runOpen: boolean; open: boolean | null }>({
+    runOpen,
+    open: null,
+  });
+  if (libraryChoice.runOpen !== runOpen) setLibraryChoice({ runOpen, open: null });
+  const libraryOpen = (libraryChoice.runOpen === runOpen ? libraryChoice.open : null) ?? !runOpen;
+
   return (
-    <div className={cn(contentPageClassName, "space-y-6")}>
+    <div className={cn(contentPageClassName, "space-y-8")}>
       {readOnly && <DemoReadOnlyNotice />}
-      {hasWorkflowMetaSnapshot && workflowMetaError && (
+      {hasSnapshot && loadError && (
         <div
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
           role="alert"
         >
           <span className="text-sm text-error-foreground">
-            {workflowMetaError} {t("workflow.existingDataShown")}
+            {loadError} {t("workflow.existingDataShown")}
           </span>
           <Button size="sm" variant="outline" onClick={refresh}>
             {t("common.retry")}
           </Button>
         </div>
       )}
-      {runs.attention > 0 && (
-        <button
-          type="button"
-          className="touch-target flex max-w-full items-center gap-2 rounded-md text-left text-sm text-warning-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => openWorkflowPath(activityPath({ view: "attention" }))}
-        >
-          <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-          <span className="min-w-0">{t("workflowPage.console.attentionCount", { count: runs.attention })}</span>
-        </button>
-      )}
-      {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
-        <WorkflowMetadataLoadingState />
-      ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
-        <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
-      ) : groups.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">{workflowCopy("definitionEmpty")}</p>
-      ) : (
-        <>
-          {groups.map((entry) => (
-            <OperationGroupSection key={entry.group} entry={entry} renderOperation={renderOperation} />
-          ))}
-          <p className="text-sm text-muted-foreground">
-            <LinkedSentence
-              text={(slots) => t("workflowPage.operations.elsewhere", slots)}
-              links={{
-                discover: <PageLink path="/discover">{t("nav.subscriptions")}</PageLink>,
-                activity: <PageLink path={activityPath()}>{t("nav.activity")}</PageLink>,
-              }}
+      <section aria-labelledby={operationsHeadingId} className="min-w-0 space-y-3">
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          <h2 id={operationsHeadingId} className="text-base font-semibold">
+            <button
+              type="button"
+              className="-ml-1 flex items-center gap-1.5 rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-expanded={libraryOpen}
+              aria-controls={`${operationsHeadingId}-cards`}
+              onClick={() => setLibraryChoice({ runOpen, open: !libraryOpen })}
+            >
+              {t("workflowPage.operations.groups.library")}
+              <ChevronDown
+                className={cn("h-4 w-4 text-muted-foreground transition-transform", !libraryOpen && "-rotate-90")}
+                aria-hidden
+              />
+            </button>
+          </h2>
+          {(permitted || readOnly) && operations.length > 0 && (
+            <Button size="sm" variant="outline" disabled={readOnly} onClick={() => setTriggerDialog({ trigger: null })}>
+              <CalendarPlus className="h-4 w-4" aria-hidden />
+              {t("workflowPage.triggers.add")}
+            </Button>
+          )}
+        </div>
+        <div id={`${operationsHeadingId}-cards`} hidden={!libraryOpen}>
+          {!libraryOpen ? null : !hasSnapshot && isLoading ? (
+            <WorkflowMetadataLoadingState />
+          ) : !hasSnapshot && loadError ? (
+            <WorkflowMetadataErrorState message={loadError} onRetry={refresh} />
+          ) : operations.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">{workflowCopy("definitionEmpty")}</p>
+          ) : (
+            <ul className="grid gap-3 md:grid-cols-3">{operations.map(renderCard)}</ul>
+          )}
+        </div>
+      </section>
+      <WorkflowRuns
+        tab={location.tab}
+        onTabChange={location.setTab}
+        nowCount={runs.running + runs.attention}
+        now={
+          <div className="grid min-w-0 gap-6">
+            <RunningRuns
+              runs={runs.activeRuns}
+              total={runs.running}
+              selectedRunId={location.runId}
+              canSyncMetadata={canSyncMetadata}
+              onSelectRun={selectRun}
             />
-          </p>
-        </>
-      )}
-      {triggerEditor && triggerEditorDefinition && (
-        <TriggerModal
-          key={
-            triggerEditor.mode === "edit" ? `edit:${triggerEditor.trigger.id}` : `create:${triggerEditorDefinition.id}`
-          }
-          definition={triggerEditorDefinition}
-          trigger={triggerEditor.mode === "edit" ? triggerEditor.trigger : null}
-          readOnly={triggerEditor.mode === "edit" ? readOnly : undefined}
-          initialTriggerType={
-            triggerEditor.mode === "create"
-              ? triggerEditor.triggerType
-              : triggerEditor.trigger.triggerType === "startup"
-                ? "startup"
-                : "schedule"
-          }
-          currentRunOptions={triggerEditorRunOptions}
-          anchorRef={triggerAnchorRef}
-          onClose={closeTriggerEditor}
-          onSaved={() => {
-            closeTriggerEditor();
-            refresh();
+            <AttentionRuns
+              refreshKey={revision}
+              staticDemo={auth.demoMode}
+              readOnly={readOnly}
+              canSyncMetadata={canSyncMetadata}
+              selectedRunId={location.runId}
+              onSelectRun={selectRun}
+              onChanged={() => setRevision((value) => value + 1)}
+            />
+            <NextTriggers
+              triggers={triggers}
+              ownerOf={triggerOwner}
+              canManage={permitted}
+              readOnly={readOnly}
+              loading={!hasSnapshot && isLoading}
+              onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
+              onEdit={(trigger) => setTriggerDialog({ trigger })}
+              onOpenPath={openWorkflowPath}
+            />
+          </div>
+        }
+        status={location.status}
+        onStatusChange={location.setStatus}
+        workflowCode={location.workflowCode}
+        workflowOptions={workflowOptions}
+        onWorkflowChange={location.setWorkflow}
+        query={location.query}
+        onQueryChange={location.setQuery}
+        note={
+          managed ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+              <p className="min-w-0">{workflowCopy(managed.message)}</p>
+              <Button size="sm" variant="outline" onClick={() => openWorkflowPath(managed.path)}>
+                <Compass className="h-4 w-4" />
+                {workflowCopy("openSubscriptions")}
+              </Button>
+            </div>
+          ) : undefined
+        }
+        selectedRunId={location.runId}
+        onSelectRun={selectRun}
+        onBack={location.backToList}
+        refreshKey={revision}
+        staticDemo={auth.demoMode}
+        canSyncMetadata={canSyncMetadata}
+        mobile={mobile}
+        detail={
+          location.runId ? (
+            <>
+              {watched.error && (
+                <div role="alert" className="mb-4 rounded-md border p-3 text-sm">
+                  {workflowCopy("activityLoadFailed")}{" "}
+                  <Button variant="outline" onClick={() => void watched.refresh(true)}>
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              )}
+              <RunDetail
+                key={location.runId}
+                run={openRun}
+                candidates={openRun ? watched.candidates : []}
+                events={openRun ? watched.events : []}
+                loading={!openRun && !watched.error}
+                onCandidateUpdate={refreshRun}
+                onRunAction={refreshRun}
+                canSyncMetadata={canSyncMetadata}
+                readOnly={readOnly}
+              />
+            </>
+          ) : undefined
+        }
+      />
+      {metadataOptionsOpen && (
+        <MetadataOptionsDialog
+          value={metadataRun}
+          sources={capableSources}
+          sourcesFailed={metadataSources.failed}
+          readOnly={readOnly || !permitted}
+          onRetrySources={metadataSources.retry}
+          onSave={(next) => {
+            setMetadataOptions(next);
+            writeMetadataRunOptions(next);
+            setMetadataOptionsOpen(false);
           }}
-          onDeleted={() => {
-            closeTriggerEditor();
+          onClose={() => setMetadataOptionsOpen(false)}
+        />
+      )}
+      {triggerDialog && (
+        <TriggerDialog
+          key={triggerDialog.trigger?.id ?? "add"}
+          operations={operations.map((operation) => ({ definition: operation.definition, name: cardName(operation) }))}
+          triggers={operationTriggers}
+          trigger={triggerDialog.trigger}
+          readOnly={readOnly}
+          metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
+          onClose={() => setTriggerDialog(null)}
+          onSaved={() => {
+            setTriggerDialog(null);
             refresh();
           }}
         />
       )}
     </div>
-  );
-}
-
-/** A group of operations under a plain heading and a hairline, one row each. */
-function OperationGroupSection({
-  entry,
-  renderOperation,
-}: {
-  entry: OperationGroupEntry;
-  renderOperation: (operation: Operation) => React.ReactNode;
-}) {
-  const { t } = useTranslation();
-  const headingId = useId();
-  return (
-    <section aria-labelledby={headingId} className="min-w-0">
-      <h2 id={headingId} className="border-b pb-2 text-base font-semibold">
-        {t(`workflowPage.operations.groups.${entry.group}`)}
-      </h2>
-      <ul className="divide-y">{entry.operations.map(renderOperation)}</ul>
-    </section>
-  );
-}
-
-/** A translated sentence whose named slots are links, wherever the language puts them. */
-function LinkedSentence({
-  text,
-  links,
-}: {
-  text: (slots: Record<string, string>) => string;
-  links: Record<string, React.ReactNode>;
-}) {
-  const mark = "\u0000";
-  const names = Object.keys(links);
-  const parts = text(Object.fromEntries(names.map((name) => [name, `${mark}${name}${mark}`]))).split(mark);
-  // Odd parts are the slot names the marks enclosed.
-  return parts.map((part, index) => <Fragment key={index}>{index % 2 === 1 ? links[part] : part}</Fragment>);
-}
-
-function PageLink({ path, children }: { path: string; children?: React.ReactNode }) {
-  return (
-    <a
-      href={path}
-      className="rounded-sm font-medium text-foreground underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={(event) => {
-        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
-        event.preventDefault();
-        openWorkflowPath(path);
-      }}
-    >
-      {children}
-    </a>
   );
 }

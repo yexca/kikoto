@@ -1,7 +1,7 @@
 import { ArchiveRestore, Clock3, Play, RotateCcw, ScanLine, TriangleAlert } from "lucide-react";
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
-import { activityPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { workflowRunPath, workflowsPath } from "@/features/workflows/workflowLinks";
 import { api } from "@/lib/api";
 import { PERSONAL_DATA_PERMISSION, YOUR_DATA_SETTINGS_PATH } from "@/pages/settingsPaths";
 
@@ -50,7 +50,7 @@ export function commandActions({
             closeOnRun: false,
             run: async () => {
               const result = await api.runLocalScan({ followUpRun: false });
-              onOpenPath(workflowActivityRunPath(result.runId));
+              onOpenPath(workflowRunPath(result.runId));
             },
           },
         ]
@@ -65,7 +65,7 @@ export function commandActions({
             closeOnRun: false,
             run: async () => {
               const result = await api.runDLsiteSync();
-              onOpenPath(workflowActivityRunPath(result.runId));
+              onOpenPath(workflowRunPath(result.runId));
             },
           },
         ]
@@ -82,7 +82,7 @@ export function commandActions({
             closeOnRun: false,
             run: async () => {
               await api.recoverStaleWorkflowRuns();
-              onOpenPath(activityPath());
+              onOpenPath(workflowsPath());
             },
           },
         ]
@@ -96,14 +96,14 @@ export function commandActions({
           label: text("commands.activityAttention", "Runs needing attention"),
           description: text("commands.activityAttentionDescription", "Failed runs and items waiting for review"),
           icon: <TriangleAlert className="h-4 w-4" />,
-          run: () => onOpenPath(activityPath({ view: "attention" })),
+          run: () => onOpenPath(workflowsPath()),
         },
         {
           id: "activity:history",
           label: text("commands.activityHistory", "Workflow history"),
           description: text("commands.activityHistoryDescription", "Finished and acknowledged workflow runs"),
           icon: <Clock3 className="h-4 w-4" />,
-          run: () => onOpenPath(activityPath({ view: "history" })),
+          run: () => onOpenPath(workflowsPath({ tab: "history" })),
         },
       ]
     : [];

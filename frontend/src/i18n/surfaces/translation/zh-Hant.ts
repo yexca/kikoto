@@ -241,7 +241,7 @@ export const translationHant = {
     cancel: "取消",
     cancelled: "翻譯已取消。",
     cancelFailed: "無法取消翻譯。",
-    activity: "活動",
+    activity: "查看執行",
     refresh: "重新整理",
     loading: "載入中…",
     loadFailed: "無法載入翻譯。",

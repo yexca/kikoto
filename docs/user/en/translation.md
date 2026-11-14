@@ -3,13 +3,13 @@
 
 The **Translation** page (`/translation`) follows [Translate with AI](work-detail.md#translate-with-ai) across the whole library: what is running or queued, what stopped, what finished translations wrote, and how much of each language the works already cover. It opens from the sidebar's **Manage** group for accounts with library write permission; it does not need workflow permission. Everyone who can open it sees every account's translations. Each item takes effect as soon as it finishes, as described under [Results](work-detail.md#results).
 
-The page is a view of the Translate with AI runs and their items. [Activity](workflows.md) lists the same runs with their diagnostics. Demo shows the page read-only: it translates nothing, so only **Coverage** lists works. Works can still be selected there and the translate button opens its dialog with example models, but nothing can be queued.
+The page is a view of the Translate with AI runs and their items. [Workflows](workflows.md) lists the same runs with their diagnostics. Demo shows the page read-only: it translates nothing, so only **Coverage** lists works. Works can still be selected there and the translate button opens its dialog with example models, but nothing can be queued.
 
 ## In progress
 
 **In progress** (`?view=running`), which the page opens on, lists the runs that are translating, then those still queued, one card per work, with each target language on its own row and its stage: queued, translating with how many items are done, or done.
 
-**Cancel** is available for your own runs without workflow permission; workflow administrators can also cancel other accounts' runs. It stops everything not yet sent, and a translation request already out keeps an unknown result. Accounts with workflow permission also see **Activity**, which opens the run's diagnostics.
+**Cancel** is available for your own runs without workflow permission; workflow administrators can also cancel other accounts' runs. It stops everything not yet sent, and a translation request already out keeps an unknown result. Accounts with workflow permission also see **View run**, which opens the run's diagnostics.
 
 ## Stopped
 

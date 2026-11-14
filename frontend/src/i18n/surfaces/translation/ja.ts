@@ -251,7 +251,7 @@ export const translationJapanese = {
     cancel: "キャンセル",
     cancelled: "翻訳をキャンセルしました。",
     cancelFailed: "翻訳をキャンセルできませんでした。",
-    activity: "アクティビティ",
+    activity: "実行を表示",
     refresh: "更新",
     loading: "読み込み中…",
     loadFailed: "翻訳を読み込めませんでした。",

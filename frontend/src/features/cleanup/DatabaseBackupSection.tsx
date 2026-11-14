@@ -105,6 +105,6 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
 }
 
 function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
+  window.history.pushState({}, "", `/workflows?run=${runId}`);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

@@ -334,7 +334,7 @@ test("mobile Fetch preserves reviewed choices after an unconfirmed submission an
   await publish.click();
   await expect(
     page.getByText(
-      "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
+      "Fetch submission could not be confirmed. It may still be running; check Workflows or retry this selection.",
       { exact: true },
     ),
   ).toBeVisible();

@@ -156,10 +156,10 @@ export const adminToolsEnglish = {
       failed: "Database could not be compacted.",
       confirmTitle: "Compact the database?",
       confirmDescription:
-        "Kikoto rewrites the database file in the background and shows progress in Activity. Other requests may wait while it runs; nothing is deleted.",
+        "Kikoto rewrites the database file in the background and shows progress in Workflows. Other requests may wait while it runs; nothing is deleted.",
       queued: "Compaction queued as workflow run #{{runId}}.",
       alreadyQueued: "Compaction is already queued as workflow run #{{runId}}.",
-      runFailed: "Database compaction did not finish. See Activity for details.",
+      runFailed: "Database compaction did not finish. See Workflows for details.",
     },
     backup: {
       title: "Backups",
@@ -177,7 +177,7 @@ export const adminToolsEnglish = {
       failed: "Database could not be backed up.",
       queued: "Backup queued as workflow run #{{runId}}.",
       alreadyQueued: "A backup is already queued as workflow run #{{runId}}.",
-      runFailed: "Database backup did not finish. See Activity for details.",
+      runFailed: "Database backup did not finish. See Workflows for details.",
       kinds: {
         scheduled: "automatic",
         manual: "manual",
@@ -285,18 +285,18 @@ export const adminToolsEnglish = {
       scanRunning: "Scanning…",
       scanDone_one: "Found {{count}} work.",
       scanDone_other: "Found {{count}} works.",
-      scanAttention: "The scan needs attention. See Activity for details.",
+      scanAttention: "The scan needs attention. See Workflows for details.",
       scanFailed: "The scan could not start.",
       syncMetadata: "Sync metadata",
       metadataIdle: "Not started.",
-      metadataQueued: "Metadata sync runs in the background; follow it in Activity.",
+      metadataQueued: "Metadata sync runs in the background; follow it in Workflows.",
       metadataWaiting:
         "No sync was started: no scanned work is waiting for metadata yet. Scan the library first, then try again.",
       metadataFinished: "Metadata is already synced for this library.",
       metadataNotStarted:
         "No sync was started here. Run Metadata Sync from Workflows whenever you want to refresh metadata.",
       metadataAttention:
-        "No sync was started: the earlier metadata sync did not finish cleanly. Review it in Activity.",
+        "No sync was started: the earlier metadata sync did not finish cleanly. Review it in Workflows.",
       metadataFailed: "Metadata sync could not start.",
       metadataUnavailable: "Your account cannot sync metadata. An administrator can run it later from Workflows.",
       steps: {

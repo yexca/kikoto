@@ -93,7 +93,7 @@ presented.
 `202 Accepted` with its run ID. Only one optimization can be queued or running;
 a repeated request returns the active run. The workflow executor then runs
 `VACUUM`, a query planner statistics refresh, and a truncating WAL checkpoint. The run appears in
-Activity. On completion, the run summary and a `database.optimize` audit entry
+Workflows. On completion, the run summary and a `database.optimize` audit entry
 record the database size before and after compaction.
 
 Query planner statistics are also refreshed without compaction: at startup,
@@ -138,7 +138,7 @@ changing the schema when the pre-migration backup fails; free space on the
 configuration volume and start again. A direct backend run can instead point
 `KIKOTO_DB_BACKUP_DIR` at a writable directory; the Compose stacks always use
 `/config/backups`. Routine
-backups run as `database_backup` workflow runs and appear in Activity; a
+backups run as `database_backup` workflow runs and appear in Workflows; a
 manual backup also writes a `database.backup` audit entry. Only one backup can
 be queued or running. Cleanup lists backup names, kinds, sizes, and times
 without revealing the backup directory. An in-memory or URI-configured

@@ -80,7 +80,7 @@ import { readLastLibraryLocation } from "@/lib/libraryBrowseState";
 import { libraryTagSearchLocation } from "@/lib/libraryTagSearch";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
-import { workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { workflowRunPath } from "@/features/workflows/workflowLinks";
 import {
   closePlayerLayer,
   closeTopDocumentLayer,
@@ -132,7 +132,6 @@ const TagsPage = lazy(() => import("@/pages/TagsPage").then((module) => ({ defau
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
-const ActivityPage = lazy(() => import("@/pages/ActivityPage").then((module) => ({ default: module.ActivityPage })));
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const TranslationPage = lazy(() =>
   import("@/pages/TranslationPage").then((module) => ({ default: module.TranslationPage })),
@@ -671,12 +670,6 @@ function AuthenticatedApp() {
                     readOnly={auth.demoMode}
                   />
                 )}
-                {showRoutePage && page === "activity" && (
-                  <ActivityPage
-                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
-                    readOnly={auth.demoMode}
-                  />
-                )}
                 {showRoutePage && page === "translation" && auth.user && (
                   <TranslationPage
                     canTranslateMetadata={auth.hasPermission("metadata:sync") && auth.hasPermission("library:write")}
@@ -721,7 +714,6 @@ function AuthenticatedApp() {
                   "metadata",
                   "translation",
                   "workflows",
-                  "activity",
                   "insights",
                   "records",
                   "about",
@@ -1036,7 +1028,7 @@ function RemoteTrackWorkflowObserver({
       message: succeeded
         ? t("workflows.trackCompleted", { id: run.runId, primaryCode })
         : t("workflows.trackFailed", { id: run.runId, primaryCode }),
-      actionLabel: canOpenActivity ? t("nav.activity") : undefined,
+      actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
       onAction: canOpenActivity ? () => openWorkflowActivity(run.runId) : undefined,
     });
     window.dispatchEvent(new CustomEvent<RemoteTrackTerminalDetail>(REMOTE_TRACK_TERMINAL_EVENT, { detail: terminal }));
@@ -1064,7 +1056,7 @@ function parseRemoteTrackSummary(raw: string) {
 }
 
 function openWorkflowActivity(runId: number) {
-  window.history.pushState({}, "", workflowActivityRunPath(runId));
+  window.history.pushState({}, "", workflowRunPath(runId));
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

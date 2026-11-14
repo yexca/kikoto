@@ -18,20 +18,21 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata&reason=metadata")).toBe("/metadata?reason=metadata");
     expect(legacyLibraryRedirect("/no-source", "?metadataRun=42&page=2")).toBe("/metadata?page=2&reason=no_source");
   });
-  it("sends addresses that showed Activity inside Workflows to the Activity page", () => {
-    expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBeNull();
-    expect(legacyLibraryRedirect("/runs", "?run=7")).toBe("/activity?run=7");
-    expect(legacyLibraryRedirect("/workflows", "?activity=1")).toBe("/activity");
+  it("opens earlier run log addresses on Workflows with the run and list they named", () => {
+    expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBe("/workflows?tab=history&status=failed&run=7");
+    expect(legacyLibraryRedirect("/runs", "?run=7")).toBe("/workflows?run=7");
+    expect(legacyLibraryRedirect("/workflows", "?activity=1")).toBe("/workflows");
     expect(legacyLibraryRedirect("/workflows", "?activity=1&workflow=metadata_sync&view=history&run=7")).toBe(
-      "/activity?view=history&run=7",
+      "/workflows?tab=history&run=7",
     );
-    expect(legacyLibraryRedirect("/workflows", "?activity=1&runsOf=metadata_sync")).toBe(
-      "/activity?workflow=metadata_sync",
+    expect(legacyLibraryRedirect("/workflows", "?activity=1&view=completed&runsOf=metadata_sync")).toBe(
+      "/workflows?tab=history&workflow=metadata_sync",
     );
-    expect(legacyLibraryRedirect("/workflows", "?workflow=metadata_sync&run=7")).toBe("/activity?run=7");
+    expect(legacyLibraryRedirect("/workflows", "?activity=1&view=attention")).toBe("/workflows");
   });
-  it("keeps an operation link on Workflows", () => {
-    expect(legacyLibraryRedirect("/workflows", "?workflow=circle_catalog_sync&circleId=RG00000000")).toBeNull();
+  it("keeps a Workflows address as it is", () => {
+    expect(legacyLibraryRedirect("/workflows", "?workflow=metadata_sync&run=7")).toBeNull();
+    expect(legacyLibraryRedirect("/workflows", "?tab=history")).toBeNull();
     expect(legacyLibraryRedirect("/workflows")).toBeNull();
   });
   it("moves no-source routes to work management", () => {

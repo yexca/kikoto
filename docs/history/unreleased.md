@@ -40,7 +40,7 @@
 
 - The desktop sidebar shows the listening destinations and folds the rest
   into two groups: **Personal** holds Insights, Tags, and Settings, and
-  **Manage** holds Workflows, Activity, Metadata, Translation, and System. A
+  **Manage** holds Workflows, Metadata, Translation, and System. A
   group stays collapsed until you open it, remembers that choice on the device,
   and opens on its own while one of its pages is shown.
 - Settings holds only your own account, playback, and recommendation
@@ -60,7 +60,7 @@
 - Phones show Notifications, Appearance, and the avatar in the header. Quick
   actions, Discover, Record, the Personal pages, and a **Manage** entry for
   the administration pages open from the avatar menu.
-- Secondary navigation has two forms. Discover, Metadata, Activity, Settings,
+- Secondary navigation has two forms. Discover, Metadata, Workflows, Settings,
   and System show their views as tabs along the top, Settings and System with
   an icon beside each name; Favorites lists its shelves by name beside the
   page. A tab row too narrow to name every tab shows icons and names only the
@@ -79,29 +79,37 @@
 </details>
 
 <details>
-<summary><strong>Workflows and Activity</strong></summary>
+<summary><strong>Workflows</strong></summary>
 
-- **Workflows** is one list of the library maintenance you start by hand,
-  under Library. Each operation is a row with its
-  name, what starts it on its own (such as at startup or every 6 hours, with
-  the next scheduled run), its state, and a run control, on phones as well, where
-  the page no longer starts with a list to choose a workflow from.
-- **Run** starts an operation with its default options and the row shows the
-  run at once. The local scan and local work files cannot be started again
-  until their run ends; metadata sync can queue another scope while one
-  runs, and the row counts
+- **Workflows** is one page for the library maintenance you start by hand
+  and every run. At the top, three cards: **Scan**, **Metadata**, and
+  **Index** (refresh local work files), each with its state, what starts it
+  on its own (such as at startup or every 6 hours, with the next scheduled
+  run), and **Run**. Phones stack the cards, and the page no longer starts
+  with a list to choose a workflow from.
+- **Run** starts an operation at once, and the card shows the run. Metadata
+  and Index run incrementally; **Full** beside Run refreshes every work's
+  metadata or re-indexes every local work for that one run. Scan always
+  checks every folder. Scan and Index cannot be started again until their run
+  ends; Metadata can queue another scope while one runs, and the card counts
   the runs it is not showing. A run started by a schedule, at startup, or in
-  another browser shows on its operation the same way. A failure stays on the
-  operation and opens its run in Activity.
-- **Options** opens, below its row, one sentence on what the operation does
-  with **All runs** for its runs in Activity, its Run options, and its
-  triggers.
+  another browser shows on its card the same way. A failure stays on the card
+  and opens its run.
+- **Add trigger** makes Scan, Metadata, or Index run at startup or every 1, 6,
+  or 12 hours, 1 day, or 7 days, in full or not. The per-operation Options
+  panel, its run forms, and the trigger editor's free interval in minutes are
+  removed; a manual metadata sync runs every work from DLsite, and a trigger
+  keeps the scope, source, and fallback it already stores.
+- **Metadata options** on the Metadata card set the remote metadata fallback
+  and purchase bonus linking for its runs and new Metadata triggers, saved in
+  the browser.
+- **Library** folds the cards away; it folds while a run is open.
 - **Check works on a source** runs from each remote source in System →
   Library: the source shows its latest check and next scheduled one, and
   **Check library works…** runs it and turns its startup and interval checks
   on and off with one set of options. Deleting a source deletes its checks.
 - Adding a source that is on, switching a source on, or changing its API URL
-  queues one check of the library that Activity shows as **Source change**,
+  queues one check of the library that Workflows shows as **Source change**,
   in place of an unrecorded background check after every source edit.
 - Fetch is no longer on Workflows; it starts from a work's page, and Quick
   actions opens any work by its code. The catalog syncs open from their
@@ -111,24 +119,25 @@
   an unknown circle's **Try fetching** opens the circle's.
 - The status strip, the workflow list, the run duration chart, and the
   **Latest run** card with its stage list and streaming log are removed. A run's steps and log are in its
-  details in Activity.
+  details.
 - The ranking pulls, Availability Watch, the subscription refresh, and Learn
   tag names are no longer listed; they are run from Discover or on their own,
-  and Activity keeps their runs.
+  and Workflows keeps their runs.
 - Each of those Discover workflows (the DLsite and remote source ranking
   pulls, the subscription refresh, and Availability Watch) shows its latest
   run in its settings: **Running**, **Succeeded**, or **Failed** with when it
-  ended, opening that run in Activity. This shows to everyone who can open the
+  ended, opening that run. This shows to everyone who can open the
   settings, and the Watch's line includes checks a subscription refresh
   queued. The notice after **Refresh all**, **Pull now**, **Refresh now**, or
   a Watch check has a link to the run it queued.
 - **Refresh now** for the subscription refresh needs only the permission to
   sync metadata, not the permission to change subscriptions.
-- **Activity** is a page of its own in the **Manage** group. It lists every
-  run under **All**, **Running**, **Needs attention**, **Failed**, and
-  **History**, narrows to one workflow, and searches runs. Links to Activity
-  inside Workflows, and `?workflow=` links to a workflow that is no longer
-  listed, open the Activity page.
+- Below the cards, every run is in two lists. **Now** shows what is running,
+  the runs that need attention, and **Next**, what every trigger runs next,
+  where the operations' triggers are paused, edited, or deleted and another
+  workflow's triggers link to where they are set up. **History** lists the
+  runs that ended, narrows to failed runs or one workflow, and searches runs.
+  A run opens on the page, and earlier Activity links open it there.
 
 </details>
 

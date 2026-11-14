@@ -24,7 +24,7 @@ export const surfaceEnglish = {
     history: "Translation history",
     batchCodes: "Selected work codes (1–100 existing works)",
     queue: "Queue background translation",
-    activity: "Activity",
+    activity: "View run",
     reviewsFailed: "Translation reviews could not be loaded.",
     states: {
       proposed: "Proposed",
@@ -492,7 +492,6 @@ export const surfaceEnglish = {
     },
     attention: "Needs attention",
     acknowledge: "Mark reviewed",
-    categories: "Activity categories",
     previous: "Previous page",
     next: "Next page",
     empty: {
@@ -563,7 +562,7 @@ export const surfaceEnglish = {
     attention: "Metadata sync needs attention",
     partial:
       "Some information could not be synchronized. Refresh the library to see available updates and review pending issues in Metadata. Existing library information is preserved.",
-    activity: "View Activity",
+    activity: "View run",
     dismiss: "Dismiss",
     error: "Could not save this action. Please try again.",
   },
@@ -1166,7 +1165,7 @@ export const surfaceEnglish = {
       kikoeruPrivateEnable: "Allow",
       hideRemoteAddresses: "Hide addresses from accounts that do not manage sources",
       hideRemoteAddressesDescription:
-        "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and Activity. Browsing, playback, covers, and text previews go through this server instead.",
+        "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and workflow runs. Browsing, playback, covers, and text previews go through this server instead.",
       lyricsFilesDescription:
         "How Manage lyrics brings lyrics the work folder already holds into Kikoto's lyrics_kikoto folder.",
       folderLyricsMode: "Lyrics of the work folder",
@@ -1413,7 +1412,7 @@ export const surfaceEnglish = {
   },
   workflowPage: {
     metadataLoadFailed: "Workflow data could not be loaded.",
-    activityLoadFailed: "Activity could not be loaded.",
+    activityLoadFailed: "The run could not be loaded.",
     definitionEmpty: "No runnable workflow definitions exist yet.",
     localScanCreateFailed: "Local scan run could not be created.",
     localMediaIndexCreateFailed: "Local work file refresh could not be created.",
@@ -1591,7 +1590,7 @@ export const surfaceEnglish = {
     editionWithoutMetadata: "No stored metadata",
     original: "Original",
     confirmRemoveFromWatch: "Confirm removal",
-    activity: "Activity",
+    activity: "View run",
     loadingWorkflowData: "Loading workflow data",
     availabilityWatchManagedOnSubscriptions:
       "Availability Watch is configured on the Discover page, and the subscription refresh runs it on its schedule. Its run history stays here.",
@@ -1668,10 +1667,8 @@ export const surfaceEnglish = {
         moreActive_one: "{{count}} more active",
         moreActive_other: "{{count}} more active",
       },
-      openRun: "Open run #{{id}} ({{status}}) in Activity",
+      openRun: "Open run #{{id}} ({{status}})",
       queuedBehind: "Run #{{id}} is queued after the active runs.",
-      options: "Options",
-      allRuns: "All runs",
       schedule: {
         startup: "At startup",
         watching: "Watching folders",
@@ -1683,13 +1680,9 @@ export const surfaceEnglish = {
         everyDays_other: "Every {{count}} days",
         paused: "Automatic runs paused",
       },
-      elsewhere:
-        "Fetch runs from a work, a catalog sync from its circle, series, or voice actor, and a source's library work check from its settings in System. Rankings, Availability Watch, and subscriptions run from {{discover}}. Every run, including automatic ones, is in {{activity}}.",
     },
     console: {
       stepProgress: "Step {{current}} of {{total}}",
-      attentionCount_one: "{{count}} run needs attention",
-      attentionCount_other: "{{count}} runs need attention",
       neverRun: "Never run",
     },
     retry: "Retry",
@@ -2005,11 +1998,9 @@ export const surfaceEnglish = {
       },
     },
     running: "Running",
-    runs: "Runs",
     reviewed: "Reviewed",
     pageOf: "Page {{page}} / {{totalPages}}",
     perPage: "{{count}} per page",
-    triggers: "Triggers",
     runAtStartup: "Run at startup",
     addSchedule: "Add schedule",
     pause: "Pause",
@@ -2085,6 +2076,49 @@ export const surfaceEnglish = {
     review: "Review",
     saving: "Saving",
     workflow: "Workflow",
+    viewRun: "View run",
+    cards: {
+      names: {
+        local_library_scan: "Scan",
+        metadata_sync: "Metadata",
+        local_media_index: "Index",
+      },
+      full: "Full",
+      fullHint: {
+        local_library_scan: "Scans every folder, not only the ones that changed.",
+        local_media_index: "Re-indexes the files of every local work, not only new ones.",
+        metadata_sync: "Refreshes the metadata of every work, not only missing or stale metadata.",
+      },
+      scanAlwaysFull: "Checks every folder each time",
+      metadataOptions: "Metadata options",
+      metadataOptionsDescription: "What the Metadata card's runs and new Metadata triggers use. Saved in this browser.",
+      fallbackSummary: "Remote fallback: {{sources}}",
+      bonusOff: "Purchase bonus linking off",
+    },
+    triggers: {
+      add: "Add trigger",
+      addTitle: "Add trigger",
+      editTitle: "Edit trigger",
+      description: "Run Scan, Metadata, or Index on its own.",
+      operation: "Workflow",
+      when: "When",
+      onSchedule: "On a schedule",
+      interval: "Interval",
+      startupTaken: "This already runs at startup.",
+      incrementalHint: "Runs incrementally: only what is new, changed, or missing.",
+      edit: "Edit trigger",
+      openOwner: "Open where this is set up",
+    },
+    runs: {
+      label: "Runs",
+      tabs: {
+        now: "Now",
+        history: "History",
+      },
+      status: "Status",
+      next: "Next",
+      nothingNext: "Nothing runs on its own. Add a trigger to run Scan, Metadata, or Index automatically.",
+    },
     sourceCheck: {
       title: "Check library works",
       description:
@@ -2110,7 +2144,7 @@ export const surfaceEnglish = {
       available_one: "{{count}} available",
       available_other: "{{count}} available",
       nextLine: "next {{time}}",
-      openRun: "Open the check in Activity",
+      openRun: "Open the check's run",
     },
   },
   libraryDetail: {
@@ -2698,7 +2732,7 @@ export const surfaceEnglish = {
     removeCatalogWorkDescription:
       "DLsite did not return {{code}} in the latest full scan. Remove it from this circle catalog?",
     retryMetadataCount: "Retry metadata for {{count}} works",
-    viewRefreshRun: "View this refresh in Activity",
+    viewRefreshRun: "View this refresh's run",
     more: "More",
     moreCircleActions: "More circle actions",
     moreVoiceActions: "More voice actor actions",
@@ -3215,9 +3249,9 @@ export const surfaceEnglish = {
     conflictRefreshFailed: "Fetch conflict review could not be refreshed.",
     alreadyQueued: "Fetch was already queued as workflow run #{{runId}}.",
     queued: "Fetch queued for {{code}} as workflow run #{{runId}}.",
-    activity: "Activity",
+    activity: "View run",
     unconfirmed:
-      "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
+      "Fetch submission could not be confirmed. It may still be running; check Workflows or retry this selection.",
   },
 
   admin: {
@@ -3703,7 +3737,7 @@ export const surfaceEnglish = {
       asr_ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
     },
     retryHint:
-      "Retry it from Activity to continue after the last finished part; an interrupted part is sent again. You can also start a new transcription.",
+      "Retry it from Workflows to continue after the last finished part; an interrupted part is sent again. You can also start a new transcription.",
     publishingHint: "The result is kept, but adding it to the lyrics did not finish. Add it again to retry.",
     preview: "Preview",
     previewOf: "Preview the transcription of {{title}}",
@@ -3780,10 +3814,10 @@ export const surfaceEnglish = {
     },
     failures: {
       upstream_rejected:
-        "The provider rejected the request. Check the model, key and limits, then retry it from Activity.",
-      endpoint_unavailable: "The provider connection could not be prepared. Retry it from Activity.",
+        "The provider rejected the request. Check the model, key and limits, then retry it from Workflows.",
+      endpoint_unavailable: "The provider connection could not be prepared. Retry it from Workflows.",
       source_temporarily_unavailable:
-        "The lyrics file or the track's work folder was unavailable. Retry it from Activity.",
+        "The lyrics file or the track's work folder was unavailable. Retry it from Workflows.",
       content_or_endpoint_unavailable:
         "The lyrics, the content safety policy or the provider no longer allow this translation. Translate again.",
       translation_input_changed:
@@ -3797,13 +3831,13 @@ export const surfaceEnglish = {
       unsupported_language_pair:
         "This model does not support that translation direction. Choose another language or model.",
       service_not_ready:
-        "The provider has no ready model. Install or choose one in the provider, then retry it from Activity.",
-      service_start_failed: "The provider could not start its model. Check the provider, then retry it from Activity.",
+        "The provider has no ready model. Install or choose one in the provider, then retry it from Workflows.",
+      service_start_failed: "The provider could not start its model. Check the provider, then retry it from Workflows.",
       service_out_of_memory:
-        "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry it from Activity.",
+        "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry it from Workflows.",
       service_agreement_required:
-        "The provider's model needs its risk notice accepted. Accept it on the helper's Translation page, then retry it from Activity.",
-      unknown: "The translation stopped. Translate again, or check it in Activity.",
+        "The provider's model needs its risk notice accepted. Accept it on the helper's Translation page, then retry it from Workflows.",
+      unknown: "The translation stopped. Translate again, or check it in Workflows.",
     },
     errors: {
       llm_policy_blocked: "The content exceeds this service's receive maximum, or its class is unknown or blocked.",

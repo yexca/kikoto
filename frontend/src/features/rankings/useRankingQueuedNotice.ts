@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { useToast } from "@/components/ui/toast";
-import { activityPath, openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath, workflowsPath } from "@/features/workflows/workflowLinks";
 import type { RankingRefreshRun } from "@/lib/api";
 
 /**
@@ -24,7 +24,7 @@ export function useRankingQueuedNotice(canOpenRuns: boolean) {
       kind: "success",
       message,
       actionLabel: t(single ? "subscriptions.actions.viewRun" : "subscriptions.actions.viewRuns"),
-      onAction: () => openWorkflowPath(single ? workflowActivityRunPath(ids[0]) : activityPath()),
+      onAction: () => openWorkflowPath(single ? workflowRunPath(ids[0]) : workflowsPath()),
     });
   };
 }

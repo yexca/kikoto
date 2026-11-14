@@ -80,9 +80,9 @@ Voice pages present persisted person and credit data.
 - A voice actor that was never pulled states that only works the library
   already knows are listed and offers **Pull the full catalog** as a link
   beside it to users who may run it. While a run is going, the note reads
-  **Refreshing the catalog** with a link to the run in Activity. For the same
+  **Refreshing the catalog** with a link to the run in Workflows. For the same
   users, a warning above the name counts remote sources that failed their
-  last pass and opens that run in Activity.
+  last pass and opens that run in Workflows.
 - Keeps the works toolbar to a search field, the sort button that names the
   current order, the availability filter, and **View**. **View** holds the
   **Cards** choice of **Full**, **Simple**, **Compact**, and **Mini** shared

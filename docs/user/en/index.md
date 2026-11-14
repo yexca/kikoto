@@ -28,7 +28,7 @@ the English page first, then mark translations for review.
 - Remote source actions should be explicit: sync updates source data, cache
   materializes cache files, and fetch promotes selected files into the local
   data tree.
-- Long-running or reviewable actions should be visible in Activity.
+- Long-running or reviewable actions should be visible in Workflows.
 
 ## Related Docs
 

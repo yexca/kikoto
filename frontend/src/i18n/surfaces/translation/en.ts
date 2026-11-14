@@ -249,7 +249,7 @@ export const translationEnglish = {
     cancel: "Cancel",
     cancelled: "Translation cancelled.",
     cancelFailed: "The translation could not be cancelled.",
-    activity: "Activity",
+    activity: "View run",
     refresh: "Refresh",
     loading: "Loading…",
     loadFailed: "Translations could not be loaded.",

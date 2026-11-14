@@ -3,14 +3,9 @@ import { isActiveRunStatus, runStatusTone, type RunTone } from "@/features/workf
 import type { SystemRunKind, SystemRunOptions } from "@/features/workflows/workflowPageModel";
 import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
 
-/** What the Workflows page offers: the operations a person starts by hand, grouped by what they are for. */
-
-export const operationGroups = ["library"] as const;
-
-export type OperationGroup = (typeof operationGroups)[number];
+/** What the Workflows page offers: the library maintenance a person starts by hand. */
 
 type OperationSpec = {
-  group: OperationGroup;
   kind: SystemRunKind;
   /** The options an untouched run form would send, which Run on the row uses. */
   defaults: () => SystemRunOptions;
@@ -23,39 +18,34 @@ type OperationSpec = {
   exclusive?: boolean;
 };
 
-/** Built-in operations in page order. */
+/** Built-in operations; their cards read Scan, Metadata, and Index. */
 const builtInOperations: Record<string, OperationSpec> = {
   local_library_scan: {
-    group: "library",
     kind: "local_scan",
     exclusive: true,
     defaults: () => ({ followUpRun: false }),
   },
   local_media_index: {
-    group: "library",
     kind: "local_media_index",
     exclusive: true,
     defaults: () => ({ localMediaIndexMode: "incremental" }),
   },
   metadata_sync: {
-    group: "library",
     kind: "metadata_sync",
     defaults: () => ({ metadataSync: metadataSyncPayload(metadataSyncDefaultValues()) }),
   },
 };
 
-const operationOrder = ["local_library_scan", "local_media_index", "metadata_sync"];
+const operationOrder = ["local_library_scan", "metadata_sync", "local_media_index"];
 
 export type Operation = OperationSpec & { definition: WorkflowDefinition };
-
-export type OperationGroupEntry = { group: OperationGroup; operations: Operation[] };
 
 /**
  * The operations among the workflow definitions. Workflows started from
  * another page (Fetch from a work, a catalog sync from its circle, series, or
  * voice actor, a source's library work check from its settings, and the
  * Discover workflows) and system workflows nobody starts by hand are not
- * operations; their runs are in Activity.
+ * operations; Workflows lists their runs all the same.
  */
 export function operationsFromDefinitions(definitions: WorkflowDefinition[]): Operation[] {
   const rank = (code: string) => {
@@ -71,13 +61,6 @@ export function operationsFromDefinitions(definitions: WorkflowDefinition[]): Op
       (left, right) =>
         rank(left.definition.code) - rank(right.definition.code) || left.definition.id - right.definition.id,
     );
-}
-
-/** Groups in page order, omitting a group without an operation. */
-export function groupOperations(operations: Operation[]): OperationGroupEntry[] {
-  return operationGroups
-    .map((group) => ({ group, operations: operations.filter((operation) => operation.group === group) }))
-    .filter((entry) => entry.operations.length > 0);
 }
 
 export type RunProgress = { current: number; total: number; unit: "jobs" | "steps" };

@@ -1,37 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { ACTIVITY_PATH, type ActivityView } from "@/features/workflows/workflowLinks";
+import { WORKFLOWS_PATH, type HistoryStatus, type WorkflowTab } from "@/features/workflows/workflowLinks";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
-
-/** Names earlier links use for a list. */
-const viewAliases: Record<string, ActivityView> = {
-  running: "running",
-  attention: "attention",
-  review: "attention",
-  failed: "failed",
-  history: "history",
-  completed: "history",
-  logs: "history",
-};
-
-export function activityViewFromParam(value: string | null): ActivityView {
-  return viewAliases[value ?? ""] ?? "all";
-}
 
 function readLocation() {
   const params = new URLSearchParams(window.location.search);
   const run = Number(params.get("run"));
+  const tab: WorkflowTab = params.get("tab") === "history" ? "history" : "now";
   return {
+    tab,
     runId: Number.isSafeInteger(run) && run > 0 ? run : null,
-    view: activityViewFromParam(params.get("view")),
-    /** The workflow whose runs the list is narrowed to; empty for every workflow. */
-    workflowCode: params.get("workflow") ?? "",
-    query: params.get("q") ?? "",
+    status: (tab === "history" && params.get("status") === "failed" ? "failed" : "") as HistoryStatus,
+    /** The workflow History is narrowed to; empty for every workflow. */
+    workflowCode: tab === "history" ? (params.get("workflow") ?? "") : "",
+    query: tab === "history" ? (params.get("q") ?? "") : "",
   };
 }
 
-/** The Activity page's address: the list shown, its filters, and the open run. */
-export function useActivityLocation() {
+/** The Workflows page's address: the list shown, History's filters, and the open run. */
+export function useWorkflowsLocation() {
   const [location, setLocation] = useState(readLocation);
   useEffect(() => {
     const sync = () => setLocation(readLocation());
@@ -49,7 +36,7 @@ export function useActivityLocation() {
       window.history[push ? "pushState" : "replaceState"](
         window.history.state,
         "",
-        `${ACTIVITY_PATH}${params.size ? `?${params}` : ""}`,
+        `${WORKFLOWS_PATH}${params.size ? `?${params}` : ""}`,
       );
       window.dispatchEvent(new Event(NAVIGATION_EVENT));
     };
@@ -58,7 +45,13 @@ export function useActivityLocation() {
       else params.delete(key);
     };
     return {
-      setView: (view: ActivityView) => update((params) => setOrDelete(params, "view", view === "all" ? "" : view)),
+      /** Now has no filters, so leaving History drops them. */
+      setTab: (tab: WorkflowTab) =>
+        update((params) => {
+          if (tab === "history") params.set("tab", "history");
+          else for (const key of ["tab", "status", "workflow", "q"]) params.delete(key);
+        }),
+      setStatus: (status: HistoryStatus) => update((params) => setOrDelete(params, "status", status)),
       setWorkflow: (code: string) => update((params) => setOrDelete(params, "workflow", code)),
       setQuery: (query: string) => update((params) => setOrDelete(params, "q", query.trim())),
       /** Opening a run is a history step, so Back returns to the list. */

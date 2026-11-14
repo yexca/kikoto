@@ -1,4 +1,4 @@
-import { ACTIVITY_PATH, legacyWorkflowActivityPath } from "@/features/workflows/workflowLinks";
+import { legacyRunLogPath } from "@/features/workflows/workflowLinks";
 
 import { TAGS_PATH } from "./navigation";
 import {
@@ -27,12 +27,9 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
   if (path === "/work-management" || (path === "/metadata" && pathname !== path)) {
     return `/metadata${normalizedSearch(search)}`;
   }
-  if (path === "/runs") return `${ACTIVITY_PATH}${normalizedSearch(search)}`;
-  // Activity was a view of the Workflows page; those addresses lead to the Activity page.
-  if (path === "/workflows") {
-    const activity = legacyWorkflowActivityPath(search);
-    if (activity) return activity;
-  }
+  // The run log is part of Workflows.
+  const runLog = legacyRunLogPath(path, search);
+  if (runLog) return runLog;
   if (path === "/no-source" || path === "/library/no-source") {
     const params = new URLSearchParams(search);
     params.set("reason", "no_source");

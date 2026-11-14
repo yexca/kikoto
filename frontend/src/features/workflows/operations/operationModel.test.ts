@@ -4,7 +4,6 @@ import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
 
 import {
   activeRunProgress,
-  groupOperations,
   operationBusy,
   operationLocked,
   operationState,
@@ -63,7 +62,7 @@ function run(overrides: Partial<WorkflowRun>): WorkflowRun {
 }
 
 describe("operations", () => {
-  it("lists what is started by hand, grouped by purpose, and leaves out workflows run elsewhere", () => {
+  it("lists Scan, Metadata, and Index in that order and leaves out workflows run elsewhere", () => {
     // Fetch runs from a work, a catalog sync from its circle, series, or voice
     // actor, and a source's library work check from its settings.
     const operations = operationsFromDefinitions([
@@ -74,10 +73,13 @@ describe("operations", () => {
       definition(5, "metadata_genre_names"),
       definition(6, "local_library_scan"),
       definition(7, "remote_work_fetch"),
+      definition(8, "local_media_index"),
     ]);
-    expect(
-      groupOperations(operations).map((entry) => [entry.group, entry.operations.map((item) => item.definition.code)]),
-    ).toEqual([["library", ["local_library_scan", "metadata_sync"]]]);
+    expect(operations.map((item) => item.definition.code)).toEqual([
+      "local_library_scan",
+      "metadata_sync",
+      "local_media_index",
+    ]);
   });
 });
 

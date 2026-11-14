@@ -1019,7 +1019,7 @@ function endedRun(id: number, workflowCode: string, status: string): WorkflowRun
   return workflowRunFixture({ id, workflowCode, displayName: workflowCode, status, startedAt: at, finishedAt: at });
 }
 
-test("@desktop the settings state each workflow's latest run and open it in Activity", async ({ page }) => {
+test("@desktop the settings state each workflow's latest run and open it in Workflows", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const day = rankingListFixture();
   const server: SubscriptionServer = {
@@ -1055,11 +1055,11 @@ test("@desktop the settings state each workflow's latest run and open it in Acti
   await settings.getByRole("button", { name: "Refresh all" }).click();
   await expect(page.getByText("Ranking pull queued.")).toBeVisible();
   await page.getByRole("button", { name: "View run" }).click();
-  await expect(page).toHaveURL(/\/activity\?run=65$/);
+  await expect(page).toHaveURL(/\/workflows\?run=65$/);
   await page.goto("/discover?view=rankings&panel=rankings");
 
-  await pull.getByRole("button", { name: "Open run #61 (Failed) in Activity" }).click();
-  await expect(page).toHaveURL(/\/activity\?run=61$/);
+  await pull.getByRole("button", { name: "Open run #61 (Failed)" }).click();
+  await expect(page).toHaveURL(/\/workflows\?run=61$/);
 
   await page.goto("/discover?panel=subscriptions");
   const refresh = settings.getByRole("group", { name: "Latest refresh" });
@@ -1067,14 +1067,14 @@ test("@desktop the settings state each workflow's latest run and open it in Acti
   await settings.getByRole("button", { name: "Refresh now" }).click();
   await expect(page.getByText("Refresh queued.")).toBeVisible();
   await page.getByRole("button", { name: "View run" }).click();
-  await expect(page).toHaveURL(/\/activity\?run=63$/);
+  await expect(page).toHaveURL(/\/workflows\?run=63$/);
 
   // The watch has no schedule of its own; its latest run is whichever ran last, a subscription refresh's included.
   await page.goto("/discover?view=watch&panel=watch");
   const check = settings.getByRole("group", { name: "Latest check" });
   await expect(check).toContainText("Succeeded");
-  await check.getByRole("button", { name: "Open run #64 (Succeeded) in Activity" }).click();
-  await expect(page).toHaveURL(/\/activity\?run=64$/);
+  await check.getByRole("button", { name: "Open run #64 (Succeeded)" }).click();
+  await expect(page).toHaveURL(/\/workflows\?run=64$/);
 });
 
 test("@desktop an account that only syncs metadata runs the refresh and sees its latest run without a link", async ({

@@ -7,7 +7,7 @@ pages are administration, and `app` pages (About) describe Kikoto itself. The
 desktop sidebar (`app/AppSidebar`) lists the browse destinations; below a
 hairline, the collapsible groups that `navigationGroups` declares:
 **Personal**, holding Insights, Tags, and Settings, and **Manage**, holding
-Workflows, Activity, Metadata, Translation, and System; and below another
+Workflows, Metadata, Translation, and System; and below another
 hairline the `app` pages. The sidebar renders a group from its declaration and the pages that
 name it, so a new page joins a group by declaring it. Each group is collapsed
 by default, remembers its expanded state in browser storage, and opens while
@@ -53,8 +53,8 @@ server and Demo user, and the API client sends it with authenticated requests
 (see [Metadata Language](data-model.md#metadata-language)). The
 notification panel (`app/header/NotificationCenter`) splits personal workflow
 notifications (**Updates**) from the global **Needs attention** runs for
-workflow operators, shows the newest running job above both, and links into
-Activity. Its badge counts unread notifications plus runs needing attention,
+workflow operators, shows the newest running job above both, and ends in an
+**Open Workflows** button. Its badge counts unread notifications plus runs needing attention,
 and a dot marks running work. It polls every 30 seconds, every 5 seconds while
 open over a running job, and skips hidden documents.
 
@@ -275,18 +275,22 @@ link, and the sync and failed-source marks from the viewer's permissions and
 passes nothing for one the viewer may not use, so those components never check
 permissions themselves. The subscribe button takes the same quiet look.
 
-The Workflows page (`pages/WorkflowsPage`, at `/workflows`) keeps the open
-operation, run handlers, and the trigger editor's state, and the Activity page
-(`pages/ActivityPage`, at `/activity`) keeps the open run. The operation
-model, rows, and options panel (`features/workflows/operations`), run forms,
-the trigger editor, the Activity list, run detail, candidate review, the
-catalog sync dialog that the circle and voice actor pages compose
+The Workflows page (`pages/WorkflowsPage`, at `/workflows`) holds the
+operation cards, the run lists, and the open run, and keeps the trigger
+dialog's state. The operation model and cards (`features/workflows/operations`),
+the trigger dialog and Next list (`features/workflows/triggers`), the run
+lists (`features/workflows/runs`, described in
+[Run Lists](workflows.md#run-lists)), run forms, run detail, candidate review,
+the catalog sync dialog that the circle and voice actor pages compose
 (`features/workflows/catalog-sync`), a remote source's library work check that
 the System Libraries list composes (`features/workflows/source-presence`), and
 the Availability Watch configuration
 and pool that the Discover page composes live in `features/workflows`.
 `features/workflows/workflowLinks` builds the addresses other pages use to
-open Workflows or a run in Activity.
+open Workflows or a run (`workflowsPath`, `workflowRunPath`), and
+`features/workflows/useWorkflowsLocation` reads the open run, tab, and filters
+from the address. The legacy `/activity`, `/runs`, and `/workflows?activity=1`
+addresses redirect into Workflows (`legacyRunLogPath`).
 
 The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
 where to find what to listen to next. A `/subscriptions` address redirects to
@@ -384,7 +388,7 @@ while either is shown and the page is visible.
 Each of the four Discover workflows (the two ranking pulls, the subscription
 refresh, and Availability Watch) shows its latest run as one `LatestRunStatus`
 line at the top of its panel: the run's state, when it ended, and a link to it
-in Activity. `useLatestRun` supplies it from the run list by workflow code,
+in Workflows. `useLatestRun` supplies it from the run list by workflow code,
 which includes every trigger, reading again every 4 seconds while a run is
 active and every 20 seconds otherwise, and merges it with the run the panel's
 endpoint reports (`mergeLatestRun` keeps the higher run id), so a run just
@@ -581,7 +585,7 @@ so a still-loading element never replaces it.
   `/metadata?view=translation` links redirect to coverage. The page polls
   while a run is queued or running, and offers cancellation according to each
   run's server-supplied `canCancel` flag through the dedicated translation
-  cancellation endpoint described in [Activity Summary](workflows.md#activity-summary).
+  cancellation endpoint described in [Run Lists](workflows.md#run-lists).
 - Metadata: a Works group for DLsite works and Custom works,
   and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
   the catalog and attention categories behind `WorkReasonFilter`, a segmented
@@ -614,12 +618,11 @@ so a still-loading element never replaces it.
   and scrolls sideways inside its own box on narrow screens with the Manage
   column pinned to the right edge.
 
-- Workflows: one list of operations grouped by purpose, each a row with its
-  state and one run control; a row's options open below it, one at a time, on
-  every screen size.
-- Activity: the run log with its lists as `SubNavTabs`, the workflow filter
-  and search at the end of the row, and run details beside the list from
-  1280px, also reachable through notifications.
+- Workflows: operation cards for Scan, Metadata, and Index above the run
+  lists, with the run lists as `SubNavTabs` (Now and History), the workflow
+  filter and search at the end of the row, and run details beside the list from
+  1280px, also reachable through notifications. See
+  [Run Lists](workflows.md#run-lists).
 - Global player dock.
 
 The work metadata editor freezes its initial normalized values and sends only
@@ -784,7 +787,7 @@ volatile queue with a diagnostic and a normal network loss window of up to
 - Prefer icons for compact controls and reserve text buttons for clear commands.
 - Give secondary navigation one of two forms, both from `components/ui/sub-nav`:
   `SubNavTabs` along the top of a page for its views (Discover, Metadata,
-  Activity, Settings, and System), and a list beside the page for an
+  Workflows, Settings, and System), and a list beside the page for an
   open-ended set of destinations (the Favorites shelf list composes
   `SubNavColumn` and `subNavItemClassName` around its own entries). Tabs
   that all carry an icon show it beside the name; `SubNavTabs` measures the
@@ -1190,7 +1193,7 @@ An edition with an unavailable outcome offers a dismiss action beside its
 retry, and the selection bar dismisses the selected works' unavailable
 editions. A DLsite issue also offers a fetch action per enabled source with
 declared metadata capability, read through `hooks/useMetadataSyncSources`, and
-the selection bar offers one per source for the retryable selection; Activity offers **Mark reviewed** for a run once its pending
+the selection bar offers one per source for the retryable selection; Needs attention on Workflows offers **Mark reviewed** for a run once its pending
 metadata has no retryable failure (`pendingFailedMetadata`).
 
 The metadata editor's **Fetch for edit** action opens a three-column comparison
@@ -1205,7 +1208,7 @@ action; the normal field save does not materialize sibling editions.
 
 Learn tag names (`metadata_genre_names`) is a system workflow nobody starts
 by hand: Workflows does not list it, and its runs, progress and failures
-appear in Activity.
+appear in the run lists.
 
 ## Related Docs
 

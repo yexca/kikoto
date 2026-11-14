@@ -47,7 +47,7 @@ export function useOperationRuns({
           attention: page.viewTotals?.attention ?? 0,
         });
       } catch {
-        // Keep the last known queue; Activity reports load failures where they block a task.
+        // Keep the last known queue; the run lists report load failures where they block a task.
       } finally {
         fetching = false;
       }
@@ -105,5 +105,12 @@ export function useOperationRuns({
     [activeRunsOf, latest],
   );
 
-  return { attention: queue.attention, runOf, activeRunsOf };
+  return {
+    /** Queued and running runs of every workflow, newest first, up to the list size. */
+    activeRuns: queue.runs,
+    running: queue.running,
+    attention: queue.attention,
+    runOf,
+    activeRunsOf,
+  };
 }

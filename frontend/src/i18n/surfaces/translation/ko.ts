@@ -248,7 +248,7 @@ export const translationKorean = {
     cancel: "취소",
     cancelled: "번역을 취소했습니다.",
     cancelFailed: "번역을 취소할 수 없습니다.",
-    activity: "활동",
+    activity: "실행 보기",
     refresh: "새로 고침",
     loading: "불러오는 중…",
     loadFailed: "번역을 불러올 수 없습니다.",

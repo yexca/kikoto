@@ -1212,10 +1212,10 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-  // Catalog freshness lives in Library settings and the remote fallback in Metadata sync; the popover links to both.
+  // Catalog freshness lives in Library settings; the popover links there.
   await expect(settingsDialog.getByRole("spinbutton")).toHaveCount(0);
   await expect(settingsDialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
-  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toHaveCount(0);
 
   // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
   const dlsiteProxy = settingsDialog.getByRole("switch", { name: "Use proxy for DLsite", exact: true });

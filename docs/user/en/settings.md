@@ -85,7 +85,7 @@ values.
 
 ## Language And Appearance
 
-Appearance opens from the palette button in the header and holds mode, style, and color. The UI language is in the **Language** view of the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
+Appearance opens from the palette button in the header and holds mode, style, and color. The UI language is in the **Language** view of the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and workflow run text, always uses each work's original language, so one user's choice never changes what others see.
 
 ### Multilingual titles
 
@@ -158,7 +158,7 @@ storage**.
 - For an account that can run workflows, a source that answers work checks
   also shows its latest library work check, such as **Works checked 2 days ago
   · 12 available**, with the next scheduled check, and opens that run in
-  Activity. **Check library works…** opens the check: the works it asks about
+  Workflows. **Check library works…** opens the check: the works it asks about
   (**Local library**, the default, or **All works in database**), a filter
   (**No remote source**, the default, for works that no remote source
   currently provides, or **All**), and **Works per run** (50 to 1000, default
@@ -170,7 +170,7 @@ storage**.
   its automatic checks. See
   [Check works on a source](workflows.md#current-behavior).
 - Adding a source that is on, switching a source on, or changing its API URL
-  queues one check with the default options, which Activity shows with the
+  queues one check with the default options, which Workflows shows with the
   trigger **Source change**. Renaming or reordering a source checks nothing.
 - **Add source** starts from one address. Kikoto probes the address as entered,
   its origin, and the conventional `api.` sibling for a Kikoeru-compatible works
@@ -319,7 +319,7 @@ sections and `sources:write` for database sections.
 - **Works without any source** links to the **No available source** filter of
   Metadata's **DLsite works** for review and deletion.
 - **Compact database** rewrites the SQLite file to return free pages to disk.
-  It runs in the background as a workflow run shown in Activity, and only one
+  It runs in the background as a workflow run shown in Workflows, and only one
   compaction can be queued or running at a time.
 
 ### Users
@@ -384,14 +384,12 @@ Press a row, or its inspect button, to open the work inspector: beside the table
 
 Selecting works replaces the upper pagination with a selection bar holding **Retry metadata**, **Check sources**, and, in the views that allow it, **Delete local information**, each with the number of selected works it applies to, plus **Dismiss unavailable** while a selected work has a product reported unavailable. **Retry metadata** counts only eligible selections. You can also retry an affected edition from its details, including products reported unavailable. When an enabled remote source provides metadata, the selection bar offers **Fetch from** that source and each affected DLsite edition offers the same in its details; this asks only that source, as the detail page's `From <source name>` refresh does, without automatic remote fallback being enabled. Failed retries preserve existing metadata and manual overrides. A product DLsite no longer lists, such as a delisted work, stays unavailable however often it is retried: **Dismiss** in its edition details, or **Dismiss unavailable** in the selection bar, stops listing it as a metadata issue for everyone and clears its metadata-run notice. A failed update cannot be dismissed. A later sync that fails for the work lists it again. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** filter and, for custom works, in **Custom works**; the server rechecks availability and retains media files.
 
-**Open metadata issues** in Activity opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Activity. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
+**Open metadata issues** on a run in Workflows opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Workflows. Recovery never changes another user's review of a run. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
 choice as the DLsite scope under `System -> Proxy -> Proxy scope`, saved
 immediately. **Manage proxies** opens that section to add or reorder proxies.
-Below it, **Catalog freshness** opens `System -> Library`, and **Remote
-metadata fallback** opens the Metadata sync workflow, whose **Configure** holds
-that setting.
+Below it, **Catalog freshness** opens `System -> Library`.
 
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
@@ -399,15 +397,15 @@ Hide, merge and undo save their state immediately. Related works update continuo
 
 ### Tag names in preferred languages
 
-DLsite names genres in the requested language even for Japanese-only works. When any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
+DLsite names genres in the requested language even for Japanese-only works. When any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Workflows. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
 
 ### Remote metadata fallback
 
-**Remote metadata fallback** is an option for each DLsite metadata sync run and its interval triggers, off by default. Enable it and choose up to 16 enabled sources that provide work metadata, in request order. Only an explicit DLsite not-found result triggers fallback; timeouts and temporary failures do not. Requests describe existing works only and use the shared bounded transport. Filled metadata remains after the run. These choices do not change the instance-wide ordering of stored remote values or manual/DLsite precedence.
+**Remote metadata fallback** is an option of a DLsite metadata sync run and of the interval trigger that stores it, off by default; on Workflows it is set in **Metadata options** on the **Metadata** card. Enable it and choose up to 16 enabled sources that provide work metadata, in request order. Only an explicit DLsite not-found result triggers fallback; timeouts and temporary failures do not. Requests describe existing works only and use the shared bounded transport. Filled metadata remains after the run. These choices do not change the instance-wide ordering of stored remote values or manual/DLsite precedence.
 
 ### Purchase bonuses
 
-**Link purchase bonuses to their work** is a DLsite Run option, on by default, also saved in triggers. It controls automatic detection for that run. Detection checks stored works first, then at most 10 circle pages and 5 candidate products. Existing links continue to apply when detection is off; see [purchase bonuses](work-detail.md#purchase-bonuses).
+**Link purchase bonuses to their work** is an option of a DLsite metadata sync run, on by default and set in **Metadata options** on the **Metadata** card, also saved in triggers. It controls automatic detection for that run. Detection checks stored works first, then at most 10 circle pages and 5 candidate products. Existing links continue to apply when detection is off; see [purchase bonuses](work-detail.md#purchase-bonuses).
 
 ## Related Docs
 

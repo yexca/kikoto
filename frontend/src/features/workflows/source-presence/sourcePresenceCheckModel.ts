@@ -3,6 +3,12 @@ import {
   SOURCE_PRESENCE_DEFAULT_LIMIT,
   SOURCE_PRESENCE_MAX_LIMIT,
 } from "@/features/workflows/workflowPageModel";
+import {
+  defaultTriggerInterval,
+  triggerInterval,
+  triggerIntervalChoices,
+  triggerIntervals,
+} from "@/features/workflows/workflowTriggerModel";
 import type { SourcePresenceCheckOptions, WorkflowTrigger } from "@/lib/api";
 
 /**
@@ -13,9 +19,9 @@ import type { SourcePresenceCheckOptions, WorkflowTrigger } from "@/lib/api";
 
 export const SOURCE_PRESENCE_CHECK_CODE = "source_presence_check";
 
-/** Intervals an automatic check offers, in minutes: 1, 6, and 12 hours, 1 day, and 7 days. */
-export const sourceCheckIntervals = [60, 360, 720, 1440, 10080] as const;
-export const defaultSourceCheckInterval = 1440;
+/** Intervals an automatic check offers: the ones every schedule offers. */
+export const sourceCheckIntervals = triggerIntervals;
+export const defaultSourceCheckInterval = defaultTriggerInterval;
 
 export function sourceCheckDefaults(sourceId: number): SourcePresenceCheckOptions {
   return { sourceId, library: "local", filter: "no_remote_source", limit: SOURCE_PRESENCE_DEFAULT_LIMIT };
@@ -53,14 +59,11 @@ export function sourceCheckOptions(triggers: SourceCheckTriggers, sourceId: numb
 
 /** A schedule's interval in minutes, or the default when it stores none. */
 export function sourceCheckInterval(triggers: WorkflowTrigger[]): number {
-  const value = parseJSONRecord(triggers[0]?.scheduleJson ?? "").intervalMinutes;
-  return typeof value === "number" && value > 0 ? value : defaultSourceCheckInterval;
+  return triggerInterval(triggers[0]);
 }
 
 /** The interval choices, keeping a stored interval the list does not offer. */
-export function sourceCheckIntervalChoices(current: number): number[] {
-  return [...new Set<number>([...sourceCheckIntervals, current])].sort((left, right) => left - right);
-}
+export const sourceCheckIntervalChoices = triggerIntervalChoices;
 
 /** What an automatic check stores and runs with. */
 export function sourceCheckConfigJson(options: SourcePresenceCheckOptions) {

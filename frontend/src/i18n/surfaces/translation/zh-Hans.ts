@@ -241,7 +241,7 @@ export const translationHans = {
     cancel: "取消",
     cancelled: "翻译已取消。",
     cancelFailed: "无法取消翻译。",
-    activity: "活动",
+    activity: "查看运行",
     refresh: "刷新",
     loading: "加载中…",
     loadFailed: "无法加载翻译。",

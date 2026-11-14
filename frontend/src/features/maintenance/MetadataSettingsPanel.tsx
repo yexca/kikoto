@@ -90,9 +90,6 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
           <SettingsLink onClick={() => navigate("/system?tab=library")}>
             {maintenanceCopy("metadata.openCatalogFreshness")}
           </SettingsLink>
-          <SettingsLink onClick={() => navigate("/workflows?workflow=metadata_sync")}>
-            {maintenanceCopy("metadata.openRemoteFallback")}
-          </SettingsLink>
         </section>
       </div>
     </>

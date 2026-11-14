@@ -378,7 +378,7 @@ network URLs cannot bypass the shared outbound policy.
 
 ## Logs and Diagnostics
 
-Server logs and workflow Activity may contain local paths, configured endpoint
+Server logs and workflow runs may contain local paths, configured endpoint
 details, and upstream errors. Redact them before sharing a bug report or support
 request. Never attach a real database, session token, source credential, or
 media file to a public issue.

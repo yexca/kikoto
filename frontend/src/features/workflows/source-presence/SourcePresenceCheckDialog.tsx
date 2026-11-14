@@ -10,9 +10,9 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { RunBusyLabelContext, RunOptionRows, WorkflowRunButton } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus } from "@/features/workflows/runPresentation";
 import { RelativeTime } from "@/features/workflows/WorkflowDetailLayout";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
-import { intervalParts } from "@/features/workflows/workflowTriggerModel";
+import { intervalLabel } from "@/features/workflows/workflowTriggerModel";
 import { api, type FileSourcePresenceCheck, type SourcePresenceCheckOptions, type WorkflowTrigger } from "@/lib/api";
 
 import { SourcePresenceCheckLine } from "./SourcePresenceCheckLine";
@@ -27,12 +27,6 @@ import {
   type SourceCheckTriggers,
 } from "./sourcePresenceCheckModel";
 import { SourcePresenceScopeFields } from "./SourcePresenceScopeFields";
-
-const intervalKey = {
-  minutes: "workflowPage.operations.schedule.everyMinutes",
-  hours: "workflowPage.operations.schedule.everyHours",
-  days: "workflowPage.operations.schedule.everyDays",
-} as const;
 
 type AutomaticKind = "startup" | "schedule";
 
@@ -158,8 +152,8 @@ export function SourcePresenceCheckDialog({
       toast.notify({
         kind: "success",
         message: workflowCopy("sourceCheck.queued", { id: result.runId }),
-        actionLabel: canOpenActivity ? t("nav.activity") : undefined,
-        onAction: canOpenActivity ? () => openWorkflowPath(workflowActivityRunPath(result.runId)) : undefined,
+        actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
+        onAction: canOpenActivity ? () => openWorkflowPath(workflowRunPath(result.runId)) : undefined,
       });
       onChanged();
       onClose();
@@ -171,10 +165,6 @@ export function SourcePresenceCheckDialog({
   };
 
   const nextScheduled = triggers.schedule.find((trigger) => trigger.enabled && trigger.nextRunAt)?.nextRunAt ?? null;
-  const intervalLabel = (minutes: number) => {
-    const parts = intervalParts(minutes);
-    return t(intervalKey[parts.unit], { count: parts.count });
-  };
 
   return (
     <Dialog onClose={onClose} size="lg">
@@ -193,7 +183,7 @@ export function SourcePresenceCheckDialog({
                 canOpenActivity
                   ? (runId) => {
                       onClose();
-                      openWorkflowPath(workflowActivityRunPath(runId));
+                      openWorkflowPath(workflowRunPath(runId));
                     }
                   : undefined
               }

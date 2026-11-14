@@ -33,7 +33,7 @@ import { LibrarySortButton } from "@/pages/library/LibrarySortButton";
 import { creatorWorkPageSizeOptions } from "@/lib/creatorWorksBrowse";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { CatalogSyncDialog } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
@@ -423,9 +423,9 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
   const [catalogSyncOpen, setCatalogSyncOpen] = useState(false);
-  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const openRefreshRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
   const runAction = (runId?: number) =>
-    canOpenWorkflows && runId ? { actionLabel: t("nav.activity"), onAction: () => openRefreshRun(runId) } : {};
+    canOpenWorkflows && runId ? { actionLabel: t("workflowPage.viewRun"), onAction: () => openRefreshRun(runId) } : {};
   // Stable so the refresh poll does not restart on every render.
   const notifyRefreshSettled = useStableCallback((refresh: VoiceCatalogRefreshState) => {
     const failed = refresh.status === "failed";

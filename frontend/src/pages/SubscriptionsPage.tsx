@@ -61,7 +61,7 @@ import {
 import { useAvailabilityWatch } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { useWatchTargetActions } from "@/features/workflows/availability-watch/useWatchTargetActions";
 import { WatchTargetFooterButtons } from "@/features/workflows/availability-watch/WatchActionButtons";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -194,7 +194,7 @@ export function SubscriptionsPage({
   const [revealAvailable, setRevealAvailable] = useState(0);
   const [feedReload, setFeedReload] = useState(0);
   const [watchPreselect, setWatchPreselect] = useState<{ key: number; codes: string[] } | null>(null);
-  const openRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const openRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
   const watchActions = useWatchTargetActions({
     onChanged: (next) => {
       if (next) watchState.setWatch(next);

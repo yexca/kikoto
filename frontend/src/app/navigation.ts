@@ -1,5 +1,4 @@
 import {
-  Activity,
   ChartColumn,
   CircleUserRound,
   Clapperboard,
@@ -156,16 +155,6 @@ export const navItems = [
     labelKey: "nav.workflows",
     path: "/workflows",
     icon: Workflow,
-    audience: "admin",
-    permission: "workflows:run",
-    group: "manage",
-  },
-  {
-    id: "activity",
-    label: "Activity",
-    labelKey: "nav.activity",
-    path: "/activity",
-    icon: Activity,
     audience: "admin",
     permission: "workflows:run",
     group: "manage",

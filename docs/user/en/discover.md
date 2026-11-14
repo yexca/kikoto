@@ -330,9 +330,9 @@ sheet.
   does not need permission to change subscriptions. The notice after **Refresh
   now** has **View run**.
 - **Latest refresh** shows how the last refresh stands, such as **Running** or
-  **Succeeded · 2 hr. ago**, or **Failed**, and opens that run in Activity,
+  **Succeeded · 2 hr. ago**, or **Failed**, and opens that run in Workflows,
   where a failure's details are. It shows for everyone who can open the
-  settings; the time and the link need the permission to open Activity.
+  settings; the time and the link need the permission to open Workflows.
 
 ## Availability Watch
 
@@ -344,7 +344,7 @@ sheet.
 - The subscription refresh checks the watch on its schedule; **Check now** in
   Watch checks it at any time. **Latest check** at the top of the tab shows
   the last check from either, such as **Succeeded · 2 hr. ago**, and opens it
-  in Activity, which keeps the watch's run history.
+  in Workflows, which keeps the watch's run history.
 - A notification about newly available works opens **Watch** at its
   **Available** works with the works that check found already selected, so
   **Fetch** in the selection bar fetches them.
@@ -359,7 +359,7 @@ sync metadata change them; others can only read them.
   **View run**, or **View runs** when it queued several pulls. **Latest DLsite
   pull** and, once a remote source's list is shown, **Latest remote source
   pull** show how each last ended, such as **Failed · 2 hr. ago**, and open
-  that run in Activity. Accounts that cannot open Activity see the state
+  that run in Workflows. Accounts that cannot open Workflows see the state
   without a time or link.
 - **DLsite voice rankings** has, in the order of the Rankings toolbar, a row
   for 24 hours, 7 days, and 30 days, **Annual** for the year in progress,

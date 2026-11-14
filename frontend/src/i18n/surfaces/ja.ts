@@ -22,7 +22,7 @@ export const surfaceJapanese = {
     history: "翻訳履歴",
     batchCodes: "選択した作品コード（既存の作品 1–100 件）",
     queue: "バックグラウンド翻訳を開始",
-    activity: "Activity",
+    activity: "実行を表示",
     reviewsFailed: "翻訳レビューを読み込めませんでした。",
     states: {
       proposed: "確認待ち",
@@ -446,7 +446,6 @@ export const surfaceJapanese = {
     },
     attention: "要対応",
     acknowledge: "確認済みにする",
-    categories: "アクティビティの分類",
     previous: "前のページ",
     next: "次のページ",
     empty: {
@@ -517,7 +516,7 @@ export const surfaceJapanese = {
     attention: "メタデータの同期を確認してください",
     partial:
       "一部の情報を同期できませんでした。ライブラリを再読み込みすると取得済みの情報が表示されます。未解決の問題はメタデータ画面で確認できます。既存の作品情報は保持されます。",
-    activity: "Activity を表示",
+    activity: "実行を表示",
     dismiss: "閉じる",
     error: "操作を保存できませんでした。もう一度お試しください。",
   },
@@ -1231,7 +1230,7 @@ export const surfaceJapanese = {
       kikoeruPrivateEnable: "許可",
       hideRemoteAddresses: "ソースを管理しないアカウントからアドレスを隠す",
       hideRemoteAddressesDescription:
-        "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやアクティビティに含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
+        "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやワークフローの実行に含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
       lyricsFilesDescription:
         "歌詞を管理 が、作品フォルダーにすでにある歌詞を Kikoto の lyrics_kikoto フォルダーに取り込む方法です。",
       folderLyricsMode: "作品フォルダーの歌詞",
@@ -1525,7 +1524,7 @@ export const surfaceJapanese = {
       },
     },
     metadataLoadFailed: "ワークフローデータを読み込めませんでした。",
-    activityLoadFailed: "アクティビティを読み込めませんでした。",
+    activityLoadFailed: "実行を読み込めませんでした。",
     definitionEmpty: "実行可能なワークフロー定義はまだありません。",
     localScanCreateFailed: "ローカルスキャン実行を作成できませんでした。",
     localMediaIndexCreateFailed: "ローカル作品のファイル更新を作成できませんでした。",
@@ -1703,7 +1702,7 @@ export const surfaceJapanese = {
     editionWithoutMetadata: "保存済みメタデータなし",
     original: "原版",
     confirmRemoveFromWatch: "削除を確定",
-    activity: "アクティビティ",
+    activity: "実行を表示",
     loadingWorkflowData: "ワークフローデータを読み込み中",
     availabilityWatchManagedOnSubscriptions:
       "配信状況の監視は「見つける」ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
@@ -1780,10 +1779,8 @@ export const surfaceJapanese = {
         moreActive_one: "ほかに {{count}} 件が実行中",
         moreActive_other: "ほかに {{count}} 件が実行中",
       },
-      openRun: "実行 #{{id}}（{{status}}）を Activity で開く",
+      openRun: "実行 #{{id}}（{{status}}）を開く",
       queuedBehind: "実行 #{{id}} を実行中の処理のあとにキューへ追加しました。",
-      options: "オプション",
-      allRuns: "すべての実行",
       schedule: {
         startup: "起動時",
         watching: "フォルダーを監視中",
@@ -1795,13 +1792,9 @@ export const surfaceJapanese = {
         everyDays_other: "{{count}} 日ごと",
         paused: "自動実行は一時停止中",
       },
-      elsewhere:
-        "取得は作品から、カタログ同期はそのサークル、シリーズ、声優から、ソースのライブラリ作品の確認はシステムのソース設定から実行します。ランキング、可用性ウォッチ、購読は{{discover}}で実行します。自動実行を含むすべての実行は{{activity}}にあります。",
     },
     console: {
       stepProgress: "ステップ {{current}}/{{total}}",
-      attentionCount_one: "{{count}} 件の実行に対応が必要です",
-      attentionCount_other: "{{count}} 件の実行に対応が必要です",
       neverRun: "未実行",
     },
     retry: "再試行",
@@ -1948,11 +1941,9 @@ export const surfaceJapanese = {
     continue: "続行",
     permanentlyDelete: "完全に削除",
     running: "実行中",
-    runs: "実行",
     reviewed: "レビュー済み",
     pageOf: "{{page}} / {{totalPages}} ページ",
     perPage: "1ページ {{count}} 件",
-    triggers: "トリガー",
     runAtStartup: "起動時に実行",
     addSchedule: "スケジュールを追加",
     pause: "一時停止",
@@ -2033,6 +2024,51 @@ export const surfaceJapanese = {
     nodes: "ノード",
     review: "レビュー",
     workflow: "ワークフロー",
+    viewRun: "実行を表示",
+    cards: {
+      names: {
+        local_library_scan: "スキャン",
+        metadata_sync: "メタデータ",
+        local_media_index: "インデックス",
+      },
+      full: "完全",
+      fullHint: {
+        local_library_scan: "変更されたフォルダーだけでなく、すべてのフォルダーをスキャンします。",
+        local_media_index: "新しい作品だけでなく、すべてのローカル作品のファイルを索引し直します。",
+        metadata_sync: "不足または古いメタデータだけでなく、すべての作品のメタデータを更新します。",
+      },
+      scanAlwaysFull: "毎回すべてのフォルダーを確認します",
+      metadataOptions: "メタデータのオプション",
+      metadataOptionsDescription:
+        "メタデータカードの実行と新しいメタデータのトリガーが使う設定です。このブラウザーに保存されます。",
+      fallbackSummary: "リモート補完: {{sources}}",
+      bonusOff: "購入特典の関連付けはオフ",
+    },
+    triggers: {
+      add: "トリガーを追加",
+      addTitle: "トリガーを追加",
+      editTitle: "トリガーを編集",
+      description: "スキャン、メタデータ、インデックスを自動で実行します。",
+      operation: "ワークフロー",
+      when: "タイミング",
+      onSchedule: "定期的に",
+      interval: "間隔",
+      startupTaken: "起動時の実行はすでに設定されています。",
+      incrementalHint: "差分のみ実行します：新規、変更、不足したもの。",
+      edit: "トリガーを編集",
+      openOwner: "設定場所を開く",
+    },
+    runs: {
+      label: "実行",
+      tabs: {
+        now: "現在",
+        history: "履歴",
+      },
+      status: "状態",
+      next: "次回",
+      nothingNext:
+        "自動で実行されるものはありません。トリガーを追加すると、スキャン、メタデータ、インデックスを自動で実行できます。",
+    },
     sourceCheck: {
       title: "ライブラリの作品を確認",
       description:
@@ -2058,7 +2094,7 @@ export const surfaceJapanese = {
       available_one: "{{count}} 件あり",
       available_other: "{{count}} 件あり",
       nextLine: "次回 {{time}}",
-      openRun: "アクティビティで確認を開く",
+      openRun: "確認の実行を開く",
     },
   },
   libraryDetail: {
@@ -2701,7 +2737,7 @@ export const surfaceJapanese = {
     removeCatalogWorkDescription:
       "最新の全件スキャンで DLsite から {{code}} が返されませんでした。サークルのカタログから削除しますか？",
     retryMetadataCount: "{{count}} 件の作品のメタデータを再試行",
-    viewRefreshRun: "この更新をアクティビティで表示",
+    viewRefreshRun: "この更新の実行を表示",
     more: "その他",
     moreCircleActions: "サークルのその他の操作",
     moreVoiceActions: "声優のその他の操作",
@@ -3164,9 +3200,9 @@ export const surfaceJapanese = {
     conflictRefreshFailed: "Fetch の競合確認を更新できませんでした。",
     alreadyQueued: "Fetch はワークフロー実行 #{{runId}} として既にキューに追加されています。",
     queued: "{{code}} の Fetch をワークフロー実行 #{{runId}} としてキューに追加しました。",
-    activity: "アクティビティ",
+    activity: "実行を表示",
     unconfirmed:
-      "Fetch の送信結果を確認できませんでした。まだ実行中の可能性があります。アクティビティを確認するか、この選択を再試行してください。",
+      "Fetch の送信結果を確認できませんでした。まだ実行中の可能性があります。ワークフローを確認するか、この選択を再試行してください。",
   },
 
   admin: {
@@ -3657,7 +3693,7 @@ export const surfaceJapanese = {
       asr_ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
     },
     retryHint:
-      "「アクティビティ」から再試行すると、最後に完了した部分の続きから再開します（中断された部分は再送信されます）。新しく文字起こしを開始することもできます。",
+      "「ワークフロー」から再試行すると、最後に完了した部分の続きから再開します（中断された部分は再送信されます）。新しく文字起こしを開始することもできます。",
     publishingHint: "結果は保存されていますが、歌詞への追加が完了しませんでした。もう一度追加すると再試行します。",
     preview: "プレビュー",
     previewOf: "{{title}} の文字起こしをプレビュー",
@@ -3735,10 +3771,10 @@ export const surfaceJapanese = {
     },
     failures: {
       upstream_rejected:
-        "プロバイダーがリクエストを拒否しました。モデル、キー、制限を確認してから Activity で再試行してください。",
-      endpoint_unavailable: "プロバイダーとの接続を準備できませんでした。Activity で再試行してください。",
+        "プロバイダーがリクエストを拒否しました。モデル、キー、制限を確認してから ワークフローで再試行してください。",
+      endpoint_unavailable: "プロバイダーとの接続を準備できませんでした。ワークフローで再試行してください。",
       source_temporarily_unavailable:
-        "歌詞ファイルまたはトラックの作品フォルダーを利用できませんでした。Activity で再試行してください。",
+        "歌詞ファイルまたはトラックの作品フォルダーを利用できませんでした。ワークフローで再試行してください。",
       content_or_endpoint_unavailable:
         "歌詞、コンテンツ安全ポリシー、またはプロバイダーがこの翻訳を許可しなくなりました。もう一度翻訳してください。",
       translation_input_changed: "翻訳の開始後に歌詞またはプロバイダーの設定が変わりました。もう一度翻訳してください。",
@@ -3751,14 +3787,14 @@ export const surfaceJapanese = {
       translation_output_too_large: "訳文が大きすぎます。",
       unsupported_language_pair: "このモデルはこの翻訳方向に対応していません。別の言語かモデルを選んでください。",
       service_not_ready:
-        "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは選択してから、Activity で再試行してください。",
+        "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは選択してから、ワークフローで再試行してください。",
       service_start_failed:
-        "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してから、Activity で再試行してください。",
+        "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してから、ワークフローで再試行してください。",
       service_out_of_memory:
-        "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、Activity で再試行してください。",
+        "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、ワークフローで再試行してください。",
       service_agreement_required:
-        "プロバイダーのモデルを使うには、リスクに関する注意への同意が必要です。ヘルパーの翻訳ページで同意してから、Activity で再試行してください。",
-      unknown: "翻訳が停止しました。もう一度翻訳するか、Activity で確認してください。",
+        "プロバイダーのモデルを使うには、リスクに関する注意への同意が必要です。ヘルパーの翻訳ページで同意してから、ワークフローで再試行してください。",
+      unknown: "翻訳が停止しました。もう一度翻訳するか、ワークフローで確認してください。",
     },
     errors: {
       llm_policy_blocked: "内容がサービスの受信上限を超えているか、不明・禁止に分類されています。",

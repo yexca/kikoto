@@ -35,7 +35,7 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { CatalogSyncDialog, type CatalogSyncCode } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import {
   api,
@@ -325,7 +325,7 @@ export function CircleDetailPage({
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
   const openSubscriptions = () => openWorkflowPath("/discover?panel=subscriptions");
-  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const openRefreshRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
   const refreshRun = useCircleRefreshRun({
     run: detail?.refresh,
     canWatchRuns: canOpenWorkflows,
@@ -336,7 +336,7 @@ export function CircleDetailPage({
       toast.notify({
         kind: run.status === "failed" ? "error" : run.status === "partial" ? "warning" : "success",
         message,
-        actionLabel: canOpenWorkflows ? t("nav.activity") : undefined,
+        actionLabel: canOpenWorkflows ? t("workflowPage.viewRun") : undefined,
         onAction: canOpenWorkflows ? () => openRefreshRun(run.runId) : undefined,
       });
     },
@@ -357,7 +357,7 @@ export function CircleDetailPage({
       toast.notify({
         kind: "info",
         message: t("creatorBrowse.circleRefreshQueued", { id: queued.runId }),
-        actionLabel: canOpenWorkflows ? t("nav.activity") : undefined,
+        actionLabel: canOpenWorkflows ? t("workflowPage.viewRun") : undefined,
         onAction: canOpenWorkflows ? () => openRefreshRun(queued.runId) : undefined,
       });
     } catch (error) {

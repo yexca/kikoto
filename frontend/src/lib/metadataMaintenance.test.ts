@@ -13,7 +13,7 @@ describe("metadata recovery destinations", () => {
     expect(metadataSyncResultURL(42, true, true)).toBe("/metadata?reason=metadata&metadataRun=42");
   });
   it("opens successful and running results in Activity when accessible", () => {
-    expect(metadataSyncResultURL(42, false, true)).toBe("/activity?run=42");
+    expect(metadataSyncResultURL(42, false, true)).toBe("/workflows?run=42");
     expect(metadataSyncResultURL(42, false, false)).toBe("/metadata");
     expect(metadataSyncResultURL(0, false, true)).toBe("/metadata");
   });

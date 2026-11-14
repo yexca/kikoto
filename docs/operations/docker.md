@@ -285,7 +285,7 @@ refuses every other destination, so no request leaves the container. The
 Library shows a notice above the source stating that it is simulated and not a
 real server. Demo also refreshes a completed example
 for each workflow, plus one running and three attention-needed examples with
-illustrative jobs. These Activity details are synthetic; no example job is
+illustrative jobs. These run details are synthetic; no example job is
 executed. The running example has no live elapsed-time clock or job event
 stream, so it can remain visible during a long-lived Demo deployment. Actual
 `demo_library_scan` runs stay in the isolated database

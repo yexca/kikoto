@@ -52,7 +52,7 @@ function runProgress(
 /**
  * An operation's state in one line: idle, starting, queued, running with its
  * progress, or how and when its latest run ended. A state that has a run opens
- * that run in Activity, so a failure leads to its details.
+ * that run, so a failure leads to its details.
  */
 export function OperationStatus({
   state,
@@ -80,20 +80,16 @@ export function OperationStatus({
   if (state.phase === "loading") {
     return (
       <div className={className} aria-hidden>
-        <SkeletonLine className="h-4 w-24 md:ml-auto" />
+        <SkeletonLine className="h-4 w-24" />
       </div>
     );
   }
   if (state.phase === "never") {
-    return (
-      <p className={cn("text-sm text-muted-foreground md:text-right", className)}>
-        {t("workflowPage.console.neverRun")}
-      </p>
-    );
+    return <p className={cn("text-sm text-muted-foreground", className)}>{t("workflowPage.console.neverRun")}</p>;
   }
   if (state.phase === "starting") {
     return (
-      <p className={cn("flex items-center gap-2 text-sm text-info-foreground md:justify-end", className)} role="status">
+      <p className={cn("flex items-center gap-2 text-sm text-info-foreground", className)} role="status">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
         {t("workflowPage.operations.status.starting")}
       </p>
@@ -125,13 +121,13 @@ export function OperationStatus({
     <button
       type="button"
       className={cn(
-        "group/status touch-target block min-w-0 max-w-full rounded-md text-left text-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:ml-auto md:text-right",
+        "group/status touch-target block min-w-0 max-w-full rounded-md text-left text-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
       aria-label={t("workflowPage.operations.openRun", { id: state.run.id, status: statusLabel })}
       onClick={() => onOpenRun(state.run)}
     >
-      <span className="flex min-w-0 items-center gap-2 md:justify-end">
+      <span className="flex min-w-0 items-center gap-2">
         {state.phase === "running" ? (
           <Loader2 className={cn("h-3.5 w-3.5 shrink-0 text-info", !staticExample && "animate-spin")} aria-hidden />
         ) : (
@@ -156,7 +152,7 @@ export function OperationStatus({
         />
       </span>
       {progress && (
-        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-info/15 md:ml-auto md:w-40" aria-hidden>
+        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-info/15 w-40 max-w-full" aria-hidden>
           <span
             className="block h-full rounded-full bg-info transition-[width] duration-700 ease-out"
             style={{ width: `${Math.round(Math.min(1, Math.max(0, progress.fraction)) * 100)}%` }}

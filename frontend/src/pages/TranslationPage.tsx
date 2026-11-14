@@ -18,7 +18,7 @@ import {
 import { ActivityRunLink, TranslationRunList } from "@/features/translation/TranslationRunList";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { api, type TranslationCenterCounts, type TranslationItem, type TranslationRun } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
@@ -150,9 +150,9 @@ export function TranslationPage({
   const activityLink = canOpenActivity
     ? (runId: number) => (
         <ActivityRunLink
-          href={workflowActivityRunPath(runId)}
+          href={workflowRunPath(runId)}
           label={t("translationCenter.activity")}
-          onOpen={() => openWorkflowPath(workflowActivityRunPath(runId))}
+          onOpen={() => openWorkflowPath(workflowRunPath(runId))}
         />
       )
     : undefined;

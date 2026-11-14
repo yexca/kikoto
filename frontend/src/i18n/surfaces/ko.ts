@@ -22,7 +22,7 @@ export const surfaceKorean = {
     history: "번역 기록",
     batchCodes: "선택한 작품 코드 (기존 작품 1–100개)",
     queue: "백그라운드 번역 시작",
-    activity: "Activity",
+    activity: "실행 보기",
     reviewsFailed: "번역 검토를 불러오지 못했습니다.",
     states: {
       proposed: "검토 대기",
@@ -445,7 +445,6 @@ export const surfaceKorean = {
     },
     attention: "처리 필요",
     acknowledge: "확인 완료로 표시",
-    categories: "활동 분류",
     previous: "이전 페이지",
     next: "다음 페이지",
     empty: {
@@ -516,7 +515,7 @@ export const surfaceKorean = {
     attention: "메타데이터 동기화 확인 필요",
     partial:
       "일부 정보를 동기화하지 못했습니다. 라이브러리를 새로고침하면 동기화된 정보가 표시됩니다. 메타데이터 화면에서 미해결 문제를 확인하세요. 기존 작품 정보는 유지됩니다.",
-    activity: "Activity 보기",
+    activity: "실행 보기",
     dismiss: "닫기",
     error: "작업을 저장하지 못했습니다. 다시 시도해 주세요.",
   },
@@ -1228,7 +1227,7 @@ export const surfaceKorean = {
       kikoeruPrivateEnable: "허용",
       hideRemoteAddresses: "소스를 관리하지 않는 계정에서 주소 숨기기",
       hideRemoteAddressesDescription:
-        "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 활동에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
+        "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 워크플로 실행에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
       lyricsFilesDescription:
         "가사 관리가 작품 폴더에 이미 있는 가사를 Kikoto의 lyrics_kikoto 폴더로 가져오는 방식입니다.",
       folderLyricsMode: "작품 폴더의 가사",
@@ -1518,7 +1517,7 @@ export const surfaceKorean = {
       },
     },
     metadataLoadFailed: "워크플로 데이터를 불러오지 못했습니다.",
-    activityLoadFailed: "활동을 불러오지 못했습니다.",
+    activityLoadFailed: "실행을 불러오지 못했습니다.",
     definitionEmpty: "실행 가능한 워크플로 정의가 아직 없습니다.",
     localScanCreateFailed: "로컬 스캔 실행을 생성하지 못했습니다.",
     localMediaIndexCreateFailed: "로컬 작품 파일 새로 고침 실행을 생성하지 못했습니다.",
@@ -1697,7 +1696,7 @@ export const surfaceKorean = {
     editionWithoutMetadata: "저장된 메타데이터 없음",
     original: "원판",
     confirmRemoveFromWatch: "제거 확인",
-    activity: "활동",
+    activity: "실행 보기",
     loadingWorkflowData: "워크플로 데이터 로드 중",
     availabilityWatchManagedOnSubscriptions:
       "가용성 모니터링은 둘러보기 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
@@ -1774,10 +1773,8 @@ export const surfaceKorean = {
         moreActive_one: "외 {{count}}개 진행 중",
         moreActive_other: "외 {{count}}개 진행 중",
       },
-      openRun: "실행 #{{id}}({{status}})을 Activity에서 열기",
+      openRun: "실행 #{{id}}({{status}}) 열기",
       queuedBehind: "실행 #{{id}}이 진행 중인 실행 뒤에 대기열로 추가되었습니다.",
-      options: "옵션",
-      allRuns: "모든 실행",
       schedule: {
         startup: "시작 시",
         watching: "폴더 감시 중",
@@ -1789,13 +1786,9 @@ export const surfaceKorean = {
         everyDays_other: "{{count}}일마다",
         paused: "자동 실행 일시 중지됨",
       },
-      elsewhere:
-        "가져오기는 작품에서, 카탈로그 동기화는 해당 서클, 시리즈, 성우에서, 소스의 라이브러리 작품 확인은 시스템의 소스 설정에서 실행합니다. 순위, 가용성 감시, 구독은 {{discover}}에서 실행합니다. 자동 실행을 포함한 모든 실행은 {{activity}}에 있습니다.",
     },
     console: {
       stepProgress: "{{total}}단계 중 {{current}}단계",
-      attentionCount_one: "확인이 필요한 실행 {{count}}개",
-      attentionCount_other: "확인이 필요한 실행 {{count}}개",
       neverRun: "실행 기록 없음",
     },
     retry: "다시 시도",
@@ -1940,11 +1933,9 @@ export const surfaceKorean = {
     continue: "계속",
     permanentlyDelete: "영구 삭제",
     running: "실행 중",
-    runs: "실행",
     reviewed: "검토됨",
     pageOf: "{{page}} / {{totalPages}} 페이지",
     perPage: "페이지당 {{count}}개",
-    triggers: "트리거",
     runAtStartup: "시작 시 실행",
     addSchedule: "일정 추가",
     pause: "일시 중지",
@@ -2025,6 +2016,50 @@ export const surfaceKorean = {
     nodes: "노드",
     review: "검토",
     workflow: "워크플로",
+    viewRun: "실행 보기",
+    cards: {
+      names: {
+        local_library_scan: "스캔",
+        metadata_sync: "메타데이터",
+        local_media_index: "인덱스",
+      },
+      full: "전체",
+      fullHint: {
+        local_library_scan: "변경된 폴더뿐 아니라 모든 폴더를 스캔합니다.",
+        local_media_index: "새 작품뿐 아니라 모든 로컬 작품의 파일을 다시 색인합니다.",
+        metadata_sync: "누락되거나 오래된 메타데이터뿐 아니라 모든 작품의 메타데이터를 새로 고칩니다.",
+      },
+      scanAlwaysFull: "매번 모든 폴더를 확인합니다",
+      metadataOptions: "메타데이터 옵션",
+      metadataOptionsDescription:
+        "메타데이터 카드의 실행과 새 메타데이터 트리거가 사용하는 설정입니다. 이 브라우저에 저장됩니다.",
+      fallbackSummary: "원격 보완: {{sources}}",
+      bonusOff: "구매 특전 연결 꺼짐",
+    },
+    triggers: {
+      add: "트리거 추가",
+      addTitle: "트리거 추가",
+      editTitle: "트리거 편집",
+      description: "스캔, 메타데이터, 인덱스를 자동으로 실행합니다.",
+      operation: "워크플로",
+      when: "실행 시점",
+      onSchedule: "일정에 따라",
+      interval: "간격",
+      startupTaken: "이미 시작 시 실행됩니다.",
+      incrementalHint: "증분으로 실행합니다: 새 항목, 변경된 항목, 누락된 항목만.",
+      edit: "트리거 편집",
+      openOwner: "설정 위치 열기",
+    },
+    runs: {
+      label: "실행",
+      tabs: {
+        now: "현재",
+        history: "기록",
+      },
+      status: "상태",
+      next: "다음",
+      nothingNext: "자동으로 실행되는 항목이 없습니다. 트리거를 추가해 스캔, 메타데이터, 인덱스를 자동으로 실행하세요.",
+    },
     sourceCheck: {
       title: "라이브러리 작품 확인",
       description:
@@ -2050,7 +2085,7 @@ export const surfaceKorean = {
       available_one: "{{count}}개 있음",
       available_other: "{{count}}개 있음",
       nextLine: "다음 {{time}}",
-      openRun: "활동에서 확인 열기",
+      openRun: "확인 실행 열기",
     },
   },
   libraryDetail: {
@@ -2693,7 +2728,7 @@ export const surfaceKorean = {
     removeCatalogWorkDescription:
       "최신 전체 스캔에서 DLsite가 {{code}}을(를) 반환하지 않았습니다. 이 서클 카탈로그에서 제거할까요?",
     retryMetadataCount: "작품 {{count}}개의 메타데이터 다시 시도",
-    viewRefreshRun: "활동에서 이 새로 고침 보기",
+    viewRefreshRun: "이 새로 고침 실행 보기",
     more: "더 보기",
     moreCircleActions: "서클 추가 작업",
     moreVoiceActions: "성우 추가 작업",
@@ -3151,9 +3186,9 @@ export const surfaceKorean = {
     conflictRefreshFailed: "Fetch 충돌 검토를 새로 고칠 수 없습니다.",
     alreadyQueued: "Fetch가 워크플로 실행 #{{runId}}로 이미 대기 중입니다.",
     queued: "{{code}} Fetch가 워크플로 실행 #{{runId}}로 대기 중입니다.",
-    activity: "활동",
+    activity: "실행 보기",
     unconfirmed:
-      "Fetch 제출을 확인할 수 없습니다. 아직 실행 중일 수 있으니 활동을 확인하거나 이 선택을 다시 시도하세요.",
+      "Fetch 제출을 확인할 수 없습니다. 아직 실행 중일 수 있으니 워크플로를 확인하거나 이 선택을 다시 시도하세요.",
   },
 
   admin: {
@@ -3638,7 +3673,7 @@ export const surfaceKorean = {
       asr_ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
     },
     retryHint:
-      "활동에서 다시 시도하면 마지막으로 완료된 부분부터 이어서 진행하며, 중단된 부분은 다시 전송됩니다. 새로 전사를 시작할 수도 있습니다.",
+      "워크플로에서 다시 시도하면 마지막으로 완료된 부분부터 이어서 진행하며, 중단된 부분은 다시 전송됩니다. 새로 전사를 시작할 수도 있습니다.",
     publishingHint: "결과는 보관되어 있지만 가사에 추가하지 못했습니다. 다시 추가하면 재시도합니다.",
     preview: "미리 보기",
     previewOf: "{{title}} 전사 미리 보기",
@@ -3714,10 +3749,10 @@ export const surfaceKorean = {
       accepted: "가사에 추가됨",
     },
     failures: {
-      upstream_rejected: "제공자가 요청을 거부했습니다. 모델, 키, 제한을 확인한 뒤 Activity에서 다시 시도하세요.",
-      endpoint_unavailable: "제공자 연결을 준비하지 못했습니다. Activity에서 다시 시도하세요.",
+      upstream_rejected: "제공자가 요청을 거부했습니다. 모델, 키, 제한을 확인한 뒤 워크플로에서 다시 시도하세요.",
+      endpoint_unavailable: "제공자 연결을 준비하지 못했습니다. 워크플로에서 다시 시도하세요.",
       source_temporarily_unavailable:
-        "가사 파일 또는 트랙의 작품 폴더를 사용할 수 없었습니다. Activity에서 다시 시도하세요.",
+        "가사 파일 또는 트랙의 작품 폴더를 사용할 수 없었습니다. 워크플로에서 다시 시도하세요.",
       content_or_endpoint_unavailable:
         "가사, 콘텐츠 안전 정책 또는 제공자가 더 이상 이 번역을 허용하지 않습니다. 다시 번역하세요.",
       translation_input_changed: "번역이 시작된 뒤 가사 또는 제공자 설정이 바뀌었습니다. 다시 번역하세요.",
@@ -3729,13 +3764,13 @@ export const surfaceKorean = {
       translation_output_too_large: "번역문이 너무 큽니다.",
       unsupported_language_pair: "이 모델은 해당 번역 방향을 지원하지 않습니다. 다른 언어나 모델을 선택하세요.",
       service_not_ready:
-        "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 선택한 뒤 Activity에서 다시 시도하세요.",
-      service_start_failed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인한 뒤 Activity에서 다시 시도하세요.",
+        "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 선택한 뒤 워크플로에서 다시 시도하세요.",
+      service_start_failed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인한 뒤 워크플로에서 다시 시도하세요.",
       service_out_of_memory:
-        "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 Activity에서 다시 시도하세요.",
+        "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 워크플로에서 다시 시도하세요.",
       service_agreement_required:
-        "제공자의 모델을 사용하려면 위험 고지에 동의해야 합니다. 헬퍼의 번역 페이지에서 동의한 뒤 Activity에서 다시 시도하세요.",
-      unknown: "번역이 중지되었습니다. 다시 번역하거나 Activity에서 확인하세요.",
+        "제공자의 모델을 사용하려면 위험 고지에 동의해야 합니다. 헬퍼의 번역 페이지에서 동의한 뒤 워크플로에서 다시 시도하세요.",
+      unknown: "번역이 중지되었습니다. 다시 번역하거나 워크플로에서 확인하세요.",
     },
     errors: {
       llm_policy_blocked: "서비스 수신 상한을 초과하거나 콘텐츠 등급이 알 수 없음 또는 차단입니다.",

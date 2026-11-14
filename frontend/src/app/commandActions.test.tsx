@@ -99,6 +99,6 @@ describe("commandActions", () => {
     await actions[0].run();
 
     expect(api.runLocalScan).toHaveBeenCalledWith({ followUpRun: false });
-    expect(onOpenPath).toHaveBeenCalledWith("/activity?run=1");
+    expect(onOpenPath).toHaveBeenCalledWith("/workflows?run=1");
   });
 });

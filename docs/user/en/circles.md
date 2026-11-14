@@ -75,7 +75,7 @@ Circles represent makers, circles, and related party catalog state.
   link beside its note to users who may run it. Each catalog action queues a
   Sync a circle catalog run without a filter or tag and returns at once; the
   note reads **Refreshing the catalog** until the run settles, with a link to
-  the run in Activity.
+  the run in Workflows.
 - Keeps the works toolbar to the Works/Series switch, a search field, the sort
   button that names the current order, the availability filter, and **View**.
   **View** holds the **Cards** choice of **Full**, **Simple**, **Compact**,
