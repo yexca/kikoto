@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { BookmarkCheck, Heart, Mic2, Pencil, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,8 +15,9 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { numberFormat } from "@/i18n/format";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
-import { FavoriteContinueStrip, useFavoriteContinueListening } from "@/features/favorites/FavoriteContinueStrip";
 import { FavoriteCreatorShelf } from "@/features/favorites/FavoriteCreatorShelf";
 import type { FavoriteListMembershipChanges } from "@/features/favorites/FavoriteListMembershipPicker";
 import { FavoriteListManager } from "@/features/favorites/FavoriteListManager";
@@ -29,7 +30,6 @@ import {
   type FavoriteShelfNavigation,
 } from "@/features/favorites/FavoriteShelfNavigator";
 import { EmptyFavorites, FavoriteLoadError } from "@/features/favorites/FavoriteStates";
-import { FavoriteStatusTabs } from "@/features/favorites/FavoriteStatusTabs";
 import { FavoriteWorkGrid } from "@/features/favorites/FavoriteWorkGrid";
 import { SmartListPanel } from "@/features/favorites/SmartListPanel";
 import {
@@ -38,21 +38,16 @@ import {
   type FavoriteWorkItemHandlers,
 } from "@/features/favorites/FavoriteWorkList";
 import {
-  FavoriteResourceFilter,
+  FavoriteFilterMenu,
   FavoriteSearchInput,
   FavoriteSelectionToggle,
   FavoriteSortControls,
 } from "@/features/favorites/FavoriteWorksControls";
-import {
-  favoriteShelfKind,
-  favoriteShelfProgress,
-  favoriteStatusFilterOptions,
-} from "@/features/favorites/favoriteShelfModel";
+import { favoriteShelfKind, favoriteStatusFilterOptions } from "@/features/favorites/favoriteShelfModel";
 import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
 import { useFavoriteCreators } from "@/features/favorites/useFavoriteCreators";
 import { useFavoriteListEditing } from "@/features/favorites/useFavoriteListEditing";
 import { useFavoriteLists } from "@/features/favorites/useFavoriteLists";
-import { useFavoriteShelfCovers } from "@/features/favorites/useFavoriteShelfCovers";
 import { useFavoriteWorks } from "@/features/favorites/useFavoriteWorks";
 import {
   defaultFavoritesBrowseState,
@@ -92,6 +87,7 @@ type FavoritesEntryState = {
 
 export function FavoritesPage({ active = true }: { active?: boolean }) {
   const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
   const toast = useToast();
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
@@ -204,7 +200,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     isLoading,
     hasSnapshot: hasWorksSnapshot,
     loadError: worksLoadError,
-    reloadToken: worksReloadToken,
     reload: reloadWorks,
     isCurrent: worksAreCurrent,
   } = favoriteWorks;
@@ -274,18 +269,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const activeUserList = shelfKind === "list" ? (userLists.find((list) => list.id === activeList) ?? null) : null;
   const activeSmartList = activeUserList?.kind === "smart" ? activeUserList : null;
   const shelfTotal = activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0);
-  const continueWorks = useFavoriteContinueListening({
-    enabled: active && Boolean(auth.user) && favoriteEntity === "works" && !query.trim() && currentPage === 1,
-    listID: activeList,
-    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}`,
-  });
-  const shelfCovers = useFavoriteShelfCovers({
-    // Waiting for the shelf counts avoids a second request when the first count arrives.
-    enabled: active && Boolean(auth.user) && favoriteEntity === "works" && favoriteWorks.shelfCountsKnown,
-    listID: activeList,
-    // The shelf total follows membership changes that do not reload the works.
-    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}:${shelfTotal}`,
-  });
 
   useEffect(() => {
     if (active && !isLoading && worksAreCurrent && page > totalPages) setPage(totalPages);
@@ -361,6 +344,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   // Clearing filters keeps the open shelf; switching shelves is navigation, not a filter.
   const clearFilters = () => {
     setQuery("");
+    setStatusFilter("all");
+    setAvailabilityFilter("all");
+    setPage(1);
+  };
+
+  // The filter menu clears its own filters and leaves the search as typed.
+  const clearWorkFilters = () => {
     setStatusFilter("all");
     setAvailabilityFilter("all");
     setPage(1);
@@ -570,13 +560,22 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       : favoriteEntity === "circles"
         ? t("creatorBrowse.searchCircles")
         : t("creatorBrowse.searchVoices");
+  const format = numberFormat(resolvedLocale);
+  const worksCaption = hasWorksSnapshot
+    ? [
+        t("library.resultCount", { value: format.format(totalWorks) }),
+        totalPages > 1
+          ? t("library.resultPage", { page: format.format(currentPage), totalPages: format.format(totalPages) })
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
   const shelfHeader =
     favoriteEntity === "works" ? (
       <FavoriteShelfHeader
-        kind={shelfKind}
         compact={mobileNavigationLayout}
-        listIcon={activeUserList ? favoriteListIcon(activeUserList) : undefined}
-        eyebrow={activeSmartList ? t("favorites.smart.kind") : undefined}
+        icon={activeUserList ? favoriteListIcon(activeUserList) : shelfKind === "marked" ? BookmarkCheck : Heart}
         title={
           shelfKind === "all"
             ? t("favorites.all")
@@ -591,9 +590,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               ? t("favorites.markedShelfDescription")
               : activeUserList?.description
         }
-        countLabel={hasWorksSnapshot ? t("favorites.workCount", { count: shelfTotal }) : null}
-        covers={shelfCovers}
-        progress={hasWorksSnapshot ? favoriteShelfProgress(statusCounts) : null}
+        caption={worksCaption}
         actions={
           activeUserList ? (
             <Button
@@ -611,27 +608,30 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       />
     ) : (
       <FavoriteShelfHeader
-        kind={favoriteEntity}
         compact={mobileNavigationLayout}
+        icon={favoriteEntity === "circles" ? UsersRound : Mic2}
         title={favoriteEntity === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors")}
         description={
           favoriteEntity === "circles" ? t("favorites.circleShelfDescription") : t("favorites.voiceShelfDescription")
         }
-        countLabel={
+        caption={
           creators.hasSnapshot
             ? favoriteEntity === "circles"
               ? t("favorites.circleCount", { count: creators.favoriteCircles.length })
               : t("favorites.voiceCount", { count: creators.favoriteVoices.length })
             : null
         }
-        covers={[]}
       />
     );
-  const resourceFilter = (
-    <FavoriteResourceFilter
-      value={availabilityFilter}
+  const filterMenu = (
+    <FavoriteFilterMenu
+      status={statusFilter}
+      statusOptions={favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter)}
+      availability={availabilityFilter}
       compact={mobileNavigationLayout}
-      onChange={changeAvailabilityFilter}
+      onStatusChange={changeStatusFilter}
+      onAvailabilityChange={changeAvailabilityFilter}
+      onClear={clearWorkFilters}
     />
   );
   const sortControls = (
@@ -658,7 +658,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     />
   );
   const selectionToggle = <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />;
-  const statusOptions = favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter);
 
   return (
     <section className="relative">
@@ -684,68 +683,33 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 sort={favoriteEntity === "works" ? sortControls : null}
                 actions={
                   <>
-                    {resourceFilter}
+                    {filterMenu}
                     {displayPicker}
                     {selectionToggle}
                   </>
                 }
-                status={
-                  favoriteEntity === "works"
-                    ? { options: statusOptions, value: statusFilter, onChange: changeStatusFilter }
-                    : null
-                }
-                result={
-                  favoriteEntity === "works" && hasWorksSnapshot
-                    ? { count: totalWorks, page: currentPage, totalPages }
-                    : null
-                }
               />
             </div>
           ) : (
-            // A wide shelf puts search, filters, and quick mark tabs beside the header, so works start higher.
-            <div className="flex flex-col gap-5 @min-[60rem]:flex-row @min-[60rem]:items-start @min-[60rem]:gap-6">
+            // A wide shelf puts its one-line header and every control in one row, so works start right below.
+            <div className="flex flex-col gap-3 @min-[60rem]:flex-row @min-[60rem]:items-center @min-[60rem]:gap-6">
               <div className="min-w-0 flex-1">{shelfHeader}</div>
               <div
-                className="flex min-w-0 flex-col gap-3 @min-[60rem]:max-w-[46rem] @min-[60rem]:items-end"
+                className="flex min-w-0 items-center gap-2 @min-[60rem]:shrink-0 @min-[60rem]:justify-end"
                 data-toast-avoid
               >
-                <div className="flex flex-wrap items-center gap-2 @min-[60rem]:w-full @min-[60rem]:flex-nowrap @min-[60rem]:justify-end">
-                  <FavoriteSearchInput
-                    value={query}
-                    placeholder={searchPlaceholder}
-                    onChange={changeFavoriteQuery}
-                    className="w-full @md:w-auto @md:max-w-sm @md:flex-1 @min-[60rem]:min-w-40 @min-[60rem]:max-w-none"
-                  />
-                  {favoriteEntity === "works" && (
-                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                      {resourceFilter}
-                      {sortControls}
-                      {displayPicker}
-                      {selectionToggle}
-                    </div>
-                  )}
-                </div>
+                <FavoriteSearchInput
+                  value={query}
+                  placeholder={searchPlaceholder}
+                  onChange={changeFavoriteQuery}
+                  className="min-w-0 flex-1 @min-[60rem]:w-64 @min-[60rem]:flex-none @min-[80rem]:w-80"
+                />
                 {favoriteEntity === "works" && (
-                  <div className="flex flex-col gap-2 @min-[60rem]:items-end @min-[60rem]:gap-3">
-                    <FavoriteStatusTabs options={statusOptions} value={statusFilter} onChange={changeStatusFilter} />
-                    {/* A single page needs no top pager; the shared pager draws its own divider, so this row owns spacing. */}
-                    <div
-                      hidden={totalPages <= 1}
-                      className="shrink-0 self-end [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0"
-                    >
-                      <WorkCollectionPagination
-                        placement="top"
-                        page={currentPage}
-                        pageSize={pageSize}
-                        totalItems={totalWorks}
-                        totalPages={totalPages}
-                        compactMobile
-                        compactTop
-                        refreshing={isLoading && hasWorksSnapshot}
-                        refreshingLabel={t("favorites.refreshing")}
-                        onPageChange={changePage}
-                      />
-                    </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {filterMenu}
+                    {sortControls}
+                    {displayPicker}
+                    {selectionToggle}
                   </div>
                 )}
               </div>
@@ -768,8 +732,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               onConvert={() => convertSmartList(activeSmartList.id)}
             />
           )}
-
-          {favoriteEntity === "works" && <FavoriteContinueStrip works={continueWorks} onOpen={openItemWork} />}
 
           {favoriteEntity !== "works" && (
             <FavoriteCreatorShelf

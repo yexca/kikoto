@@ -196,7 +196,6 @@ export function useFavoriteWorks({
     /** The shelf counts are known, from the works page or the creator-shelf request. */
     shelfCountsKnown: hasSnapshot || shelfCountsUserID === principalID,
     loadError,
-    reloadToken,
     reload: () => setReloadToken((value) => value + 1),
     // Read during render: the shown works answer the current request.
     isCurrent: loadedRequestKey.current === requestKey,

@@ -186,6 +186,13 @@
   place of the Continue listening strip, and the Mark filter opens its list
   in place of a row of chips.
 - Library results that fit one page show their count without a page bar.
+- A Favorites shelf opens with a one-line header, its name with the result
+  count and page, in place of the cover mosaic, the listened share, and the
+  top page bar. Search and the work controls sit beside it on a wide screen.
+- One **Filters** button on Favorites holds the listening status, with each
+  status's count, and the resource filter, in place of the row of status tabs
+  or chips and the separate resource button; **Clear filters** resets both.
+- The **Continue listening** strip on Favorites is removed.
 - Circle and voice actor pages open with a summary like the work detail Hero:
   no frame, catalog counts with a short availability bar under a thin line,
   and quiet **Favorite**, **Subscribe**, and **More** controls. Voice actor

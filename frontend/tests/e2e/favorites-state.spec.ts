@@ -44,8 +44,6 @@ async function mockFavorites(
     delayedList?: { id: number; started: () => void; gate: Promise<void> };
     onFavoriteWorksRequest?: (availability: string) => void;
     interactiveQuickMark?: boolean;
-    /** Gives each status filter its own covers, so filtered results look different. */
-    statusCovers?: boolean;
     onMembershipUpdate?: (body: unknown) => void;
   } = {},
 ) {
@@ -137,7 +135,6 @@ async function mockFavorites(
         await delayedList.gate;
       }
       const emptied = options.interactiveQuickMark && quickMark === "none";
-      const status = url.searchParams.get("status") ?? "all";
       await route.fulfill({
         json: {
           ...worksPageFixture(
@@ -146,7 +143,6 @@ async function mockFavorites(
               : works.map((work) => ({
                   ...work,
                   listeningStatus: quickMark,
-                  coverUrl: options.statusCovers ? `/covers/${status}-${work.id}.jpg` : work.coverUrl,
                 })),
             {
               page: Number(url.searchParams.get("page") ?? 1),
@@ -361,33 +357,49 @@ test("@desktop favorites puts shelves in a named list beside search and work con
 
   const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
-  const resource = page.getByRole("button", { name: "Resource: All" });
+  const filterButton = page.getByRole("button", { name: /^Filters/ });
   await expect(shelves.getByRole("button", { name: /^All Favorites/ })).toHaveAttribute("aria-pressed", "true");
   await expect(shelves.getByRole("button", { name: /^Marked/ })).toBeVisible();
   await expect(shelves.getByRole("button", { name: /^Circles/ })).toBeVisible();
   await expect(search).toBeVisible();
-  await expect(resource).toBeVisible();
+  await expect(filterButton).toHaveAccessibleName("Filters");
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Display options (Grid view · Columns: Auto · Items per page: 24)" }),
   ).toBeVisible();
+  // A wide shelf puts its one-line header, search, and every work control in one row.
+  const heading = page.getByRole("heading", { name: "All Favorites", level: 2 });
+  await expect(page.locator("header").filter({ has: heading })).toContainText("Page 1 of 2");
+  const headingBox = await heading.boundingBox();
   const searchBox = await search.boundingBox();
-  const resourceBox = await resource.boundingBox();
-  expect(searchBox).not.toBeNull();
-  expect(resourceBox).not.toBeNull();
-  expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(resourceBox!.x);
-  // A wide shelf puts search and the quick mark tabs beside the header, not below it.
-  const headingBox = await page.getByRole("heading", { name: "All Favorites", level: 2 }).boundingBox();
-  const statusTabsBox = await page.getByRole("group", { name: "Listening status filters" }).boundingBox();
+  const filterBox = await filterButton.boundingBox();
   expect(headingBox).not.toBeNull();
-  expect(statusTabsBox).not.toBeNull();
+  expect(searchBox).not.toBeNull();
+  expect(filterBox).not.toBeNull();
   expect(searchBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
-  expect(statusTabsBox!.y).toBeLessThan(headingBox!.y + 2 * headingBox!.height);
+  expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(filterBox!.x);
+  const middle = (box: { y: number; height: number }) => box.y + box.height / 2;
+  expect(Math.abs(middle(filterBox!) - middle(headingBox!))).toBeLessThan(8);
+  await expect(page.getByRole("button", { name: "Previous page" })).toHaveCount(1);
 
-  await resource.click();
-  await expect(page.getByRole("menuitemradio")).toHaveText(["All", "Available", "Local", "Remote", "Missing"]);
-  await page.getByRole("menuitemradio", { name: "Remote" }).click();
+  // One filter button holds both the listening status, with counts, and the resource filter.
+  await filterButton.click();
+  const filters = page.getByRole("dialog", { name: "Filters" });
+  const statusFilters = filters.getByRole("region", { name: "Listening status filters" });
+  const resourceFilters = filters.getByRole("region", { name: "Resource filters" });
+  await expect(statusFilters.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(resourceFilters.getByRole("button")).toHaveText(["All", "Available", "Local", "Remote", "Missing"]);
+  await resourceFilters.getByRole("button", { name: "Remote" }).click();
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.availability)).toBe("remote");
+  await statusFilters.getByRole("button", { name: /^Finished/ }).click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
+  await expect(filterButton).toHaveAccessibleName("Filters: Finished · Remote");
+  await filters.getByRole("button", { name: "Clear filters" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState))
+    .toEqual(expect.objectContaining({ status: "all", availability: "all" }));
+  await page.keyboard.press("Escape");
+  await expect(filters).toHaveCount(0);
 
   await page.getByRole("button", { name: "Select works", exact: true }).click();
   await expect(page.getByRole("button", { name: "Exit selection", exact: true })).toHaveAttribute(
@@ -409,7 +421,7 @@ test("@desktop favorites puts shelves in a named list beside search and work con
 
   await shelves.getByRole("button", { name: /^Circles/ }).click();
   await expect(page.getByPlaceholder("Search circles")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Filters/ })).toHaveCount(0);
 });
 
 test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async ({ page }) => {
@@ -477,50 +489,7 @@ test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async (
   await expect(listManager).toHaveCount(0);
 });
 
-test("continue listening starts collapsed and stays through quick mark filters", async ({ page }) => {
-  await mockFavorites(page);
-  await page.goto("/favorites");
-
-  const toggle = page.getByRole("button", { name: /^Continue listening/ });
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  const strip = page.getByRole("region", { name: /^Continue listening/ });
-  await expect(strip.getByRole("listitem")).toHaveCount(0);
-
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect(strip.getByRole("listitem")).toHaveCount(24);
-  await page
-    .getByRole("group", { name: "Listening status filters" })
-    .getByRole("button", { name: /^Finished/ })
-    .click();
-  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
-
-  // The open strip is a per-device preference.
-  await page.reload();
-  await expect(page.getByRole("button", { name: /^Continue listening/ })).toHaveAttribute("aria-expanded", "true");
-});
-
-test("the shelf artwork stays while quick mark filters change the works below", async ({ page }) => {
-  await mockFavorites(page, { statusCovers: true });
-  await page.goto("/favorites");
-
-  const artwork = page.locator("header").filter({ has: page.getByRole("heading", { name: "All Favorites" }) });
-  const covers = () => artwork.locator("img").evaluateAll((images) => images.map((image) => image.getAttribute("src")));
-  await expect.poll(covers).toHaveLength(4);
-  const initial = await covers();
-
-  await page
-    .getByRole("group", { name: "Listening status filters" })
-    .getByRole("button", { name: /^Finished/ })
-    .click();
-  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
-  // The works below now show the filtered covers; the header keeps the shelf's own.
-  await expect(page.locator('img[src*="/covers/finished-"]').first()).toBeAttached();
-  expect(await covers()).toEqual(initial);
-});
-
-test("mobile favorites stacks shelves, search, labeled sort, and status chips above a result caption", async ({
+test("mobile favorites stacks shelves, a one-line header with the result caption, search, and the control row", async ({
   page,
 }) => {
   await mockFavorites(page);
@@ -530,7 +499,7 @@ test("mobile favorites stacks shelves, search, labeled sort, and status chips ab
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   await expect(search).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Favorite shelves" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Resource: All" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Display options (Grid view · Columns: Auto · Items per page: 24)" }),
   ).toBeVisible();
@@ -573,17 +542,11 @@ test("mobile favorites stacks shelves, search, labeled sort, and status chips ab
   await mobileListDialog.getByRole("button", { name: "Back", exact: true }).click();
   await mobileListManager.getByRole("button", { name: "Done", exact: true }).click();
 
-  // A caption states the result page in place of a top pager, and the status filters scroll as one row.
-  await expect(page.getByText("Page 1 of 2", { exact: true })).toBeVisible();
+  // The header caption states the result page in place of a top pager.
+  await expect(
+    page.locator("header").filter({ has: page.getByRole("heading", { name: "Study", level: 2 }) }),
+  ).toContainText("Page 1 of 2");
   await expect(page.getByRole("button", { name: "Previous page" })).toHaveCount(1);
-  await expect
-    .poll(() =>
-      page.getByRole("group", { name: "Listening status filters" }).evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { overflowX: style.overflowX, overflowY: style.overflowY };
-      }),
-    )
-    .toEqual({ overflowX: "auto", overflowY: "hidden" });
 
   const toolbar = page.locator("[data-toast-avoid]:visible").filter({ has: search }).first();
   const toolbarBox = await toolbar.boundingBox();
@@ -594,7 +557,7 @@ test("mobile favorites stacks shelves, search, labeled sort, and status chips ab
   await mobileListScroller.getByRole("button", { name: /^Circles/ }).click();
   const circleSearch = page.getByPlaceholder("Search circles");
   await expect(circleSearch).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Filters/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Sort:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Display options/ })).toHaveCount(0);
   await circleSearch.fill("Example");
@@ -755,12 +718,15 @@ test("filters favorites by availability and keeps the selection out of the canon
   });
   await page.goto("/favorites");
 
-  await page.getByRole("button", { name: "Resource: All" }).click();
-  await page.getByRole("menuitemradio", { name: "Available" }).click();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  const resourceFilters = page
+    .getByRole("dialog", { name: "Filters" })
+    .getByRole("region", { name: "Resource filters" });
+  await resourceFilters.getByRole("button", { name: "Available" }).click();
   await expect.poll(() => availabilityRequests.at(-1)).toBe("available");
+  await expect(page.getByRole("button", { name: "Filters: Available" })).toBeVisible();
 
   expect(new URL(page.url()).searchParams.size).toBe(0);
-  await page.getByRole("button", { name: "Resource: Available" }).click();
-  await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
+  await resourceFilters.getByRole("button", { name: "All", exact: true }).click();
   await expect.poll(() => availabilityRequests.at(-1)).toBe("all");
 });

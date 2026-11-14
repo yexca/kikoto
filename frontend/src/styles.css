@@ -776,6 +776,15 @@
     background-clip: content-box;
   }
 
+  /* A sideways row that still scrolls by touch, wheel, or keyboard but draws no scrollbar. */
+  .scrollbar-hidden {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Run form: a narrow panel stacks each label above its control instead of beside it. */
   .workflow-options {
     container-type: inline-size;

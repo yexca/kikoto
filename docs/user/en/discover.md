@@ -55,7 +55,7 @@ you do in For you changes what the Library recommends.
   like the ones you rated low or shelved; and **Listen again**, works you have
   played, the more likely the more you liked them (your rating, favorite,
   Relisten, and listening time) and the longer ago you played them. A work you are listening to now, or
-  stopped in the last two weeks, is left to **Continue listening** in the
+  stopped in the last two weeks, is left to **Recently played** in the
   Library. Works you rated one or two stars are never offered.
 - A work appears in one column only. Every column holds works with local
   files; works only on a remote source or only in a catalog are not drawn.

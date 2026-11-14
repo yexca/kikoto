@@ -231,23 +231,26 @@ is later hidden or deleted stays in the rule, crossed out, and matches no work.
 Switching lists keeps the
 full favorite-list row stable while results load, and Shelved is the final
 listening-state option. Playback cursors alone never add a work to Favorites.
-The resource filter narrows favorite works by the availability their cards
-show: Available (Local, Cached, or Remote), Local, Remote, or Missing. A work
-whose files belong to another language edition counts with that edition. The
-filter reads stored availability and does not request a live remote refresh.
+**Filters** holds both work filters. The listening status shows how many of the
+shelf's works carry each mark. The resource narrows favorite works by the
+availability their cards show: Available (Local, Cached, or Remote), Local,
+Remote, or Missing. While a filter is set the button names it, and **Clear
+filters** resets both. A work whose files belong to another language edition
+counts with that edition. The resource filter reads stored availability and
+does not request a live remote refresh.
 
 On wide screens a shelf list beside the results names All Favorites, Marked,
 your lists, and followed circles and voice actors with their counts, in the
 same column form as the Settings list. Each user list can show
 an icon chosen in its editor, which is what tells the lists apart at a glance;
-the list icon also appears in the add-to-list menus. The open shelf has a header with a cover
-mosaic, its count, how many works are finished, and the works you are
-listening to. Phones show the same shelves as one scrollable row above a
-one-line header that states the finished share as a percentage. Below it come
-the search field, the named sort beside the resource, display, and selection
-buttons, the listening-status filters as a scrollable chip row, and a caption
-with the result count and page in place of a top page bar. Display options
-switch works between cards and a denser list with each work's resume point.
+the list icon also appears in the add-to-list menus. The open shelf has a
+one-line header: its icon, its name, and the result count with the page in
+place of a top page bar; a description shows as the name's tooltip. Search and
+the Filters, sort, display, and selection buttons sit beside the header, or
+below it on a narrower page. Phones show the same shelves as one scrollable row
+above that header, then the search field and one row with the named sort and
+the Filters, display, and selection buttons. Display options switch works
+between cards and a denser list with each work's resume point.
 
 **Add list** in the shelves and **Edit list** on a list's shelf open one list's
 editor: its name with the icon beside it, an optional description, the rule of a

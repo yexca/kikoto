@@ -308,7 +308,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
     <div className="flex items-center gap-2">
       <div
         ref={stripRef}
-        className="app-scrollbar -mx-1 min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1"
+        className="-mx-1 min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 scrollbar-hidden"
         role="region"
         aria-label={t("favorites.listTabs")}
       >
