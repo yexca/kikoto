@@ -115,7 +115,6 @@ export const personalEnglish = {
       timeZoneAuto: "Days start at midnight in {{zone}}, this device's time zone.",
       changeTimeZone: "Change time zone",
       yearLabel: "Year",
-      yearValue: "Year: {{year}}",
       hours: {
         title: "By hour of day",
         peak: "Most at {{hours}}",

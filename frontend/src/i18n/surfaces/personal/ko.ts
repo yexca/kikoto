@@ -115,7 +115,6 @@ export const personalKorean = {
       timeZoneAuto: "하루는 {{zone}}(이 기기의 시간대)의 자정에 시작합니다.",
       changeTimeZone: "시간대 변경",
       yearLabel: "연도",
-      yearValue: "연도: {{year}}",
       hours: {
         title: "시간대별",
         peak: "가장 많은 시간대 {{hours}}",

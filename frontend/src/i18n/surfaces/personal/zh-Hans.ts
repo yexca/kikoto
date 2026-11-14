@@ -113,7 +113,6 @@ export const personalHans = {
       timeZoneAuto: "一天从 {{zone}}（此设备的时区）的午夜开始。",
       changeTimeZone: "更改时区",
       yearLabel: "年份",
-      yearValue: "年份：{{year}}",
       hours: {
         title: "时段分布",
         peak: "最常在 {{hours}}",

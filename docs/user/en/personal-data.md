@@ -22,21 +22,21 @@ with `{date}` creates one tag per day.
 
 ## Insights
 
-The switcher at the top of **Insights** chooses what the page covers: the last
-30 days, the last 12 months, all time, or one calendar year. **Year**, the last entry, opens the years with
-dated listening and names the chosen one.
-
-The **listening calendar** shows a year as one cell per day in week columns,
-shaded by listening time, with its listening days, listening time, and
-streaks: the chosen calendar year, or the past year for the other ranges.
+The **listening calendar** at the top of **Insights** shows a year as one cell
+per day in week columns, shaded by listening time, with its listening days,
+listening time, and streaks. The year menu at its top right chooses **Past
+year**, the initial choice, or one calendar year with dated listening.
 Point at or tap a day for its total.
 
-A calendar year opens with its **highlights**: the year's listening time,
-works, and listening days, the work, voice, and circle listened to most, the
-busiest day with its leading work, the longest run of listening days, the
-works first heard that year, and the busiest hour of the day.
+A calendar year adds its **highlights** below the calendar: the year's
+listening time, works, and listening days, the work, voice, and circle
+listened to most, the busiest day with its leading work, the longest run of
+listening days, the works first heard that year, and the busiest hour of the
+day.
 
-For the chosen range the listening report shows:
+The switcher beside **Listening summary** chooses the range of the listening
+report and everything below it: the last 30 days, the last 12 months, or all
+time. For the chosen range the listening report shows:
 
 - Listening time, plays, works, and active days, with the time per active day,
   the time per play, the top work's share of the time, and the share of days in

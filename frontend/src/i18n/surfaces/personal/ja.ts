@@ -115,7 +115,6 @@ export const personalJapanese = {
       timeZoneAuto: "1 日は {{zone}}（この端末のタイムゾーン）の午前 0 時に始まります。",
       changeTimeZone: "タイムゾーンを変更",
       yearLabel: "年",
-      yearValue: "年：{{year}}",
       hours: {
         title: "時間帯別",
         peak: "最も多い時間帯 {{hours}}",

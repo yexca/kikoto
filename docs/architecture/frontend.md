@@ -564,14 +564,16 @@ so a still-loading element never replaces it.
 - Tags (`/tags`): the account-owned work, circle, and voice tags, with rename,
   merge, and delete.
 - Insights (`/insights`): the listening dashboard, composed by
-  `pages/InsightsPage` from `features/listening-history`. One range
-  switcher at the top drives the page: 30 days, 12 months, all time, or a
-  calendar year the report lists. It shows a year as a calendar (the chosen
-  year, else the past one), then the report of totals, activity, ranked most
-  listened works, weekly rhythm with listening by hour of day, a taste
-  profile, and tags, voices, and circles ranked by preference or listening
-  time, with the full per-work history collapsed until opened beside the clear
-  action and the link to Your data. A calendar year opens with its highlights.
+  `pages/InsightsPage` from `features/listening-history`. The page opens
+  with a year as a calendar, whose own year menu chooses the past year or a
+  calendar year the report lists; a calendar year adds its highlights below
+  it. A range switcher beside the summary heading (30 days, 12 months, all
+  time) drives the report of totals, activity, ranked most listened works,
+  weekly rhythm with listening by hour of day, a taste profile, and tags,
+  voices, and circles ranked by preference or listening time, with the full
+  per-work history collapsed until opened beside the clear action and the link
+  to Your data. A monthly or yearly report reads its rhythm from the past
+  year's calendar whatever year the calendar shows.
   The taste profile draws its preferred tags as an SVG radar with an
   equivalent list for assistive technology. Report requests name the device's time zone, and the foot of the page
   names the zone its days follow with a link to the Account setting. The calendar, the report, the profile, and the rankings load independently, so one

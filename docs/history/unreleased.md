@@ -78,6 +78,11 @@
   where it warns of a hard-to-undo or privacy-relevant effect, and an
   entry's allowed range shows when a value is rejected. Workflow cards show
   each operation's name, state, automatic starts, and **Run**.
+- Insights filters its calendar and its report separately. The listening
+  calendar chooses **Past year** or a calendar year from its own menu, and a
+  calendar year shows its highlights below it; the 30 days, 12 months, and
+  All time switcher sits beside **Listening summary** and sets the report and
+  everything below it.
 
 </details>
 
