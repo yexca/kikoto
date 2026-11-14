@@ -8,9 +8,10 @@ import type { SourceVisibilityMode } from "@/components/source-visibility/source
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { CompactWorkCardSkeleton, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
+import type { CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { FetchConfirmDialog } from "@/components/work-collection/FetchConfirmDialog";
 import { workCollectionClassName, workCollectionStyle } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
@@ -150,7 +151,7 @@ function RemoteSourceResults({
     // A fast first page replaces the previous view directly; placeholders
     // appear only when the wait is noticeable.
     return showSkeleton ? (
-      <RemoteWorkGridSkeleton
+      <WorkCollectionLoadingState
         count={skeletonCount}
         mobileColumns={mobileColumns}
         desktopColumns={desktopColumns}
@@ -443,45 +444,5 @@ function RemoteSourceErrorCard({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function RemoteWorkGridSkeleton({
-  count,
-  mobileColumns,
-  desktopColumns,
-  cardLayout,
-}: {
-  count: number;
-  mobileColumns: LibraryColumnSetting;
-  desktopColumns: LibraryColumnSetting;
-  cardLayout: CompactWorkCardLayout | null;
-}) {
-  return (
-    <section
-      className={workCollectionClassName()}
-      style={workCollectionStyle(mobileColumns, desktopColumns, cardLayout)}
-    >
-      {Array.from({ length: count }, (_, index) =>
-        cardLayout ? (
-          <CompactWorkCardSkeleton key={index} layout={cardLayout} />
-        ) : (
-          <div key={index} className="overflow-hidden rounded-lg border bg-card">
-            <div className="p-1.5 pb-0">
-              <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
-            </div>
-            <div className="space-y-2 px-3 pb-3 pt-2.5">
-              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-              <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-              <div className="flex gap-1.5 pt-2">
-                <div className="h-6 w-16 animate-pulse rounded bg-muted" />
-                <div className="h-6 w-20 animate-pulse rounded bg-muted" />
-              </div>
-            </div>
-          </div>
-        ),
-      )}
-    </section>
   );
 }

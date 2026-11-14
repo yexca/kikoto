@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { workCollectionClassName, workCollectionStyle } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import type { ListeningStatus, SourcePresenceItem, Work } from "@/lib/api";
 import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
@@ -15,9 +17,11 @@ import { LibraryResultCount } from "./LibraryResultCount";
 import type { LocalLibraryScope } from "./libraryRoutes";
 import { LibraryWorkCard } from "./LibraryWorkCard";
 
+const maxSkeletonCards = 12;
+
 /**
  * The local or tracked works of the Library: the loaded page as cards with its
- * pagination, or its empty and load-failure states. Results that fit one page
+ * pagination, its first-page placeholders, or its empty and load-failure states. Results that fit one page
  * state their count in place of the top page bar. A failure keeps the last
  * loaded cards on screen beside the retry.
  */
@@ -90,6 +94,11 @@ export function LocalLibraryPanel({
   const { t } = useTranslation();
   // Phones show the page beside the result count in the toolbar instead.
   const mobileNavigationLayout = useMobileNavigationLayout();
+  // Until the first page answers, an empty list is not yet known to be empty.
+  // A fast answer replaces the blank directly; placeholders appear only when
+  // the wait is noticeable.
+  const firstPagePending = resultCount === null && !loadError;
+  const showSkeleton = useDeferredBusy(firstPagePending);
   return (
     <div className="space-y-3">
       {!loadError &&
@@ -109,7 +118,18 @@ export function LocalLibraryPanel({
       )}
       {loadError && <LibraryLoadErrorCard message={loadError} onRetry={onRetry} />}
       {works.length === 0 ? (
-        !loadError && <EmptyLibraryWorksCard scope={scope} filtered={filtered} onClear={onClearFilters} />
+        firstPagePending ? (
+          showSkeleton && (
+            <WorkCollectionLoadingState
+              count={Math.min(pagination.pageSize, maxSkeletonCards)}
+              mobileColumns={mobileColumns}
+              desktopColumns={desktopColumns}
+              cardLayout={cardLayout}
+            />
+          )
+        ) : (
+          !loadError && <EmptyLibraryWorksCard scope={scope} filtered={filtered} onClear={onClearFilters} />
+        )
       ) : (
         <section
           className={workCollectionClassName()}

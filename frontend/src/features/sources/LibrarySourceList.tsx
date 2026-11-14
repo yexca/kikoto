@@ -442,6 +442,55 @@ function ReconnectPoolButton({
   );
 }
 
+/** A loading placeholder with the footprint of the Libraries section: its heading, actions, and two card groups. */
+export function LibrarySourceListSkeleton() {
+  const bar = "animate-pulse rounded bg-muted";
+  const card = (footer: boolean, key: number) => (
+    <Card key={key} className="flex min-w-0 flex-col gap-3 p-3.5">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <div className="mt-1.5 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-muted" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className={cn(bar, "h-4 w-1/2")} />
+          <div className={cn(bar, "h-3 w-2/3")} />
+        </div>
+      </div>
+      {footer && (
+        <div className="flex items-center justify-end gap-0.5 border-t pt-2">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className={cn(bar, "h-8 w-8 rounded-md")} />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+  return (
+    <div className="min-w-0" aria-hidden="true">
+      <div className="flex min-w-0 items-end justify-between gap-3 border-b pb-2.5">
+        <div className="min-w-0 space-y-2">
+          <div className={cn(bar, "h-4 w-24")} />
+          <div className={cn(bar, "h-3 w-40 max-w-full")} />
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <div className={cn(bar, "h-8 w-24 rounded-md")} />
+          <div className={cn(bar, "hidden h-8 w-24 rounded-md sm:block")} />
+        </div>
+      </div>
+      <div className="pb-2">
+        <div className="pb-2 pt-3">
+          <div className={cn(bar, "h-3 w-16")} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{card(false, 0)}</div>
+      </div>
+      <div>
+        <div className="pb-2 pt-3">
+          <div className={cn(bar, "h-3 w-20")} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[1, 2].map((key) => card(true, key))}</div>
+      </div>
+    </div>
+  );
+}
+
 function GroupLabel({ id, children }: { id?: string; children: ReactNode }) {
   return (
     <h3 id={id} className="scroll-mt-24 pb-2 pt-3 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">

@@ -8,6 +8,7 @@ import {
   SettingsNumberInput,
   SettingsRow,
   SettingsSection,
+  SettingsSectionSkeleton,
 } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -21,7 +22,7 @@ import { VideoHardwareSettingsSection } from "@/features/video-hardware/VideoHar
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
-import { LibrarySourceList } from "@/features/sources/LibrarySourceList";
+import { LibrarySourceList, LibrarySourceListSkeleton } from "@/features/sources/LibrarySourceList";
 import { KikoeruImportAccessRow } from "@/features/user-data/KikoeruImportAccessRow";
 import { useSourcePresenceCheckSlots } from "@/features/workflows/source-presence/useSourcePresenceCheckSlots";
 import {
@@ -436,7 +437,7 @@ export function MaintenancePage({
       {/* Each tab gates its own writes, so Demo can still browse, open details, and follow links. */}
       <fieldset data-testid="maintenance-content" className="w-full min-w-0 border-0 p-0">
         {isSettingsLoading && activeTab !== "users" ? (
-          <SettingsSkeleton />
+          <SettingsSkeleton libraries={activeTab === "library"} />
         ) : activeTab === "library" && draft ? (
           <div className="space-y-10">
             <LibrarySourceList
@@ -950,20 +951,13 @@ function StoragePaths({ settings, remoteSources }: { settings: AppSettings | nul
   );
 }
 
-function SettingsSkeleton() {
+/** A tab's loading placeholder, in the shape of the sections it is about to show. */
+function SettingsSkeleton({ libraries = false }: { libraries?: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-10" role="status" aria-label={t("common.loading")}>
-      {Array.from({ length: 2 }, (_, index) => (
-        <div key={index} className="space-y-2.5">
-          <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-          <div className="space-y-3 border-t pt-4">
-            <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-            <div className="h-9 w-full animate-pulse rounded bg-muted" />
-          </div>
-        </div>
-      ))}
+    <div className="space-y-10" role="status" aria-label={t("common.loading")} aria-busy="true">
+      {libraries ? <LibrarySourceListSkeleton /> : <SettingsSectionSkeleton />}
+      <SettingsSectionSkeleton rows={2} />
     </div>
   );
 }

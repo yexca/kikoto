@@ -887,12 +887,23 @@ volatile queue with a diagnostic and a normal network loss window of up to
   keep browser history, whose Back button the app cannot remove.
 - Retain every visited primary browse workspace (Library, Favorites, Circles,
   and Voice Actors) on both layouts so returning to a destination never reloads
-  its rendered list. Each workspace has its own loading boundary. The current
-  location's page chunk starts loading with the app, the other three and the
-  command palette when the shell is idle, and a loaded chunk renders without
-  suspending: React holds a shown Suspense fallback for at least 300ms, which
-  would otherwise delay the page and the requests its effects start. An inactive
-  workspace is hidden, cancels unfinished detail/list work, and pauses polling.
+  its rendered list. Each workspace has its own loading boundary, and the other
+  route pages share one apart from them, so a route page that suspends never
+  hides a retained workspace. The current location's page chunk starts loading
+  with the app; the other workspaces, the command palette, and every route page
+  the navigation offers load when the shell is idle (`app/routePageChunks`). A
+  loaded chunk renders without suspending: React holds a shown Suspense fallback
+  for at least 300ms, which would otherwise delay the page and the requests its
+  effects start. An inactive workspace is hidden, cancels unfinished
+  detail/list work, and pauses polling.
+- A page owns its loading placeholder, because only the page knows its layout.
+  The shell draws no placeholder shape while a page chunk loads; a slow chunk
+  shows the shared refresh indicator. A page's first-data placeholder has the
+  footprint of what it is about to show: a work collection uses its grid, card
+  mode, and columns (`WorkCollectionLoadingState`), and a settings tab uses the
+  shape of its sections. A fast answer replaces the blank directly
+  (`useDeferredBusy`), and an empty result is shown only once the first page
+  has answered.
 - Retain a visited list when opening a detail route from it: a circle, a voice
   actor, or a work opened from any page. Detail URLs do not reinitialize list
   controls or fetch a replacement collection. Returning reveals the loaded

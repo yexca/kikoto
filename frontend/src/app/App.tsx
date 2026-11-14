@@ -2,7 +2,6 @@ import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { USER_TAGS_CHANGED_EVENT } from "@/lib/userTagEvents";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
-  lazy,
   memo,
   Suspense,
   useCallback,
@@ -92,6 +91,21 @@ import { isMobileTabDetailLocation, navigateToMobileTabHome, pageHomeLocation } 
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
 import { preloadableComponent } from "@/lib/preloadableComponent";
+import { useDeferredBusy } from "@/hooks/useDeferredBusy";
+import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import {
+  aboutPage,
+  insightsPage,
+  preloadRoutePage,
+  recordsPage,
+  settingsPage,
+  subscriptionsPage,
+  systemSettingsPage,
+  tagsPage,
+  translationPage,
+  workflowsPage,
+  workManagementPage,
+} from "@/app/routePageChunks";
 import {
   REMOTE_TRACK_CREATED_EVENT,
   REMOTE_TRACK_TERMINAL_EVENT,
@@ -124,24 +138,16 @@ const LibraryPage = libraryPage.Component;
 const FavoritesPage = favoritesPage.Component;
 const CirclesPage = circlesPage.Component;
 const CreatorWorksPage = creatorWorksPage.Component;
-const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
-const SystemSettingsPage = lazy(() =>
-  import("@/pages/SystemSettingsPage").then((module) => ({ default: module.SystemSettingsPage })),
-);
-const TagsPage = lazy(() => import("@/pages/TagsPage").then((module) => ({ default: module.TagsPage })));
-const WorkManagementPage = lazy(() =>
-  import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
-);
-const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
-const TranslationPage = lazy(() =>
-  import("@/pages/TranslationPage").then((module) => ({ default: module.TranslationPage })),
-);
-const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
-const InsightsPage = lazy(() => import("@/pages/InsightsPage").then((module) => ({ default: module.InsightsPage })));
-const SubscriptionsPage = lazy(() =>
-  import("@/pages/SubscriptionsPage").then((module) => ({ default: module.SubscriptionsPage })),
-);
-const RecordsPage = lazy(() => import("@/pages/RecordsPage").then((module) => ({ default: module.RecordsPage })));
+const SettingsPage = settingsPage.Component;
+const SystemSettingsPage = systemSettingsPage.Component;
+const TagsPage = tagsPage.Component;
+const WorkManagementPage = workManagementPage.Component;
+const WorkflowsPage = workflowsPage.Component;
+const TranslationPage = translationPage.Component;
+const AboutPage = aboutPage.Component;
+const InsightsPage = insightsPage.Component;
+const SubscriptionsPage = subscriptionsPage.Component;
+const RecordsPage = recordsPage.Component;
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
 const commandPalette = preloadableComponent(() =>
   import("@/app/CommandPalette").then((module) => module.CommandPalette),
@@ -309,6 +315,15 @@ function AuthenticatedApp() {
         administrator: viewsAdministration,
       }),
     [authState, navigationHasPermission, viewsAdministration],
+  );
+  // Every page the navigation offers loads its chunk while the shell is idle,
+  // so opening it never waits on a loading placeholder.
+  useEffect(
+    () =>
+      whenIdle(() => {
+        for (const item of visibleNavItems) preloadRoutePage(item.id);
+      }),
+    [visibleNavItems],
   );
   const mobileNavItems = useMemo(() => {
     const preferred = preferredMobileTabs
@@ -606,7 +621,7 @@ function AuthenticatedApp() {
             staleVersionMessage={t("notFound.staleVersionMessage")}
             reloadLabel={t("notFound.reloadApp")}
           >
-            <Suspense fallback={<PageLoading />}>
+            <Suspense fallback={<RouteLoading />}>
               <div className="py-[var(--page-padding-y)] pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
                 {page !== "not-found" && !canAccessCurrentPage && (
                   <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />
@@ -623,103 +638,106 @@ function AuthenticatedApp() {
                   workDetailOpen={workDetailOpen}
                   storageScope={clientStorageScope}
                 />
-                {showRoutePage && page === "settings" && auth.user && (
-                  <SettingsPage
-                    user={auth.user}
-                    readOnly={auth.demoMode}
-                    data={
-                      navigationHasPermission(PERSONAL_DATA_PERMISSION)
-                        ? {
-                            canImportData:
-                              effectiveHasPermission("favorites:write") &&
-                              effectiveHasPermission("tags:write") &&
-                              effectiveHasPermission("playback:use"),
-                            demoMode: auth.demoMode,
-                          }
-                        : undefined
-                    }
-                    onAccountUpdated={auth.refresh}
-                  />
-                )}
-                {showRoutePage && page === "system" && auth.user && (
-                  <SystemSettingsPage
-                    user={auth.user}
-                    readOnly={auth.demoMode}
-                    onAccessPolicyUpdated={auth.refreshRuntime}
-                  />
-                )}
-                {showRoutePage && page === "tags" && auth.user && (
-                  <TagsPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
-                )}
-                {showRoutePage && page === "metadata" && auth.user && (
-                  <WorkManagementPage
-                    preferenceRevision={preferenceRevision}
-                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
-                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
-                    canEditMetadata={auth.demoMode || auth.hasPermission("library:write")}
-                    canCreateCustomWorks={
-                      !auth.demoMode && auth.hasPermission("library:write") && auth.hasPermission("downloads:manage")
-                    }
-                    readOnly={auth.demoMode}
-                  />
-                )}
-                {showRoutePage && page === "workflows" && (
-                  <WorkflowsPage
-                    canRun={auth.demoMode || auth.hasPermission("workflows:run")}
-                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
-                    readOnly={auth.demoMode}
-                  />
-                )}
-                {showRoutePage && page === "translation" && auth.user && (
-                  <TranslationPage
-                    canTranslateMetadata={auth.hasPermission("metadata:sync") && auth.hasPermission("library:write")}
-                    canTranslateFiles={auth.hasPermission("library:write")}
-                    canOpenActivity={!auth.demoMode && auth.hasPermission("workflows:run")}
-                    readOnly={auth.demoMode}
-                  />
-                )}
-                {showRoutePage && page === "insights" && auth.user && (
-                  <InsightsPage
-                    listening={{
-                      canClear: effectiveHasPermission("playback:use"),
-                      storageScope: clientStorageScope,
-                      workLink: listeningHistoryWorkLink,
-                      entityLink: listeningEntityLink,
-                    }}
-                    demoMode={auth.demoMode}
-                    onOpenPath={openPath}
-                  />
-                )}
-                {showRoutePage && page === "subscriptions" && auth.user && (
-                  <SubscriptionsPage
-                    readOnly={auth.demoMode}
-                    canSubscribe={effectiveHasPermission("favorites:write")}
-                    canManageSchedule={effectiveHasPermission("metadata:sync")}
-                    canRunWorkflows={navigationHasPermission("workflows:run")}
-                    canTrackRemote={effectiveHasPermission("remote:track")}
-                    canFetchRemote={effectiveHasPermission("remote:fetch") && effectiveHasPermission("metadata:sync")}
-                  />
-                )}
-                {showRoutePage && page === "records" && auth.user && <RecordsPage />}
-                {showRoutePage && page === "about" && <AboutPage />}
-                {![
-                  "library",
-                  "favorites",
-                  "circles",
-                  "voice-actors",
-                  "subscriptions",
-                  "settings",
-                  "system",
-                  "tags",
-                  "metadata",
-                  "translation",
-                  "workflows",
-                  "insights",
-                  "records",
-                  "about",
-                ].includes(page) && (
-                  <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
-                )}
+                {/* Route pages suspend apart from the retained browse pages, which stay mounted and untouched. */}
+                <Suspense fallback={<RouteLoading />}>
+                  {showRoutePage && page === "settings" && auth.user && (
+                    <SettingsPage
+                      user={auth.user}
+                      readOnly={auth.demoMode}
+                      data={
+                        navigationHasPermission(PERSONAL_DATA_PERMISSION)
+                          ? {
+                              canImportData:
+                                effectiveHasPermission("favorites:write") &&
+                                effectiveHasPermission("tags:write") &&
+                                effectiveHasPermission("playback:use"),
+                              demoMode: auth.demoMode,
+                            }
+                          : undefined
+                      }
+                      onAccountUpdated={auth.refresh}
+                    />
+                  )}
+                  {showRoutePage && page === "system" && auth.user && (
+                    <SystemSettingsPage
+                      user={auth.user}
+                      readOnly={auth.demoMode}
+                      onAccessPolicyUpdated={auth.refreshRuntime}
+                    />
+                  )}
+                  {showRoutePage && page === "tags" && auth.user && (
+                    <TagsPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
+                  )}
+                  {showRoutePage && page === "metadata" && auth.user && (
+                    <WorkManagementPage
+                      preferenceRevision={preferenceRevision}
+                      canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
+                      canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
+                      canEditMetadata={auth.demoMode || auth.hasPermission("library:write")}
+                      canCreateCustomWorks={
+                        !auth.demoMode && auth.hasPermission("library:write") && auth.hasPermission("downloads:manage")
+                      }
+                      readOnly={auth.demoMode}
+                    />
+                  )}
+                  {showRoutePage && page === "workflows" && (
+                    <WorkflowsPage
+                      canRun={auth.demoMode || auth.hasPermission("workflows:run")}
+                      canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
+                      readOnly={auth.demoMode}
+                    />
+                  )}
+                  {showRoutePage && page === "translation" && auth.user && (
+                    <TranslationPage
+                      canTranslateMetadata={auth.hasPermission("metadata:sync") && auth.hasPermission("library:write")}
+                      canTranslateFiles={auth.hasPermission("library:write")}
+                      canOpenActivity={!auth.demoMode && auth.hasPermission("workflows:run")}
+                      readOnly={auth.demoMode}
+                    />
+                  )}
+                  {showRoutePage && page === "insights" && auth.user && (
+                    <InsightsPage
+                      listening={{
+                        canClear: effectiveHasPermission("playback:use"),
+                        storageScope: clientStorageScope,
+                        workLink: listeningHistoryWorkLink,
+                        entityLink: listeningEntityLink,
+                      }}
+                      demoMode={auth.demoMode}
+                      onOpenPath={openPath}
+                    />
+                  )}
+                  {showRoutePage && page === "subscriptions" && auth.user && (
+                    <SubscriptionsPage
+                      readOnly={auth.demoMode}
+                      canSubscribe={effectiveHasPermission("favorites:write")}
+                      canManageSchedule={effectiveHasPermission("metadata:sync")}
+                      canRunWorkflows={navigationHasPermission("workflows:run")}
+                      canTrackRemote={effectiveHasPermission("remote:track")}
+                      canFetchRemote={effectiveHasPermission("remote:fetch") && effectiveHasPermission("metadata:sync")}
+                    />
+                  )}
+                  {showRoutePage && page === "records" && auth.user && <RecordsPage />}
+                  {showRoutePage && page === "about" && <AboutPage />}
+                  {![
+                    "library",
+                    "favorites",
+                    "circles",
+                    "voice-actors",
+                    "subscriptions",
+                    "settings",
+                    "system",
+                    "tags",
+                    "metadata",
+                    "translation",
+                    "workflows",
+                    "insights",
+                    "records",
+                    "about",
+                  ].includes(page) && (
+                    <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
+                  )}
+                </Suspense>
               </div>
             </Suspense>
           </RouteErrorBoundary>
@@ -842,6 +860,18 @@ if (isWorkDetailLocationOpen()) {
   preloadWorkDetail();
 } else if (isCachedBrowsePage(initialPage)) {
   void browsePages[initialPage].preload().catch(() => {});
+} else {
+  preloadRoutePage(initialPage);
+}
+
+/** Runs `callback` once the main thread is idle, or after a short delay where idle callbacks are unsupported. */
+function whenIdle(callback: () => void) {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(callback, { timeout: 4000 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const timer = window.setTimeout(callback, 1500);
+  return () => window.clearTimeout(timer);
 }
 
 function CachedBrowsePages({
@@ -880,17 +910,14 @@ function CachedBrowsePages({
     restoreCurrentHistoryScroll(historyScrollY(window.history.state));
   }, [shownSurface, pageToMount, visitedPages]);
 
-  useEffect(() => {
-    const preload = () => {
-      for (const component of [...Object.values(browsePages), commandPalette]) void component.preload().catch(() => {});
-    };
-    if (typeof window.requestIdleCallback === "function") {
-      const handle = window.requestIdleCallback(preload, { timeout: 4000 });
-      return () => window.cancelIdleCallback(handle);
-    }
-    const timer = window.setTimeout(preload, 1500);
-    return () => window.clearTimeout(timer);
-  }, []);
+  useEffect(
+    () =>
+      whenIdle(() => {
+        for (const component of [...Object.values(browsePages), commandPalette])
+          void component.preload().catch(() => {});
+      }),
+    [],
+  );
 
   return (
     <>
@@ -905,7 +932,7 @@ function CachedBrowsePages({
       {mountedPages.has("library") && (
         <div data-browse-page="library" hidden={shownPage !== "library"}>
           <PageActiveProvider value={shownPage === "library"}>
-            <Suspense fallback={<PageLoading />}>
+            <Suspense fallback={<RouteLoading />}>
               <LibraryPage active={shownPage === "library"} />
             </Suspense>
           </PageActiveProvider>
@@ -914,7 +941,7 @@ function CachedBrowsePages({
       {mountedPages.has("favorites") && (
         <div data-browse-page="favorites" hidden={shownPage !== "favorites"}>
           <PageActiveProvider value={shownPage === "favorites"}>
-            <Suspense fallback={<PageLoading />}>
+            <Suspense fallback={<RouteLoading />}>
               <FavoritesPage active={shownPage === "favorites"} />
             </Suspense>
           </PageActiveProvider>
@@ -923,7 +950,7 @@ function CachedBrowsePages({
       {mountedPages.has("circles") && (
         <div data-browse-page="circles" hidden={shownPage !== "circles"}>
           <PageActiveProvider value={shownPage === "circles"}>
-            <Suspense fallback={<PageLoading />}>
+            <Suspense fallback={<RouteLoading />}>
               <CirclesPage active={shownPage === "circles"} />
             </Suspense>
           </PageActiveProvider>
@@ -932,7 +959,7 @@ function CachedBrowsePages({
       {mountedPages.has("voice-actors") && (
         <div data-browse-page="voice-actors" hidden={shownPage !== "voice-actors"}>
           <PageActiveProvider value={shownPage === "voice-actors"}>
-            <Suspense fallback={<PageLoading />}>
+            <Suspense fallback={<RouteLoading />}>
               <CreatorWorksPage kind="voice" active={shownPage === "voice-actors"} />
             </Suspense>
           </PageActiveProvider>
@@ -1133,41 +1160,15 @@ function LoginOverlay({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PageLoading() {
+/**
+ * A page whose chunk is still loading. The shell cannot know the page's
+ * layout, so it draws no placeholder shape; the page shows its own loading
+ * placeholder once it renders. A slow load shows the shared refresh indicator.
+ */
+function RouteLoading() {
   const { t } = useTranslation();
-  return (
-    <div className="space-y-5 px-4 py-5 lg:px-6" aria-label={t("app.loadingPage")}>
-      <section className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-            <div className="h-7 w-48 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-72 max-w-full animate-pulse rounded bg-muted" />
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:flex">
-            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
-            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
-            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
-          </div>
-        </div>
-      </section>
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, index) => (
-          <div key={index} className="rounded-lg border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="h-10 w-10 animate-pulse rounded-md bg-muted" />
-              <div className="h-5 w-20 animate-pulse rounded-full bg-muted" />
-            </div>
-            <div className="mt-5 space-y-2">
-              <div className="h-5 w-36 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-full animate-pulse rounded bg-muted" />
-              <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
-            </div>
-          </div>
-        ))}
-      </section>
-    </div>
-  );
+  const visible = useDeferredBusy(true, { delayMs: 300 });
+  return <BrowseLoadingIndicator refreshing={visible} label={t("app.loadingPage")} />;
 }
 
 function resolveAppPageFromLocation() {

@@ -83,6 +83,11 @@
   calendar year shows its highlights below it; the 30 days, 12 months, and
   All time switcher sits beside **Listening summary** and sets the report and
   everything below it.
+- Pages open without a generic loading placeholder: every page in the
+  navigation loads ahead while the app is idle, and a page still loading its
+  data shows placeholders in its own shape. The Library shows its card grid in
+  the current card mode instead of an empty-library message before the first
+  page arrives, and the Libraries settings tab shows its source cards.
 
 </details>
 
