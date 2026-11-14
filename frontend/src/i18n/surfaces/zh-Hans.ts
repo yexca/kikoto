@@ -1670,8 +1670,12 @@ export const surfaceHans = {
       status: {
         starting: "正在启动",
         review: "需要审核",
+        moreActive_one: "另有 {{count}} 个进行中",
+        moreActive_other: "另有 {{count}} 个进行中",
       },
       openRun: "在 Activity 中打开运行 #{{id}}（{{status}}）",
+      queuedBehind: "运行 #{{id}} 已排在进行中的运行之后。",
+      alreadyActive: "这个目标已有排队或运行中的运行 #{{id}}。",
       runWithOptions: "运行…",
       options: "选项",
       allRuns: "全部运行",

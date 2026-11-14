@@ -56,11 +56,14 @@ function runProgress(
  */
 export function OperationStatus({
   state,
+  moreActive = 0,
   stageCount,
   onOpenRun,
   className,
 }: {
   state: OperationState;
+  /** The operation's other queued and running runs, besides the one the state follows. */
+  moreActive?: number;
   /** The workflow's stages, for a running run's "Step n of m". */
   stageCount: number;
   onOpenRun: (run: WorkflowRun) => void;
@@ -110,6 +113,7 @@ export function OperationStatus({
   const details: ReactNode[] = [];
   if (active && state.run.subject) details.push(state.run.subject);
   if (progress) details.push(<span className="tabular-nums">{progress.text}</span>);
+  if (active && moreActive > 0) details.push(t("workflowPage.operations.status.moreActive", { count: moreActive }));
   if (moment)
     details.push(
       <time dateTime={moment.toISOString()} title={formatTimestamp(moment, locale)}>

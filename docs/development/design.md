@@ -278,8 +278,10 @@ I start it": a name, one sentence, a state, and one quiet run control. No row
 is the page's primary action. The state names idle, queued, running with its
 progress, and how and when the last run ended; a failed or waiting outcome
 keeps its status color on the row and leads to the run's details. A running
-operation shows so on its row and cannot be started again until it ends,
-wherever the run was started. Options, schedules, and history open below the
+operation shows so on its row, wherever the run was started. An operation that
+covers the whole library cannot be started again until its run ends; one that
+acts on a target accepts another target meanwhile, so the page never blocks
+work the backend would queue. Options, schedules, and history open below the
 row on demand, one operation at a time, and the primary Run sits with the
 options it will use. A new operation is a new row in a section, not a new
 destination or a card.

@@ -86,9 +86,11 @@
   name, one sentence, its state, and a run control, on phones as well, where
   the page no longer starts with a list to choose a workflow from.
 - **Run** starts an operation with its default options and the row shows the
-  run at once. An operation cannot be started again until its run ends, and a
-  run started by a schedule, at startup, or in another browser shows on it the
-  same way. A failure stays on the operation and opens its run in Activity.
+  run at once. The local scan and local work files cannot be started again
+  until their run ends; Fetch, metadata sync, works on a source, and the
+  catalog syncs can queue another target while one runs, and the row counts
+  the runs it is not showing. A run started by a schedule, at startup, or in
+  another browser shows on its operation the same way. A failure stays on the operation and opens its run in Activity.
 - **Options** opens an operation's Run options, triggers, and run history
   below its row. Operations that need an input, such as Fetch and the catalog
   syncs, open their options from **Run…**.

@@ -15,11 +15,17 @@ Workflows make backend actions inspectable.
   **Running** with its progress, or how the latest run ended and when, such as
   **Succeeded** or **Failed**. **Needs review** marks a run with items that
   wait for a decision. Select the state to open that run in Activity.
-- **Run** starts an operation with its default options. The row shows the run
-  at once, and the operation cannot be started again until the run ends. A run
-  started by a schedule, at startup, or in another browser shows on its
-  operation the same way. An operation that needs an input, such as a work
-  code or a circle, shows **Run…**, which opens its options.
+- **Run** starts an operation with its default options, and the row shows the
+  run at once. Scan local library and Refresh local work files cover the whole
+  library, so they cannot be started again until their run ends. The other
+  operations act on one target, such as a work, a circle, a metadata scope, or
+  a source, and can start a run for another target while one is active. Their
+  row follows the running run and counts the others, and a new run that waits
+  behind another says so. Starting the same target again while its run is
+  active does not queue a second run. A run started by a schedule, at startup,
+  or in another browser shows on its operation the same way. An operation that
+  needs an input, such as a work code or a circle, shows **Run…**, which opens
+  its options.
 - **Options** opens, below the row, the operation's Run options with their own
   **Run**, its triggers, and its run history. One operation is open at a time.
   Phones show the same list.

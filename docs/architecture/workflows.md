@@ -436,14 +436,25 @@ retryable metadata failure reads as needing review. Every state that has a run
 opens that run in Activity, so a failure stays on its operation until a later
 run replaces it and leads to its details.
 
-An operation runs one run at a time on this page. Starting it marks the row as
-starting at once; the row follows the run through queued and running, and the
-run control returns when the run ends. The page reads the active queue every
-few seconds while work is active and every 15 seconds otherwise, and reloads
-each operation's latest run when the queue changes, so a run started by a
-trigger, at startup, or from another browser shows on its operation and holds
-its run control the same way. Demo reads both once. A hidden tab skips the
-poll and catches up when shown again.
+An operation's run control follows the uniqueness its backend enforces.
+Starting it marks the row as starting at once, and the row follows the run
+through queued and running. The local scan and local work files are
+exclusive: one run of each is queued or running, so their run control returns
+when the run ends. Every other operation runs per target (Fetch per canonical
+work, metadata sync per scope, works on a source per source, a catalog sync
+per request), so its run control returns as soon as the requested run is
+listed and another target can queue behind the active run. The row then
+follows the running run, ahead of a queued one, and counts its other active
+runs; a request that queued behind another active run of the operation
+says so with a link to the new run. A repeat of the same Fetch, metadata
+scope, or source joins the active run on the backend. A catalog sync queues
+every request, so the page holds back a repeat of its own last inputs while
+that run is active and links to it instead. The page reads the active queue
+every few seconds while work is active and every 15 seconds otherwise, and
+reloads each operation's latest run when the queue changes, so a run started
+by a trigger, at startup, or from another browser shows on its operation and,
+for an exclusive operation, holds its run control the same way. Demo reads
+both once. A hidden tab skips the poll and catches up when shown again.
 
 An operation whose untouched run form is complete (local scan, local files,
 metadata sync) runs with those defaults straight from its row. One that needs

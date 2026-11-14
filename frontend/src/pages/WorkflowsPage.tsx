@@ -10,7 +10,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
 import {
   groupOperations,
-  operationBusy,
+  operationLocked,
   operationState,
   operationsFromDefinitions,
   type Operation,
@@ -94,6 +94,8 @@ export function WorkflowsPage({
   const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [openCode, setOpenCode] = useState(openCodeFromLocation);
   const [pending, setPending] = useState<Record<string, PendingRun>>({});
+  // The inputs of each operation's latest request here, so the same target is not queued twice.
+  const lastRequestRef = useRef<Record<string, { signature: string; runId: number }>>({});
   const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
   const triggerAnchorRef = useRef<HTMLElement | null>(null);
   const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
@@ -232,13 +234,46 @@ export function WorkflowsPage({
     return () => window.clearTimeout(timer);
   }, [pending]);
 
-  /** Marks the operation as starting at once, then waits for the run list to show the run the request created. */
-  const startRun = async (code: string, request: () => Promise<{ runId: number }>, failure: string) => {
+  const openActivityRun = (run: Pick<WorkflowRun, "id">) => openWorkflowPath(workflowActivityRunPath(run.id));
+
+  /**
+   * Marks the operation as starting at once, then waits for the run list to
+   * show the run the request created. An operation that runs per target says
+   * when its new run waits behind another of its runs, which its row keeps
+   * showing, and does not queue the inputs of its run that is still active.
+   */
+  const startRun = async (
+    operation: Operation,
+    request: () => Promise<{ runId: number }>,
+    failure: string,
+    inputs?: unknown,
+  ) => {
+    const code = operation.definition.code;
+    const active = runs.activeRunsOf(code);
+    const signature = inputs === undefined ? "" : JSON.stringify(inputs);
+    const last = lastRequestRef.current[code];
+    if (signature && last?.signature === signature && active.some((run) => run.id === last.runId)) {
+      toast.notify({
+        kind: "info",
+        message: t("workflowPage.operations.alreadyActive", { id: last.runId }),
+        actionLabel: t("nav.activity"),
+        onAction: () => openActivityRun({ id: last.runId }),
+      });
+      return;
+    }
     setPending((current) => ({ ...current, [code]: { runId: null } }));
     try {
       const result = await request();
+      if (signature) lastRequestRef.current[code] = { signature, runId: result.runId };
       setPending((current) => ({ ...current, [code]: { runId: result.runId } }));
       setRevision((value) => value + 1);
+      if (!operation.exclusive && active.length > 0 && !active.some((run) => run.id === result.runId))
+        toast.notify({
+          kind: "info",
+          message: t("workflowPage.operations.queuedBehind", { id: result.runId }),
+          actionLabel: t("nav.activity"),
+          onAction: () => openActivityRun({ id: result.runId }),
+        });
     } catch (error) {
       setPending((current) => {
         const next = { ...current };
@@ -250,25 +285,28 @@ export function WorkflowsPage({
   };
 
   const runOperation = async (operation: Operation, options: SystemRunOptions) => {
-    const code = operation.definition.code;
     if (operation.kind === "local_scan")
       return startRun(
-        code,
+        operation,
         () => api.runLocalScan({ followUpRun: options.followUpRun ?? false }),
         workflowCopy("localScanCreateFailed"),
       );
     if (operation.kind === "local_media_index")
       return startRun(
-        code,
+        operation,
         () => api.runLocalMediaIndex({ mode: options.localMediaIndexMode ?? "incremental" }),
         workflowCopy("localMediaIndexCreateFailed"),
       );
     if (operation.kind === "metadata_sync")
-      return startRun(code, () => api.runDLsiteSync(options.metadataSync), workflowCopy("metadataSyncCreateFailed"));
+      return startRun(
+        operation,
+        () => api.runDLsiteSync(options.metadataSync),
+        workflowCopy("metadataSyncCreateFailed"),
+      );
     if (operation.kind === "source_presence_check" && options.sourcePresence) {
       const sourcePresence = options.sourcePresence;
       return startRun(
-        code,
+        operation,
         () => api.runSourcePresenceCheck(sourcePresence),
         workflowCopy("sourcePresenceCheckCreateFailed"),
       );
@@ -286,10 +324,12 @@ export function WorkflowsPage({
   };
 
   const runPreset = (operation: Operation, inputs: Record<string, unknown>) =>
+    // A catalog sync queues every request, so the same inputs are held back while their run is active.
     startRun(
-      operation.definition.code,
+      operation,
       () => api.runWorkflowPreset(operation.definition.code, inputs),
       workflowCopy("presetQueueFailed"),
+      inputs,
     );
 
   /** What starting, configuring, or scheduling a kind of run requires; source health is checked separately. */
@@ -369,17 +409,20 @@ export function WorkflowsPage({
     }
   };
 
-  const openActivityRun = (run: WorkflowRun) => openWorkflowPath(workflowActivityRunPath(run.id));
-
   const renderOperation = (operation: Operation) => {
     const { definition, kind } = operation;
     const code = definition.code;
     const preset = presetByCode.get(code) ?? null;
     const run = runs.runOf(code);
+    const active = runs.activeRunsOf(code);
+    // A requested run is listed once it is active, even while the row follows an older running one.
+    const requested = pending[code];
+    const listed = requested?.runId != null && active.some((item) => item.id >= (requested.runId ?? 0));
     const state = operationState(
       run,
-      kind === "remote_fetch" && fetchWorkspace.isBusy ? { runId: null } : pending[code],
+      kind === "remote_fetch" && fetchWorkspace.isBusy ? { runId: null } : listed ? undefined : requested,
     );
+    const locked = operationLocked(operation, state);
     const expanded = openOperationCode === code;
     const permitted = kindPermitted(kind);
     const allowed = kindAllowed(kind);
@@ -396,10 +439,12 @@ export function WorkflowsPage({
           }),
         })}
         state={state}
+        moreActive={Math.max(0, active.length - 1)}
+        locked={locked}
         stageCount={parseNodes(definition.definitionJson).length}
         expanded={expanded}
         needsInput={!defaults}
-        runAllowed={allowed && !operationBusy(state)}
+        runAllowed={allowed && !locked}
         runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
         onRun={() => defaults && void runOperation(operation, defaults())}
         onToggle={(open) => toggleOperation(code, open)}

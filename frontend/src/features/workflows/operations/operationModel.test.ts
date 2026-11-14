@@ -6,6 +6,7 @@ import {
   activeRunProgress,
   groupOperations,
   operationBusy,
+  operationLocked,
   operationState,
   operationsFromDefinitions,
 } from "./operationModel";
@@ -114,6 +115,39 @@ describe("operationState", () => {
       tone: "warning",
       review: true,
     });
+  });
+});
+
+describe("operationLocked", () => {
+  const operations = operationsFromDefinitions(
+    [
+      definition(1, "local_library_scan"),
+      definition(2, "local_media_index"),
+      definition(3, "metadata_sync"),
+      definition(4, "circle_catalog_sync"),
+      definition(5, "remote_work_fetch"),
+      definition(6, "source_presence_check"),
+    ],
+    new Set(["circle_catalog_sync"]),
+  );
+  const byCode = (code: string) => operations.find((item) => item.definition.code === code)!;
+  const running = operationState(run({ id: 8, status: "running" }), undefined);
+
+  it("holds a library-wide operation until its run ends", () => {
+    expect(operationLocked(byCode("local_library_scan"), running)).toBe(true);
+    expect(operationLocked(byCode("local_media_index"), operationState(run({ status: "queued" }), undefined))).toBe(
+      true,
+    );
+  });
+
+  it("lets an operation that runs per target start another target while one runs", () => {
+    for (const code of ["metadata_sync", "circle_catalog_sync", "remote_work_fetch", "source_presence_check"]) {
+      expect(operationLocked(byCode(code), running)).toBe(false);
+      // A click holds it only until the run it requested is listed.
+      expect(operationLocked(byCode(code), operationState(run({ id: 8, status: "running" }), { runId: null }))).toBe(
+        true,
+      );
+    }
   });
 });
 

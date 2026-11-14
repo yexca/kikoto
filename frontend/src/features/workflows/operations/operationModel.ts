@@ -17,14 +17,27 @@ type OperationSpec = {
    * needs an input, such as a work code, so its run control opens the form.
    */
   defaults?: () => SystemRunOptions;
+  /**
+   * The operation has one run queued or running at a time, so it cannot start
+   * again until that run ends. Any other operation runs per target, such as a
+   * work, a circle, a metadata scope, or a source, and can start a run for
+   * another target while one is active.
+   */
+  exclusive?: boolean;
 };
 
 /** Built-in operations in page order. Preset workflows join the catalog group after them. */
 const builtInOperations: Record<string, OperationSpec> = {
-  local_library_scan: { group: "library", kind: "local_scan", defaults: () => ({ followUpRun: false }) },
+  local_library_scan: {
+    group: "library",
+    kind: "local_scan",
+    exclusive: true,
+    defaults: () => ({ followUpRun: false }),
+  },
   local_media_index: {
     group: "library",
     kind: "local_media_index",
+    exclusive: true,
     defaults: () => ({ localMediaIndexMode: "incremental" }),
   },
   metadata_sync: {
@@ -131,7 +144,16 @@ export function operationState(
   };
 }
 
-/** An operation runs one run at a time: it cannot start again until that run ends. */
+/** The operation has a run starting, queued, or running. */
 export function operationBusy(state: OperationState) {
   return state.phase === "starting" || state.phase === "queued" || state.phase === "running";
+}
+
+/**
+ * Whether the operation cannot be started now. An exclusive operation waits
+ * for its active run to end; any other waits only until the run it just
+ * requested is listed, so one click queues one run.
+ */
+export function operationLocked(operation: Pick<OperationSpec, "exclusive">, state: OperationState) {
+  return operation.exclusive ? operationBusy(state) : state.phase === "starting";
 }

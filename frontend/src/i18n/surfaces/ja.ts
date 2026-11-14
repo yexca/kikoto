@@ -1783,8 +1783,12 @@ export const surfaceJapanese = {
       status: {
         starting: "開始中",
         review: "確認が必要",
+        moreActive_one: "ほかに {{count}} 件が実行中",
+        moreActive_other: "ほかに {{count}} 件が実行中",
       },
       openRun: "実行 #{{id}}（{{status}}）を Activity で開く",
+      queuedBehind: "実行 #{{id}} を実行中の処理のあとにキューへ追加しました。",
+      alreadyActive: "この対象には待機中または実行中の実行 #{{id}} があります。",
       runWithOptions: "実行…",
       options: "オプション",
       allRuns: "すべての実行",

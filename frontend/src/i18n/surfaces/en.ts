@@ -1671,8 +1671,12 @@ export const surfaceEnglish = {
       status: {
         starting: "Starting",
         review: "Needs review",
+        moreActive_one: "{{count}} more active",
+        moreActive_other: "{{count}} more active",
       },
       openRun: "Open run #{{id}} ({{status}}) in Activity",
+      queuedBehind: "Run #{{id}} is queued after the active runs.",
+      alreadyActive: "This target already has run #{{id}} queued or running.",
       runWithOptions: "Run…",
       options: "Options",
       allRuns: "All runs",

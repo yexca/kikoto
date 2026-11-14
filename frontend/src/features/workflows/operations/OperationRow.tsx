@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { WorkflowRun } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
-import { operationBusy, type OperationState } from "./operationModel";
+import type { OperationState } from "./operationModel";
 import { OperationStatus } from "./OperationStatus";
 
 /**
@@ -19,6 +19,8 @@ export function OperationRow({
   name,
   summary,
   state,
+  moreActive,
+  locked,
   stageCount,
   expanded,
   needsInput,
@@ -34,6 +36,9 @@ export function OperationRow({
   name: string;
   summary: string;
   state: OperationState;
+  moreActive: number;
+  /** The operation cannot be started now, such as while an exclusive operation runs. */
+  locked: boolean;
   stageCount: number;
   expanded: boolean;
   /** The operation needs an input, such as a work code, so its run control opens the options. */
@@ -51,7 +56,6 @@ export function OperationRow({
   const nameId = useId();
   const panelId = useId();
   const headerRef = useRef<HTMLDivElement>(null);
-  const busy = operationBusy(state);
 
   // An operation opened by a link shows itself; one opened in place is already in view and does not move.
   useEffect(() => {
@@ -81,6 +85,7 @@ export function OperationRow({
           </div>
           <OperationStatus
             state={state}
+            moreActive={moreActive}
             stageCount={stageCount}
             onOpenRun={onOpenRun}
             className="order-4 basis-full pl-8 md:order-3 md:w-72 md:basis-auto md:pl-0"
@@ -88,7 +93,7 @@ export function OperationRow({
           <div className="order-3 flex shrink-0 items-center gap-1 md:order-4">
             {/* While the options are open their own run bar holds Run, next to what it will use. */}
             {!expanded &&
-              (busy ? (
+              (locked ? (
                 <Button size="sm" variant="outline" className="min-w-[5.5rem]" disabled>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   {busyLabel}

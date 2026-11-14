@@ -1777,8 +1777,12 @@ export const surfaceKorean = {
       status: {
         starting: "시작하는 중",
         review: "검토 필요",
+        moreActive_one: "외 {{count}}개 진행 중",
+        moreActive_other: "외 {{count}}개 진행 중",
       },
       openRun: "실행 #{{id}}({{status}})을 Activity에서 열기",
+      queuedBehind: "실행 #{{id}}이 진행 중인 실행 뒤에 대기열로 추가되었습니다.",
+      alreadyActive: "이 대상에는 이미 대기 중이거나 실행 중인 실행 #{{id}}이 있습니다.",
       runWithOptions: "실행…",
       options: "옵션",
       allRuns: "모든 실행",

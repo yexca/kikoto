@@ -2625,6 +2625,95 @@ test("an operation runs from its row, shows the run, and cannot start again unti
   ).toBeVisible();
 });
 
+test("a catalog sync queues another circle while one runs and does not queue the same circle twice", async ({
+  page,
+}) => {
+  await mockWorkflows(page);
+  const submissions: unknown[] = [];
+  const catalogRun = (overrides: Partial<WorkflowRun>): WorkflowRun => ({
+    ...sampleRun,
+    workflowCode: "circle_catalog_sync",
+    displayName: "Sync a circle catalog",
+    definitionId: 8,
+    finishedAt: "",
+    ...overrides,
+  });
+  let active: WorkflowRun[] = [catalogRun({ id: 81, status: "running", subject: "RG09998" })];
+  await page.route("**/api/workflow-*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/workflow-definitions") {
+      await route.fulfill({
+        json: [
+          ...systemDefinitions,
+          { ...systemDefinitions[0], id: 8, code: "circle_catalog_sync", displayName: "Sync a circle catalog" },
+        ] satisfies WorkflowDefinition[],
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-presets") {
+      await route.fulfill({
+        json: [
+          {
+            code: "circle_catalog_sync",
+            displayName: "Sync a circle catalog",
+            description: "",
+            target: "circle",
+            defaultTagTemplate: "circle_{target}",
+            parameters: [
+              { key: "circleId", kind: "circle_id", group: "input", required: true },
+              { key: "metadata", kind: "boolean", group: "action", required: false, default: true },
+            ],
+          },
+        ] satisfies WorkflowPreset[],
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs") {
+      const params = url.searchParams;
+      const runs =
+        params.get("view") === "running" || params.get("workflowCode") === "circle_catalog_sync" ? active : [];
+      await route.fulfill({
+        json: workflowRunsPageFixture(runs, {
+          pageSize: Number(params.get("pageSize")),
+          viewTotals: { running: active.length, attention: 0, history: 0, review: 0, failed: 0, completed: 0 },
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/workflow-presets/circle_catalog_sync/runs", async (route) => {
+    const body = route.request().postDataJSON() as { inputs: Record<string, unknown> };
+    submissions.push(body.inputs);
+    active = [catalogRun({ id: 82, status: "queued", subject: "RG09999" }), ...active];
+    await route.fulfill({
+      status: 202,
+      json: { runId: 82, status: "queued", workflowCode: "circle_catalog_sync", tagName: "", inputs: body.inputs },
+    });
+  });
+
+  await page.goto("/workflows?workflow=circle_catalog_sync&circleId=RG09999");
+  const row = operation(page, "Sync a circle catalog");
+  await expect(row).toContainText("Running");
+  // Another circle's run does not hold this one back.
+  const run = page.getByRole("region", { name: "Run options", exact: true }).getByRole("button", {
+    name: "Run",
+    exact: true,
+  });
+  await expect(run).toBeEnabled();
+  await run.click();
+  await expect.poll(() => submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({ circleId: "RG09999" });
+  // The row keeps following the running circle, so it says where the new run went.
+  await expect(page.getByText("Run #82 is queued after the active runs.", { exact: true })).toBeVisible();
+  await expect(row).toContainText("1 more active");
+
+  await expect(run).toBeEnabled();
+  await run.click();
+  await expect(page.getByText("This target already has run #82 queued or running.", { exact: true })).toBeVisible();
+  expect(submissions).toHaveLength(1);
+});
+
 for (const viewport of ["mobile", "@desktop"]) {
   test(`${viewport} Activity separates running, attention, and history`, async ({ page }, testInfo) => {
     await mockWorkflows(page);

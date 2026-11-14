@@ -29,7 +29,7 @@ import {
 } from "@/features/workflows/workflowTriggerModel";
 import type { WorkflowPreset, WorkflowRun, WorkflowTrigger } from "@/lib/api";
 
-import { operationBusy, type Operation, type OperationState } from "./operationModel";
+import { operationLocked, type Operation, type OperationState } from "./operationModel";
 
 /**
  * What an operation keeps off its row: the options of the next run with the
@@ -84,7 +84,7 @@ export function OperationPanel({
 }) {
   const { t } = useTranslation();
   const { definition, kind } = operation;
-  const running = operationBusy(state);
+  const running = operationLocked(operation, state);
   const now = useNow(true, 30_000);
   const busyLabel =
     state.phase === "queued"

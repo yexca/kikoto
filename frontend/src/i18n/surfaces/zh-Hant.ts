@@ -1674,8 +1674,12 @@ export const surfaceHant = {
       status: {
         starting: "正在啟動",
         review: "需要審核",
+        moreActive_one: "另有 {{count}} 個進行中",
+        moreActive_other: "另有 {{count}} 個進行中",
       },
       openRun: "在 Activity 中開啟執行 #{{id}}（{{status}}）",
+      queuedBehind: "執行 #{{id}} 已排在進行中的執行之後。",
+      alreadyActive: "這個目標已有排隊或執行中的執行 #{{id}}。",
       runWithOptions: "執行…",
       options: "選項",
       allRuns: "全部執行",

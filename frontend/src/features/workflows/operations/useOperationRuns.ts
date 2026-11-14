@@ -86,6 +86,12 @@ export function useOperationRuns({
     return () => controller.abort();
   }, [codesKey, queueSignature, refreshKey]);
 
+  /** The operation's queued and running runs, newest first. */
+  const activeRunsOf = useCallback(
+    (code: string) => queue.runs.filter((run) => run.workflowCode === code),
+    [queue.runs],
+  );
+
   /**
    * The run that states an operation's status: its active run when it has one,
    * a running one ahead of a queued one, otherwise its newest run. `undefined`
@@ -93,11 +99,11 @@ export function useOperationRuns({
    */
   const runOf = useCallback(
     (code: string): WorkflowRun | null | undefined => {
-      const active = queue.runs.filter((run) => run.workflowCode === code);
+      const active = activeRunsOf(code);
       return active.find((run) => run.status === "running") ?? active[0] ?? latest[code];
     },
-    [latest, queue.runs],
+    [activeRunsOf, latest],
   );
 
-  return { attention: queue.attention, runOf };
+  return { attention: queue.attention, runOf, activeRunsOf };
 }
