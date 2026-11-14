@@ -1,4 +1,4 @@
-import { Globe, HardDrive, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import { Globe, HardDrive, ListChecks, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -46,6 +46,8 @@ export function LibrarySourceList({
   onDelete,
   onCheck,
   onToggleEnabled,
+  renderSourceCheck,
+  onOpenSourceCheck,
 }: {
   local: LocalLibraryEntry;
   sources: FileSource[];
@@ -57,6 +59,10 @@ export function LibrarySourceList({
   onDelete: (source: FileSource) => void;
   onCheck: (id: number) => Promise<void>;
   onToggleEnabled: (source: FileSource, enabled: boolean) => Promise<void>;
+  /** A source's library work check line, or nothing for a source that does not answer work checks. */
+  renderSourceCheck?: (source: FileSource) => ReactNode;
+  /** Opens a source's library work check; omitted for a viewer who cannot run it. */
+  onOpenSourceCheck?: (source: FileSource) => void;
 }) {
   const { t } = useTranslation();
   const enabledCount = sources.filter((source) => source.enabled).length;
@@ -111,34 +117,50 @@ export function LibrarySourceList({
         const health = remoteSourceHealth(source);
         const host = remoteSourceHost(source) || t("maintenance.noEndpointConfigured");
         const checking = checkingSourceId === source.id;
+        const sourceCheck = renderSourceCheck?.(source);
         return (
           <div key={source.id} className="flex min-w-0 items-center gap-3 py-3">
             <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", healthDotClassNames[health])} aria-hidden="true" />
-            <button
-              type="button"
-              className="min-w-0 flex-1 text-left disabled:cursor-default"
-              onClick={() => onEdit(source)}
-            >
-              <span
-                className={cn(
-                  "flex min-w-0 items-center gap-1.5 text-sm font-medium",
-                  !source.enabled && "text-muted-foreground",
-                )}
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                className="block w-full min-w-0 text-left disabled:cursor-default"
+                onClick={() => onEdit(source)}
               >
-                <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className="truncate">{source.displayName}</span>
-              </span>
-              <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn(health === "unavailable" && "text-error-foreground")}>
-                  {t(`sourceSetup.health.${health}`)}
+                <span
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 text-sm font-medium",
+                    !source.enabled && "text-muted-foreground",
+                  )}
+                >
+                  <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="truncate">{source.displayName}</span>
                 </span>
-                <span aria-hidden="true">·</span>
-                <span className="truncate" title={host}>
-                  {host}
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={cn(health === "unavailable" && "text-error-foreground")}>
+                    {t(`sourceSetup.health.${health}`)}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span className="truncate" title={host}>
+                    {host}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              {sourceCheck && <div className="mt-0.5 min-w-0 text-xs">{sourceCheck}</div>}
+            </div>
             <div className="flex shrink-0 items-center gap-0.5">
+              {onOpenSourceCheck && sourceCheck && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={t("maintenance.library.checkLibraryWorks")}
+                  title={t("maintenance.library.checkLibraryWorks")}
+                  onClick={() => onOpenSourceCheck(source)}
+                >
+                  <ListChecks className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

@@ -32,7 +32,8 @@ import { useCreatorWorksBrowse } from "@/pages/creator/useCreatorWorksBrowse";
 import { LibrarySortButton } from "@/pages/library/LibrarySortButton";
 import { creatorWorkPageSizeOptions } from "@/lib/creatorWorksBrowse";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
+import { CatalogSyncDialog } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
+import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
@@ -421,6 +422,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const canChangeCover = auth.demoMode || auth.hasPermission("favorites:write");
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
+  const [catalogSyncOpen, setCatalogSyncOpen] = useState(false);
   const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
   const runAction = (runId?: number) =>
     canOpenWorkflows && runId ? { actionLabel: t("nav.activity"), onAction: () => openRefreshRun(runId) } : {};
@@ -746,8 +748,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
             key: "catalogSync",
             label: t("detailActions.syncVoiceCatalog"),
             icon: <Rss className="h-4 w-4" />,
-            onSelect: () =>
-              openWorkflowPath(workflowRunFormPath("voice_catalog_sync", { personId: String(detail.personId) })),
+            onSelect: () => setCatalogSyncOpen(true),
           },
         ]
       : []),
@@ -936,6 +937,16 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           loadWorks={loadCoverWorks}
           onSelect={saveVoiceCover}
           onClose={() => setCoverDialogOpen(false)}
+        />
+      )}
+      {catalogSyncOpen && (
+        <CatalogSyncDialog
+          code="voice_catalog_sync"
+          target={{ personId: String(detail.personId) }}
+          readOnly={auth.demoMode}
+          canTag={auth.hasPermission("tags:write")}
+          canOpenActivity={canOpenWorkflows}
+          onClose={() => setCatalogSyncOpen(false)}
         />
       )}
       <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />

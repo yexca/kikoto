@@ -1,4 +1,4 @@
-import { AlertCircle, Info, Loader2, Play } from "lucide-react";
+import { AlertCircle, Loader2, Play } from "lucide-react";
 import { createContext, useContext, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -153,16 +153,6 @@ export function RunBlockerNote({ children }: { children: ReactNode }) {
   return (
     <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
       <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      {children}
-    </p>
-  );
-}
-
-/** Tells the viewer a value was filled in for them, so they check it before running. */
-export function RunPrefillNote({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="note">
-      <Info className="h-3.5 w-3.5 shrink-0" />
       {children}
     </p>
   );

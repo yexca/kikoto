@@ -279,10 +279,14 @@ The Workflows page (`pages/WorkflowsPage`, at `/workflows`) keeps the open
 operation, run handlers, and the trigger editor's state, and the Activity page
 (`pages/ActivityPage`, at `/activity`) keeps the open run. The operation
 model, rows, and options panel (`features/workflows/operations`), run forms,
-the trigger editor, the Activity list, run detail, candidate review, and the
-Availability Watch configuration and pool that the Discover page composes
-live in `features/workflows`. `features/workflows/workflowLinks` builds the
-addresses other pages use to open an operation's options or a run in Activity.
+the trigger editor, the Activity list, run detail, candidate review, the
+catalog sync dialog that the circle and voice actor pages compose
+(`features/workflows/catalog-sync`), a remote source's library work check that
+the System Libraries list composes (`features/workflows/source-presence`), and
+the Availability Watch configuration
+and pool that the Discover page composes live in `features/workflows`.
+`features/workflows/workflowLinks` builds the addresses other pages use to
+open Workflows or a run in Activity.
 
 The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
 where to find what to listen to next. A `/subscriptions` address redirects to

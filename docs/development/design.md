@@ -416,7 +416,7 @@ Desktop:
   personal tags, the catalog counts with a short availability bar set off by a
   hairline and only as wide as their content, and a quiet row of Favorite,
   Subscribe, and More. These pages have no primary action. Catalog management
-  (the first pull, Refresh, Retry metadata, the catalog sync form, and alias
+  (the first pull, Refresh, Retry metadata, the catalog sync dialog, and alias
   management) waits in More beside the personal cover choice, each entry only
   for a viewer allowed to use it. A note under the counts appears only while a
   refresh runs or while the catalog was never pulled, and then offers the pull

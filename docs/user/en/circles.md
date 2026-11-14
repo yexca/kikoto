@@ -63,9 +63,11 @@ Circles represent makers, circles, and related party catalog state.
   was never pulled, otherwise **Refresh circle**, which also checks the remote
   sources and names when the catalog was last synced; **Retry metadata** only
   while catalog works still lack metadata, which fills just those; and **Sync
-  this circle's catalog…**, the Sync a circle catalog preset with this circle
-  filled in, for every other combination of catalog refresh, filter,
-  metadata, tag, and source check. To refresh metadata the circle's works
+  this circle's catalog…**, which opens the Sync a circle catalog preset in a
+  dialog with this circle filled in, for every other combination of catalog
+  refresh, filter, metadata, tag, and source check. While one of the circle's
+  series is shown, **Sync this series' catalog…** opens the Sync a series
+  catalog preset for that series the same way. To refresh metadata the circle's works
   already have, run Metadata sync with the circle scope. A user without these
   permissions sees none of them. Demo offers **Change cover…**, which saves no
   cover, and the preset, which opens read-only.

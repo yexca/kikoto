@@ -668,11 +668,6 @@ function AuthenticatedApp() {
                   <WorkflowsPage
                     canRun={auth.demoMode || auth.hasPermission("workflows:run")}
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
-                    canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
-                    canFetchRemote={
-                      auth.demoMode || (auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync"))
-                    }
-                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     readOnly={auth.demoMode}
                   />
                 )}

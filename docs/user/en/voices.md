@@ -73,8 +73,8 @@ Voice pages present persisted person and credit data.
   queues a Sync a voice actor catalog run with only known works' metadata
   across every compatible remote source. **Retry metadata** appears only
   while known works still lack metadata. **Sync this voice actor's catalog…**
-  opens the preset with this voice actor selected for source, filter,
-  metadata, and tag choices, and **Manage aliases** opens alias review. A user
+  opens the preset in a dialog with this voice actor selected for source,
+  filter, metadata, and tag choices, and **Manage aliases** opens alias review. A user
   without these permissions sees none of them; Demo offers **Change cover…**,
   which saves no cover, the preset, and **Manage aliases** read-only.
 - A voice actor that was never pulled states that only works the library

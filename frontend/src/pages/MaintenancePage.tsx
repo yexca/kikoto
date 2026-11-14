@@ -24,6 +24,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { LibrarySourceList, type LocalLibraryEntry } from "@/features/sources/LibrarySourceList";
 import { KikoeruImportAccessRow } from "@/features/user-data/KikoeruImportAccessRow";
+import { useSourcePresenceCheckSlots } from "@/features/workflows/source-presence/useSourcePresenceCheckSlots";
 import {
   DATA_PREFIX,
   DEFAULT_CACHE_SUFFIX,
@@ -157,6 +158,11 @@ export function MaintenancePage({
     [settings],
   );
   const localSource = settings?.fileSources.find((source) => source.sourceType === "local_folder") ?? null;
+  const sourceChecks = useSourcePresenceCheckSlots({
+    enabled: activeTab === "library" && canManageSources,
+    sources: remoteSources,
+    readOnly,
+  });
   const savedDraft = settings ? runtimeDraftFromSettings(settings) : null;
 
   useEffect(() => {
@@ -319,6 +325,8 @@ export function MaintenancePage({
       else await api.createFileSource(sourcePayload(draftSource));
       closeSourceModal();
       await reload();
+      // A source that became usable queues a check of the library.
+      sourceChecks.refresh();
       toast.success(t("maintenance.sourceSaved"));
     } catch (error) {
       toast.notify(toastFromError(error, t("sourceSetup.saveFailed")));
@@ -343,6 +351,7 @@ export function MaintenancePage({
     replaceSource({ ...source, enabled });
     try {
       replaceSource(await api.updateFileSource(source.id, { ...sourcePayload(source), enabled }));
+      sourceChecks.refresh();
       toast.success(
         t(enabled ? "sourceSetup.enabledToast" : "sourceSetup.disabledToast", { name: source.displayName }),
       );
@@ -427,7 +436,10 @@ export function MaintenancePage({
               onDelete={setSourcePendingDelete}
               onCheck={checkSourceHealth}
               onToggleEnabled={toggleSourceEnabled}
+              renderSourceCheck={sourceChecks.renderSourceCheck}
+              onOpenSourceCheck={sourceChecks.onOpenSourceCheck}
             />
+            {sourceChecks.dialog}
 
             <LibraryLayoutSection
               id="library-storage"

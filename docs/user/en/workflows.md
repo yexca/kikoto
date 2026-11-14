@@ -5,11 +5,12 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- **Workflows** lists what an administrator starts by hand, grouped by
-  purpose: **Library** (Scan local library, Refresh local work files, and Sync
-  work metadata), **Catalogs** (the catalog sync presets), and **Remote
-  sources** (Fetch and Check works on a source). There is no custom workflow
-  editor.
+- **Workflows** lists what an administrator starts by hand to maintain the
+  library, under **Library**: Scan local library, Refresh local work files,
+  and Sync work metadata. Work on one target starts where that target is:
+  Fetch from a work, a catalog sync from its circle, series, or voice actor,
+  and a remote source's library work check from that source in
+  [Library](settings.md#library) settings. There is no custom workflow editor.
 - Each operation is one row: its name, what starts it on its own, its state,
   and a run control. The line under the name lists its automatic starts, such
   as **At startup**, **Watching folders**, or **Every 6 hours**, with when the
@@ -21,15 +22,12 @@ Workflows make backend actions inspectable.
   wait for a decision. Select the state to open that run in Activity.
 - **Run** starts an operation with its default options, and the row shows the
   run at once. Scan local library and Refresh local work files cover the whole
-  library, so they cannot be started again until their run ends. The other
-  operations act on one target, such as a work, a circle, a metadata scope, or
-  a source, and can start a run for another target while one is active. Their
-  row follows the running run and counts the others, and a new run that waits
-  behind another says so. Starting the same target again while its run is
-  active does not queue a second run. A run started by a schedule, at startup,
-  or in another browser shows on its operation the same way. An operation that
-  needs an input, such as a work code or a circle, shows **Run…**, which opens
-  its options.
+  library, so they cannot be started again until their run ends. Sync work
+  metadata runs per scope and can start a run for another scope while one is
+  active. Its row follows the running run and counts the others, and a new run
+  that waits behind another says so. Starting the same scope again while its
+  run is active does not queue a second run. A run started by a schedule, at
+  startup, or in another browser shows on its operation the same way.
 - **Options** opens, below the row, one sentence on what the operation does
   with **All runs**, its Run options with their own **Run**, and its triggers.
   One operation is open at a time.
@@ -85,12 +83,9 @@ administrators.
 
 ## Current Behavior
 
-- **Fetch** has Run options for one work code and an enabled compatible remote
-  source. Under **Filter**, select the file extensions to exclude or enter
-  additional extensions separated by commas. Nothing is excluded by default.
-  **Run** opens the Fetch preview; review the files and destination before
-  **Publish Fetch** queues the run. The exclusions also apply when switching
-  language editions. Fetch runs manually and has no automation triggers.
+- **Fetch** starts from a work's [detail page](work-detail.md), including a
+  work the library does not have, which Quick actions opens by its code. It
+  runs manually and has no automation triggers.
 - Local scan records folder discovery and local source presence without waiting
   for a metadata provider. Metadata sync, source availability, remote sync,
   cache, fetch, cleanup, circle refresh, and bulk remote actions record separate
@@ -155,21 +150,16 @@ administrators.
   re-indexes every available local work. One run is queued or running at a
   time, and starting another returns the active run. It supports Startup and
   interval triggers that store the mode, and ships without a default trigger.
-- **Check works on a source** sits in Remote sources, after Fetch. It asks one remote
-  source whether library works exist there and records the answer on each
-  work, as checking availability on a work does; it never adds works. Its
-  options choose the source, the works (**Local library**, the default, or
-  **All works in database**), a filter (**No remote source**, the default, for
-  works that no remote source currently provides, or **All**), and **Works per
-  run** (50 to 1000, default 100). Without an enabled compatible remote source,
-  its options show a prompt to configure one in place of the form. Each work is one lookup on the source. When more works match,
-  the ones this source has never checked come first, then the ones checked
-  longest ago, so repeated runs cover the whole library. The run first checks
-  the source's health, as **Check health** in source settings does, and stops
+- **Check works on a source** asks one remote source whether library works
+  exist there and records the answer on each work, as checking availability
+  on a work does; it never adds works. It runs and is scheduled from the
+  source in [Library](settings.md#library) settings, and Activity lists its
+  runs. Each work is one lookup on the source. When more works match than
+  one run checks, the ones this source has never checked come first, then the
+  ones checked longest ago, so repeated runs cover the whole library. The run
+  first checks the source's health, as **Check health** does, and stops
   without recording any work when the source is unavailable; it is partial
-  when some lookups failed. One run per source is active at a time. It
-  supports Startup and interval triggers that store these options and ships
-  without a default trigger. Running it requires permission to manage sources.
+  when some lookups failed. One run per source is active at a time.
 - An operation's options start with its **Run options** form. The form ends
   in a bar with `Run` and, when `Run` is unavailable, the reason, such as a
   missing required input. While a long form scrolls, the bar stays at the
@@ -189,11 +179,17 @@ administrators.
   each ranking its own pull schedule. Activity narrowed to one of them says
   where it is configured and links there.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
-  are the **Catalogs** operations, preset workflows that run on demand. Their Run options have three sections:
+  are preset workflows that run on demand from their target:
+  **Sync this circle's catalog…** in a circle's **More** menu, **Sync this
+  series' catalog…** there while one of its series is shown, and **Sync this
+  voice actor's catalog…** in a voice actor's **More** menu; see
+  [Circles](circles.md) and [Voice actors](voices.md). Each opens its Run
+  options in a dialog with the target filled in, and **Run** queues the sync,
+  closes the dialog, and links to the run in Activity. The Run options have
+  three sections:
   **Input** (the target and the catalog refresh, Incremental or Full),
   **Filter** (a release date range and a work limit), and **Actions** (Sync
-  metadata, the tag template, and for circles Check remote sources). On a wide
-  screen the three sections sit side by side as columns.
+  metadata, the tag template, and for circles Check remote sources).
   Circle and series targets accept up to 20 comma-separated IDs, whose catalogs
   are combined before filtering. The voice actor target is one picked voice
   actor; its catalog is refreshed on the checked remote sources with the
@@ -208,8 +204,8 @@ administrators.
   Catalog sync does not Track or Fetch; use a remote source's works, the
   Watch view in Discover, or a work's detail page for that.
 - The catalog sync presets have no triggers. To follow new works on a schedule,
-  subscribe to the circle, series, or voice actor instead; the preset's
-  triggers section links to [Discover](discover.md).
+  subscribe to the circle, series, or voice actor instead; see
+  [Discover](discover.md).
 - Metadata sync refreshes works in the library; Selected works can also add
   works the library does not have yet. Its Run options choose
   **Works** (All works, one circle, one voice actor, or Selected works),

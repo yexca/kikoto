@@ -70,12 +70,21 @@ export function workflowTriggerCondition(trigger: WorkflowTrigger) {
   return trigger.triggerType.replace(/_/g, " ");
 }
 
+export type IntervalParts = { unit: "days" | "hours" | "minutes"; count: number };
+
+/** An interval in minutes as whole days, hours, or minutes, the largest unit that divides it. */
+export function intervalParts(minutes: number): IntervalParts {
+  if (minutes % 1440 === 0) return { unit: "days", count: minutes / 1440 };
+  if (minutes % 60 === 0) return { unit: "hours", count: minutes / 60 };
+  return { unit: "minutes", count: minutes };
+}
+
 /** How an operation starts on its own, in the words its row uses. */
 export type TriggerSummary = {
   startup: boolean;
   watching: boolean;
   /** Interval schedules, as a count of days, hours, or minutes, shortest first. */
-  intervals: { unit: "days" | "hours" | "minutes"; count: number }[];
+  intervals: IntervalParts[];
   /** The soonest next run among the interval schedules. */
   nextRunAt: string | null;
   /** Every trigger is switched off. */
@@ -102,13 +111,7 @@ export function workflowTriggerSummary(triggers: WorkflowTrigger[]): TriggerSumm
   return {
     startup: enabled.some((trigger) => trigger.triggerType === "startup"),
     watching: enabled.some((trigger) => trigger.triggerType === "filesystem_event"),
-    intervals: minutes.map((value) =>
-      value % 1440 === 0
-        ? { unit: "days", count: value / 1440 }
-        : value % 60 === 0
-          ? { unit: "hours", count: value / 60 }
-          : { unit: "minutes", count: value },
-    ),
+    intervals: minutes.map(intervalParts),
     nextRunAt,
     paused: enabled.length === 0,
   };

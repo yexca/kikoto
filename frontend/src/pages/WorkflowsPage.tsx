@@ -7,7 +7,6 @@ import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { contentPageClassName } from "@/components/ui/page-width";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
 import {
   groupOperations,
   operationLocked,
@@ -30,14 +29,12 @@ import {
   parseNodes,
   workflowCopy,
   type CurrentTriggerRunOptions,
-  type RemoteFetchRunOptions,
-  type SystemRunKind,
   type SystemRunOptions,
 } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
 import { workflowTriggerSummary, type CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
-import { api, type WorkflowDefinition, type WorkflowPreset, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
+import { api, type WorkflowDefinition, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -70,18 +67,10 @@ function openCodeFromLocation() {
 export function WorkflowsPage({
   canRun,
   canSyncMetadata,
-  canTagWorks,
-  canFetchRemote,
-  canManageSources = false,
   readOnly = false,
 }: {
   canRun: boolean;
   canSyncMetadata: boolean;
-  canTagWorks: boolean;
-  /** Fetch also refreshes DLsite family metadata and needs `metadata:sync`. */
-  canFetchRemote: boolean;
-  /** Instance settings such as the remote metadata fallback need `sources:write`. */
-  canManageSources?: boolean;
   readOnly?: boolean;
 }) {
   const toast = useToast();
@@ -90,35 +79,25 @@ export function WorkflowsPage({
   const [revision, setRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
-  const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [openCode, setOpenCode] = useState(openCodeFromLocation);
   const [pending, setPending] = useState<Record<string, PendingRun>>({});
-  // The inputs of each operation's latest request here, so the same target is not queued twice.
-  const lastRequestRef = useRef<Record<string, { signature: string; runId: number }>>({});
   const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
   const triggerAnchorRef = useRef<HTMLElement | null>(null);
   const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
   const [workflowMetaError, setWorkflowMetaError] = useState("");
-  const [remoteSourceAvailability, setRemoteSourceAvailability] = useState<"loading" | "available" | "unavailable">(
-    "loading",
-  );
-  const fetchWorkspace = useRemoteFetchWorkspace({
-    onWorksChanged: () => setRevision((value) => value + 1),
-  });
   const workflowMetaRequestSeq = useRef(0);
 
   const refresh = () => {
     const seq = ++workflowMetaRequestSeq.current;
     setIsWorkflowMetaLoading(true);
     setWorkflowMetaError("");
-    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers(), api.listWorkflowPresets()])
-      .then(([nextDefinitions, nextTriggers, nextPresets]) => {
+    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers()])
+      .then(([nextDefinitions, nextTriggers]) => {
         if (seq !== workflowMetaRequestSeq.current) return;
         setDefinitions(nextDefinitions);
         setTriggers(nextTriggers);
-        setPresets(nextPresets);
         setHasWorkflowMetaSnapshot(true);
       })
       .catch(() => {
@@ -133,29 +112,6 @@ export function WorkflowsPage({
     refresh();
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((sources) => {
-        if (!active) return;
-        setRemoteSourceAvailability(
-          sources.some(
-            (source) =>
-              source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-          )
-            ? "available"
-            : "unavailable",
-        );
-      })
-      .catch(() => {
-        if (active) setRemoteSourceAvailability("unavailable");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   // The open operation is the page's linked state (`?workflow=<code>`).
   useEffect(() => {
     const sync = () => setOpenCode(openCodeFromLocation());
@@ -167,11 +123,7 @@ export function WorkflowsPage({
     };
   }, []);
 
-  const presetByCode = useMemo(() => new Map(presets.map((preset) => [preset.code, preset])), [presets]);
-  const operations = useMemo(
-    () => operationsFromDefinitions(definitions, new Set(presetByCode.keys())),
-    [definitions, presetByCode],
-  );
+  const operations = useMemo(() => operationsFromDefinitions(definitions), [definitions]);
   const groups = useMemo(() => groupOperations(operations), [operations]);
   const codes = useMemo(() => operations.map((operation) => operation.definition.code), [operations]);
   const runs = useOperationRuns({ codes, refreshKey: revision, staticDemo: auth.demoMode });
@@ -213,31 +165,14 @@ export function WorkflowsPage({
    * Marks the operation as starting at once, then waits for the run list to
    * show the run the request created. An operation that runs per target says
    * when its new run waits behind another of its runs, which its row keeps
-   * showing, and does not queue the inputs of its run that is still active.
+   * showing.
    */
-  const startRun = async (
-    operation: Operation,
-    request: () => Promise<{ runId: number }>,
-    failure: string,
-    inputs?: unknown,
-  ) => {
+  const startRun = async (operation: Operation, request: () => Promise<{ runId: number }>, failure: string) => {
     const code = operation.definition.code;
     const active = runs.activeRunsOf(code);
-    const signature = inputs === undefined ? "" : JSON.stringify(inputs);
-    const last = lastRequestRef.current[code];
-    if (signature && last?.signature === signature && active.some((run) => run.id === last.runId)) {
-      toast.notify({
-        kind: "info",
-        message: t("workflowPage.operations.alreadyActive", { id: last.runId }),
-        actionLabel: t("nav.activity"),
-        onAction: () => openActivityRun({ id: last.runId }),
-      });
-      return;
-    }
     setPending((current) => ({ ...current, [code]: { runId: null } }));
     try {
       const result = await request();
-      if (signature) lastRequestRef.current[code] = { signature, runId: result.runId };
       setPending((current) => ({ ...current, [code]: { runId: result.runId } }));
       setRevision((value) => value + 1);
       if (!operation.exclusive && active.length > 0 && !active.some((run) => run.id === result.runId))
@@ -276,52 +211,10 @@ export function WorkflowsPage({
         () => api.runDLsiteSync(options.metadataSync),
         workflowCopy("metadataSyncCreateFailed"),
       );
-    if (operation.kind === "source_presence_check" && options.sourcePresence) {
-      const sourcePresence = options.sourcePresence;
-      return startRun(
-        operation,
-        () => api.runSourcePresenceCheck(sourcePresence),
-        workflowCopy("sourcePresenceCheckCreateFailed"),
-      );
-    }
   };
 
-  const runRemoteFetch = async (options: RemoteFetchRunOptions) => {
-    if (readOnly || !canRun || !canFetchRemote) return false;
-    return fetchWorkspace.open({
-      sourceId: options.sourceId,
-      remoteCode: options.workCode,
-      sourceDisplayName: options.sourceDisplayName,
-      excludeExtensions: options.excludeExtensions,
-    });
-  };
-
-  const runPreset = (operation: Operation, inputs: Record<string, unknown>) =>
-    // A catalog sync queues every request, so the same inputs are held back while their run is active.
-    startRun(
-      operation,
-      () => api.runWorkflowPreset(operation.definition.code, inputs),
-      workflowCopy("presetQueueFailed"),
-      inputs,
-    );
-
-  /** What starting, configuring, or scheduling a kind of run requires; source health is checked separately. */
-  const kindPermitted = (kind: SystemRunKind) => {
-    if (readOnly) return false;
-    if (kind === "local_scan" || kind === "local_media_index" || kind === "metadata_sync")
-      return canRun && canSyncMetadata;
-    if (kind === "remote_fetch") return canRun && canFetchRemote;
-    if (kind === "source_presence_check") return canRun && canManageSources;
-    // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
-    if (kind === "preset") return canRun && canSyncMetadata;
-    return canRun;
-  };
-
-  const kindAllowed = (kind: SystemRunKind) => {
-    if (!kindPermitted(kind)) return false;
-    if (kind === "source_presence_check") return remoteSourceAvailability !== "unavailable";
-    return true;
-  };
+  /** Every operation scans or syncs the library, so starting, configuring, or scheduling one needs `metadata:sync`. */
+  const permitted = !readOnly && canRun && canSyncMetadata;
 
   const createAutomationTrigger = (
     definition: WorkflowDefinition,
@@ -383,23 +276,18 @@ export function WorkflowsPage({
   };
 
   const renderOperation = (operation: Operation) => {
-    const { definition, kind } = operation;
+    const { definition } = operation;
     const code = definition.code;
-    const preset = presetByCode.get(code) ?? null;
     const run = runs.runOf(code);
     const active = runs.activeRunsOf(code);
     // A requested run is listed once it is active, even while the row follows an older running one.
     const requested = pending[code];
     const listed = requested?.runId != null && active.some((item) => item.id >= (requested.runId ?? 0));
-    const state = operationState(
-      run,
-      kind === "remote_fetch" && fetchWorkspace.isBusy ? { runId: null } : listed ? undefined : requested,
-    );
+    const state = operationState(run, listed ? undefined : requested);
     const locked = operationLocked(operation, state);
     const operationTriggers = triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id);
     const expanded = openOperationCode === code;
-    const permitted = kindPermitted(kind);
-    const allowed = kindAllowed(kind);
+    const allowed = permitted;
     const defaults = operation.defaults;
     return (
       <OperationRow
@@ -413,10 +301,9 @@ export function WorkflowsPage({
         locked={locked}
         stageCount={parseNodes(definition.definitionJson).length}
         expanded={expanded}
-        needsInput={!defaults}
         runAllowed={allowed && !locked}
         runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
-        onRun={() => defaults && void runOperation(operation, defaults())}
+        onRun={() => void runOperation(operation, defaults())}
         onToggle={(open) => toggleOperation(code, open)}
         onOpenRun={openActivityRun}
       >
@@ -428,19 +315,13 @@ export function WorkflowsPage({
             }),
           })}
           state={state}
-          preset={preset}
           triggers={operationTriggers}
           allowed={allowed}
           readOnly={readOnly}
           canManageTriggers={!readOnly && definition.id > 0 && permitted}
-          canTag={canTagWorks}
-          remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
           onRun={(options) => runOperation(operation, options)}
-          onRunRemoteFetch={runRemoteFetch}
-          onRunPreset={(inputs) => runPreset(operation, inputs)}
           onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
           onOpenRuns={() => openWorkflowPath(activityPath({ workflow: code }))}
-          onOpenRemoteSourceSettings={openRemoteSourcesSettings}
           onCreateTrigger={(triggerType, anchor) => createAutomationTrigger(definition, triggerType, anchor)}
           onEditTrigger={editAutomationTrigger}
           onToggleTrigger={toggleAutomationTrigger}
@@ -497,16 +378,12 @@ export function WorkflowsPage({
           </p>
         </>
       )}
-      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
-
       {triggerEditor && triggerEditorDefinition && (
         <TriggerModal
           key={
             triggerEditor.mode === "edit" ? `edit:${triggerEditor.trigger.id}` : `create:${triggerEditorDefinition.id}`
           }
           definition={triggerEditorDefinition}
-          preset={presetByCode.get(triggerEditorDefinition.code) ?? null}
-          canTag={canTagWorks}
           trigger={triggerEditor.mode === "edit" ? triggerEditor.trigger : null}
           readOnly={triggerEditor.mode === "edit" ? readOnly : undefined}
           initialTriggerType={
@@ -582,9 +459,4 @@ function PageLink({ path, children }: { path: string; children?: React.ReactNode
       {children}
     </a>
   );
-}
-
-function openRemoteSourcesSettings() {
-  window.history.pushState({}, "", "/settings?tab=library#remote-sources");
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }

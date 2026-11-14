@@ -26,7 +26,6 @@ export function OperationRow({
   locked,
   stageCount,
   expanded,
-  needsInput,
   runAllowed,
   runBlockedReason,
   onRun,
@@ -45,8 +44,6 @@ export function OperationRow({
   locked: boolean;
   stageCount: number;
   expanded: boolean;
-  /** The operation needs an input, such as a work code, so its run control opens the options. */
-  needsInput: boolean;
   runAllowed: boolean;
   /** Why the run control is unavailable, as its tooltip. */
   runBlockedReason?: string;
@@ -101,11 +98,6 @@ export function OperationRow({
                 <Button size="sm" variant="outline" className="min-w-[5.5rem]" disabled>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   {busyLabel}
-                </Button>
-              ) : needsInput ? (
-                <Button size="sm" variant="outline" className="min-w-[5.5rem]" onClick={() => onToggle(true)}>
-                  <Play className="h-4 w-4" aria-hidden />
-                  {t("workflowPage.operations.runWithOptions")}
                 </Button>
               ) : (
                 <Button

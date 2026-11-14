@@ -1,5 +1,5 @@
 import { Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,7 +29,6 @@ import {
   metadataSyncBlockerText,
 } from "@/features/workflows/run-forms/LibraryRunPanels";
 import { PresetParameterFields, presetBlockerText } from "@/features/workflows/run-forms/PresetRunPanel";
-import { SourcePresenceFields } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import {
   parseJSONRecord,
@@ -45,13 +44,7 @@ import {
   type AutomationTriggerType,
   type CreatableAutomationTriggerType,
 } from "@/features/workflows/workflowTriggerModel";
-import {
-  api,
-  type SourcePresenceCheckOptions,
-  type WorkflowDefinition,
-  type WorkflowPreset,
-  type WorkflowTrigger,
-} from "@/lib/api";
+import { api, type WorkflowDefinition, type WorkflowPreset, type WorkflowTrigger } from "@/lib/api";
 import { wholeNumberFromInput } from "@/lib/numberInput";
 
 export function TriggerModal({
@@ -113,7 +106,7 @@ export function TriggerModal({
       ? metadataSyncValuesFromConfig(parseJSONRecord(trigger.configJson))
       : metadataSyncTriggerValues(currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
   );
-  const customizable = Boolean(preset) || isMetadataSync || definition.code === "source_presence_check";
+  const customizable = Boolean(preset) || isMetadataSync;
   const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -135,26 +128,6 @@ export function TriggerModal({
     ...systemConfigBlockers,
     ...presetTriggerBlockers,
   ];
-
-  useEffect(() => {
-    const needsSource = definition.code === "source_presence_check";
-    if (!needsSource || systemConfig.sourceId > 0) return;
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((sources) => {
-        if (!active) return;
-        const source = sources.find(
-          (item) => item.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(item.sourceType),
-        );
-        if (source)
-          setSystemConfig((current) => (current.sourceId > 0 ? current : { ...current, sourceId: source.id }));
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [definition.code, systemConfig.sourceId]);
 
   const save = async () => {
     setSaving(true);
@@ -423,52 +396,5 @@ function SystemWorkflowTriggerFields({
     );
   }
 
-  if (definitionCode === "source_presence_check") {
-    return <SourcePresenceTriggerFields value={value} onChange={onChange} />;
-  }
-
   return null;
-}
-
-/** Edits the source presence options stored in the shared system trigger config. */
-function SourcePresenceTriggerFields({
-  value,
-  onChange,
-}: {
-  value: SystemWorkflowTriggerConfig;
-  onChange: Dispatch<SetStateAction<SystemWorkflowTriggerConfig>>;
-}) {
-  const options: SourcePresenceCheckOptions = {
-    sourceId: value.sourceId,
-    library: value.library,
-    filter: value.presenceFilter,
-    limit: value.limit,
-  };
-  const changeOptions = useCallback(
-    (update: SetStateAction<SourcePresenceCheckOptions>) =>
-      onChange((current) => {
-        const next =
-          typeof update === "function"
-            ? update({
-                sourceId: current.sourceId,
-                library: current.library,
-                filter: current.presenceFilter,
-                limit: current.limit,
-              })
-            : update;
-        return {
-          ...current,
-          sourceId: next.sourceId,
-          library: next.library,
-          presenceFilter: next.filter,
-          limit: next.limit,
-        };
-      }),
-    [onChange],
-  );
-  return (
-    <div className="grid gap-3">
-      <SourcePresenceFields stacked value={options} onChange={changeOptions} />
-    </div>
-  );
 }

@@ -64,30 +64,20 @@ function run(overrides: Partial<WorkflowRun>): WorkflowRun {
 
 describe("operations", () => {
   it("lists what is started by hand, grouped by purpose, and leaves out workflows run elsewhere", () => {
-    const operations = operationsFromDefinitions(
-      [
-        definition(1, "availability_watch"),
-        definition(2, "source_presence_check"),
-        definition(3, "voice_catalog_sync"),
-        definition(4, "metadata_sync"),
-        definition(5, "metadata_genre_names"),
-        definition(6, "local_library_scan"),
-        definition(7, "remote_work_fetch"),
-      ],
-      new Set(["voice_catalog_sync"]),
-    );
+    // Fetch runs from a work, a catalog sync from its circle, series, or voice
+    // actor, and a source's library work check from its settings.
+    const operations = operationsFromDefinitions([
+      definition(1, "availability_watch"),
+      definition(2, "source_presence_check"),
+      definition(3, "voice_catalog_sync"),
+      definition(4, "metadata_sync"),
+      definition(5, "metadata_genre_names"),
+      definition(6, "local_library_scan"),
+      definition(7, "remote_work_fetch"),
+    ]);
     expect(
       groupOperations(operations).map((entry) => [entry.group, entry.operations.map((item) => item.definition.code)]),
-    ).toEqual([
-      ["library", ["local_library_scan", "metadata_sync"]],
-      ["catalog", ["voice_catalog_sync"]],
-      ["remote", ["remote_work_fetch", "source_presence_check"]],
-    ]);
-    // Only an operation with nothing to fill in runs straight from its row.
-    expect(operations.filter((item) => item.defaults).map((item) => item.definition.code)).toEqual([
-      "local_library_scan",
-      "metadata_sync",
-    ]);
+    ).toEqual([["library", ["local_library_scan", "metadata_sync"]]]);
   });
 });
 
@@ -119,17 +109,11 @@ describe("operationState", () => {
 });
 
 describe("operationLocked", () => {
-  const operations = operationsFromDefinitions(
-    [
-      definition(1, "local_library_scan"),
-      definition(2, "local_media_index"),
-      definition(3, "metadata_sync"),
-      definition(4, "circle_catalog_sync"),
-      definition(5, "remote_work_fetch"),
-      definition(6, "source_presence_check"),
-    ],
-    new Set(["circle_catalog_sync"]),
-  );
+  const operations = operationsFromDefinitions([
+    definition(1, "local_library_scan"),
+    definition(2, "local_media_index"),
+    definition(3, "metadata_sync"),
+  ]);
   const byCode = (code: string) => operations.find((item) => item.definition.code === code)!;
   const running = operationState(run({ id: 8, status: "running" }), undefined);
 
@@ -141,13 +125,12 @@ describe("operationLocked", () => {
   });
 
   it("lets an operation that runs per target start another target while one runs", () => {
-    for (const code of ["metadata_sync", "circle_catalog_sync", "remote_work_fetch", "source_presence_check"]) {
-      expect(operationLocked(byCode(code), running)).toBe(false);
-      // A click holds it only until the run it requested is listed.
-      expect(operationLocked(byCode(code), operationState(run({ id: 8, status: "running" }), { runId: null }))).toBe(
-        true,
-      );
-    }
+    const metadataSync = byCode("metadata_sync");
+    expect(operationLocked(metadataSync, running)).toBe(false);
+    // A click holds it only until the run it requested is listed.
+    expect(operationLocked(metadataSync, operationState(run({ id: 8, status: "running" }), { runId: null }))).toBe(
+      true,
+    );
   });
 });
 

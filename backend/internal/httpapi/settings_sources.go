@@ -159,6 +159,8 @@ type fileSourceSummary struct {
 	Endpoint      fileSourceEndpoint `json:"endpoint"`
 	HealthStatus  string             `json:"healthStatus"`
 	LastCheckedAt *string            `json:"lastCheckedAt"`
+	// PresenceCheck is listed for a remote source that answers work checks.
+	PresenceCheck *fileSourcePresenceCheck `json:"presenceCheck,omitempty"`
 }
 
 type fileSourceHealthCheckResult struct {
@@ -274,9 +276,7 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if source.Enabled {
-		s.Go(func(ctx context.Context) {
-			s.runSourceChangeAvailabilityChecks(ctx, source.ID, "source_created")
-		})
+		s.queueSourceChangePresenceCheck(context.WithoutCancel(r.Context()), source.ID, "source_created")
 	}
 	writeJSON(w, http.StatusCreated, source)
 }
@@ -315,7 +315,13 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var wasEnabled bool
-	if err := tx.QueryRowContext(r.Context(), "SELECT enabled FROM file_source WHERE id = ?", id).Scan(&wasEnabled); err != nil {
+	var previousAPIURL string
+	if err := tx.QueryRowContext(r.Context(), `
+		SELECT source.enabled, COALESCE(endpoint.api_url, '')
+		FROM file_source AS source
+		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
+		WHERE source.id = ?
+	`, id).Scan(&wasEnabled, &previousAPIURL); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
 			return
@@ -358,10 +364,12 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if source.Enabled {
-		s.Go(func(ctx context.Context) {
-			s.runSourceChangeAvailabilityChecks(ctx, source.ID, "source_updated")
-		})
+	// A source that becomes usable is asked about the library once; renaming or
+	// reordering an enabled source asks nothing.
+	if source.Enabled && !wasEnabled {
+		s.queueSourceChangePresenceCheck(context.WithoutCancel(r.Context()), source.ID, "source_enabled")
+	} else if source.Enabled && source.Endpoint.APIURL != previousAPIURL {
+		s.queueSourceChangePresenceCheck(context.WithoutCancel(r.Context()), source.ID, "source_endpoint_changed")
 	}
 	writeJSON(w, http.StatusOK, source)
 }
@@ -446,6 +454,10 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
 			return
 		}
+		writeError(w, err)
+		return
+	}
+	if err := deleteSourcePresenceCheckTriggersTx(r.Context(), tx, id); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -936,6 +948,10 @@ func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
 	}
 	sources, err := s.loadFileSources(r)
 	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.attachSourcePresenceChecks(r.Context(), sources); err != nil {
 		writeError(w, err)
 		return
 	}

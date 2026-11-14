@@ -81,22 +81,34 @@
 <details>
 <summary><strong>Workflows and Activity</strong></summary>
 
-- **Workflows** is one list of what you start by hand, grouped
-  into Library, Catalogs, and Remote sources. Each operation is a row with its
+- **Workflows** is one list of the library maintenance you start by hand,
+  under Library. Each operation is a row with its
   name, what starts it on its own (such as at startup or every 6 hours, with
   the next scheduled run), its state, and a run control, on phones as well, where
   the page no longer starts with a list to choose a workflow from.
 - **Run** starts an operation with its default options and the row shows the
   run at once. The local scan and local work files cannot be started again
-  until their run ends; Fetch, metadata sync, works on a source, and the
-  catalog syncs can queue another target while one runs, and the row counts
+  until their run ends; metadata sync can queue another scope while one
+  runs, and the row counts
   the runs it is not showing. A run started by a schedule, at startup, or in
   another browser shows on its operation the same way. A failure stays on the
   operation and opens its run in Activity.
 - **Options** opens, below its row, one sentence on what the operation does
   with **All runs** for its runs in Activity, its Run options, and its
-  triggers. Operations that need an input, such as Fetch and the catalog
-  syncs, open their options from **Run…**.
+  triggers.
+- **Check works on a source** runs from each remote source in System →
+  Library: the source shows its latest check and next scheduled one, and
+  **Check library works…** runs it and turns its startup and interval checks
+  on and off with one set of options. Deleting a source deletes its checks.
+- Adding a source that is on, switching a source on, or changing its API URL
+  queues one check of the library that Activity shows as **Source change**,
+  in place of an unrecorded background check after every source edit.
+- Fetch is no longer on Workflows; it starts from a work's page, and Quick
+  actions opens any work by its code. The catalog syncs open from their
+  circle, series, or voice actor: **Sync this circle's catalog…**, **Sync
+  this series' catalog…**, and **Sync this voice actor's catalog…** in
+  **More** open the run options in a dialog with the target filled in, and
+  an unknown circle's **Try fetching** opens the circle's.
 - The status strip, the workflow list, the run duration chart, and the
   **Latest run** card with its stage list and streaming log are removed. A run's steps and log are in its
   details in Activity.

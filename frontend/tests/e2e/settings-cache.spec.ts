@@ -18,6 +18,8 @@ import type {
   RecommendationTelemetrySummary,
   TranscodeCacheClearResult,
   UserPreferences,
+  WorkflowDefinition,
+  WorkflowTrigger,
 } from "../../src/lib/api";
 import {
   type ApiErrorBody,
@@ -1532,4 +1534,127 @@ test("password forms tell password managers whose credential each field holds", 
     "off",
   );
   await expect(proxyDialog.getByLabel("Password", { exact: true })).toHaveAttribute("autocomplete", "off");
+});
+
+test("a remote source's library work check runs and schedules from its row", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  const remote = fileSourceFixture({
+    id: 8,
+    code: "example-remote",
+    displayName: "Example Remote",
+    sourceType: "kikoeru_compatible",
+    priority: 30,
+    endpoint: {
+      ...fileSourceFixture().endpoint,
+      baseUrl: "https://remote.example",
+      apiUrl: "https://api.remote.example",
+    },
+  });
+  const runs: unknown[] = [];
+  const triggerWrites: Record<string, unknown>[] = [];
+  let triggers: WorkflowTrigger[] = [];
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "admin",
+        displayName: "Admin",
+        role: "admin",
+        permissions: ["library:read", "sources:write", "downloads:manage", "users:manage", "workflows:run"],
+        devMode: true,
+      }),
+    }),
+  );
+  await page.route("**/api/file-sources", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: [
+        {
+          ...remote,
+          presenceCheck: {
+            lastRun: { id: 61, status: "succeeded", at: fixtureTimestamp, checkedWorks: 100, availableWorks: 12 },
+            nextRunAt: null,
+          },
+        },
+      ] satisfies FileSource[],
+    });
+  });
+  await page.route("**/api/workflow-definitions", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 21,
+          code: "source_presence_check",
+          displayName: "Check works on a source",
+          description: "",
+          definitionJson: "{}",
+          scope: "system",
+          editable: false,
+          ownerUserId: null,
+          triggerCount: 0,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ] satisfies WorkflowDefinition[],
+    }),
+  );
+  await page.route("**/api/workflow-triggers", async (route) => {
+    if (route.request().method() === "POST") {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      triggerWrites.push(payload);
+      const created: WorkflowTrigger = {
+        id: 71,
+        workflowDefinitionId: 21,
+        workflowCode: "source_presence_check",
+        displayName: String(payload.displayName),
+        triggerType: String(payload.triggerType),
+        enabled: true,
+        scheduleJson: String(payload.scheduleJson),
+        configJson: String(payload.configJson),
+        nextRunAt: "2099-01-01 00:00:00",
+        lastRunAt: null,
+        lastSuccessAt: null,
+        lastErrorMessage: "",
+        createdAt: "",
+        updatedAt: "",
+      };
+      triggers = [created];
+      await route.fulfill({ status: 201, json: created });
+      return;
+    }
+    await route.fulfill({ json: triggers });
+  });
+  await page.route("**/api/workflow-runs/source-presence-check", async (route) => {
+    runs.push(route.request().postDataJSON());
+    await route.fulfill({ status: 202, json: { runId: 62, jobId: 72, status: "queued", existing: false } });
+  });
+
+  await page.goto("/system?tab=library");
+  const libraries = page.getByRole("region", { name: "Libraries", exact: true });
+  // The row says how the latest check went and opens the check.
+  await expect(libraries.getByText("Works checked", { exact: false })).toContainText("12 available");
+  await libraries.getByRole("button", { name: "Check library works…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Check library works" });
+  await expect(dialog.getByRole("switch", { name: "At startup", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+
+  // A schedule stores the options Run uses, for this source.
+  await dialog.getByRole("group", { name: "Works per run", exact: true }).getByRole("button", { name: "250" }).click();
+  await dialog.getByRole("switch", { name: "On a schedule", exact: true }).click();
+  await expect.poll(() => triggerWrites.length).toBe(1);
+  expect(triggerWrites[0]).toMatchObject({ workflowDefinitionId: 21, triggerType: "schedule", enabled: true });
+  expect(JSON.parse(String(triggerWrites[0].configJson))).toEqual({
+    sourceId: 8,
+    library: "local",
+    filter: "no_remote_source",
+    limit: 250,
+  });
+  expect(JSON.parse(String(triggerWrites[0].scheduleJson))).toEqual({ intervalMinutes: 1440 });
+  await expect(dialog.getByRole("combobox", { name: "Interval", exact: true })).toHaveValue("1440");
+
+  await dialog.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => runs).toEqual([{ sourceId: 8, library: "local", filter: "no_remote_source", limit: 250 }]);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Library work check queued as run #62.", { exact: true })).toBeVisible();
 });

@@ -466,6 +466,7 @@ export const surfaceJapanese = {
       schedule: "スケジュール",
       filesystem_event: "フォルダー変更",
       subworkflow: "ワークフローのステップ",
+      source_change: "ソースの変更",
     },
     facts: {
       started: "開始",
@@ -1242,6 +1243,7 @@ export const surfaceJapanese = {
       configure: "設定",
       deleteSource: "ソースを削除",
       checkHealth: "状態を確認",
+      checkLibraryWorks: "ライブラリの作品を確認…",
       endpoint: "エンドポイント",
       priority: "優先順位",
       editRemoteSource: "リモートソースを編集",
@@ -1529,7 +1531,6 @@ export const surfaceJapanese = {
     localMediaIndexCreateFailed: "ローカル作品のファイル更新を作成できませんでした。",
     localMediaIndexIncrementalHint: "フォルダがまだスキャンされていないローカル作品のみをインデックスします。",
     localMediaIndexFullHint: "スキャン済みの作品を含め、すべてのローカル作品のファイルを再インデックスします。",
-    sourcePresenceCheckCreateFailed: "ソース上の作品確認を作成できませんでした。",
     sourcePresenceLibrary: "作品",
     sourcePresenceLibraryLocal: "ローカルライブラリ",
     sourcePresenceLibraryAll: "データベース内のすべての作品",
@@ -1541,10 +1542,7 @@ export const surfaceJapanese = {
     sourcePresenceLimitHint:
       "作品ごとにソースを1回照会します。このソースで未確認の作品を優先し、次に確認が最も古い作品を確認します。",
     sourcePresenceLimitRange: "1回あたりの作品数は 1〜{{count}} の範囲で指定してください。",
-    sourcePresenceRequiresSource: "ソース上の作品を確認するには、互換性のあるリモートソースを設定してください。",
-    sourcePresenceSourceHint: "有効な互換リモートソースが利用可能になるまで、ソース上の作品の確認は無効です。",
     metadataSyncCreateFailed: "メタデータ同期実行を作成できませんでした。",
-    configureRemoteSource: "リモートソースを設定",
     triggerUpdateFailed: "トリガーを{{action}}できませんでした。",
     availabilityWatchLoadFailed: "可用性ウォッチを読み込めませんでした。",
     readyPoolRefreshFailed: "準備完了プールを更新できませんでした。",
@@ -1714,9 +1712,9 @@ export const surfaceJapanese = {
     rankingsManagedOnSubscriptions:
       "各ランキングは、「見つける」ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
     openSubscriptions: "「見つける」を開く",
-    presetScheduledBySubscriptions:
-      "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は「見つける」ページで設定したスケジュールで更新されます。",
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
+    catalogSyncQueued: "カタログ同期を実行 #{{id}} としてキューに追加しました。",
+    catalogSyncUnavailable: "カタログ同期のオプションを読み込めませんでした。あとでもう一度お試しください。",
     runCancelFailed: "ワークフローの実行をキャンセルできませんでした。もう一度お試しください。",
     runRetryFailed: "ワークフローの実行を再試行できませんでした。もう一度お試しください。",
     candidateActionFailed: "このレビュー項目を更新できませんでした。もう一度お試しください。",
@@ -1767,8 +1765,6 @@ export const surfaceJapanese = {
     operations: {
       groups: {
         library: "ライブラリ",
-        catalog: "カタログ",
-        remote: "リモートソース",
       },
       summaries: {
         local_library_scan: "データフォルダー内の作品を検出し、ローカルにあるものを記録します。",
@@ -1777,8 +1773,6 @@ export const surfaceJapanese = {
         circle_catalog_sync: "サークルのカタログを更新し、メタデータのない作品を同期します。",
         series_catalog_sync: "シリーズのうちメタデータのない作品を同期します。",
         voice_catalog_sync: "リモートソースで声優のカタログを更新し、その作品を同期します。",
-        remote_work_fetch: "リモートソースから作品を1つライブラリにダウンロードします。",
-        source_presence_check: "ライブラリの作品のうちどれがあるかをリモートソースに問い合わせます。",
       },
       status: {
         starting: "開始中",
@@ -1788,8 +1782,6 @@ export const surfaceJapanese = {
       },
       openRun: "実行 #{{id}}（{{status}}）を Activity で開く",
       queuedBehind: "実行 #{{id}} を実行中の処理のあとにキューへ追加しました。",
-      alreadyActive: "この対象には待機中または実行中の実行 #{{id}} があります。",
-      runWithOptions: "実行…",
       options: "オプション",
       allRuns: "すべての実行",
       schedule: {
@@ -1804,7 +1796,7 @@ export const surfaceJapanese = {
         paused: "自動実行は一時停止中",
       },
       elsewhere:
-        "ランキング、可用性ウォッチ、購読は{{discover}}で実行します。自動実行を含むすべての実行は{{activity}}にあります。",
+        "取得は作品から、カタログ同期はそのサークル、シリーズ、声優から、ソースのライブラリ作品の確認はシステムのソース設定から実行します。ランキング、可用性ウォッチ、購読は{{discover}}で実行します。自動実行を含むすべての実行は{{activity}}にあります。",
     },
     console: {
       stepProgress: "ステップ {{current}}/{{total}}",
@@ -1820,7 +1812,6 @@ export const surfaceJapanese = {
     tagCollectedWorks: "収集した作品にユーザータグを追加",
     presetTargetsHint: "複数ある場合はカンマで区切ります。",
     presetWorkLimitOff: "制限なし：メタデータのないカタログ作品をすべて同期します。",
-    prefillNotice: "移動元のページから{{fields}}を自動入力しました。実行前に確認してください。",
     presetFilterHint: "同期してタグを付けるメタデータなしの作品を絞り込みます。フィルターは既定ですべてオフです。",
     presetUnfilteredAutomation:
       "フィルターがオフのため、自動実行のたびにメタデータのないカタログ作品をすべて同期します。発売日範囲または作品数の上限をオンにすることをおすすめします。",
@@ -1897,20 +1888,6 @@ export const surfaceJapanese = {
       order: "開始日は終了日より後にできません。",
     },
     excludeExtensionsDescription: "Fetch 時にこれらの拡張子のファイルを除外します",
-    fetchRun: {
-      workCode: "作品コード",
-      codePlaceholder: "例: RJ00000000",
-      extensionsPlaceholder: "例: opus, webp, 7z",
-      codeHint: "RJ00000000 など、有効な作品コードを1つ入力してください。",
-      excludeType: "{{extension}} を除外",
-      otherExtensions: "その他の除外する拡張子",
-      invalidExtensions: "拡張子は英数字のみで入力し、カンマで区切ってください。",
-      previewHint:
-        "実行すると Fetch のプレビューが開きます。選択したファイルと保存先を確認してから公開してください。初期設定ではどのファイル形式も除外しません。",
-      sourcesFailed: "リモートソースを読み込めませんでした。",
-      prepareFailed:
-        "Fetch のプレビューを開けませんでした。ソース、作品コード、フィルターを確認して再試行してください。",
-    },
     extensionsToExclude: "除外する拡張子",
     availabilityWatchRunFailed: "可用性ウォッチの実行をキューに追加できませんでした。",
     extensionsPlaceholder: "例：wav, flac",
@@ -1922,8 +1899,6 @@ export const surfaceJapanese = {
     followUpDescription: "ローカルスキャン完了後に独立したメタデータ同期をキューに追加します。",
     followUpEachDescription: "各スキャン完了後に独立したメタデータ同期をキューに追加します。",
     preview: "プレビュー",
-    loadingSources: "ソースを読み込み中",
-    noCompatibleSource: "互換性のあるソースはありません",
     action: "操作",
     selectRunNodeDetail: "実行を選択してノードごとの実行状況を確認します。",
     summary: "概要",
@@ -2058,6 +2033,33 @@ export const surfaceJapanese = {
     nodes: "ノード",
     review: "レビュー",
     workflow: "ワークフロー",
+    sourceCheck: {
+      title: "ライブラリの作品を確認",
+      description:
+        "{{name}} にライブラリのどの作品があるかを問い合わせます。確認結果は各作品に記録され、作品が追加されることはありません。",
+      options: "確認のオプション",
+      optionsHint: "実行と自動確認はこのオプションを使います。",
+      automatic: "自動確認",
+      atStartup: "起動時",
+      atStartupHint: "Kikoto の起動時に確認します。",
+      onSchedule: "定期的に",
+      interval: "間隔",
+      sourceDisabled: "作品を確認するにはソースをオンにしてください。",
+      queued: "ライブラリの作品の確認を実行 #{{id}} としてキューに追加しました。",
+      queueFailed: "確認をキューに追加できませんでした。",
+      saveFailed: "自動確認を保存できませんでした。",
+      loadFailed: "自動確認を読み込めませんでした。",
+      never: "作品はまだ確認されていません",
+      queuedLine: "作品の確認を待機中",
+      running: "作品を確認中…",
+      checked: "{{time}}に作品を確認",
+      partial: "{{time}}の作品の確認は一部のみ完了",
+      failed: "{{time}}の作品の確認に失敗",
+      available_one: "{{count}} 件あり",
+      available_other: "{{count}} 件あり",
+      nextLine: "次回 {{time}}",
+      openRun: "アクティビティで確認を開く",
+    },
   },
   libraryDetail: {
     untrackSource: "ソースの追跡を解除しますか？",
@@ -2705,6 +2707,7 @@ export const surfaceJapanese = {
     moreVoiceActions: "声優のその他の操作",
     changeCover: "カバーを変更…",
     syncCircleCatalog: "このサークルのカタログを同期…",
+    syncSeriesCatalog: "このシリーズのカタログを同期…",
     syncVoiceCatalog: "この声優のカタログを同期…",
     manageAliases: "別名を管理",
     sourcesFailedShort: "{{count}} 件のソースが失敗",

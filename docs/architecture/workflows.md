@@ -417,24 +417,27 @@ distributed request lock between separate application processes.
 
 ## Workflows Page
 
-The Workflows page (`/workflows`) lists what an administrator starts by
-hand: the manually runnable built-in workflows and the preset workflows. A
-frontend-owned table keyed by workflow code groups them by purpose: Library
-(local scan, local files, metadata sync), Catalogs (the catalog sync presets),
-and Remote sources (Fetch and works on a source). A workflow that another page
-runs and configures (the DLsite and remote source ranking pulls, Availability
-Watch, and the subscription refresh, all on the Discover page) and a system
-workflow nobody starts by hand, such as Learn tag names, are not operations:
+The Workflows page (`/workflows`) lists the library maintenance an
+administrator starts by hand. A frontend-owned table keyed by workflow code
+groups these operations by purpose; every operation is in Library (local
+scan, local files, metadata sync). Work on one target starts where the target
+is shown: Fetch from a work's detail, a catalog sync preset from its circle,
+series, or voice actor (see [Catalog Sync Dialog](#catalog-sync-dialog)), and a
+source presence check from its remote source (see
+[Source Presence Check](#source-presence-check)). A workflow that another page runs
+and configures (the DLsite and remote source ranking pulls, Availability Watch,
+and the subscription refresh, all on the Discover page) and a system workflow
+nobody starts by hand, such as Learn tag names, are not operations either:
 the page does not list them, and Activity keeps their runs.
 
 An operation at rest is one row: its name, what starts it on its own, its
 state, and one run control. The line under the name lists its enabled
 triggers (at startup, watching folders, each interval schedule) with the
 soonest next scheduled run, says automatic runs are paused when every trigger
-is off, and is absent for an operation that runs only by hand. The state is one of never run, starting, queued, running with its
-progress (finished jobs for a bulk run, otherwise the stage out of the
-workflow's stages, and for a Fetch its transferred share), or how and when the
-latest run ended. A run that still waits for a candidate decision or a
+is off, and is absent for an operation that runs only by hand. The state is
+one of never run, starting, queued, running with its progress (finished jobs
+for a bulk run, otherwise the stage out of the workflow's stages), or how and
+when the latest run ended. A run that still waits for a candidate decision or a
 retryable metadata failure reads as needing review. Every state that has a run
 opens that run in Activity, so a failure stays on its operation until a later
 run replaces it and leads to its details.
@@ -443,27 +446,21 @@ An operation's run control follows the uniqueness its backend enforces.
 Starting it marks the row as starting at once, and the row follows the run
 through queued and running. The local scan and local work files are
 exclusive: one run of each is queued or running, so their run control returns
-when the run ends. Every other operation runs per target (Fetch per canonical
-work, metadata sync per scope, works on a source per source, a catalog sync
-per request), so its run control returns as soon as the requested run is
-listed and another target can queue behind the active run. The row then
-follows the running run, ahead of a queued one, and counts its other active
-runs; a request that queued behind another active run of the operation
-says so with a link to the new run. A repeat of the same Fetch, metadata
-scope, or source joins the active run on the backend. A catalog sync queues
-every request, so the page holds back a repeat of its own last inputs while
-that run is active and links to it instead. The page reads the active queue
+when the run ends. Metadata sync runs per scope, so its run control returns
+as soon as the requested run is listed and another scope can queue behind the
+active run. The row then follows the running run, ahead of a queued one, and
+counts its other active runs; a request that queued behind another active run
+of the operation says so with a link to the new run. A repeat of the same
+metadata scope joins the active run on the backend. The page reads the active queue
 every few seconds while work is active and every 15 seconds otherwise, and
 reloads each operation's latest run when the queue changes, so a run started
 by a trigger, at startup, or from another browser shows on its operation and,
 for an exclusive operation, holds its run control the same way. Demo reads
 both once. A hidden tab skips the poll and catches up when shown again.
 
-An operation whose untouched run form is complete (local scan, local files,
-metadata sync) runs with those defaults straight from its row. One that needs
-an input (Fetch, works on a source, the catalog sync presets) opens its
-options instead. **Options** opens, below the row and one operation at a time,
-what the row keeps off it:
+Every operation's untouched run form is complete, so Run on its row starts it
+with those defaults. **Options** opens, below the row and one operation at a
+time, what the row keeps off it:
 
 - One sentence on what the operation does, beside **All runs**, which opens
   Activity narrowed to that operation. A run's history, steps, and log are in
@@ -471,20 +468,29 @@ what the row keeps off it:
 - The run form: the Run options, then a run bar holding Run, any workflow
   action, and the first reason Run is unavailable. The bar sticks above the
   page's fixed bottom controls while a long form scrolls, and takes the place
-  of the row's run control while the options are open. Preset option groups
-  (Input, Filter, Actions) become columns once the form is wide enough. An
-  operation that needs a compatible remote source shows a prompt to configure
-  one in place of its form while none is enabled.
-- The triggers that start it on their own, each stating when it next does. A
-  preset has none and links to Discover, where a subscription follows a circle,
-  series, or voice actor on a schedule.
+  of the row's run control while the options are open. An operation that
+  needs a compatible remote source shows a prompt to configure one in place of
+  its form while none is enabled.
+- The triggers that start it on their own, each stating when it next does.
 
-The open operation is the page's linked state (`?workflow=<code>`), which a
-run-form link from another page also carries with its prefilled target. A
-`?workflow=` link to a workflow that is not an operation leads to Activity
-narrowed to that workflow, and an unknown code is dropped. Phones show the same
+The open operation is the page's linked state (`?workflow=<code>`). A
+`?workflow=` link to a workflow that is not an operation, such as Fetch or a
+catalog sync preset, leads to Activity narrowed to that workflow, and an
+unknown code is dropped. Phones show the same
 list; there is no landing view and no header back action. When runs need
 attention, one line above the list says how many and opens Activity on them.
+
+### Catalog Sync Dialog
+
+A circle's **More** menu offers its catalog sync preset, and, while one of its
+series is shown, that series' preset; a voice actor's **More** menu offers
+its own, and an unknown circle's fetch prompt opens the circle preset. Each
+opens the preset's run options (Input, Filter, Actions, stacked) in a dialog
+with the page's target filled in. **Run** posts the preset run, closes the
+dialog, and confirms with a link to the run in Activity for a viewer who can
+open it. The dialog loads the preset definitions when it opens and says so
+when they cannot be loaded. Demo opens it read-only. The preset queues every
+request; the dialog closing after a run keeps one click to one run.
 
 ## Workflow Permissions
 
@@ -1204,20 +1210,20 @@ one, cover candidates omit its images, and the duplicate-file check leaves its
 files out.
 
 `remote_work_fetch` runs are named `Fetch <code>` and record the queuing
-workflow as their trigger reason. The Workflows page's Fetch run form accepts one work code
-and an enabled compatible remote file source. Its Filter group excludes selected
-file extensions from the initial remote selection, with no exclusions by default;
-the same exclusions apply when choosing another language edition. Run opens the
-shared Fetch workspace to review files, destination, and conflicts before
-publication. Submission uses the source Fetch endpoints, permission checks, and
+workflow as their trigger reason. A work's detail page, including a remote-only
+work opened by its code, and the bulk actions open the shared Fetch workspace
+to review files, destination, and conflicts before publication. Submission uses the source Fetch endpoints, permission checks, and
 idempotent request scope; Fetch has no automation triggers.
 
 ## Source Availability
 
 Source availability is checked by the backend instead of frontend fan-out.
-Source-change checks first probe source health, then check candidate works only
-against reachable sources. The local library scan does not check remote source
-availability.
+The local library scan does not check remote source availability. A remote
+source that becomes usable, by being created enabled, switched on, or given
+another API URL, queues one [source presence check](#source-presence-check)
+with the default options and the trigger type `source_change`; renaming or
+reordering an enabled source queues nothing, and a source that cannot answer
+work checks is skipped.
 
 ## Source Presence Check
 
@@ -1260,6 +1266,19 @@ trigger dispatch for that source while one is active returns that run. Manual
 runs (`POST /api/workflow-runs/source-presence-check`), retries, and Startup
 and interval triggers require `workflows:run` and `sources:write`; a trigger
 stores the run options in its config. No trigger is seeded.
+
+The check is configured on its source, not on the Workflows page. `GET
+/api/file-sources` lists, for each remote source that answers work checks, a
+`presenceCheck` with the source's latest run (id, status, when it ended or
+started, and its checked and available counts) and the soonest next run of its
+enabled interval triggers. Source settings show that line under the source and
+read it again every few seconds while a check is queued or running. The
+source's check dialog keeps one set of options for Run and its triggers and
+offers at most one Startup and one interval trigger; it edits every stored
+trigger of a kind together, so older duplicates follow the same choice.
+Disabling a source pauses its triggers like every other source dependency;
+deleting a source deletes its source presence check triggers, which would have
+nowhere left to show.
 
 ## Availability Watch
 

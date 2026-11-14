@@ -10,6 +10,7 @@ import type {
   VoiceMergeReview,
   VoiceSummary,
   VoiceSummaryPage,
+  WorkflowPreset,
 } from "../../src/lib/api";
 import {
   authenticatedStateFixture,
@@ -227,6 +228,18 @@ function withoutCatalogSyncState<T extends CircleSummary | VoiceSummary>(creator
   const { syncState: _syncState, syncReason: _syncReason, ...legacyCreator } = creator;
   return legacyCreator;
 }
+
+const circleCatalogSyncPreset: WorkflowPreset = {
+  code: "circle_catalog_sync",
+  displayName: "Sync a circle catalog",
+  description: "",
+  target: "circle",
+  defaultTagTemplate: "circle_{target}",
+  parameters: [
+    { key: "circleId", kind: "circle_id", group: "input", required: true },
+    { key: "metadata", kind: "boolean", group: "action", required: false, default: true },
+  ],
+};
 
 async function mockCreatorDetails(
   page: Page,
@@ -571,6 +584,14 @@ for (const role of ["admin", "member"] as const) {
         });
         return;
       }
+      if (url.pathname === "/api/workflow-presets") {
+        await route.fulfill({ json: [circleCatalogSyncPreset] });
+        return;
+      }
+      if (url.pathname === "/api/library-sources") {
+        await route.fulfill({ json: [] });
+        return;
+      }
       await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
     });
 
@@ -585,8 +606,11 @@ for (const role of ["admin", "member"] as const) {
       return;
     }
     await expect(page.getByText(/Try fetching it from DLsite\?/)).toBeVisible();
+    // The catalog sync opens here with this maker id filled in.
     await fetchButton.click();
-    await expect(page).toHaveURL(/\/workflows\?workflow=circle_catalog_sync&circleId=RG09999$/);
+    const dialog = page.getByRole("dialog", { name: "Sync a circle catalog" });
+    await expect(dialog.getByLabel("Circle ID")).toHaveValue("RG09999");
+    await expect(page).toHaveURL(/\/circles\/RG09999$/);
   });
 }
 
@@ -954,7 +978,16 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
   ).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  // Catalog management waits in More; the sync shortcut opens the workflow with this circle prefilled.
+  // Catalog management waits in More; the sync opens its options here with this circle filled in.
+  const catalogSyncs: unknown[] = [];
+  await page.route("**/api/workflow-presets", (route) => route.fulfill({ json: [circleCatalogSyncPreset] }));
+  await page.route("**/api/workflow-presets/circle_catalog_sync/runs", async (route) => {
+    catalogSyncs.push((route.request().postDataJSON() as { inputs: unknown }).inputs);
+    await route.fulfill({
+      status: 202,
+      json: { runId: 82, status: "queued", workflowCode: "circle_catalog_sync", tagName: "", inputs: {} },
+    });
+  });
   await actions.getByRole("button", { name: "More circle actions" }).click();
   const moreMenu = page.getByRole("menu", { name: "More circle actions" });
   await expect(moreMenu.getByRole("menuitem")).toHaveText([
@@ -964,7 +997,14 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
     "Sync this circle's catalog…",
   ]);
   await moreMenu.getByRole("menuitem", { name: "Sync this circle's catalog…" }).click();
-  await expect(page).toHaveURL(/\/workflows\?workflow=circle_catalog_sync&circleId=RG09999$/);
+  const dialog = page.getByRole("dialog", { name: "Sync a circle catalog" });
+  await expect(dialog.getByLabel("Circle ID")).toHaveValue("RG09999");
+  await dialog.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => catalogSyncs).toHaveLength(1);
+  expect(catalogSyncs[0]).toMatchObject({ circleId: "RG09999" });
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Catalog sync queued as run #82.", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/circles\/RG09999$/);
 });
 
 test("circle detail shows a chosen work's cover until the latest work is restored", async ({ page }) => {

@@ -1,12 +1,7 @@
 import i18n from "@/i18n";
 import type { MetadataSyncFormValues } from "@/features/workflows/metadataSyncModel";
 import type { PresetFormValues } from "@/features/workflows/presetWorkflowModel";
-import type {
-  MetadataSyncOptions,
-  SourcePresenceCheckOptions,
-  SourcePresenceFilter,
-  SourcePresenceLibrary,
-} from "@/lib/api";
+import type { MetadataSyncOptions, SourcePresenceFilter, SourcePresenceLibrary } from "@/lib/api";
 
 /** Copy, built-in workflow tables, and run option types shared by the Workflows page panels. */
 
@@ -19,14 +14,12 @@ export type WorkflowNode = {
   config?: Record<string, unknown>;
 };
 
-export type SystemRunKind =
-  "local_scan" | "local_media_index" | "metadata_sync" | "remote_fetch" | "source_presence_check" | "preset";
+export type SystemRunKind = "local_scan" | "local_media_index" | "metadata_sync";
 
 export type SystemRunOptions = {
   followUpRun?: boolean;
   localMediaIndexMode?: LocalScanMode;
   metadataSync?: MetadataSyncOptions;
-  sourcePresence?: SourcePresenceCheckOptions;
 };
 
 /** Works one source presence check asks the source about; the backend enforces the same maximum. */
@@ -34,13 +27,6 @@ export const SOURCE_PRESENCE_DEFAULT_LIMIT = 100;
 export const SOURCE_PRESENCE_MAX_LIMIT = 1000;
 
 export type LocalScanMode = "incremental" | "full";
-
-export type RemoteFetchRunOptions = {
-  sourceId: number;
-  sourceDisplayName: string;
-  workCode: string;
-  excludeExtensions: string[];
-};
 
 export type SystemWorkflowTriggerConfig = {
   followUpRun: boolean;
@@ -66,8 +52,8 @@ export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = 
   local_library_scan: ["local_scan"],
   local_media_index: ["local_media_index"],
   metadata_sync: ["metadata_sync"],
-  remote_work_fetch: ["remote_fetch"],
-  source_presence_check: ["source_presence_check"],
+  remote_work_fetch: [],
+  source_presence_check: [],
 };
 
 export const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));

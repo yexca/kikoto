@@ -5,28 +5,25 @@ import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
 
 /** What the Workflows page offers: the operations a person starts by hand, grouped by what they are for. */
 
-export const operationGroups = ["library", "catalog", "remote"] as const;
+export const operationGroups = ["library"] as const;
 
 export type OperationGroup = (typeof operationGroups)[number];
 
 type OperationSpec = {
   group: OperationGroup;
   kind: SystemRunKind;
-  /**
-   * The options an untouched run form would send. An operation without them
-   * needs an input, such as a work code, so its run control opens the form.
-   */
-  defaults?: () => SystemRunOptions;
+  /** The options an untouched run form would send, which Run on the row uses. */
+  defaults: () => SystemRunOptions;
   /**
    * The operation has one run queued or running at a time, so it cannot start
    * again until that run ends. Any other operation runs per target, such as a
-   * work, a circle, a metadata scope, or a source, and can start a run for
-   * another target while one is active.
+   * metadata scope, and can start a run for another target while one is
+   * active.
    */
   exclusive?: boolean;
 };
 
-/** Built-in operations in page order. Preset workflows join the catalog group after them. */
+/** Built-in operations in page order. */
 const builtInOperations: Record<string, OperationSpec> = {
   local_library_scan: {
     group: "library",
@@ -45,34 +42,22 @@ const builtInOperations: Record<string, OperationSpec> = {
     kind: "metadata_sync",
     defaults: () => ({ metadataSync: metadataSyncPayload(metadataSyncDefaultValues()) }),
   },
-  remote_work_fetch: { group: "remote", kind: "remote_fetch" },
-  source_presence_check: { group: "remote", kind: "source_presence_check" },
 };
 
-const operationOrder = [
-  "local_library_scan",
-  "local_media_index",
-  "metadata_sync",
-  "circle_catalog_sync",
-  "series_catalog_sync",
-  "voice_catalog_sync",
-  "remote_work_fetch",
-  "source_presence_check",
-];
+const operationOrder = ["local_library_scan", "local_media_index", "metadata_sync"];
 
 export type Operation = OperationSpec & { definition: WorkflowDefinition };
 
 export type OperationGroupEntry = { group: OperationGroup; operations: Operation[] };
 
 /**
- * The operations among the workflow definitions. Workflows configured on
- * another page, and system workflows nobody starts by hand, are not
+ * The operations among the workflow definitions. Workflows started from
+ * another page (Fetch from a work, a catalog sync from its circle, series, or
+ * voice actor, a source's library work check from its settings, and the
+ * Discover workflows) and system workflows nobody starts by hand are not
  * operations; their runs are in Activity.
  */
-export function operationsFromDefinitions(
-  definitions: WorkflowDefinition[],
-  presetCodes: ReadonlySet<string>,
-): Operation[] {
+export function operationsFromDefinitions(definitions: WorkflowDefinition[]): Operation[] {
   const rank = (code: string) => {
     const index = operationOrder.indexOf(code);
     return index < 0 ? operationOrder.length : index;
@@ -80,9 +65,7 @@ export function operationsFromDefinitions(
   return definitions
     .flatMap((definition): Operation[] => {
       const builtIn = builtInOperations[definition.code];
-      if (builtIn) return [{ ...builtIn, definition }];
-      if (presetCodes.has(definition.code)) return [{ group: "catalog", kind: "preset", definition }];
-      return [];
+      return builtIn ? [{ ...builtIn, definition }] : [];
     })
     .sort(
       (left, right) =>

@@ -155,6 +155,23 @@ storage**.
 - Each remote source in **Libraries** shows its health, host, a health-check
   action, and an enable switch that saves immediately. Health-check results are persisted
   through the same source health state used by automatic probes.
+- For an account that can run workflows, a source that answers work checks
+  also shows its latest library work check, such as **Works checked 2 days ago
+  · 12 available**, with the next scheduled check, and opens that run in
+  Activity. **Check library works…** opens the check: the works it asks about
+  (**Local library**, the default, or **All works in database**), a filter
+  (**No remote source**, the default, for works that no remote source
+  currently provides, or **All**), and **Works per run** (50 to 1000, default
+  100). **Run** queues a check with these options. **Automatic checks** turn on
+  a check **At startup** and **On a schedule** of 1, 6, or 12 hours, 1 day, or
+  7 days; they use the same options and save as soon as they change. A source
+  that is switched off cannot be checked, and switching it off pauses its
+  automatic checks until they are turned on again. Deleting a source deletes
+  its automatic checks. See
+  [Check works on a source](workflows.md#current-behavior).
+- Adding a source that is on, switching a source on, or changing its API URL
+  queues one check with the default options, which Activity shows with the
+  trigger **Source change**. Renaming or reordering a source checks nothing.
 - **Add source** starts from one address. Kikoto probes the address as entered,
   its origin, and the conventional `api.` sibling for a Kikoeru-compatible works
   API, then fills the API URL, public site, and name. When nothing is detected,

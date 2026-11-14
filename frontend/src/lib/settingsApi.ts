@@ -149,6 +149,20 @@ export type FileSource = {
   };
   healthStatus: string;
   lastCheckedAt: string | null;
+  /** Listed for a remote source that answers work checks. */
+  presenceCheck?: FileSourcePresenceCheck;
+};
+
+/** A remote source's latest library work check and its next scheduled one. */
+export type FileSourcePresenceCheck = {
+  lastRun: {
+    id: number;
+    status: string;
+    at: string;
+    checkedWorks: number;
+    availableWorks: number;
+  } | null;
+  nextRunAt: string | null;
 };
 
 /** Copy the work's own lyrics into Kikoto's lyrics folder, or move them there. */

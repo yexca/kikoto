@@ -34,7 +34,8 @@ import {
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
-import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
+import { CatalogSyncDialog, type CatalogSyncCode } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
+import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import {
   api,
@@ -138,6 +139,9 @@ export function CircleDetailPage({
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
+  const [catalogSync, setCatalogSync] = useState<{ code: CatalogSyncCode; target: Record<string, string> } | null>(
+    null,
+  );
   const remoteWorkActions = useRemoteWorkActions();
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<CircleAvailabilityFilter>("all");
@@ -316,7 +320,7 @@ export function CircleDetailPage({
     : circle.series.reduce((total, series) => total + series.works, 0);
 
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
-  // Demo lists the covers and the catalog sync form for inspection and saves or runs neither.
+  // Demo lists the covers and the catalog sync options for inspection and saves or runs neither.
   const canChangeCover = auth.demoMode || auth.hasPermission("favorites:write");
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
@@ -368,12 +372,23 @@ export function CircleDetailPage({
   };
 
   // An unknown circle is fetched by the circle catalog sync workflow, which adds it
-  // on success; the run form opens with this maker id filled in.
+  // on success; its options open here with this maker id filled in.
   const canFetchMissingCircle = canRefreshCatalog && canOpenWorkflows;
   const openCatalogSyncCircle = () =>
-    openWorkflowPath(
-      workflowRunFormPath("circle_catalog_sync", { circleId: detail?.externalId ?? externalId.toUpperCase() }),
-    );
+    setCatalogSync({
+      code: "circle_catalog_sync",
+      target: { circleId: detail?.externalId ?? externalId.toUpperCase() },
+    });
+  const catalogSyncDialog = catalogSync && (
+    <CatalogSyncDialog
+      code={catalogSync.code}
+      target={catalogSync.target}
+      readOnly={auth.demoMode}
+      canTag={auth.hasPermission("tags:write")}
+      canOpenActivity={canOpenWorkflows}
+      onClose={() => setCatalogSync(null)}
+    />
+  );
 
   const firstPull = circle.syncState === "never";
   const catalogSyncedTime = circle.lastSyncedAt ? formatDateTime(circle.lastSyncedAt, resolvedLocale) : "";
@@ -434,6 +449,18 @@ export function CircleDetailPage({
             icon: <Rss className="h-4 w-4" />,
             onSelect: openCatalogSyncCircle,
           },
+          // A series view also offers the series' own catalog sync.
+          ...(selectedSeries
+            ? [
+                {
+                  key: "seriesCatalogSync",
+                  label: t("detailActions.syncSeriesCatalog"),
+                  icon: <Rss className="h-4 w-4" />,
+                  onSelect: () =>
+                    setCatalogSync({ code: "series_catalog_sync", target: { seriesId: selectedSeries.titleId } }),
+                },
+              ]
+            : []),
         ]
       : []),
   ];
@@ -582,29 +609,32 @@ export function CircleDetailPage({
   if (notFound) {
     const missing = notFound === "missing";
     return (
-      <NotFoundPage
-        title={missing ? t("creatorBrowse.circleNotInDatabase") : t("creatorBrowse.circleNotFound")}
-        message={
-          !missing
-            ? t("creatorBrowse.circleUnavailable", { id: externalId })
-            : canFetchMissingCircle
-              ? t("creatorBrowse.circleFetchPrompt", { id: externalId })
-              : t("creatorBrowse.circleContactAdmin", { id: externalId })
-        }
-        primaryAction={
-          missing && canFetchMissingCircle ? (
-            <Button onClick={openCatalogSyncCircle}>
-              <Rss className="h-4 w-4" />
-              {t("creatorBrowse.circleFetch")}
-            </Button>
-          ) : undefined
-        }
-        onBack={navigateToList}
-        onOpenLibrary={() => {
-          window.history.pushState({}, "", "/");
-          window.dispatchEvent(new Event("kikoto:navigation"));
-        }}
-      />
+      <>
+        <NotFoundPage
+          title={missing ? t("creatorBrowse.circleNotInDatabase") : t("creatorBrowse.circleNotFound")}
+          message={
+            !missing
+              ? t("creatorBrowse.circleUnavailable", { id: externalId })
+              : canFetchMissingCircle
+                ? t("creatorBrowse.circleFetchPrompt", { id: externalId })
+                : t("creatorBrowse.circleContactAdmin", { id: externalId })
+          }
+          primaryAction={
+            missing && canFetchMissingCircle ? (
+              <Button onClick={openCatalogSyncCircle}>
+                <Rss className="h-4 w-4" />
+                {t("creatorBrowse.circleFetch")}
+              </Button>
+            ) : undefined
+          }
+          onBack={navigateToList}
+          onOpenLibrary={() => {
+            window.history.pushState({}, "", "/");
+            window.dispatchEvent(new Event("kikoto:navigation"));
+          }}
+        />
+        {catalogSyncDialog}
+      </>
     );
   }
 
@@ -987,6 +1017,7 @@ export function CircleDetailPage({
           onClose={() => setCoverDialogOpen(false)}
         />
       )}
+      {catalogSyncDialog}
       <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
       <BrowseLoadingIndicator refreshing={isLoading || queueingRefresh} label={t("creatorBrowse.loadingCircles")} />
     </div>
