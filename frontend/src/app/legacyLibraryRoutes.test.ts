@@ -76,11 +76,17 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance")).toBe("/system?tab=library");
     expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBe("/system?tab=library");
     expect(legacyLibraryRedirect("/users")).toBe("/system?tab=users");
-    expect(legacyLibraryRedirect("/cleanup")).toBe("/system?tab=cleanup");
+    expect(legacyLibraryRedirect("/cleanup")).toBeNull();
+    expect(legacyLibraryRedirect("/cleanup", "?tab=database")).toBeNull();
+  });
+
+  it("opens Cleanup tab links of Settings and System on the Cleanup page", () => {
+    expect(legacyLibraryRedirect("/system", "?tab=cleanup")).toBe("/cleanup");
+    expect(legacyLibraryRedirect("/settings/", "?tab=cleanup")).toBe("/cleanup");
   });
 
   it("opens the administration tabs of Settings links on the System page", () => {
-    for (const tab of ["library", "cache", "proxy", "llm", "cleanup", "users"]) {
+    for (const tab of ["library", "cache", "proxy", "llm", "users"]) {
       expect(legacyLibraryRedirect("/settings", `?tab=${tab}`)).toBe(`/system?tab=${tab}`);
     }
     expect(legacyLibraryRedirect("/settings/", "?tab=library&source=8")).toBe("/system?tab=library&source=8");

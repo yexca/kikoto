@@ -1,10 +1,9 @@
-import { Bot, Download, Eraser, Folder, Network, Shield, type LucideIcon } from "lucide-react";
+import { Bot, Download, Folder, Network, Shield, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import type { CurrentUser } from "@/lib/api";
-import { CleanupPage } from "@/pages/CleanupPage";
 import { MaintenancePage } from "@/pages/MaintenancePage";
 import {
   settingsPageClassName,
@@ -24,7 +23,6 @@ const tabPresentation: Record<SystemSettingsTab, { labelKey: string; icon: Lucid
   cache: { labelKey: "maintenance.tabs.cache", icon: Download },
   proxy: { labelKey: "maintenance.tabs.proxy", icon: Network },
   llm: { labelKey: "maintenance.tabs.llm", icon: Bot },
-  cleanup: { labelKey: "cleanup.tab", icon: Eraser },
   users: { labelKey: "maintenance.tabs.users", icon: Shield },
 };
 
@@ -35,8 +33,8 @@ function resolveSystemTab(tab: string): SettingsLocation<SystemSettingsTab> {
 
 /**
  * Instance settings for administrators: the library and its sources, cache and
- * fetch, proxies, ASR and LLM services, cleanup, and users. Demo opens every
- * tab read-only.
+ * fetch, proxies, ASR and LLM services, and users. Demo opens every tab
+ * read-only.
  */
 export function SystemSettingsPage({
   user,
@@ -61,7 +59,6 @@ export function SystemSettingsPage({
   const canManageUsers = hasAdminPermission("users:manage");
   const canManageCache = hasAdminPermission("downloads:manage");
   const canManageAccessPolicy = user.role === "super_admin" && !readOnly;
-  const canManageCleanup = canManageCache || canManageSources;
 
   const navItems: SubNavItem<SystemSettingsTab>[] = systemSettingsTabs.map((tab) => ({
     value: tab,
@@ -81,21 +78,17 @@ export function SystemSettingsPage({
         id={`settings-panel-${activeTab}`}
         aria-labelledby={`settings-tab-${activeTab}`}
       >
-        {activeTab === "cleanup" ? (
-          <CleanupPage canManageCache={canManageCache} canManageDatabase={canManageSources} readOnly={readOnly} />
-        ) : (
-          <MaintenancePage
-            canManageSources={canManageSources}
-            canManageUsers={canManageUsers}
-            canManageCleanup={canManageCleanup}
-            currentUserId={user.id}
-            isSuperAdmin={user.role === "super_admin"}
-            canManageAccessPolicy={canManageAccessPolicy}
-            readOnly={readOnly}
-            activeTab={activeTab}
-            onAccessPolicyUpdated={onAccessPolicyUpdated}
-          />
-        )}
+        <MaintenancePage
+          canManageSources={canManageSources}
+          canManageUsers={canManageUsers}
+          canManageCleanup={canManageCache}
+          currentUserId={user.id}
+          isSuperAdmin={user.role === "super_admin"}
+          canManageAccessPolicy={canManageAccessPolicy}
+          readOnly={readOnly}
+          activeTab={activeTab}
+          onAccessPolicyUpdated={onAccessPolicyUpdated}
+        />
       </div>
     </div>
   );

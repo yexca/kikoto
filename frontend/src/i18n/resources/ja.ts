@@ -371,6 +371,11 @@ const adminToolsJapanese = {
   },
   cleanup: {
     tab: "クリーンアップ",
+    tabs: {
+      works: "作品",
+      cache: "キャッシュ",
+      database: "データベース",
+    },
     ofLimit: "/ {{limit}}",
     usageValue: "{{limit}} 中 {{used}} 使用（{{percent}}%）",
     transcodeUsage: "トランスコードキャッシュの使用量",
@@ -380,7 +385,6 @@ const adminToolsJapanese = {
       reclaimable: "{{size}} 回収可能",
       database: "データベース",
       free: "空きページ {{size}}",
-      total: "キャッシュとデータベースで約 {{size}} を回収できます。",
     },
     database: {
       title: "データベースのレコード",
@@ -747,6 +751,7 @@ export const japaneseResource = {
         about: "情報",
         manage: "管理",
         personal: "個人",
+        cleanup: "クリーンアップ",
         system: "システム",
         tags: "タグ",
         userData: "データ",

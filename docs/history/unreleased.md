@@ -27,8 +27,8 @@
   shows them; folder artwork images stay out of the photos.
 - Record thumbnails are kept in the transcode cache and count against its
   limit in **System → Cache & Fetch**. The least recently viewed are removed
-  first when the cache is full, **Clear transcode cache** in **System →
-  Cleanup** removes them with the rest of the cache, and a complete Record scan
+  first when the cache is full, **Clear transcode cache** in **Cleanup →
+  Cache** removes them with the rest of the cache, and a complete Record scan
   removes the thumbnails of files that are gone. A removed thumbnail is made
   again the next time a folder shows it.
 
@@ -39,13 +39,14 @@
 
 - The desktop sidebar shows the listening destinations and folds the rest
   into two groups: **Personal** holds Insights, Tags, and Settings, and
-  **Manage** holds Workflows, Metadata, Translation, and System. A
+  **Manage** holds Workflows, Metadata, Translation, Cleanup, and System. A
   group stays collapsed until you open it, remembers that choice on the device,
   and opens on its own while one of its pages is shown.
 - Settings holds only your own account, playback, and recommendation
   settings. The instance settings (Library, Cache & Fetch, Proxy, ASR & LLM,
-  Cleanup, and Users) are the new **System** page for administrators, and
-  existing links to those Settings tabs open it.
+  and Users) are the new **System** page for administrators, and cleanup is
+  the new **Cleanup** page in the **Manage** group, with **Works**, **Cache**,
+  and **Database** tabs. Existing links to those Settings tabs open them.
 - Personal tags are a page of their own, **Tags** (`/tags`), instead of a
   Settings tab.
 - **About** closes the sidebar below a divider. **Language** opens from the
@@ -245,7 +246,7 @@
   mouse wheel, a trackpad or two-finger pinch, and the `+`, `-`, and `0`
   keys, keeping the point under the pointer or fingers in place. A click
   still switches between fit and actual size.
-- **System → Cleanup** adds **Local works by rating**, which lists your
+- **Cleanup → Works** holds **Local works by rating**, which lists your
   low-rated local works largest first and deletes their local folders in one
   run. It can also clear your rating and Quick mark of them and forget the
   works, and asks again before deleting works rated 3 stars or more.

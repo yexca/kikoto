@@ -43,7 +43,7 @@ import {
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { draftAfterSave, sectionSettings } from "@/pages/settingsDraft";
-import { systemSettingsPath } from "@/pages/settingsPaths";
+import { cleanupPath } from "@/pages/settingsPaths";
 import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
@@ -729,7 +729,7 @@ function CacheFetchSettings({
   const commitTransfer = (key: keyof RuntimeDraft) => () => void transferStatus.track(editor.commit(key));
   const commitPacing = (key: keyof RuntimeDraft) => () => void pacingStatus.track(editor.commit(key));
   const openCleanup = () => {
-    window.history.pushState({}, "", systemSettingsPath("cleanup"));
+    window.history.pushState({}, "", cleanupPath("cache"));
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   return (

@@ -2,6 +2,7 @@ import { legacyRunLogPath } from "@/features/workflows/workflowLinks";
 
 import { TAGS_PATH } from "./navigation";
 import {
+  CLEANUP_PATH,
   SYSTEM_SETTINGS_PATH,
   systemSettingsTabAliases,
   systemSettingsTabs,
@@ -36,6 +37,12 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     params.delete("metadataRun");
     return `/metadata?${params}`;
   }
+  // Cleanup is a page of its own.
+  if ((path === "/settings" || path === SYSTEM_SETTINGS_PATH) && new URLSearchParams(search).get("tab") === "cleanup") {
+    const params = new URLSearchParams(search);
+    params.delete("tab");
+    return `${CLEANUP_PATH}${params.size ? `?${params}` : ""}`;
+  }
   if (path === "/settings") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab") ?? "";
@@ -50,7 +57,6 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     }
   }
   if (path === "/users") return `${SYSTEM_SETTINGS_PATH}?tab=users`;
-  if (path === "/cleanup") return `${SYSTEM_SETTINGS_PATH}?tab=cleanup`;
   if (path === "/maintenance") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab");

@@ -47,6 +47,11 @@ export const adminToolsEnglish = {
   },
   cleanup: {
     tab: "Cleanup",
+    tabs: {
+      works: "Works",
+      cache: "Cache",
+      database: "Database",
+    },
     ofLimit: "of {{limit}}",
     usageValue: "{{used}} of {{limit}} ({{percent}}%)",
     transcodeUsage: "Transcode cache usage",
@@ -55,7 +60,6 @@ export const adminToolsEnglish = {
       reclaimable: "{{size}} reclaimable",
       database: "Database",
       free: "{{size}} free pages",
-      total: "About {{size}} can be reclaimed across caches and the database.",
     },
     database: {
       title: "Database records",

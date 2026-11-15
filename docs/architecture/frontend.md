@@ -7,7 +7,7 @@ pages are administration, and `app` pages (About) describe Kikoto itself. The
 desktop sidebar (`app/AppSidebar`) lists the browse destinations; below a
 hairline, the collapsible groups that `navigationGroups` declares:
 **Personal**, holding Insights, Tags, and Settings, and **Manage**, holding
-Workflows, Metadata, Translation, and System; and below another
+Workflows, Metadata, Translation, Cleanup, and System; and below another
 hairline the `app` pages. The sidebar renders a group from its declaration and the pages that
 name it, so a new page joins a group by declaring it. Each group is collapsed
 by default, remembers its expanded state in browser storage, and opens while
@@ -543,9 +543,13 @@ so a still-loading element never replaces it.
   export and previewed import from a Kikoto or Kikoeru file, a Kikoeru account,
   or an open-source Kikoeru database.
 - System (`/system`): the instance settings as the same tabs: Library,
-  Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users. `pages/settingsLocation`
-  keeps the open tab of both pages in the `tab` query parameter and scrolls
-  to a section a link names.
+  Cache & Fetch, Proxy, ASR & LLM, and Users.
+- Cleanup (`/cleanup`): Works, Cache, and Database as the same tabs, each
+  shown to an account that may act on it: Works and Cache need
+  `downloads:manage`, Database `sources:write`. A tab scans its caches or
+  database the first time it opens. `pages/settingsLocation` keeps the open tab
+  of these pages in the `tab` query parameter and scrolls to a section a link
+  names.
 - Both settings pages, tabs included, are the content column of
   `components/ui/page-width` (`contentPageClassName`), which every page but
   the browse destinations shares; the page sets it, never a feature inside the
@@ -673,13 +677,18 @@ Personal tags are the Tags page at `/tags`. Settings opens Account at
 Account time zone section. `/user-data` redirects to `/settings?tab=data`,
 `/settings?tab=tags` to `/tags`, and `/history` and `/settings?tab=history`
 to `/insights`. System opens Library at `/system` and its other tabs at
-`?tab=cache`, `proxy`, `llm`, `cleanup`, and `users`; `metadata` opens
-Library, and `asr` and `services` open ASR & LLM. A `/settings` link that
-names a System tab, `/users`, `/cleanup`, and the `/maintenance` tabs redirect
-to the matching System or Settings tab and keep the rest of the query.
+`?tab=cache`, `proxy`, `llm`, and `users`; `metadata` opens
+Library, and `asr` and `services` open ASR & LLM. Cleanup opens its first
+available tab at `/cleanup` and the others at `?tab=works`, `cache`, and
+`database`. A `/settings` link that names a System tab, `/users`, and the
+`/maintenance` tabs redirect to the matching System or Settings tab, and
+`/settings?tab=cleanup` and `/system?tab=cleanup` to `/cleanup`, keeping the
+rest of the query.
 Insights, Tags, and the Account data section require `library:read`, and each
 page loads its own chunk independently of the global player. System appears
-only for administrators and Demo, which sees every tab read-only.
+only for administrators and Demo, and Cleanup for an account with
+`downloads:manage` or `sources:write` and for Demo; Demo sees every tab of both
+read-only.
 The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep
 rewind preferences share that scope and update the resume cursor only when the

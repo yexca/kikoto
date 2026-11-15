@@ -1,16 +1,31 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Database, FolderX, HardDrive, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
+import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { formatByteSize } from "@/features/cleanup/cacheCleanupModel";
-import { useStableCallback } from "@/hooks/useStableCallback";
 import { DatabaseBackupSection } from "@/features/cleanup/DatabaseBackupSection";
 import { DatabaseCleanupSection, DatabaseOptimizeSection } from "@/features/cleanup/DatabaseCleanupSection";
 import { LocalWorkCleanupSection } from "@/features/cleanup/LocalWorkCleanupSection";
 import { ManagedMediaCacheSection, TranscodeCacheSection } from "@/features/cleanup/StorageCachePanels";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type CacheOverview, type DatabaseMaintenanceOverview } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { CLEANUP_PATH, cleanupTabs, type CleanupTab } from "@/pages/settingsPaths";
+import { settingsPageClassName, settingsPanelClassName, useSettingsLocation } from "@/pages/settingsLocation";
 
+const tabPresentation: Record<CleanupTab, { labelKey: string; icon: LucideIcon }> = {
+  works: { labelKey: "cleanup.tabs.works", icon: FolderX },
+  cache: { labelKey: "cleanup.tabs.cache", icon: HardDrive },
+  database: { labelKey: "cleanup.tabs.database", icon: Database },
+};
+
+/**
+ * Cleanup for administrators: local work folders, the caches, and the
+ * database, each on its own tab. A tab shows only when the viewer may act on
+ * it; Demo opens every tab read-only.
+ */
 export function CleanupPage({
   canManageCache,
   canManageDatabase,
@@ -22,6 +37,17 @@ export function CleanupPage({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const available = useMemo(
+    () => cleanupTabs.filter((tab) => (tab === "database" ? canManageDatabase : canManageCache)),
+    [canManageCache, canManageDatabase],
+  );
+  const defaultTab: CleanupTab = available[0] ?? "works";
+  const resolveTab = useCallback(
+    (tab: string) => ({ tab: (available as readonly string[]).includes(tab) ? (tab as CleanupTab) : defaultTab }),
+    [available, defaultTab],
+  );
+  const { tab: activeTab, select: selectTab } = useSettingsLocation<CleanupTab>(CLEANUP_PATH, defaultTab, resolveTab);
+
   const [cacheOverview, setCacheOverview] = useState<CacheOverview | null>(null);
   const [cacheScanning, setCacheScanning] = useState(false);
   const [databaseOverview, setDatabaseOverview] = useState<DatabaseMaintenanceOverview | null>(null);
@@ -57,63 +83,73 @@ export function CleanupPage({
     }
   }, [canManageDatabase, t, toast]);
 
-  // Scans run once per mount; each section offers its own refresh.
-  const scanOnMount = useStableCallback(() => {
-    void scanCache();
-    void scanDatabase();
+  // A tab scans the first time it opens; each section offers its own refresh.
+  const scannedTabs = useRef(new Set<CleanupTab>());
+  const scanTab = useStableCallback((tab: CleanupTab) => {
+    if (scannedTabs.current.has(tab)) return;
+    scannedTabs.current.add(tab);
+    if (tab === "cache") void scanCache();
+    if (tab === "database") void scanDatabase();
   });
   useEffect(() => {
-    scanOnMount();
-  }, [scanOnMount]);
+    scanTab(activeTab);
+  }, [activeTab, scanTab]);
 
   const openUnlinkedWorks = () => {
     window.history.pushState({}, "", "/metadata?reason=no_source");
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
 
-  const reclaimable =
-    (cacheOverview?.orphanBytes ?? 0) + (cacheOverview?.transcode.bytes ?? 0) + (databaseOverview?.freeBytes ?? 0);
+  const navItems: SubNavItem<CleanupTab>[] = available.map((tab) => ({
+    value: tab,
+    label: t(tabPresentation[tab].labelKey),
+    icon: tabPresentation[tab].icon,
+    id: `cleanup-tab-${tab}`,
+    controls: `cleanup-panel-${tab}`,
+  }));
 
   return (
-    <div className="space-y-10" data-testid="cleanup-content">
-      {cacheOverview && databaseOverview && reclaimable > 0 && (
-        <p className="px-1 text-sm text-muted-foreground" role="status">
-          {t("cleanup.summary.total", { size: formatByteSize(reclaimable) })}
-        </p>
-      )}
-
-      {canManageCache && (
-        <div className="space-y-10">
-          <TranscodeCacheSection
-            overview={cacheOverview}
-            scanning={cacheScanning}
-            readOnly={readOnly}
-            onChanged={scanCache}
-          />
-          <ManagedMediaCacheSection
-            overview={cacheOverview}
-            scanning={cacheScanning}
-            readOnly={readOnly}
-            onRefresh={scanCache}
-          />
-          <LocalWorkCleanupSection readOnly={readOnly} canForget={canManageDatabase} />
-        </div>
-      )}
-
-      {canManageDatabase && (
-        <div className="space-y-10">
-          <DatabaseCleanupSection
-            overview={databaseOverview}
-            scanning={databaseScanning}
-            readOnly={readOnly}
-            unlinkedWorks={unlinkedWorks}
-            onRescan={scanDatabase}
-            onOpenUnlinkedWorks={openUnlinkedWorks}
-          />
-          <DatabaseOptimizeSection overview={databaseOverview} readOnly={readOnly} onOptimized={scanDatabase} />
-          <DatabaseBackupSection readOnly={readOnly} />
-        </div>
-      )}
+    <div className={settingsPageClassName}>
+      {readOnly && <DemoReadOnlyNotice />}
+      <SubNavTabs label={t("nav.cleanup")} items={navItems} selected={activeTab} onSelect={selectTab} />
+      <div
+        className={settingsPanelClassName}
+        role="tabpanel"
+        id={`cleanup-panel-${activeTab}`}
+        aria-labelledby={`cleanup-tab-${activeTab}`}
+      >
+        {activeTab === "works" && <LocalWorkCleanupSection readOnly={readOnly} canForget={canManageDatabase} />}
+        {activeTab === "cache" && (
+          <>
+            <TranscodeCacheSection
+              overview={cacheOverview}
+              scanning={cacheScanning}
+              readOnly={readOnly}
+              onChanged={scanCache}
+            />
+            <ManagedMediaCacheSection
+              overview={cacheOverview}
+              scanning={cacheScanning}
+              readOnly={readOnly}
+              onRefresh={scanCache}
+            />
+          </>
+        )}
+        {activeTab === "database" && (
+          <>
+            <DatabaseCleanupSection
+              overview={databaseOverview}
+              scanning={databaseScanning}
+              readOnly={readOnly}
+              unlinkedWorks={unlinkedWorks}
+              onRescan={scanDatabase}
+              onOpenUnlinkedWorks={openUnlinkedWorks}
+            />
+            <DatabaseOptimizeSection overview={databaseOverview} readOnly={readOnly} onOptimized={scanDatabase} />
+            <DatabaseBackupSection readOnly={readOnly} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

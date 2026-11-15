@@ -9,7 +9,7 @@ export const TIME_ZONE_SETTINGS_PATH = "/settings?tab=time-zone";
 
 export const SYSTEM_SETTINGS_PATH = "/system";
 
-export const systemSettingsTabs = ["library", "cache", "proxy", "llm", "cleanup", "users"] as const;
+export const systemSettingsTabs = ["library", "cache", "proxy", "llm", "users"] as const;
 export type SystemSettingsTab = (typeof systemSettingsTabs)[number];
 
 /**
@@ -25,4 +25,14 @@ export const systemSettingsTabAliases: Readonly<Record<string, SystemSettingsTab
 
 export function systemSettingsPath(tab: SystemSettingsTab) {
   return `${SYSTEM_SETTINGS_PATH}?tab=${tab}`;
+}
+
+export const CLEANUP_PATH = "/cleanup";
+
+/** Cleanup's tabs: local work folders, caches, and the database. */
+export const cleanupTabs = ["works", "cache", "database"] as const;
+export type CleanupTab = (typeof cleanupTabs)[number];
+
+export function cleanupPath(tab: CleanupTab) {
+  return `${CLEANUP_PATH}?tab=${tab}`;
 }

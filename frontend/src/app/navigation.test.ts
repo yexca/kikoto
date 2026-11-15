@@ -3,14 +3,22 @@ import { describe, expect, it } from "vitest";
 import { canAccessPage, navigationGroups, navigationLabel, navItems, visibleNavigationItems } from "./navigation";
 
 describe("navigation access and labels", () => {
-  it("orders the Manage group Workflows, Metadata, Translation, System", () => {
+  it("orders the Manage group Workflows, Metadata, Translation, Cleanup, System", () => {
     expect(navItems.filter((item) => item.group === "manage").map((item) => item.id)).toEqual([
       "workflows",
       "metadata",
       "translation",
+      "cleanup",
       "system",
     ]);
     expect(navItems.find((item) => item.id === "workflows")).toMatchObject({ label: "Workflows", path: "/workflows" });
+    expect(navItems.find((item) => item.id === "cleanup")).toMatchObject({ label: "Cleanup", path: "/cleanup" });
+  });
+  it("offers Cleanup to holders of either cleanup permission", () => {
+    expect(canAccessPage("cleanup", "authenticated", (permission) => permission === "downloads:manage")).toBe(true);
+    expect(canAccessPage("cleanup", "authenticated", (permission) => permission === "sources:write")).toBe(true);
+    expect(canAccessPage("cleanup", "authenticated", (permission) => permission === "metadata:sync")).toBe(false);
+    expect(canAccessPage("cleanup", "anonymous", () => true)).toBe(false);
   });
   it("lets metadata operators reach work management without source settings permission", () => {
     expect(canAccessPage("metadata", "authenticated", (permission) => permission === "metadata:sync")).toBe(true);

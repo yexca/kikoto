@@ -75,7 +75,7 @@ settings where they apply.
 
 ## Maintenance
 
-System -> Cleanup lists the record types that the database cleanup can
+Cleanup -> Database lists the record types that the database cleanup can
 remove. Manual cleanup runs after confirmation and writes a `database.cleanup`
 audit entry.
 
@@ -130,7 +130,7 @@ backup is always complete.
 | --- | --- | --- |
 | `pre-migration` | At startup, before the first pending numbered migration of an existing database | 3 |
 | `scheduled` | By the workflow coordinator when the newest routine backup is older than 24 hours, checked hourly | 7 |
-| `manual` | **Back up now** in System -> Cleanup (`POST /api/maintenance/database/backups`) | 5 |
+| `manual` | **Back up now** in Cleanup -> Database (`POST /api/maintenance/database/backups`) | 5 |
 
 A fresh install and an up-to-date database start without a pre-migration
 backup. Because numbered migrations cannot be reverted, startup stops without

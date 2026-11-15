@@ -95,6 +95,7 @@ import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import {
   aboutPage,
+  cleanupPage,
   insightsPage,
   preloadRoutePage,
   recordsPage,
@@ -140,6 +141,7 @@ const CirclesPage = circlesPage.Component;
 const CreatorWorksPage = creatorWorksPage.Component;
 const SettingsPage = settingsPage.Component;
 const SystemSettingsPage = systemSettingsPage.Component;
+const CleanupPage = cleanupPage.Component;
 const TagsPage = tagsPage.Component;
 const WorkManagementPage = workManagementPage.Component;
 const WorkflowsPage = workflowsPage.Component;
@@ -665,6 +667,13 @@ function AuthenticatedApp() {
                       onAccessPolicyUpdated={auth.refreshRuntime}
                     />
                   )}
+                  {showRoutePage && page === "cleanup" && auth.user && (
+                    <CleanupPage
+                      canManageCache={auth.demoMode || auth.hasPermission("downloads:manage")}
+                      canManageDatabase={auth.demoMode || auth.hasPermission("sources:write")}
+                      readOnly={auth.demoMode}
+                    />
+                  )}
                   {showRoutePage && page === "tags" && auth.user && (
                     <TagsPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
                   )}
@@ -727,6 +736,7 @@ function AuthenticatedApp() {
                     "subscriptions",
                     "settings",
                     "system",
+                    "cleanup",
                     "tags",
                     "metadata",
                     "translation",

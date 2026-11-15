@@ -1,11 +1,11 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings holds the signed-in account's controls and its playback and recommendation preferences. Instance settings are the **System** page, which administrators and Demo see. On a wide screen Settings is in the **Personal** group of the sidebar and System in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
+Settings holds the signed-in account's controls and its playback and recommendation preferences. Instance settings are the **System** page and cleaning up works, caches, and the database is the **Cleanup** page; administrators and Demo see both. On a wide screen Settings is in the **Personal** group of the sidebar and System and Cleanup in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
 
 ## Tabs
 
-Settings shows its tabs along the top, each with an icon and a name: Account, Playback, and Recommendations. System shows Library, Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users the same way. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
+Settings shows its tabs along the top, each with an icon and a name: Account, Playback, and Recommendations. System shows Library, Cache & Fetch, Proxy, ASR & LLM, and Users the same way, and Cleanup shows Works, Cache, and Database. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
 
 ## Saving
 
@@ -17,7 +17,7 @@ button of their own: the password change, library storage, folder
 preferences, recommendation tuning, the content safety policy, the proxy
 bypass list, and every dialog.
 
-`/maintenance`, `/users`, and `/cleanup` links, and `/settings` links that name a System tab, open the matching System tab. `/user-data` opens **Your data** in Account, and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
+`/maintenance` and `/users` links, and `/settings` links that name a System tab, open the matching System tab; `/settings?tab=cleanup` and `/system?tab=cleanup` open [Cleanup](#cleanup). `/user-data` opens **Your data** in Account, and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
 
 ## Account
 
@@ -93,8 +93,8 @@ Kikoto uses the first preferred metadata language that has its own manual title 
 
 ## Demo Mode
 
-Demo mode keeps account-backed Settings read-only. The System page, the
-Recommendations tab, the Tags page, and the Your data section of Account
+Demo mode keeps account-backed Settings read-only. The System and Cleanup
+pages, the Recommendations tab, the Tags page, and the Your data section of Account
 stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and
@@ -202,8 +202,8 @@ settings.
 
 Cache & Fetch contains configuration only: playback cache policy, transfer
 safety, collapsed download pacing, and video conversion. Turning on the
-playback cache is confirmed first. Cache contents are managed in the Cleanup
-tab.
+playback cache is confirmed first. Cache contents are managed in the Cache tab
+of [Cleanup](#cleanup).
 
 - The per-file remote media limit defaults to 100 GB, and unpublished staging
   from failed or cancelled Fetch runs is kept for seven days by default.
@@ -290,60 +290,6 @@ Text-only mode matches literal keywords; it does not interpret meaning, translat
 
 **Name the models in AI-made lyrics**, on by default, starts every lyrics file written by speech recognition or translation with a line in the lyrics' own language naming the models that wrote it, as [Lyrics attribution](work-detail.md#lyrics-attribution) describes. Turning it off affects files written afterwards; published files keep their text.
 
-### Cleanup
-
-**Cleanup** (`/system?tab=cleanup`) needs `downloads:manage` for cache
-sections and **Local works by rating**, and `sources:write` for database
-sections and for forgetting works.
-
-- **Transcode cache** shows usage against its limit and offers a confirmed clear
-  action.
-- **Managed media cache** reports on-disk, referenced, eligible, and protected
-  files, and cleans orphan or per-work cache grouped by source. Cleanup is a
-  two-step destructive action queued as a workflow run.
-- **Local works by rating** lists the works that have a local folder, one row
-  per work family and largest first, by your own rating: up to a chosen number
-  of stars, with unrated works when **Include unrated works** is on. A family
-  takes the highest rating any of its editions has. The size counts the
-  work's indexed local files: a work nobody has opened yet shows none, and a
-  size with files of unknown size ends in `+`. A work on an offline storage
-  pool cannot be selected. **Delete files** deletes every local folder of the
-  selected works, with the system files such as `Thumbs.db` or `@eaDir` in
-  them, and can also clear your rating and your Quick mark of them. **Forget
-  works**, offered only while both are cleared, also removes the works with
-  every account's ratings, marks, list entries, notes, progress, and listening
-  history for them; a work another source still provides is kept, and the
-  confirmation counts those. The confirmation says how many selected works are
-  unrated, and a selection with a work rated 3 stars or more asks again and
-  lists those works. The deletion is one workflow run that cleans the works in
-  turn: it indexes a work's folders again, deletes them, and only then changes
-  that work's rating, mark, and identity. A work whose folder cannot be deleted
-  keeps all of them; the run finishes the other works and fails, and
-  **Retry** in Workflows tries the failed works again.
-- **Database records** lists record types that can be removed, each with a
-  current count: missing work folders and local files confirmed absent on disk
-  (with the empty track entries, local availability, and folder display names
-  they leave behind), orphaned metadata snapshots, unused source tags, expired
-  sessions, dismissed
-  notifications, finished workflow runs older than 90 days, recommendation
-  signals older than 90 days, unused recommendation snapshots, and
-  [ranking](discover.md#rankings) updates past the history the
-  [ranking settings](discover.md#ranking-settings) keep. Personal tags,
-  runs with reviews, Fetch records, or metadata issues, the latest run of each
-  workflow, the latest update of each ranking order, finished annual rankings,
-  and the update each account last viewed are kept.
-  Selected tasks are removed after confirmation and recorded in the audit log;
-  media files are never deleted. Expired sessions, eligible old workflow runs,
-  and old ranking updates are also removed automatically with the same rules,
-  shortly after the server starts and then every 10 days.
-- Path checks pause when the data folder is missing or empty, so an unmounted
-  library is never treated as deleted.
-- **Works without any source** links to the **No available source** filter of
-  Metadata's **DLsite works** for review and deletion.
-- **Compact database** rewrites the SQLite file to return free pages to disk.
-  It runs in the background as a workflow run shown in Workflows, and only one
-  compaction can be queued or running at a time.
-
 ### Users
 
 Users manages accounts. Administrators and super administrators can create
@@ -381,6 +327,69 @@ The change applies to the production access boundary and creates an audit
 entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an
 anonymous development session.
+
+## Cleanup
+
+The **Cleanup** page (`/cleanup`) removes local work folders, cache files, and
+database records. Its tabs follow the account's permissions: **Works** and
+**Cache** need `downloads:manage`, and **Database** needs `sources:write`,
+which forgetting works also needs. Demo sees every tab read-only.
+
+### Works
+
+- **Local works by rating** lists the works that have a local folder, one row
+  per work family and largest first, by your own rating: up to a chosen number
+  of stars, with unrated works when **Include unrated works** is on. A family
+  takes the highest rating any of its editions has. The size counts the
+  work's indexed local files: a work nobody has opened yet shows none, and a
+  size with files of unknown size ends in `+`. A work on an offline storage
+  pool cannot be selected. **Delete files** deletes every local folder of the
+  selected works, with the system files such as `Thumbs.db` or `@eaDir` in
+  them, and can also clear your rating and your Quick mark of them. **Forget
+  works**, offered only while both are cleared, also removes the works with
+  every account's ratings, marks, list entries, notes, progress, and listening
+  history for them; a work another source still provides is kept, and the
+  confirmation counts those. The confirmation says how many selected works are
+  unrated, and a selection with a work rated 3 stars or more asks again and
+  lists those works. The deletion is one workflow run that cleans the works in
+  turn: it indexes a work's folders again, deletes them, and only then changes
+  that work's rating, mark, and identity. A work whose folder cannot be deleted
+  keeps all of them; the run finishes the other works and fails, and
+  **Retry** in Workflows tries the failed works again.
+
+### Cache
+
+- **Transcode cache** shows usage against its limit and offers a confirmed clear
+  action.
+- **Managed media cache** reports on-disk, referenced, eligible, and protected
+  files, and cleans orphan or per-work cache grouped by source. Cleaning is a
+  two-step destructive action queued as a workflow run.
+
+### Database
+
+- **Database records** lists record types that can be removed, each with a
+  current count: missing work folders and local files confirmed absent on disk
+  (with the empty track entries, local availability, and folder display names
+  they leave behind), orphaned metadata snapshots, unused source tags, expired
+  sessions, dismissed
+  notifications, finished workflow runs older than 90 days, recommendation
+  signals older than 90 days, unused recommendation snapshots, and
+  [ranking](discover.md#rankings) updates past the history the
+  [ranking settings](discover.md#ranking-settings) keep. Personal tags,
+  runs with reviews, Fetch records, or metadata issues, the latest run of each
+  workflow, the latest update of each ranking order, finished annual rankings,
+  and the update each account last viewed are kept.
+  Selected tasks are removed after confirmation and recorded in the audit log;
+  media files are never deleted. Expired sessions, eligible old workflow runs,
+  and old ranking updates are also removed automatically with the same rules,
+  shortly after the server starts and then every 10 days.
+- Path checks pause when the data folder is missing or empty, so an unmounted
+  library is never treated as deleted.
+- **Works without any source** links to the **No available source** filter of
+  Metadata's **DLsite works** for review and deletion.
+- **Compact database** rewrites the SQLite file to return free pages to disk.
+  It runs in the background as a workflow run shown in Workflows, and only one
+  compaction can be queued or running at a time.
 
 ## Metadata
 

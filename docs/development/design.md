@@ -347,13 +347,15 @@ destinations and no administration controls:
 
 - The desktop sidebar emphasizes the browse destinations. The account's own
   pages (Insights, Tags, Settings) sit in a collapsible Personal group and
-  administration pages (Workflows, Metadata, Translation, System) in a
+  administration pages (Workflows, Metadata, Translation, Cleanup, System) in a
   collapsible Manage group. Both groups behave alike: closed by default, the
   choice remembered on the device, open while one of their pages is current,
   and absent for an account that can open none of their pages. About closes
   the list, below a divider.
 - Settings holds only the signed-in account's settings. Instance settings are
-  the System page, shown to administrators and, read-only, to Demo.
+  the System page, shown to administrators and, read-only, to Demo. Deleting
+  local work folders, cache files, and database records is the Cleanup page, a
+  page of destructive operations apart from the settings.
 - The account panel behind the avatar holds the languages and
   authentication. Where the sidebar is shown, it also holds Discover, Insights,
   and Tags as shortcut tiles that repeat the sidebar's entries. A layout
@@ -386,9 +388,9 @@ A page with several views or sections takes one of two forms, and the same form
 looks and works the same on every page:
 
 - The views of a page are tabs along the top: a hairline under the row and a
-  line under the open tab (Discover, Metadata, Workflows, Settings,
-  and System). The page's own controls may share the row at its end. Settings and
-  System tabs carry an icon beside the name. A row too narrow to name every
+  line under the open tab (Discover, Metadata, Workflows, Settings, System,
+  and Cleanup). The page's own controls may share the row at its end. Settings,
+  System, and Cleanup tabs carry an icon beside the name. A row too narrow to name every
   such tab shows icons and names only the open one, and a row that still does
   not fit scrolls sideways.
 - An open-ended set of destinations, such as shelves, is a list beside the
@@ -458,7 +460,7 @@ Desktop:
 Mobile:
 
 - Bottom navigation.
-- Settings and System tabs that do not fit fold into one row of icons that
+- Settings, System, and Cleanup tabs that do not fit fold into one row of icons that
   names only the open tab; tab rows scroll sideways and a page's controls move
   below its tabs.
 - Work detail places the Hero actions directly below the title and circle, on

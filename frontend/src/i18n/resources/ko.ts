@@ -371,6 +371,11 @@ const adminToolsKorean = {
   },
   cleanup: {
     tab: "정리",
+    tabs: {
+      works: "작품",
+      cache: "캐시",
+      database: "데이터베이스",
+    },
     ofLimit: "/ {{limit}}",
     usageValue: "{{limit}} 중 {{used}} 사용({{percent}}%)",
     transcodeUsage: "트랜스코드 캐시 사용량",
@@ -379,7 +384,6 @@ const adminToolsKorean = {
       reclaimable: "{{size}} 회수 가능",
       database: "데이터베이스",
       free: "빈 페이지 {{size}}",
-      total: "캐시와 데이터베이스에서 약 {{size}}를 회수할 수 있습니다.",
     },
     database: {
       title: "데이터베이스 레코드",
@@ -738,6 +742,7 @@ export const koreanResource = {
         about: "정보",
         manage: "관리",
         personal: "개인",
+        cleanup: "정리",
         system: "시스템",
         tags: "태그",
         userData: "내 데이터",

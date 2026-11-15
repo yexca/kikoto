@@ -12,6 +12,7 @@ import type {
   FileSourceDetectResult,
   FileSourceHealthCheckResult,
   LibraryLayout,
+  LocalWorkCleanupPage,
   MaintenanceWorkPage,
   ManagedUser,
   RecommendationConfig,
@@ -441,6 +442,10 @@ async function mockCacheSettings(
       await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 4 } satisfies MaintenanceWorkPage });
       return;
     }
+    if (url.pathname === "/api/maintenance/local-works/cleanup" && route.request().method() === "GET") {
+      await route.fulfill({ json: { works: [], page: 1, pageSize: 50, total: 0 } satisfies LocalWorkCleanupPage });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
   return { transcodeClearRequests, databaseCleanupRequests };
@@ -475,8 +480,10 @@ test("@desktop a cache setting saves on its own when its edit finishes and links
   await page.getByLabel("Per-file download limit").press("Tab");
   expect(settingsPayloads).toHaveLength(1);
   await page.getByTestId("cache-configuration-card").getByRole("button", { name: "Cleanup", exact: true }).click();
-  await expect(page).toHaveURL(/\/system\?tab=cleanup$/);
-  await expect(page.getByRole("tab", { name: "Cleanup", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/\/cleanup\?tab=cache$/);
+  await expect(
+    page.getByRole("tablist", { name: "Cleanup", exact: true }).getByRole("tab", { name: "Cache", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
 });
 
@@ -521,7 +528,7 @@ test("@desktop cleanup page scans managed media and requires cleanup confirmatio
   const mocks = await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/system?tab=cleanup");
+  await page.goto("/cleanup?tab=cache");
 
   const transcodeCache = page.getByRole("region", { name: "Transcode cache" });
   await expect(transcodeCache.getByText("24 MB", { exact: true })).toBeVisible();
@@ -555,7 +562,7 @@ test("@desktop cleanup page scans managed media and requires cleanup confirmatio
 
 test("cleanup page removes only the selected database records after confirmation", async ({ page }) => {
   const mocks = await mockCacheSettings(page, () => undefined);
-  await page.goto("/system?tab=cleanup");
+  await page.goto("/cleanup?tab=database");
 
   const database = page.getByRole("region", { name: "Database records" });
   const libraryGroup = database.getByRole("button", { name: "Library records", exact: true });
@@ -615,7 +622,7 @@ test("cleanup page can clear referenced cache for selected works", async ({ page
   await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/system?tab=cleanup");
+  await page.goto("/cleanup?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
@@ -687,14 +694,7 @@ test("Settings and System keep their own tabs and open tab in the address", asyn
   await expect(page).toHaveURL(/\/system\?tab=cache$/);
   await expect(page.getByRole("heading", { name: "System", exact: true, level: 1 })).toBeVisible();
   const systemTabs = page.getByRole("tablist", { name: "System", exact: true });
-  await expect(systemTabs.getByRole("tab")).toHaveText([
-    "Library",
-    "Cache & Fetch",
-    "Proxy",
-    "ASR & LLM",
-    "Cleanup",
-    "Users",
-  ]);
+  await expect(systemTabs.getByRole("tab")).toHaveText(["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Users"]);
   await expect(systemTabs.getByRole("tab", { name: "Cache & Fetch", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -705,7 +705,49 @@ test("Settings and System keep their own tabs and open tab in the address", asyn
   await expect(page).toHaveURL(/\/system$/);
 });
 
-test("@desktop Settings and System tabs sit above the content with an icon and a name", async ({ page }) => {
+test("Cleanup is its own page with Works, Cache, and Database tabs", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  // A link to the former System tab opens the page.
+  await page.goto("/system?tab=cleanup");
+  await expect(page).toHaveURL(/\/cleanup$/);
+  await expect(page.getByRole("heading", { name: "Cleanup", exact: true, level: 1 })).toBeVisible();
+  const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveText(["Works", "Cache", "Database"]);
+  await expect(tabs.getByRole("tab", { name: "Works", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Local works by rating" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toHaveCount(0);
+
+  await tabs.getByRole("tab", { name: "Cache", exact: true }).click();
+  await expect(page).toHaveURL(/\/cleanup\?tab=cache$/);
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Managed media cache" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Database records" })).toHaveCount(0);
+
+  await tabs.getByRole("tab", { name: "Database", exact: true }).click();
+  await expect(page).toHaveURL(/\/cleanup\?tab=database$/);
+  await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Local works by rating" })).toHaveCount(0);
+});
+
+test("Cleanup offers only the tabs the account may use", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "synthetic-user",
+        displayName: "Example User",
+        permissions: ["sources:write"],
+      }),
+    }),
+  );
+  await page.goto("/cleanup?tab=cache");
+  const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveText(["Database"]);
+  await expect(tabs.getByRole("tab", { name: "Database", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
+});
+
+test("@desktop Settings, System, and Cleanup tabs sit above the content with an icon and a name", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   // Browser storage left by the former row and column options changes nothing.
   await page.addInitScript(() => {
@@ -714,7 +756,8 @@ test("@desktop Settings and System tabs sit above the content with an icon and a
   });
   for (const [path, label, names] of [
     ["/settings", "Settings", ["Account", "Playback", "Recommendations"]],
-    ["/system", "System", ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Cleanup", "Users"]],
+    ["/system", "System", ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Users"]],
+    ["/cleanup", "Cleanup", ["Works", "Cache", "Database"]],
   ] as const) {
     await page.goto(path);
     const tabs = page.getByRole("tablist", { name: label, exact: true });
@@ -906,23 +949,23 @@ for (const layout of ["mobile", "@desktop"]) {
   // A row with room names every tab; a phone folds the others to icons and names the open one.
   test(`${layout} System tabs stay in one row along the top`, async ({ page }) => {
     await mockCacheSettings(page, () => undefined);
-    await page.goto("/system?tab=cleanup");
+    await page.goto("/system?tab=users");
     const navigation = page.getByRole("tablist", { name: "System", exact: true });
-    const cleanup = navigation.getByRole("tab", { name: "Cleanup", exact: true });
-    await expect(cleanup).toHaveAttribute("aria-selected", "true");
+    const users = navigation.getByRole("tab", { name: "Users", exact: true });
+    await expect(users).toHaveAttribute("aria-selected", "true");
     await expect(navigation).toHaveAttribute("aria-orientation", "horizontal");
     // The row has no display toggles at any width.
     await expect(page.getByRole("button", { name: /Show tabs|tab names/ })).toHaveCount(0);
     // A deep link to a later tab keeps the selected tab in view, with its name shown.
-    await expect(cleanup).toBeInViewport({ ratio: 1 });
-    await expect(cleanup.getByText("Cleanup", { exact: true })).toBeInViewport();
-    await expect(navigation.getByRole("tab")).toHaveCount(6);
+    await expect(users).toBeInViewport({ ratio: 1 });
+    await expect(users.getByText("Users", { exact: true })).toBeInViewport();
+    await expect(navigation.getByRole("tab")).toHaveCount(5);
     const namedTabs = await navigation
       .getByRole("tab")
       .evaluateAll(
         (buttons) => buttons.filter((button) => button.querySelector("span")!.getBoundingClientRect().width > 1).length,
       );
-    expect(namedTabs).toBe(layout === "mobile" ? 1 : 6);
+    expect(namedTabs).toBe(layout === "mobile" ? 1 : 5);
     const boxes = await navigation.getByRole("tab").evaluateAll((buttons) =>
       buttons.map((button) => {
         const box = button.getBoundingClientRect();

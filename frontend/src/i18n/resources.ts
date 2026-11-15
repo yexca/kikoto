@@ -357,6 +357,8 @@ export const englishResource = {
         about: "About",
         manage: "Manage",
         personal: "Personal",
+        cleanup: "Cleanup",
+
         system: "System",
         tags: "Tags",
         userData: "Your data",

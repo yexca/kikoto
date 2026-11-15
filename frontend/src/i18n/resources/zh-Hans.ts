@@ -370,6 +370,11 @@ const adminToolsHans = {
   },
   cleanup: {
     tab: "清理",
+    tabs: {
+      works: "作品",
+      cache: "缓存",
+      database: "数据库",
+    },
     ofLimit: "/ {{limit}}",
     usageValue: "已使用 {{used}}，共 {{limit}}（{{percent}}%）",
     transcodeUsage: "转码缓存用量",
@@ -378,7 +383,6 @@ const adminToolsHans = {
       reclaimable: "可回收 {{size}}",
       database: "数据库",
       free: "空闲页 {{size}}",
-      total: "缓存与数据库合计约可回收 {{size}}。",
     },
     database: {
       title: "数据库记录",
@@ -716,6 +720,7 @@ export const zhHansResource = {
         about: "关于",
         manage: "管理",
         personal: "个人",
+        cleanup: "清理",
         system: "系统",
         tags: "标签",
         userData: "我的数据",

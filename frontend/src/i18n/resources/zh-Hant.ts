@@ -371,6 +371,11 @@ const adminToolsHant = {
   },
   cleanup: {
     tab: "清理",
+    tabs: {
+      works: "作品",
+      cache: "快取",
+      database: "資料庫",
+    },
     ofLimit: "/ {{limit}}",
     usageValue: "已使用 {{used}}，共 {{limit}}（{{percent}}%）",
     transcodeUsage: "轉碼快取用量",
@@ -379,7 +384,6 @@ const adminToolsHant = {
       reclaimable: "可回收 {{size}}",
       database: "資料庫",
       free: "閒置頁 {{size}}",
-      total: "快取與資料庫合計約可回收 {{size}}。",
     },
     database: {
       title: "資料庫記錄",
@@ -721,6 +725,7 @@ export const zhHantResource = {
         about: "關於",
         manage: "管理",
         personal: "個人",
+        cleanup: "清理",
         system: "系統",
         tags: "標籤",
         userData: "我的資料",

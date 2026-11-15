@@ -86,8 +86,10 @@ Administrators manage the instance from the tabs of the System page:
   [System → ASR & LLM](../user/en/settings.md#asr--llm) defines credential
   clearing, model discovery, declared content boundaries and structured safety
   rules.
-- **Cleanup**: cache cleanup and database backups.
 - **Users**: accounts and production instance access.
+
+The [Cleanup](../user/en/settings.md#cleanup) page holds local work deletion,
+cache cleanup, database cleanup, and database backups.
 
 There is no instance-wide metadata language.
 

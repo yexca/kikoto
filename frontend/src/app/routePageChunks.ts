@@ -11,6 +11,9 @@ export const settingsPage = preloadableComponent(() =>
 export const systemSettingsPage = preloadableComponent(() =>
   import("@/pages/SystemSettingsPage").then((module) => module.SystemSettingsPage),
 );
+export const cleanupPage = preloadableComponent(() =>
+  import("@/pages/CleanupPage").then((module) => module.CleanupPage),
+);
 export const tagsPage = preloadableComponent(() => import("@/pages/TagsPage").then((module) => module.TagsPage));
 export const workManagementPage = preloadableComponent(() =>
   import("@/pages/WorkManagementPage").then((module) => module.WorkManagementPage),
@@ -35,6 +38,7 @@ export const aboutPage = preloadableComponent(() => import("@/pages/AboutPage").
 const routePageChunks: Partial<Record<AppPage, { preload: () => Promise<unknown> }>> = {
   settings: settingsPage,
   system: systemSettingsPage,
+  cleanup: cleanupPage,
   tags: tagsPage,
   metadata: workManagementPage,
   workflows: workflowsPage,

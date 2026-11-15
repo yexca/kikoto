@@ -4,6 +4,7 @@ import {
   Clapperboard,
   Compass,
   Database,
+  Eraser,
   Heart,
   Info,
   Languages,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { SYSTEM_SETTINGS_PATH } from "../pages/settingsPaths";
+import { CLEANUP_PATH, SYSTEM_SETTINGS_PATH } from "../pages/settingsPaths";
 
 type NavItem = {
   id: string;
@@ -180,6 +181,17 @@ export const navItems = [
     group: "manage",
   },
   {
+    // Either cleanup permission opens the page; each tab follows its own.
+    id: "cleanup",
+    label: "Cleanup",
+    labelKey: "nav.cleanup",
+    path: CLEANUP_PATH,
+    icon: Eraser,
+    audience: "admin",
+    permission: undefined,
+    group: "manage",
+  },
+  {
     // Instance settings follow the viewer's role, not one permission.
     id: "system",
     label: "System",
@@ -258,6 +270,7 @@ function canAccessNavigationItem(
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
   if (item.id === "system") return administrator;
+  if (item.id === "cleanup") return hasPermission("downloads:manage") || hasPermission("sources:write");
   if (item.id === "metadata")
     return hasPermission("library:write") || hasPermission("sources:write") || hasPermission("metadata:sync");
   if (item.permission && !hasPermission(item.permission)) return false;

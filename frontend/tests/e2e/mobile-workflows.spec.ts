@@ -1694,12 +1694,9 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
     "page",
   );
   // The view lists the Manage pages in the sidebar's order.
-  await expect(accountPopover.getByRole("button", { name: /^(Workflows|Metadata|Translation|System)$/ })).toHaveText([
-    "Workflows",
-    "Metadata",
-    "Translation",
-    "System",
-  ]);
+  await expect(
+    accountPopover.getByRole("button", { name: /^(Workflows|Metadata|Translation|Cleanup|System)$/ }),
+  ).toHaveText(["Workflows", "Metadata", "Translation", "Cleanup", "System"]);
   await accountPopover.getByRole("button", { name: "Back", exact: true }).click();
   await expect(manageEntry).toBeFocused();
 
@@ -1834,7 +1831,7 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
   const manage = sidebar.getByRole("button", { name: "Manage", exact: true });
   await expect(personal).toHaveAttribute("aria-expanded", "false");
   await expect(manage).toHaveAttribute("aria-expanded", "false");
-  for (const name of ["Workflows", "Metadata", "Translation", "System", "Settings", "Insights", "Tags"]) {
+  for (const name of ["Workflows", "Metadata", "Translation", "Cleanup", "System", "Settings", "Insights", "Tags"]) {
     await expect(sidebar.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
   // About closes the sidebar's list outside the groups.
@@ -1845,10 +1842,11 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
   await manage.click();
   await expect(sidebar.getByRole("button", { name: "Workflows", exact: true })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "System", exact: true })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: /^(Workflows|Metadata|Translation|System)$/ })).toHaveText([
+  await expect(sidebar.getByRole("button", { name: /^(Workflows|Metadata|Translation|Cleanup|System)$/ })).toHaveText([
     "Workflows",
     "Metadata",
     "Translation",
+    "Cleanup",
     "System",
   ]);
   await expect(personal).toHaveAttribute("aria-expanded", "false");
@@ -2050,7 +2048,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   const noticeBackground = await notice.evaluate((element) => getComputedStyle(element).backgroundColor);
   await settingsTabs.getByRole("tab", { name: "Recommendations", exact: true }).click();
   await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
-  // Demo opens the Tags page and every System tab read-only, as administrators see them.
+  // Demo opens the Tags page and every System and Cleanup tab read-only, as administrators see them.
   await page.goto("/tags");
   await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
   await page.goto("/system");
@@ -2060,8 +2058,14 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Cache & Fetch",
     "Proxy",
     "ASR & LLM",
-    "Cleanup",
     "Users",
+  ]);
+  await page.goto("/cleanup");
+  await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("tablist", { name: "Cleanup", exact: true }).getByRole("tab")).toHaveText([
+    "Works",
+    "Cache",
+    "Database",
   ]);
   await page.goto("/settings");
   await expect(notice).toHaveText(demoNotice);
