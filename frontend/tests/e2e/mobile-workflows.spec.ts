@@ -1745,8 +1745,8 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
   expect(modeBox!.x).toBeGreaterThanOrEqual(0);
   expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await modeGroup.getByRole("combobox").click();
-  await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
+  await modeGroup.getByRole("radio", { name: "Dark", exact: true }).click();
+  await expect(modeGroup.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
   await expect(appearancePopover).toBeVisible();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await appearancePopover.getByRole("button", { name: "Apple", exact: true }).click();
@@ -1781,17 +1781,19 @@ async function openAppearance(page: Page) {
   return appearance;
 }
 
-test("opening an appearance floating select keeps fixed mobile surfaces stable", async ({ page }) => {
+test("opening a header floating select keeps fixed mobile surfaces stable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 844 });
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  const appearance = await openAppearance(page);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const accountPopover = page.getByRole("dialog", { name: "Account" });
+  await accountPopover.getByRole("button", { name: /^Language/ }).click();
   const footer = page.locator("footer");
   const footerBefore = await footer.boundingBox();
   expect(footerBefore).not.toBeNull();
 
-  await appearance.getByRole("combobox", { name: "Mode" }).click();
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
   await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
 
   const footerAfter = await footer.boundingBox();
@@ -1816,8 +1818,7 @@ test("@desktop header popovers render above page content", async ({ page }) => {
   expect(headerBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
   expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
-  await page.getByRole("group", { name: "Mode" }).getByRole("combobox").click();
-  await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
+  await modeGroup.getByRole("radio", { name: "Dark", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
@@ -2069,8 +2070,10 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Graphite", "Cobalt", "Iris"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
   }
-  await page.getByRole("group", { name: "Mode", exact: true }).getByRole("combobox").click();
-  await page.getByRole("option", { name: "Dark", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Mode", exact: true })
+    .getByRole("radio", { name: "Dark", exact: true })
+    .click();
   await page.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");

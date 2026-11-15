@@ -89,6 +89,8 @@
   data shows placeholders in its own shape. The Library shows its card grid in
   the current card mode instead of an empty-library message before the first
   page arrives, and the Libraries settings tab shows its source cards.
+- Appearance chooses Light, Dark, or System from a row of tabs instead of a
+  menu.
 
 </details>
 
