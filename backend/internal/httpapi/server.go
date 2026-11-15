@@ -386,6 +386,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("POST /api/media/cleanup", s.cleanupMediaLocations)
+	handleSlowFirstResponse("GET /api/maintenance/local-works/cleanup", s.listLocalWorkCleanup)
+	handleSlowFirstResponse("POST /api/maintenance/local-works/cleanup", s.cleanupLocalWorks)
 	handleSlowFirstResponse("GET /api/cache/overview", s.getCacheOverview)
 	handleSlowFirstResponse("GET /api/maintenance/database", s.getDatabaseMaintenance)
 	handleSlowFirstResponse("POST /api/maintenance/database/cleanup", s.cleanupDatabase)

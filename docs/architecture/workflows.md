@@ -93,7 +93,17 @@ Media, cleanup, and database:
   grace period and prune empty directories.
 - `media_location_cleanup`: delete selected cache or local files and mark their
   locations unavailable. `media_cleanup_forget_work` also removes the then
-  unlinked work family and its personal state.
+  unlinked work families and their personal state. A removed work folder takes
+  the sidecars a NAS or operating system keeps beside its files (`._` files,
+  `.DS_Store`, `Thumbs.db`, `@eaDir`, `__MACOSX`) with it. A run queued from
+  [Local works by rating](../user/en/settings.md#cleanup) cleans its works in
+  turn while it holds the library folders: it claims the work's confirmed
+  folders, indexes them again, deletes the files inside them and the folders,
+  leaving any folder the work gained since the confirmation, and then, in one
+  transaction, clears the requester's rating and Quick mark of the work and
+  forgets it when asked. A work that cannot be cleaned gets its folders back,
+  keeps its state, and is listed in the run's failures; the run goes on with
+  the other works and then fails, so a retry cleans only the failed works.
 - `work_folder_edit`: add files from the family's other local folders and
   remote editions to one local folder of a work, as files or as lyrics of a
   declared language, arrange its files and folders, remove the files taken out
@@ -550,7 +560,8 @@ the backend.
 - Retry re-checks what the failed work needs: Fetch jobs require both
   `remote:fetch` and `metadata:sync`, media cache jobs require `remote:fetch`,
   cleanup and local deletion jobs require
-  `downloads:manage`, a folder edit, including one that merges folders,
+  `downloads:manage`, plus `sources:write` when the cleanup forgets works, a
+  folder edit, including one that merges folders,
   requires `downloads:manage` plus
   `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
   metadata jobs require `metadata:sync`, a

@@ -293,13 +293,33 @@ Text-only mode matches literal keywords; it does not interpret meaning, translat
 ### Cleanup
 
 **Cleanup** (`/system?tab=cleanup`) needs `downloads:manage` for cache
-sections and `sources:write` for database sections.
+sections and **Local works by rating**, and `sources:write` for database
+sections and for forgetting works.
 
 - **Transcode cache** shows usage against its limit and offers a confirmed clear
   action.
 - **Managed media cache** reports on-disk, referenced, eligible, and protected
   files, and cleans orphan or per-work cache grouped by source. Cleanup is a
   two-step destructive action queued as a workflow run.
+- **Local works by rating** lists the works that have a local folder, one row
+  per work family and largest first, by your own rating: up to a chosen number
+  of stars, with unrated works when **Include unrated works** is on. A family
+  takes the highest rating any of its editions has. The size counts the
+  work's indexed local files: a work nobody has opened yet shows none, and a
+  size with files of unknown size ends in `+`. A work on an offline storage
+  pool cannot be selected. **Delete files** deletes every local folder of the
+  selected works, with the system files such as `Thumbs.db` or `@eaDir` in
+  them, and can also clear your rating and your Quick mark of them. **Forget
+  works**, offered only while both are cleared, also removes the works with
+  every account's ratings, marks, list entries, notes, progress, and listening
+  history for them; a work another source still provides is kept, and the
+  confirmation counts those. The confirmation says how many selected works are
+  unrated, and a selection with a work rated 3 stars or more asks again and
+  lists those works. The deletion is one workflow run that cleans the works in
+  turn: it indexes a work's folders again, deletes them, and only then changes
+  that work's rating, mark, and identity. A work whose folder cannot be deleted
+  keeps all of them; the run finishes the other works and fails, and
+  **Retry** in Workflows tries the failed works again.
 - **Database records** lists record types that can be removed, each with a
   current count: missing work folders and local files confirmed absent on disk
   (with the empty track entries, local availability, and folder display names

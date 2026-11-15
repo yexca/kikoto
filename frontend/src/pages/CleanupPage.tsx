@@ -6,6 +6,7 @@ import { formatByteSize } from "@/features/cleanup/cacheCleanupModel";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { DatabaseBackupSection } from "@/features/cleanup/DatabaseBackupSection";
 import { DatabaseCleanupSection, DatabaseOptimizeSection } from "@/features/cleanup/DatabaseCleanupSection";
+import { LocalWorkCleanupSection } from "@/features/cleanup/LocalWorkCleanupSection";
 import { ManagedMediaCacheSection, TranscodeCacheSection } from "@/features/cleanup/StorageCachePanels";
 import { api, type CacheOverview, type DatabaseMaintenanceOverview } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -95,6 +96,7 @@ export function CleanupPage({
             readOnly={readOnly}
             onRefresh={scanCache}
           />
+          <LocalWorkCleanupSection readOnly={readOnly} canForget={canManageDatabase} />
         </div>
       )}
 

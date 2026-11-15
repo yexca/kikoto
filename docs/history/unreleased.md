@@ -243,6 +243,13 @@
   mouse wheel, a trackpad or two-finger pinch, and the `+`, `-`, and `0`
   keys, keeping the point under the pointer or fingers in place. A click
   still switches between fit and actual size.
+- **System → Cleanup** adds **Local works by rating**, which lists your
+  low-rated local works largest first and deletes their local folders in one
+  run. It can also clear your rating and Quick mark of them and forget the
+  works, and asks again before deleting works rated 3 stars or more.
+- Deleting a work's local folder also removes the system files a NAS or
+  operating system keeps beside its files, such as `Thumbs.db`, `.DS_Store`,
+  and `@eaDir`, which used to keep the folder from being deleted.
 
 </details>
 
