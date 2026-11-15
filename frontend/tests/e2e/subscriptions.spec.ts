@@ -514,33 +514,23 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
     .toBe(true);
   await expect(navigation.getByLabel("1 new release")).toHaveCount(0);
 
-  // From 1280px the settings open beside the feed, which stays usable: the
-  // toolbar icon closes them again.
+  // The settings open in a dialog named in the address; Close ends it.
   const settingsButton = page.getByRole("button", { name: "Subscription settings" });
   await settingsButton.click();
   await expect(page).toHaveURL(/\/discover\?panel=subscriptions$/);
-  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
   await expect(settings.getByRole("tab", { name: "Subscriptions", selected: true })).toBeVisible();
   await expect(settings.getByText("Refresh schedule")).toBeVisible();
-  await settingsButton.click();
+  await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
   await expect(page).toHaveURL(/\/discover$/);
 
-  // Escape closes the panel and returns focus to the toolbar icon.
+  // Escape closes the dialog and returns focus to the toolbar icon.
   await settingsButton.click();
   await expect(settings).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
   await expect(settingsButton).toBeFocused();
-
-  // Narrower desktops open the settings in a drawer over the feed.
-  await page.setViewportSize({ width: 1100, height: 800 });
-  await settingsButton.click();
-  const drawer = page.getByRole("dialog", { name: "Subscription settings" });
-  await expect(drawer.getByText("Refresh schedule")).toBeVisible();
-  await drawer.getByRole("button", { name: "Close settings" }).click();
-  await expect(drawer).toHaveCount(0);
-  await expect(page).toHaveURL(/\/discover$/);
 });
 
 test("@desktop subscribing to a circle confirms replacing its series and pulls the catalog for a baseline", async ({
@@ -660,7 +650,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
 
   // The settings icon opens the ranking settings from this view.
   await page.getByRole("button", { name: "Subscription settings" }).click();
-  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
   await expect(settings.getByRole("tab", { name: "Rankings", selected: true })).toBeVisible();
   await expect(
     settings
@@ -928,7 +918,7 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
   };
   await mockSubscriptions(page, server);
   await page.goto("/discover?view=rankings&panel=rankings");
-  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
   const dlsite = settings.getByRole("region", { name: "DLsite voice rankings" });
   // The rows follow the fixed order of the chips.
   await expect
@@ -1044,7 +1034,7 @@ test("@desktop the settings state each workflow's latest run and open it in Work
   };
   await mockSubscriptions(page, server);
   await page.goto("/discover?view=rankings&panel=rankings");
-  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
 
   // A failed pull is named with its time and opens its run. A remote workflow shows once a remote list exists.
   const pull = settings.getByRole("group", { name: "Latest DLsite pull" });
@@ -1094,7 +1084,7 @@ test("@desktop an account that only syncs metadata runs the refresh and sees its
   };
   await mockSubscriptions(page, server);
   await page.goto("/discover?panel=subscriptions");
-  const settings = page.getByRole("complementary", { name: "Subscription settings" });
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
   const refresh = settings.getByRole("group", { name: "Latest refresh" });
   await expect(refresh).toContainText("Failed");
   await expect(refresh.getByRole("button")).toHaveCount(0);
@@ -1212,7 +1202,7 @@ test("@desktop checking a ranking page's sources marks the entries a source has"
   await expect(items.first()).toHaveAccessibleName("Example Work 1");
 });
 
-test("@desktop release cards label the watch action and say which works are watched", async ({ page }) => {
+test("@desktop release cards offer the watch action and light it on watched works", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const server: SubscriptionServer = {
     requests: [],
@@ -1245,24 +1235,24 @@ test("@desktop release cards label the watch action and say which works are watc
   const watched = feed.getByRole("listitem", { name: "Example Work 2" });
   // Simple cards show their actions with the details, on hover.
   await watched.getByTestId("work-card").hover();
-  await expect(watched).toContainText("Watching");
+  await expect(watched.getByRole("img", { name: "In Availability Watch" })).toBeVisible();
   await expect(watched.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
   const owned = feed.getByRole("listitem", { name: "Example Work 3" });
   await expect(owned).toBeVisible();
   await owned.getByTestId("work-card").hover();
   await expect(owned.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
-  await expect(owned).not.toContainText("Watching");
+  await expect(owned.getByRole("img", { name: "In Availability Watch" })).toHaveCount(0);
 
   const entry = feed.getByRole("listitem", { name: "Example Work 1" });
   await entry.getByTestId("work-card").hover();
   const watch = entry.getByRole("button", { name: "Add to Availability Watch" });
-  await expect(watch).toHaveText("Watch");
+  await expect(watch).toBeVisible();
   await watch.click();
   await expect(page.getByText(`${syntheticWorkCode("RJ", 1)} is now in Availability Watch.`)).toBeVisible();
   expect(server.requests.find((request) => request.path === "/api/availability-watch/targets")?.body).toEqual({
     targetCodes: [syntheticWorkCode("RJ", 1)],
   });
-  await expect(entry).toContainText("Watching");
+  await expect(entry.getByRole("img", { name: "In Availability Watch" })).toBeVisible();
 });
 
 test("@desktop the feed page's works can have their metadata synced and their sources checked", async ({ page }) => {
@@ -1316,7 +1306,7 @@ test("@desktop the feed page's works can have their metadata synced and their so
   ).toHaveCount(0);
 });
 
-test("phones reach the ranking page actions and see the labeled watch action", async ({ page }) => {
+test("phones reach the ranking page actions and the watch action", async ({ page }) => {
   const day = rankingListFixture();
   await mockSubscriptions(page, {
     requests: [],
@@ -1331,7 +1321,7 @@ test("phones reach the ranking page actions and see the labeled watch action", a
   const entry = ranking.getByRole("listitem", { name: "Example Work 1" });
   // On a phone a simple card opens its details and actions with its toggle.
   await entry.getByRole("button", { name: "Show details", exact: true }).click();
-  await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toHaveText("Watch");
+  await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toBeVisible();
 
   await page.getByRole("button", { name: "Actions for the shown works" }).click();
   await expect(page.getByRole("menuitem", { name: /^Sync metadata/ })).toBeInViewport();

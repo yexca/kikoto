@@ -304,11 +304,9 @@ a labelled random sample in the demo), the release feed, Rankings (`?view=rankin
 (`?view=watch`, for accounts that can run workflows; any other account sees
 the release feed), as `SubNavTabs` along the top of the page with the page
 toolbar at the end of the same row (below the tabs on a phone), and composes its
-settings as a sticky panel
-beside the view from 1280px, where the view reflows to the remaining width, as
-a drawer over its right edge on narrower desktops, and as a sheet on phones.
-The panel beside the view takes focus when it opens, closes with Escape or the
-settings icon, and returns focus to that icon. The page toolbar always holds
+settings as a dialog of one fixed height on every tab, and as a sheet on
+phones; closing the dialog returns focus to the settings icon. The page
+toolbar always holds
 the actions menu, the display options, and the settings icon, in that order;
 the actions menu is disabled on a view without actions.
 
@@ -354,8 +352,8 @@ account's time zone, with a banner under the toolbar leading back to the
 latest order; it does not record the ranking as seen. A card's context line
 states a stay or best rank only when they add something, and the cover's
 source marks say whether the library has the work. Ranking and release cards
-share a labeled Watch action that reads Watching for a code already in
-Availability Watch. A finished annual ranking shows its ranks without movement. The
+share an icon Watch action, styled like the list and Quick mark actions
+beside it, that is lit for a code already in Availability Watch. A finished annual ranking shows its ranks without movement. The
 ranking settings show one line per ranking with its Show switch, relative pull
 times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier

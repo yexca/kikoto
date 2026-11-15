@@ -108,6 +108,10 @@
   does not already show it.
 - For you's column headings and Watch's summary drop their descriptions; the
   temperature choices explain themselves in their tooltips.
+- **Watch** on a card is an eye icon like the lists and Quick mark beside it,
+  lit on a work already in the watch pool.
+- **Subscription settings** open in a dialog, or a sheet on a phone, instead
+  of a panel beside the view or a drawer.
 
 </details>
 

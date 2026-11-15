@@ -137,9 +137,9 @@ you do in For you changes what the Library recommends.
   **Automatic**.
 - A card shows the work once metadata knows it, or the catalog's title,
   circle, and code until then. Accounts that can run workflows and sync
-  metadata can select **Watch** to add a work the library does not have to
-  Availability Watch; a work already in the watch pool shows **Watching**
-  instead.
+  metadata can select the eye icon, **Add to Availability Watch**, to add a
+  work the library does not have to Availability Watch; on a work already in
+  the watch pool the eye is lit.
 - **Actions** syncs the metadata of the works on the page or checks their
   sources; see
   [Syncing and checking shown works](#syncing-and-checking-shown-works).
@@ -190,8 +190,9 @@ you do in For you changes what the Library recommends.
 - A work Kikoto knows shows its title, cover, rating, and tags and opens as in
   the Library. Any other work shows the title and circle the ranking lists,
   and the cover when Kikoto already has it. Open a work to look it up, or
-  select **Watch** to add a work that is not in the library to Availability
-  Watch; **Watching** marks a work already in the watch pool. A work from a
+  select the eye icon to add a work that is not in the library to
+  Availability Watch; a lit eye marks a work already in the watch pool. A
+  work from a
   remote source's list opens on that source.
 - Updating a ranking only records its order: it never adds works, syncs their
   metadata, checks sources, or tags them. **Actions**, at the top right of
@@ -313,13 +314,10 @@ run**, and the page reloads when it ends.
 
 The settings icon at the top right, **Subscription settings**, opens the
 settings with three tabs: **Subscriptions**, **Rankings**, and **Availability
-Watch**. On a wide screen they open in a panel beside the view, which narrows
-to make room and stays usable; on a narrower screen they open in a drawer from
-the right edge, or a sheet on a phone. They open on the tab of the view:
-**Subscriptions** from New releases, **Rankings** from Rankings, and
-**Availability Watch** from Watch. Close them with the `×` or Escape; the
-settings icon also closes the panel, and selecting outside closes a drawer or
-sheet.
+Watch**. They open in a dialog, or a sheet on a phone, on the tab of the
+view: **Subscriptions** from New releases, **Rankings** from Rankings, and
+**Availability Watch** from Watch. Close them with the `×`, Escape, or by
+selecting outside.
 
 - **Subscriptions** lists your circle, series, and voice actor subscriptions
   with their state (**Active** or **Waiting for first pull**), when the catalog
