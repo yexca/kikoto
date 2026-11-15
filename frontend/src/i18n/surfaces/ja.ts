@@ -3482,6 +3482,8 @@ export const surfaceJapanese = {
     listLoadFailed: "お気に入りリストを読み込めませんでした。",
     membershipSaveFailed: "リスト所属を保存できませんでした。",
     shelves: "お気に入りの棚",
+    hideShelves: "棚を隠す",
+    showShelves: "棚を表示",
     myLists: "マイリスト",
     createFirstList: "最初のリストを作成",
     shelfAllDescription: "マークした作品とリストに追加した作品のすべて。",

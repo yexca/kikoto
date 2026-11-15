@@ -416,7 +416,7 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   );
   await page.getByRole("button", { name: "Exit selection", exact: true }).click();
 
-  // The list always names its shelves and has no display toggles.
+  // The list always names its shelves and has no label toggles.
   await expect(shelves.getByRole("button", { name: /^Study/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /tab names/ })).toHaveCount(0);
 
@@ -426,6 +426,38 @@ test("@desktop favorites puts shelves in a named list beside search and work con
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(async () => (await shelves.boundingBox())!.y).toBe(stickyTop);
   await page.evaluate(() => window.scrollTo(0, 0));
+});
+
+test("@desktop hiding the shelf list gives the works the full width and stays hidden on this device", async ({
+  page,
+}) => {
+  await mockFavorites(page);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/favorites");
+
+  const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
+  const heading = page.getByRole("heading", { name: "All Favorites", level: 2 });
+  const hide = page.getByRole("button", { name: "Hide shelves", exact: true });
+  await expect(shelves).toBeVisible();
+  await expect(hide).toHaveAttribute("aria-expanded", "true");
+  const shownHeadingX = (await heading.boundingBox())!.x;
+
+  await hide.click();
+  const show = page.getByRole("button", { name: "Show shelves", exact: true });
+  await expect(shelves).toHaveCount(0);
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await expect(show).toBeFocused();
+  // The open shelf keeps its header, and the works move into the space the list held.
+  await expect.poll(async () => (await heading.boundingBox())!.x).toBeLessThan(shownHeadingX - 100);
+  await expect(page.locator('[data-favorite-work-id="1"]')).toBeVisible();
+
+  await page.reload();
+  await expect(heading).toBeVisible();
+  await expect(shelves).toHaveCount(0);
+  await show.click();
+  await expect(shelves.getByRole("button", { name: /^Study/ })).toBeVisible();
+  await page.reload();
+  await expect(shelves).toBeVisible();
 });
 
 test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async ({ page }) => {
@@ -508,6 +540,7 @@ test("mobile favorites stacks the shelf row, the control row with a search icon,
   await expect(search).toBeFocused();
   await expect(searchToggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("navigation", { name: "Favorite shelves" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /shelves$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
   const statusChips = page.getByRole("group", { name: "Listening status filters" });
   await expect

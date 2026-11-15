@@ -400,7 +400,11 @@ looks and works the same on every page:
 
 Both forms keep each destination's name as its accessible name, move with
 arrow keys, and keep the open destination in view. They offer no control for
-their own placement or labels and read no stored preference for either.
+their own placement or labels and read no stored preference for either. A list
+beside the page may instead be hidden whole: Favorites puts a toggle at the
+start of its header row, the works take the freed width while the header still
+names the open shelf, and the choice is remembered on the device. Phones show
+the shelves as a row of chips and have no such toggle.
 
 ## Responsive Expectations
 

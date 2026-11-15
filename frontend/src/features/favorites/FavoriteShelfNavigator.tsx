@@ -1,4 +1,4 @@
-import { Heart, Pencil, Plus, Zap, type LucideIcon } from "lucide-react";
+import { Heart, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Zap, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -78,8 +78,9 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
  * The wide-layout shelf list: the whole collection, then the user's lists, in
  * the same column form as every other page's secondary navigation.
  * A list's chosen icon tells the lists apart; every item shows its name.
+ * The page can hide the whole list with `FavoriteShelfListToggle`.
  */
-export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelfNavigation }) {
+export function FavoriteShelfSidebar({ id, navigation }: { id?: string; navigation: FavoriteShelfNavigation }) {
   const { t } = useTranslation();
   const { all, lists } = useShelfItems(navigation);
   const sections: { key: string; heading: string; content: ReactNode; actions?: ReactNode }[] = [
@@ -124,7 +125,7 @@ export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelf
 
   return (
     <SubNavColumn>
-      <nav aria-label={t("favorites.shelves")} className="app-scrollbar min-h-0 overflow-y-auto">
+      <nav id={id} aria-label={t("favorites.shelves")} className="app-scrollbar min-h-0 overflow-y-auto">
         <div className="grid gap-4">
           <div className="grid gap-0.5">
             <ShelfSidebarItem item={all} />
@@ -137,6 +138,37 @@ export function FavoriteShelfSidebar({ navigation }: { navigation: FavoriteShelf
         </div>
       </nav>
     </SubNavColumn>
+  );
+}
+
+/** Hides or shows the wide-layout shelf list, so the works can take the full width. */
+export function FavoriteShelfListToggle({
+  hidden,
+  controls,
+  onToggle,
+}: {
+  hidden: boolean;
+  /** Id of the shelf list while it is shown. */
+  controls: string;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const label = hidden ? t("favorites.showShelves") : t("favorites.hideShelves");
+  const Icon = hidden ? PanelLeftOpen : PanelLeftClose;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-9 w-9 shrink-0 text-muted-foreground"
+      title={label}
+      aria-label={label}
+      aria-expanded={!hidden}
+      aria-controls={hidden ? undefined : controls}
+      onClick={onToggle}
+    >
+      <Icon className="h-4 w-4" />
+    </Button>
   );
 }
 

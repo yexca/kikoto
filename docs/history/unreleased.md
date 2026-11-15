@@ -207,6 +207,9 @@
   count and page, in place of the cover mosaic, the listened share, and the
   top page bar. Search and the work controls sit beside it on a wide screen.
   The shelf list and the phone shelf row name the whole collection **All**.
+- **Hide shelves** at the start of the Favorites header row hides the shelf
+  list on a wide screen so the works fill the width, and this device remembers
+  the choice.
 - On phones the Quick mark chips stay below the controls, and search opens
   from an icon in the control row. The shelf row names the open shelf, so
   phones show no header line.

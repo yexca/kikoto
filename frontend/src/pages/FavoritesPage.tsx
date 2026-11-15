@@ -1,5 +1,5 @@
 import { BookmarkCheck, Heart, Pencil } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
@@ -24,6 +24,7 @@ import { FavoriteMobileControls } from "@/features/favorites/FavoriteMobileContr
 import { FavoriteSelectionBar } from "@/features/favorites/FavoriteSelectionBar";
 import { FavoriteShelfHeader } from "@/features/favorites/FavoriteShelfHeader";
 import {
+  FavoriteShelfListToggle,
   FavoriteShelfSidebar,
   FavoriteShelfStrip,
   type FavoriteShelfNavigation,
@@ -43,6 +44,7 @@ import {
   FavoriteSortControls,
 } from "@/features/favorites/FavoriteWorksControls";
 import { favoriteShelfKind, favoriteStatusFilterOptions } from "@/features/favorites/favoriteShelfModel";
+import { useFavoriteShelfListHidden } from "@/features/favorites/favoriteShelfListVisibility";
 import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
 import { useFavoriteListEditing } from "@/features/favorites/useFavoriteListEditing";
 import { useFavoriteLists } from "@/features/favorites/useFavoriteLists";
@@ -126,6 +128,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [newOnlyList, setNewOnlyList] = useState<number | null>(null);
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [viewMode, setViewMode] = useFavoriteViewMode();
+  const [shelfListHidden, toggleShelfList] = useFavoriteShelfListHidden();
+  const shelfListID = useId();
   const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
   const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(
     () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
@@ -615,7 +619,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         </div>
       )}
       <div className={mobileNavigationLayout ? "" : "flex items-start gap-6"}>
-        {!mobileNavigationLayout && <FavoriteShelfSidebar navigation={navigation} />}
+        {!mobileNavigationLayout && !shelfListHidden && (
+          <FavoriteShelfSidebar id={shelfListID} navigation={navigation} />
+        )}
 
         <div ref={resultsScroll.anchorRef} className="@container min-w-0 flex-1 scroll-mt-24 space-y-5">
           {mobileNavigationLayout ? (
@@ -643,7 +649,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           ) : (
             // A wide shelf puts its one-line header and every control in one row, so works start right below.
             <div className="flex flex-col gap-3 @min-[60rem]:flex-row @min-[60rem]:items-center @min-[60rem]:gap-6">
-              <div className="min-w-0 flex-1">{shelfHeader}</div>
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <FavoriteShelfListToggle hidden={shelfListHidden} controls={shelfListID} onToggle={toggleShelfList} />
+                <div className="min-w-0 flex-1">{shelfHeader}</div>
+              </div>
               <div
                 className="flex min-w-0 items-center gap-2 @min-[60rem]:shrink-0 @min-[60rem]:justify-end"
                 data-toast-avoid

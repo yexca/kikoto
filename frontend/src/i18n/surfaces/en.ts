@@ -3526,6 +3526,8 @@ export const surfaceEnglish = {
     listLoadFailed: "Favorite lists could not be loaded.",
     membershipSaveFailed: "List membership could not be saved.",
     shelves: "Favorite shelves",
+    hideShelves: "Hide shelves",
+    showShelves: "Show shelves",
     myLists: "My lists",
     createFirstList: "Create your first list",
     shelfAllDescription: "Everything you have marked or saved to a list.",

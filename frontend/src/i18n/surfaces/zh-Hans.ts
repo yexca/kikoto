@@ -3328,6 +3328,8 @@ export const surfaceHans = {
     listLoadFailed: "无法加载收藏列表。",
     membershipSaveFailed: "无法保存列表归属。",
     shelves: "收藏架",
+    hideShelves: "隐藏收藏架",
+    showShelves: "显示收藏架",
     myLists: "我的列表",
     createFirstList: "创建第一个列表",
     shelfAllDescription: "所有已标记或加入列表的作品。",

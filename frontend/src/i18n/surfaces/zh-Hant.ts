@@ -3334,6 +3334,8 @@ export const surfaceHant = {
     listLoadFailed: "無法載入收藏清單。",
     membershipSaveFailed: "無法儲存清單歸屬。",
     shelves: "收藏架",
+    hideShelves: "隱藏收藏架",
+    showShelves: "顯示收藏架",
     myLists: "我的清單",
     createFirstList: "建立第一個清單",
     shelfAllDescription: "所有已標記或加入清單的作品。",

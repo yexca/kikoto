@@ -25,7 +25,7 @@ import { cn } from "@/lib/tailwindClassNames";
  *
  * Both name every destination, keep it as the accessible name, and move with
  * the arrow keys. They have no display options: the form never changes with a
- * stored preference.
+ * stored preference. A page may let the user hide its whole column (Favorites).
  */
 export type SubNavItem<T extends string> = {
   value: T;

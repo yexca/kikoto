@@ -3463,6 +3463,8 @@ export const surfaceKorean = {
     listLoadFailed: "즐겨찾기 목록을 불러올 수 없습니다.",
     membershipSaveFailed: "목록 소속을 저장할 수 없습니다.",
     shelves: "즐겨찾기 선반",
+    hideShelves: "선반 숨기기",
+    showShelves: "선반 표시",
     myLists: "내 목록",
     createFirstList: "첫 목록 만들기",
     shelfAllDescription: "표시했거나 목록에 저장한 모든 작품입니다.",

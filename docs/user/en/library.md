@@ -251,7 +251,9 @@ the list icon also appears in the add-to-list menus. The open shelf has a
 one-line header: its icon, its name, and the result count with the page in
 place of a top page bar; a description shows as the name's tooltip. Search and
 the Filters, sort, display, and selection buttons sit beside the header, or
-below it on a narrower page. Phones show the same shelves as one scrollable row whose selected chip names
+below it on a narrower page. **Hide shelves** at the start of the header row
+hides the shelf list so the works fill the width, and **Show shelves** brings it
+back; this device remembers the choice. Phones show the same shelves as one scrollable row whose selected chip names
 the open shelf in place of the header, then one row with the named sort and the Search, Filters,
 display, and selection buttons, and the Quick mark statuses with their counts as
 a scrollable chip row. Search opens a field above that row, which stays open
