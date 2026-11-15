@@ -98,6 +98,20 @@
 </details>
 
 <details>
+<summary><strong>Discover</strong></summary>
+
+- Discover offers **Simple** cards and starts with them: the cover, title,
+  and credits, with the other facts and the actions on demand, as in the
+  Library. A choice made before in **Display options** is kept.
+- The line above a New releases card labels only an event that is more than a
+  new release, and names a subscription only when the card's credit line
+  does not already show it.
+- For you's column headings and Watch's summary drop their descriptions; the
+  temperature choices explain themselves in their tooltips.
+
+</details>
+
+<details>
 <summary><strong>Workflows</strong></summary>
 
 - **Workflows** is one page for the library maintenance you start by hand

@@ -34,11 +34,6 @@ export const subscriptionsJapanese = {
         try_new: "新しく試す",
         listen_again: "もう一度聴く",
       },
-      descriptions: {
-        maybe_like: "まだ聴いていない、好みに近い作品",
-        try_new: "あまり聴かないサークル・声優・タグ",
-        listen_again: "気に入って、しばらく聴いていない作品",
-      },
       drawAgain: "引き直す",
       drawAgainColumn: "「{{column}}」を引き直す",
       coldStart:

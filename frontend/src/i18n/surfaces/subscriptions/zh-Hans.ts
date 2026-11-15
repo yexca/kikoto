@@ -34,11 +34,6 @@ export const subscriptionsHans = {
         try_new: "尝鲜",
         listen_again: "再听一次",
       },
-      descriptions: {
-        maybe_like: "还没听过、贴近你口味的作品",
-        try_new: "你很少听的社团、声优和标签",
-        listen_again: "喜欢过、已有一段时间没听的作品",
-      },
       drawAgain: "重新抽取",
       drawAgainColumn: "重新抽取“{{column}}”",
       coldStart: "为作品评分、收藏或标记后，推荐会学习你的喜好。在此之前，“可能喜欢”按 DLsite 评分和销量排列。",

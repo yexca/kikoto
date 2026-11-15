@@ -1431,8 +1431,6 @@ export const surfaceHans = {
     removeFromWatchAria: "从监视中移除 {{workCode}}",
     discardChanges: "放弃更改",
     watchPool: "监视池",
-    watchPoolDescription:
-      "每次检查都会先刷新代码的 DLsite 作品家族；任一版本出现在远程源上，作品即为可用。监视不会自行追踪或获取。",
     watchView: {
       actions: "监视操作",
       actionsButton: "操作",

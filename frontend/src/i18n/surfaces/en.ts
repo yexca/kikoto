@@ -1415,8 +1415,6 @@ export const surfaceEnglish = {
     removeFromWatchAria: "Remove {{workCode}} from watch",
     discardChanges: "Discard changes",
     watchPool: "Watch pool",
-    watchPoolDescription:
-      "Each check refreshes a code's DLsite family first; any edition on a remote source makes the work available. The watch never tracks or fetches on its own.",
     watchView: {
       actions: "Watch actions",
       actionsButton: "Actions",

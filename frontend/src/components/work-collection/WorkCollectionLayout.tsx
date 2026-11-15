@@ -25,7 +25,6 @@ import {
 
 export {
   discoverCardLayout,
-  discoverCardModes,
   DISCOVER_LAYOUT_STORE,
   workCardLayout,
   workCollectionClassName,

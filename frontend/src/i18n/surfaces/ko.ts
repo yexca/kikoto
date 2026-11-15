@@ -1526,8 +1526,6 @@ export const surfaceKorean = {
     removeFromWatchAria: "감시에서 {{workCode}} 제거",
     discardChanges: "변경 취소",
     watchPool: "감시 풀",
-    watchPoolDescription:
-      "각 확인은 먼저 코드의 DLsite 작품 패밀리를 갱신하며, 어느 판이든 원격 소스에 있으면 작품을 사용 가능으로 표시합니다. 감시가 스스로 추적하거나 가져오지는 않습니다.",
     watchView: {
       actions: "감시 작업",
       actionsButton: "작업",

@@ -1533,8 +1533,6 @@ export const surfaceJapanese = {
     removeFromWatchAria: "{{workCode}} をウォッチから削除",
     discardChanges: "変更を破棄",
     watchPool: "ウォッチプール",
-    watchPoolDescription:
-      "各確認はまずコードの DLsite 作品ファミリーを更新し、いずれかの版がリモートソースにあれば作品を利用可能とします。ウォッチが自動で追跡や取得をすることはありません。",
     watchView: {
       actions: "ウォッチの操作",
       actionsButton: "操作",

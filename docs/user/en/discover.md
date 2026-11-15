@@ -19,14 +19,17 @@ The four views show works the same way.
 - A line above each card says why the work is there: why For you drew it,
   what happened in New releases and through which subscription, how long a
   work has stayed in a ranking and its best rank, or a watched work's state.
-  Green marks a work that is available, amber a check that failed, and a dot
-  a new release you have not seen yet.
+  It leaves out what the card itself already shows. Green marks a work that
+  is available, amber a check that failed, and a dot a new release you have
+  not seen yet.
 - **Display options**, at the top right, hold the **Cards** choice and the
   cards per row for all four views. Discover keeps its own choice, apart from
-  the Library's, and starts with **Compact**: a small cover beside the facts,
-  in up to three columns. **Full** shows the Library's large cards, and
-  **Mini** only the cover and title. Two phone columns of **Compact** cards
-  show short tiles.
+  the Library's, and starts with **Simple**: the cover, the title, and the
+  circle and voice actors, with the other facts and the actions on demand, as
+  described in [Library](library.md). **Compact** puts a small cover beside
+  the facts, in up to three columns, **Full** shows the Library's large cards,
+  and **Mini** only the cover and title. Two phone columns of **Compact**
+  cards show short tiles.
 - The bottom of a card holds its actions, always in this order: DLsite, then
   **Watch**, the view's own actions such as **Track** and **Fetch**, your
   favorite lists, your rating, and **Quick mark**. Each appears only where it
@@ -62,8 +65,9 @@ you do in For you changes what the Library recommends.
 - Above each card is why it was drawn, such as **A circle you like: …**,
   **A tag you rarely hear: …**, or **4 months since last played, rated 5**.
 - With **Compact** cards on a wide screen, the three columns stand side by
-  side. **Full** and **Mini** cards are too wide or too small for a third of
-  the page, so the columns follow one another, each in the card grid.
+  side. **Simple**, **Full**, and **Mini** cards are too wide or too small for
+  a third of the page, so the columns follow one another, each in the card
+  grid.
 - **Safe**, **Balanced**, and **Adventurous** set how far the draws stray.
   **Safe** keeps to the best matches, **Try new** stays near what you know,
   and **Listen again** offers only finished works you liked or heard more
@@ -115,8 +119,10 @@ you do in For you changes what the Library recommends.
 - **New releases** groups works by the day they reached your feed, newest day
   first, with one card per work family. Each day starts a new row, and its
   heading shows the date and how many works it has. Above each card are what
-  happened and through which subscription. The events are:
-  - **New release**: a new work appeared in a subscribed catalog.
+  happened and the subscriptions it came through; a circle or voice actor the
+  card's credit line names is not repeated. The events are:
+  - A new release: a new work appeared in a subscribed catalog. Most of the
+    feed is new releases, so they carry no label.
   - **New edition**: a new language edition of a work released long before,
     such as a translation.
   - **Now available**: Availability Watch found the work on a remote source.

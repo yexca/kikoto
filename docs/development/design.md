@@ -231,13 +231,16 @@ toolbar. A caption before the order states how many works match and, from
 tablet width, the page; these pages have no top page bar, only the bottom one.
 
 Discover's four views read as one surface. They keep one card mode of their
-own, apart from the Library's, which starts at compact and offers full,
-compact, and mini; there compact stays a
+own, apart from the Library's, which starts at simple and offers every mode;
+there compact stays a
 row card on wide screens, up to three automatic tracks, and only two phone
 columns use tiles. Every card has a fixed-height context line above it that
 says why the work is in the view, the card itself, and an action row in one
 order: DLsite, then Watch, lists, rating, and Quick mark, each only where it
-applies. The context line uses one status vocabulary: a success badge for
+applies. The context line states only what the card does not already show:
+the release feed leaves the most common event, a new release, unlabelled and
+does not repeat a subscribed name from the credit line. It uses one status
+vocabulary: a success badge for
 available or in the library, a primary badge for new or back, a neutral badge
 for an event, a warning badge for a failed check, and a dot only for unread.
 Groups of cards share one section heading (title, count badge, hairline, and

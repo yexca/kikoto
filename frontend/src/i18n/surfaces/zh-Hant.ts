@@ -1433,8 +1433,6 @@ export const surfaceHant = {
     removeFromWatchAria: "從監視移除 {{workCode}}",
     discardChanges: "捨棄變更",
     watchPool: "監視池",
-    watchPoolDescription:
-      "每次檢查都會先重新整理代碼的 DLsite 作品家族；任一版本出現在遠端來源上，作品即為可用。監視不會自行追蹤或取得。",
     watchView: {
       actions: "監視操作",
       actionsButton: "操作",

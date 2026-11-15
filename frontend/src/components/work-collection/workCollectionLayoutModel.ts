@@ -22,9 +22,6 @@ export const workCollectionDesktopColumnOptions = [
 export const workCardModes = ["full", "simple", "compact", "mini"] as const;
 export type WorkCardMode = (typeof workCardModes)[number];
 
-/** Discover explains each card in a line above it and always shows its actions, so it leaves out simple. */
-export const discoverCardModes = ["full", "compact", "mini"] as const satisfies readonly WorkCardMode[];
-
 /**
  * The display settings a card mode starts from besides automatic wide-screen
  * columns: a mini cover fits more works per page and leaves out its source marks.
@@ -74,7 +71,7 @@ export type WorkCollectionColumnDefaults = Pick<StoredWorkCollectionLayout, "mob
 /**
  * Where a set of collections keeps its display choices and the card mode they
  * start in. The Library and the creator pages share the default store, starting
- * with full cards; Discover keeps its own, starting with compact (row) cards.
+ * with full cards; Discover keeps its own, starting with simple cards.
  */
 export type WorkCollectionLayoutStore = { storageKey: string; cardMode: WorkCardMode };
 
@@ -85,7 +82,7 @@ export const LIBRARY_LAYOUT_STORE: WorkCollectionLayoutStore = {
 
 export const DISCOVER_LAYOUT_STORE: WorkCollectionLayoutStore = {
   storageKey: "kikoto:discover-layout",
-  cardMode: "compact",
+  cardMode: "simple",
 };
 
 type AutoColumns = { maximum: number; minWidth: string };

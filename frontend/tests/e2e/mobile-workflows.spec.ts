@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type {
   AuthState,
   AvailabilityWatch,
@@ -1079,12 +1079,20 @@ test("availability watch keeps only its source in settings and acts on works fro
 
   // Removing a work takes a second, confirming press.
   const removed = updates.length;
+  // A simple card shows its actions with its details, opened by its toggle.
+  const details = (group: Locator, code: string) =>
+    group
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("button", { name: new RegExp(`^${code}`) }) })
+      .getByRole("button", { name: "Show details", exact: true });
+  await details(waiting, "RJ00000002").click();
   await waiting.getByRole("button", { name: "Remove RJ00000002 from watch", exact: true }).click();
   expect(updates).toHaveLength(removed);
   await waiting.getByRole("button", { name: "Confirm removing RJ00000002 from watch", exact: true }).click();
   await expect.poll(() => updates).toContainEqual({ removeTargetIds: [100] });
 
   // Fetch of a work available as another edition names that edition and confirms first.
+  await available.getByRole("button", { name: "Show details", exact: true }).click();
   await available.getByRole("button", { name: "Fetch RJ00000003", exact: true }).click();
   const confirm = page.getByRole("dialog", { name: "Fetch 1 work?" });
   await expect(confirm.getByText("RJ00000003", { exact: true })).toBeVisible();

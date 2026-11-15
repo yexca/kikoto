@@ -11,7 +11,6 @@ import { SubNavTabs } from "@/components/ui/sub-nav";
 import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
 import {
   discoverCardLayout,
-  discoverCardModes,
   DISCOVER_LAYOUT_STORE,
   useWorkCollectionLayout,
   WorkCollectionDisplayPicker,
@@ -496,7 +495,6 @@ export function SubscriptionsPage({
                       desktop: layout.desktopCardMode,
                       onMobileChange: layout.setMobileCardMode,
                       onDesktopChange: layout.setDesktopCardMode,
-                      options: discoverCardModes,
                     }}
                     {...(activeView === "releases"
                       ? {

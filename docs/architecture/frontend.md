@@ -313,11 +313,10 @@ the actions menu, the display options, and the settings icon, in that order;
 the actions menu is disabled on a view without actions.
 
 The four views compose the same card parts from shared code. Their cards
-follow one Discover display choice (`DISCOVER_LAYOUT_STORE`,
-`discoverCardLayout`, and the modes in `discoverCardModes`, in
-`components/work-collection/WorkCollectionLayout`), kept apart from the
-Library's and starting with compact row cards, in the shared work collection
-grid. Each card is a `WorkCardContextItem`: a
+follow one Discover display choice (`DISCOVER_LAYOUT_STORE` and
+`discoverCardLayout`, in `components/work-collection/WorkCollectionLayout`),
+kept apart from the Library's, offering every card mode and starting with
+simple cards, in the shared work collection grid. Each card is a `WorkCardContextItem`: a
 fixed-height `WorkCardContextStrip` above `LayoutWorkCard`, with the strip's
 `WorkCardStatusBadge` and `WorkCardUnreadDot` as its status vocabulary
 (`components/work-card/WorkCardContext`), and `WorkCardActionFooter` orders
@@ -334,7 +333,8 @@ link to it, the view reloads when the run ends, and the source check's answers
 for codes without a work last for the visit. Rankings names the recorded
 order the menu acts on to the page. The release feed draws each day's families
 under a section heading. For you shows its three columns side by side on a
-wide screen with row cards, and one after another with full or mini cards.
+wide screen with row cards, and one after another with full, simple, or mini
+cards.
 Rankings shows one tracked ranking (`?list=`) as cards beside their rank,
 under a two-row toolbar that sticks below the app header. The first row holds
 segmented controls grouped by provider, in the fixed order of the lists, with

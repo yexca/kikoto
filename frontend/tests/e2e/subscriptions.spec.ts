@@ -500,7 +500,8 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
   await expect(entry.getByText("New since your last visit")).toBeAttached();
   const older = feed.getByRole("region", { name: /^New releases, .*October 12/ }).getByRole("listitem");
   await expect(older).toContainText("Now available");
-  await expect(older).toContainText("Availability Watch");
+  // The event already says the watch found it, so the line does not repeat it.
+  await expect(older).not.toContainText("Availability Watch");
   await expect(feed.getByRole("navigation", { name: "Pages" }).getByRole("button", { name: "Page 2" })).toBeVisible();
 
   // Days per page is a display option beside the Library card choices.
@@ -1242,14 +1243,18 @@ test("@desktop release cards label the watch action and say which works are watc
   await page.goto("/discover");
   const feed = page.getByRole("region", { name: "New releases", exact: true });
   const watched = feed.getByRole("listitem", { name: "Example Work 2" });
+  // Simple cards show their actions with the details, on hover.
+  await watched.getByTestId("work-card").hover();
   await expect(watched).toContainText("Watching");
   await expect(watched.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
   const owned = feed.getByRole("listitem", { name: "Example Work 3" });
   await expect(owned).toBeVisible();
+  await owned.getByTestId("work-card").hover();
   await expect(owned.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
   await expect(owned).not.toContainText("Watching");
 
   const entry = feed.getByRole("listitem", { name: "Example Work 1" });
+  await entry.getByTestId("work-card").hover();
   const watch = entry.getByRole("button", { name: "Add to Availability Watch" });
   await expect(watch).toHaveText("Watch");
   await watch.click();
@@ -1324,6 +1329,8 @@ test("phones reach the ranking page actions and see the labeled watch action", a
   await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   const entry = ranking.getByRole("listitem", { name: "Example Work 1" });
+  // On a phone a simple card opens its details and actions with its toggle.
+  await entry.getByRole("button", { name: "Show details", exact: true }).click();
   await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toHaveText("Watch");
 
   await page.getByRole("button", { name: "Actions for the shown works" }).click();

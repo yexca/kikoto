@@ -34,11 +34,6 @@ export const subscriptionsKorean = {
         try_new: "새로 들어 보기",
         listen_again: "다시 듣기",
       },
-      descriptions: {
-        maybe_like: "아직 듣지 않은, 취향에 가까운 작품",
-        try_new: "거의 듣지 않는 서클, 성우, 태그",
-        listen_again: "좋아했지만 한동안 재생하지 않은 작품",
-      },
       drawAgain: "다시 뽑기",
       drawAgainColumn: "{{column}} 다시 뽑기",
       coldStart:

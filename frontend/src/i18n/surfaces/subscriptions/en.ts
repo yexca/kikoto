@@ -34,11 +34,6 @@ export const subscriptionsEnglish = {
         try_new: "Try new",
         listen_again: "Listen again",
       },
-      descriptions: {
-        maybe_like: "Not heard yet, close to what you like",
-        try_new: "Circles, voices, and tags you rarely hear",
-        listen_again: "Works you liked, a while since you played them",
-      },
       drawAgain: "Draw again",
       drawAgainColumn: "Draw {{column}} again",
       coldStart:

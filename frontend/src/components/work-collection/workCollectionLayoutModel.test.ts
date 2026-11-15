@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chooseWorkCardMode,
   discoverCardLayout,
-  discoverCardModes,
   DISCOVER_LAYOUT_STORE,
   LIBRARY_LAYOUT_STORE,
   storedWorkCollectionLayout,
@@ -63,12 +62,12 @@ describe("stored work collection layout", () => {
     expect(workCardModes.slice(0, 2)).toEqual(["full", "simple"]);
   });
 
-  it("starts Discover with compact cards while keeping a stored choice", () => {
+  it("starts Discover with simple cards while keeping a stored choice", () => {
     const { storageKey, cardMode } = DISCOVER_LAYOUT_STORE;
     expect(storageKey).not.toBe(LIBRARY_LAYOUT_STORE.storageKey);
     expect(storedWorkCollectionLayout(null, defaults, cardMode)).toMatchObject({
-      mobileCardMode: "compact",
-      desktopCardMode: "compact",
+      mobileCardMode: "simple",
+      desktopCardMode: "simple",
     });
     expect(
       storedWorkCollectionLayout(JSON.stringify({ desktopCardMode: "full" }), defaults, cardMode).desktopCardMode,
@@ -88,10 +87,6 @@ describe("work card layout", () => {
     expect(workCardLayout("simple", false, 2)).toBe("simple");
   });
 
-  it("leaves the simple mode out of Discover's choices", () => {
-    expect(discoverCardModes).toEqual(["full", "compact", "mini"]);
-  });
-
   it("shows compact cards as rows in one phone column and as tiles elsewhere", () => {
     expect(workCardLayout("compact", false, "auto")).toBe("row");
     expect(workCardLayout("compact", false, 1)).toBe("row");
@@ -109,6 +104,7 @@ describe("work card layout", () => {
     expect(discoverCardLayout("compact", false, "auto")).toBe("row");
     expect(discoverCardLayout("compact", false, 2)).toBe("tile");
     expect(discoverCardLayout("full", true, "auto")).toBeNull();
+    expect(discoverCardLayout("simple", false, 1)).toBe("simple");
     expect(discoverCardLayout("mini", true, "auto")).toBe("cover");
   });
 });

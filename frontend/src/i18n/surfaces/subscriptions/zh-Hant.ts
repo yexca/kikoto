@@ -34,11 +34,6 @@ export const subscriptionsHant = {
         try_new: "嘗鮮",
         listen_again: "再聽一次",
       },
-      descriptions: {
-        maybe_like: "還沒聽過、貼近你口味的作品",
-        try_new: "你很少聽的社團、聲優和標籤",
-        listen_again: "喜歡過、已有一段時間沒聽的作品",
-      },
       drawAgain: "重新抽取",
       drawAgainColumn: "重新抽取「{{column}}」",
       coldStart: "為作品評分、收藏或標記後，推薦會學習你的喜好。在此之前，「可能喜歡」依 DLsite 評分和銷量排列。",
