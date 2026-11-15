@@ -1383,6 +1383,10 @@ export const surfaceJapanese = {
         name: "サークルを更新",
         description: "1 つのサークルの DLsite カタログ、作品メタデータ、リモートソースの照合を更新します。",
       },
+      record_library_scan: {
+        name: "記録をスキャン",
+        description: "記録フォルダーの動画と写真を見つけ、長さとサイズを読み取ります。音声作品は変更しません。",
+      },
       demo_library_scan: {
         name: "デモライブラリをスキャン",
         description: "デモファイルを検出し、公開閲覧できる作品を索引化します。",
@@ -1676,6 +1680,8 @@ export const surfaceJapanese = {
       "購読の更新スケジュールは「見つける」ページで設定します。実行履歴はここに残ります。",
     rankingsManagedOnSubscriptions:
       "各ランキングは、「見つける」ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
+    recordScanManagedOnRecords: "記録のスキャンは記録ページの「スキャン」から開始します。実行履歴はここに残ります。",
+    openRecords: "「記録」を開く",
     openSubscriptions: "「見つける」を開く",
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
     catalogSyncQueued: "カタログ同期を実行 #{{id}} としてキューに追加しました。",

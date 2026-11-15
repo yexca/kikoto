@@ -132,6 +132,13 @@ const systemDefinitions: WorkflowDefinition[] = [
     definitionJson:
       '{"nodes":[{"id":"select","type":"select_local_works","displayName":"Select local works"},{"id":"index","type":"index_local_media","displayName":"Index work files"}]}',
   }),
+  workflowDefinitionFixture({
+    id: 9,
+    code: "record_library_scan",
+    displayName: "Scan record library",
+    description: "Index the independent local video and image library without changing audio works.",
+    definitionJson: '{"nodes":[{"id":"scan","type":"record_library_scan","displayName":"Scan record library"}]}',
+  }),
 ];
 
 const workflowTriggers: WorkflowTrigger[] = [
@@ -831,6 +838,15 @@ test("Workflows shows Scan, Metadata, and Index above what runs now and next", a
   await expect(page.getByText("Each ranking is pulled on its own schedule", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Open Discover", exact: true }).click();
   await expect(page).toHaveURL(/\/discover\?view=rankings&panel=rankings$/);
+
+  // So does History narrowed to the scan the Record page starts, under its translated name.
+  await page.goto("/workflows?tab=history&workflow=record_library_scan");
+  const workflowFilter = page.getByRole("combobox", { name: "Workflow", exact: true });
+  await expect(workflowFilter).toHaveValue("record_library_scan");
+  await expect(workflowFilter.getByRole("option", { name: "Scan Record", exact: true })).toHaveCount(1);
+  await expect(page.getByText("Record scans start from Scan on the Record page.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Open Record", exact: true }).click();
+  await expect(page).toHaveURL(/\/records$/);
 });
 
 test("Full applies to the next Metadata or Index run, and Scan always scans every folder", async ({ page }) => {

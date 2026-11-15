@@ -1380,6 +1380,10 @@ export const surfaceKorean = {
         name: "서클 새로 고침",
         description: "서클 하나의 DLsite 카탈로그, 작품 메타데이터 또는 원격 소스 대조를 새로 고칩니다.",
       },
+      record_library_scan: {
+        name: "기록 스캔",
+        description: "기록 폴더의 동영상과 사진을 찾아 길이와 크기를 읽습니다. 오디오 작품은 변경하지 않습니다.",
+      },
       demo_library_scan: {
         name: "데모 라이브러리 스캔",
         description: "데모 파일을 검색하고 공개 열람이 가능한 작품을 색인합니다.",
@@ -1670,6 +1674,8 @@ export const surfaceKorean = {
       "구독 새로 고침 일정은 둘러보기 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
     rankingsManagedOnSubscriptions:
       "각 순위는 둘러보기 페이지의 순위 설정에서 정한 일정에 따라 따로 가져옵니다. 실행 기록은 여기에 남습니다.",
+    recordScanManagedOnRecords: "기록 스캔은 기록 페이지의 스캔에서 시작합니다. 실행 기록은 여기에 남습니다.",
+    openRecords: "기록 열기",
     openSubscriptions: "둘러보기 열기",
     presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
     catalogSyncQueued: "카탈로그 동기화를 실행 #{{id}}(으)로 대기열에 추가했습니다.",

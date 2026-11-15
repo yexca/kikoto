@@ -1562,6 +1562,8 @@ export const surfaceEnglish = {
       "The subscription refresh is scheduled on the Discover page. Its run history stays here.",
     rankingsManagedOnSubscriptions:
       "Each ranking is pulled on its own schedule, set in the Rankings settings on the Discover page. Its run history stays here.",
+    recordScanManagedOnRecords: "Record scans start from Scan on the Record page. Their run history stays here.",
+    openRecords: "Open Record",
     openSubscriptions: "Open Discover",
     presetQueueFailed: "Preset workflow could not be queued.",
     catalogSyncQueued: "Catalog sync queued as run #{{id}}.",
@@ -1854,6 +1856,11 @@ export const surfaceEnglish = {
       circle_metadata_refresh: {
         name: "Refresh circle",
         description: "Refresh one circle's DLsite catalog, work metadata, or remote source matches.",
+      },
+      record_library_scan: {
+        name: "Scan Record",
+        description:
+          "Find the videos and photos in the Record folder and read their length and size. Audio works are not changed.",
       },
       demo_library_scan: {
         name: "Scan Demo library",

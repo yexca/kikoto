@@ -14,7 +14,19 @@ const (
 	recordScanWorkflowCode = "record_library_scan"
 	recordScanWorkerType   = "record_library_scan"
 	recordScanDisplayName  = "Scan record library"
+	recordScanDescription  = "Index the independent local video and image library without changing audio works."
 )
+
+// recordScanWorkflowSpec is registered at startup with the other system
+// workflows, so Workflows can filter by it before the first Record scan.
+func recordScanWorkflowSpec() systemWorkflowSpec {
+	return systemWorkflowSpec{
+		Code:        recordScanWorkflowCode,
+		Name:        recordScanDisplayName,
+		Description: recordScanDescription,
+		Nodes:       []map[string]string{{"id": "scan", "type": recordScanWorkerType, "displayName": recordScanDisplayName}},
+	}
+}
 
 type recordScanPayload struct {
 	RequestedByUserID int64 `json:"requested_by_user_id"`
@@ -51,9 +63,8 @@ func (s *Server) enqueueRecordScan(ctx context.Context, actorUserID int64) (reco
 		return recordScanQueuedResult{}, err
 	}
 
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, recordScanWorkflowCode, recordScanDisplayName,
-		"Index the independent local video and image library without changing audio works.",
-		map[string]any{"nodes": []map[string]string{{"id": "scan", "type": recordScanWorkerType, "displayName": recordScanDisplayName}}})
+	spec := recordScanWorkflowSpec()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes})
 	if err != nil {
 		return recordScanQueuedResult{}, err
 	}

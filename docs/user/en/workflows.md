@@ -186,6 +186,8 @@ administrators.
   its schedule, and
   each ranking its own pull schedule. History narrowed to one of them says
   where it is configured and links there.
+- **Scan Record** runs from **Scan** on the [Record](record-library.md) page
+  and has no card. History narrowed to it says so and links to that page.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   are preset workflows that run on demand from their target:
   **Sync this circle's catalog…** in a circle's **More** menu, **Sync this

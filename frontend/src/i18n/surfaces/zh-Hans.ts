@@ -1327,6 +1327,10 @@ export const surfaceHans = {
         name: "刷新社团",
         description: "刷新一个社团的 DLsite 目录、作品元数据或远程来源匹配。",
       },
+      record_library_scan: {
+        name: "扫描记录",
+        description: "查找记录文件夹中的视频和照片，并读取时长和尺寸。不会改动音声作品。",
+      },
       demo_library_scan: { name: "扫描演示媒体库", description: "发现演示文件并索引符合公开浏览条件的作品。" },
       dlsite_popular_collection: {
         name: "拉取 DLsite 排行榜",
@@ -1569,6 +1573,8 @@ export const surfaceHans = {
     availabilityWatchManagedOnSubscriptions: "可用性监视在发现页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
     subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在发现页面设置。运行历史保留在这里。",
     rankingsManagedOnSubscriptions: "每个排行榜按发现页面排行榜设置中的计划各自拉取。运行历史保留在这里。",
+    recordScanManagedOnRecords: "记录的扫描从记录页面的“扫描”开始。运行历史保留在这里。",
+    openRecords: "打开记录",
     openSubscriptions: "打开发现",
     presetQueueFailed: "预制工作流无法排队。",
     catalogSyncQueued: "目录同步已排入运行 #{{id}}。",

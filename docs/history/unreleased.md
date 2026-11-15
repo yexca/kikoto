@@ -31,6 +31,8 @@
   Cache** removes them with the rest of the cache, and a complete Record scan
   removes the thumbnails of files that are gone. A removed thumbnail is made
   again the next time a folder shows it.
+- Record scans are listed in Workflows as **Scan Record**, and History narrowed
+  to them links to the Record page, where **Scan** starts them.
 
 </details>
 

@@ -605,8 +605,9 @@ refresh, and System → Library for a source presence check. **History**
 narrows it to failed runs (`&status=failed`, `view=failed`), a workflow
 filter to one workflow (`&workflow=<code>`), including the workflows that have
 no card, and a search field matches the workflow name, the trigger reason, and
-the run's subject (`&q=`). A workflow that the Discover page configures
-states so above its runs and links there. Rows open full run details
+the run's subject (`&q=`). A workflow that the Discover page configures,
+and the Record scan, which the Record page starts, state so above their runs
+and link there. Rows open full run details
 (`?run=<id>`) beside the list from 1280px and in place of it below, where the
 mobile layout returns through the header back action; returning to the list
 keeps its filters. Opening a run is a history entry. A card's state, the header

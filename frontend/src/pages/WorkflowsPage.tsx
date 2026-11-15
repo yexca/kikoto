@@ -1,4 +1,4 @@
-import { CalendarPlus, ChevronDown, Compass } from "lucide-react";
+import { CalendarPlus, ChevronDown, Clapperboard, Compass } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -35,7 +35,7 @@ import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation"
 import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import { discoverManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
+import { pageManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -242,8 +242,7 @@ export function WorkflowsPage({
       name: workflowName(code, definition?.displayName ?? code),
       editable: false,
       path:
-        discoverManagedWorkflows[code]?.path ??
-        (code === "source_presence_check" ? systemSettingsPath("library") : null),
+        pageManagedWorkflows[code]?.path ?? (code === "source_presence_check" ? systemSettingsPath("library") : null),
     };
   };
   const operationTriggers = triggers.filter((trigger) =>
@@ -253,7 +252,7 @@ export function WorkflowsPage({
   const workflowOptions = definitions
     .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
     .sort((left, right) => left.name.localeCompare(right.name));
-  const managed = discoverManagedWorkflows[location.workflowCode];
+  const managed = pageManagedWorkflows[location.workflowCode];
 
   const renderCard = (operation: Operation) => {
     const { definition } = operation;
@@ -427,8 +426,8 @@ export function WorkflowsPage({
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
               <p className="min-w-0">{workflowCopy(managed.message)}</p>
               <Button size="sm" variant="outline" onClick={() => openWorkflowPath(managed.path)}>
-                <Compass className="h-4 w-4" />
-                {workflowCopy("openSubscriptions")}
+                {managed.page === "records" ? <Clapperboard className="h-4 w-4" /> : <Compass className="h-4 w-4" />}
+                {workflowCopy(managed.page === "records" ? "openRecords" : "openSubscriptions")}
               </Button>
             </div>
           ) : undefined

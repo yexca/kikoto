@@ -16,25 +16,34 @@ import type { WorkflowTrigger } from "@/lib/api";
 export type OperationTriggerKind = "startup" | "schedule";
 
 /**
- * Workflows run and configured on the Discover page, with where each is
- * managed there. Workflows lists their runs and their triggers under Next.
+ * Workflows run and configured on another page, with that page and where each
+ * is managed there. Workflows lists their runs and their triggers under Next.
  */
-export const discoverManagedWorkflows: Record<string, { message: string; path: string }> = {
+export const pageManagedWorkflows: Record<string, { message: string; path: string; page: "discover" | "records" }> = {
   availability_watch: {
     message: "availabilityWatchManagedOnSubscriptions",
     path: "/discover?view=watch&panel=watch",
+    page: "discover",
   },
   creator_subscription_refresh: {
     message: "subscriptionRefreshManagedOnSubscriptions",
     path: "/discover?panel=subscriptions",
+    page: "discover",
   },
   dlsite_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
     path: "/discover?view=rankings&panel=rankings",
+    page: "discover",
   },
   remote_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
     path: "/discover?view=rankings&panel=rankings",
+    page: "discover",
+  },
+  record_library_scan: {
+    message: "recordScanManagedOnRecords",
+    path: "/records",
+    page: "records",
   },
 };
 

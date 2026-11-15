@@ -1328,6 +1328,10 @@ export const surfaceHant = {
         name: "重新整理社團",
         description: "重新整理一個社團的 DLsite 目錄、作品中繼資料或遠端來源比對。",
       },
+      record_library_scan: {
+        name: "掃描記錄",
+        description: "尋找記錄資料夾中的影片和相片，並讀取時長和尺寸。不會改動音聲作品。",
+      },
       demo_library_scan: { name: "掃描示範媒體庫", description: "探索示範檔案並建立符合公開瀏覽條件的作品索引。" },
       dlsite_popular_collection: {
         name: "拉取 DLsite 排行榜",
@@ -1572,6 +1576,8 @@ export const surfaceHant = {
       "可用性監視在發現頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
     subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在發現頁面設定。執行歷史保留在這裡。",
     rankingsManagedOnSubscriptions: "每個排行榜依發現頁面排行榜設定中的排程各自拉取。執行歷史保留在這裡。",
+    recordScanManagedOnRecords: "記錄的掃描從記錄頁面的「掃描」開始。執行歷史保留在這裡。",
+    openRecords: "開啟記錄",
     openSubscriptions: "開啟發現",
     presetQueueFailed: "預製工作流程無法排入佇列。",
     catalogSyncQueued: "目錄同步已排入執行 #{{id}}。",
