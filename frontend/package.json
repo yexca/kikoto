@@ -44,7 +44,7 @@
     "@capacitor/android": "^8.6.0",
     "@capacitor/cli": "^8.6.0",
     "@capacitor/ios": "^8.6.0",
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/postcss": "^4.3.5",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
