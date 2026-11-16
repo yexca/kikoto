@@ -1048,7 +1048,6 @@ export const surfaceHant = {
       about: "關於{{label}}",
       elsewhere: "更多中繼資料設定",
       openCatalogFreshness: "目錄新鮮度",
-      openRemoteFallback: "遠端中繼資料備援",
     },
     recommendation: {
       tuning: "推薦調整",

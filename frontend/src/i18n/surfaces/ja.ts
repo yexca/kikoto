@@ -1087,7 +1087,6 @@ export const surfaceJapanese = {
       about: "{{label}}について",
       elsewhere: "その他のメタデータ設定",
       openCatalogFreshness: "カタログの更新日数",
-      openRemoteFallback: "リモートメタデータの補完",
     },
     recommendation: {
       tuning: "おすすめ調整",

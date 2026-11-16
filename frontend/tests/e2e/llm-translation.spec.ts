@@ -848,11 +848,12 @@ test("Demo shows sample transcriptions in Manage lyrics with every action off @d
       }),
     }),
   );
-  // Demo contacts no speech recognition or LLM endpoint.
+  // Demo contacts no speech recognition or LLM endpoint. Only API paths count:
+  // the idle-preloaded settings pages load modules with asr/llm in their paths.
   const serviceRequests: string[] = [];
   page.on("request", (request) => {
     const { pathname } = new URL(request.url());
-    if (/\/(asr|llm)\/|\/(asr|llm)-/.test(pathname)) serviceRequests.push(pathname);
+    if (/^\/api\/(.*\/)?(asr|llm)[/-]/.test(pathname)) serviceRequests.push(pathname);
   });
 
   await page.goto("/");

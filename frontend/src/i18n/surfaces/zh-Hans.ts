@@ -1047,7 +1047,6 @@ export const surfaceHans = {
       about: "关于{{label}}",
       elsewhere: "更多元数据设置",
       openCatalogFreshness: "目录新鲜度",
-      openRemoteFallback: "远程元数据回退",
     },
     recommendation: {
       tuning: "推荐调优",

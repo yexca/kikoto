@@ -698,7 +698,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
     const bounds = (await dialog.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);

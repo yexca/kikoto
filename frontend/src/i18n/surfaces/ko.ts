@@ -1085,7 +1085,6 @@ export const surfaceKorean = {
       about: "{{label}} 정보",
       elsewhere: "기타 메타데이터 설정",
       openCatalogFreshness: "카탈로그 최신 유지 일수",
-      openRemoteFallback: "원격 메타데이터 보완",
     },
     recommendation: {
       tuning: "추천 조정",

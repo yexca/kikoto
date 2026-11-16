@@ -1031,7 +1031,6 @@ export const surfaceEnglish = {
       about: "About {{label}}",
       elsewhere: "More metadata settings",
       openCatalogFreshness: "Catalog freshness",
-      openRemoteFallback: "Remote metadata fallback",
     },
     recommendation: {
       tuning: "Recommendation tuning",
