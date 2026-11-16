@@ -33,7 +33,7 @@ export function LibraryPrimaryTabs({
   // The selected entry stays visible so the bar never hides where the viewer is.
   const shown = (key: Parameters<typeof visibleKeys.has>[0], selected: boolean) => selected || visibleKeys.has(key);
   return (
-    <div className={segmentedListClassName()}>
+    <div className={segmentedListClassName()} role="group" aria-label={t("library.sourceMenu")}>
       <SourceVisibilityPicker
         title={t("library.sourceVisibility.title")}
         rows={rows}

@@ -441,17 +441,6 @@ export function treeStats(node: TreeNode): TreeStats {
   return stats;
 }
 
-export function formatTreeStats(stats: TreeStats) {
-  const parts = [
-    stats.audio > 0 ? `${stats.audio} audio` : "",
-    stats.video > 0 ? `${stats.video} video` : "",
-    stats.audio === 0 && stats.video === 0 && stats.files > 0 ? `${stats.files} files` : "",
-    stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "",
-    stats.knownDurationMedia > 0 ? formatDuration(stats.durationSeconds) : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "";
-}
-
 export function formatBytes(value: number | null) {
   if (value === null) return "unknown";
   if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;

@@ -1,12 +1,11 @@
-import { Building2, Tags, FolderPlus, LayoutGrid, MicVocal, Settings, type LucideIcon } from "lucide-react";
+import { FolderPlus, Settings } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
-import { useRailOrientation } from "@/components/ui/rail-labels";
-import { cx } from "@/lib/classNames";
+import { contentPageClassName } from "@/components/ui/page-width";
+import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
@@ -19,18 +18,11 @@ import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
+import { cn } from "@/lib/tailwindClassNames";
 
 type MetadataView = "works" | "aliases" | "tags" | "circles";
 // DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
-type MetadataRailValue = "dlsite" | "custom" | "aliases" | "tags" | "circles";
-
-const railIcons: Record<MetadataRailValue, LucideIcon> = {
-  dlsite: LayoutGrid,
-  custom: FolderPlus,
-  aliases: MicVocal,
-  tags: Tags,
-  circles: Building2,
-};
+type MetadataTabValue = "dlsite" | "custom" | "aliases" | "tags" | "circles";
 
 function reasonFromLocation() {
   const params = new URLSearchParams(window.location.search);
@@ -80,37 +72,31 @@ const INLINE_SEARCH_MIN_WIDTH = 224;
 const HEADER_GAP = 8;
 
 /**
- * Whether the header row has room for an inline search field between the view
- * title and the actions. Widths come from content (`scrollWidth`) and exclude
- * the collapsed-search toggle, so switching modes does not change the answer.
+ * Whether the header row has room for an inline search field beside the
+ * actions. Widths come from content (`scrollWidth`) and exclude the
+ * collapsed-search toggle, so switching modes does not change the answer.
  */
-function useInlineSearchFits(
-  header: RefObject<HTMLElement | null>,
-  title: RefObject<HTMLElement | null>,
-  actions: RefObject<HTMLElement | null>,
-) {
+function useInlineSearchFits(header: RefObject<HTMLElement | null>, actions: RefObject<HTMLElement | null>) {
   const [fits, setFits] = useState(true);
   useLayoutEffect(() => {
     const measure = () => {
       if (!header.current || !actions.current) return;
       const toggle = actions.current.querySelector<HTMLElement>("[data-search-toggle]");
       const actionsWidth = actions.current.scrollWidth - (toggle ? toggle.offsetWidth + HEADER_GAP : 0);
-      // A title hidden in compact layouts measures zero and needs no gap.
-      const titleWidth = title.current?.offsetWidth ? title.current.scrollWidth + HEADER_GAP : 0;
-      setFits(header.current.clientWidth >= titleWidth + actionsWidth + INLINE_SEARCH_MIN_WIDTH + HEADER_GAP);
+      setFits(header.current.clientWidth >= actionsWidth + INLINE_SEARCH_MIN_WIDTH + HEADER_GAP);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    for (const element of [header.current, title.current, actions.current]) if (element) observer.observe(element);
+    for (const element of [header.current, actions.current]) if (element) observer.observe(element);
     return () => observer.disconnect();
-  }, [header, title, actions]);
+  }, [header, actions]);
   return fits;
 }
 
 /**
- * Metadata page shell: an icon rail that switches between the saved-work
- * views and the tag, circle, and voice actor views, beside a header holding the active
+ * Metadata page shell: tabs along the top that switch between the saved-work
+ * views and the tag, circle, and voice actor views, above a header holding the active
  * view's search, list controls, and selection actions (rendered into slots)
  * and the settings popover. Views own their own tables; this page owns the
  * URL state, decides whether search fits inline, and composes the metadata
@@ -144,14 +130,11 @@ export function WorkManagementPage({
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
   const [searchRowSlot, setSearchRowSlot] = useState<HTMLDivElement | null>(null);
-  // The row leaves the work table its full width; the column rail remains a choice.
-  const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:metadata-rail-orientation", "horizontal");
   const [counts, setCounts] = useState<MaintenanceCounts | null>(null);
   const [countsRevision, setCountsRevision] = useState(0);
   const [editor, setEditor] = useState<{ work: WorkDetail; onSaved: () => void } | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -196,7 +179,7 @@ export function WorkManagementPage({
   }, [countsRevision, listRevision]);
   const refreshCounts = () => setCountsRevision((value) => value + 1);
 
-  const inlineSearch = useInlineSearchFits(headerRef, titleRef, headerActionsRef);
+  const inlineSearch = useInlineSearchFits(headerRef, headerActionsRef);
   const toolbar: MaintenanceToolbarSlots = {
     actions: actionsSlot,
     search: inlineSearch ? inlineSearchSlot : searchRowSlot,
@@ -245,14 +228,14 @@ export function WorkManagementPage({
     }
   };
 
-  const railEntries: Array<[MetadataRailValue, string, boolean]> = [
+  const tabEntries: Array<[MetadataTabValue, string, boolean]> = [
     ["dlsite", t("workManagement.dlsiteWorks"), true],
     ["custom", t("customWorks.rail"), true],
     ["tags", t("metadataEntries.tags"), true],
     ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
   ];
-  const railCount = (value: MetadataRailValue) => {
+  const tabCount = (value: MetadataTabValue) => {
     if (!counts) return undefined;
     const count = value === "dlsite" ? counts.catalog : value === "custom" ? counts.custom : undefined;
     if (count === undefined) return undefined;
@@ -264,34 +247,34 @@ export function WorkManagementPage({
   const filterCounts: Partial<Record<CatalogWorkReason, number>> = counts
     ? { catalog: counts.catalog, all: counts.all, metadata: counts.metadata, no_source: counts.noSource }
     : {};
-  const railItems: IconRailItem<MetadataRailValue>[] = railEntries
+  const tabItems: SubNavItem<MetadataTabValue>[] = tabEntries
     .filter(([, , available]) => available)
-    .map(([value, label]) => ({
-      value,
-      label,
-      badge: railCount(value),
-      icon: railIcons[value],
-      id: `metadata-tab-${value}`,
-      controls:
-        value === "aliases"
-          ? "metadata-aliases"
-          : value === "tags" || value === "circles"
-            ? `metadata-${value}`
-            : "metadata-records",
-      separated: value === "tags",
-      groupLabel: t(
-        value === "aliases" || value === "tags" || value === "circles"
-          ? "metadataEntries.entriesGroup"
-          : "metadataEntries.worksGroup",
-      ),
-      description: t(
-        value === "aliases" || value === "tags" || value === "circles"
-          ? "metadataEntries.entriesGroup"
-          : "metadataEntries.worksGroup",
-      ),
-    }));
+    .map(([value, label]) => {
+      const entries = value === "aliases" || value === "tags" || value === "circles";
+      const group = t(entries ? "metadataEntries.entriesGroup" : "metadataEntries.worksGroup");
+      const count = tabCount(value);
+      return {
+        value,
+        label,
+        // The count is a guide beside the name; the description reads it after the group.
+        suffix: count ? (
+          <span aria-hidden="true" className="text-xs font-normal tabular-nums text-muted-foreground">
+            {count.count}
+          </span>
+        ) : undefined,
+        id: `metadata-tab-${value}`,
+        controls:
+          value === "aliases"
+            ? "metadata-aliases"
+            : value === "tags" || value === "circles"
+              ? `metadata-${value}`
+              : "metadata-records",
+        separated: value === "tags",
+        description: [group, count?.description].filter(Boolean).join(", "),
+      };
+    });
   const catalogReason = view === "works" && reason !== "custom" ? (reason as CatalogWorkReason) : null;
-  const railSelected: MetadataRailValue = view === "works" ? (catalogReason ? "dlsite" : "custom") : view;
+  const tabSelected: MetadataTabValue = view === "works" ? (catalogReason ? "dlsite" : "custom") : view;
   const customView = view === "works" && reason === "custom" && canCreateCustomWorks;
   // Administrators accept the rename notice when they first open the custom works view.
   const customNoticeLocked = customView && customNotice === false;
@@ -302,16 +285,13 @@ export function WorkManagementPage({
   };
 
   return (
-    <div className="min-w-0 space-y-3">
+    <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
       {readOnly && <DemoReadOnlyNotice />}
-      <div className={cx("flex min-w-0 flex-col gap-3", railOrientation === "vertical" && "lg:flex-row lg:gap-4")}>
-        <IconRail
+      <div className="flex min-w-0 flex-col gap-3">
+        <SubNavTabs
           label={t("workMaintenance.reason")}
-          labelsStorageKey="kikoto:metadata-rail-labels-shown"
-          items={railItems}
-          selected={railSelected}
-          orientation={railOrientation}
-          onToggleOrientation={toggleRailOrientation}
+          items={tabItems}
+          selected={tabSelected}
           onSelect={(value) =>
             value === "aliases" || value === "tags" || value === "circles"
               ? showEntries(value)
@@ -320,16 +300,6 @@ export function WorkManagementPage({
         />
         <div className="min-w-0 flex-1 space-y-3">
           <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
-            {/* A wide column rail leaves the current view unnamed here; every row rail names it. */}
-            <h2
-              ref={titleRef}
-              className={cx(
-                "shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden",
-                railOrientation === "horizontal" && "hidden",
-              )}
-            >
-              {railItems.find((item) => item.value === railSelected)?.label}
-            </h2>
             <div ref={setInlineSearchSlot} className="contents" />
             <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
               <div ref={setActionsSlot} className="contents" />
@@ -385,9 +355,6 @@ export function WorkManagementPage({
               onSelect={(next) => showWorks(next)}
             />
           )}
-          <p className="-mt-1 text-xs text-muted-foreground">
-            {t(`workManagement.viewDescriptions.${catalogReason ?? railSelected}`)}
-          </p>
           {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (

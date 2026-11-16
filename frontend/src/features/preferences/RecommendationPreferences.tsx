@@ -183,7 +183,7 @@ export function RecommendationPreferences({
         </Button>
       }
     >
-      <div className="space-y-6 p-4">
+      <div className="space-y-8 py-4">
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">{maintenanceCopy("recommendation.profile")}</h3>
@@ -216,7 +216,7 @@ export function RecommendationPreferences({
           onExampleChange={setExample}
         />
 
-        <section className="rounded-md border bg-background p-4">
+        <section className="border-t pt-6">
           <h3 className="mb-4 text-sm font-semibold">{maintenanceCopy("recommendation.ordering")}</h3>
           <div className="grid gap-6 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
             <div className="space-y-4">
@@ -241,11 +241,11 @@ export function RecommendationPreferences({
           </div>
         </section>
 
-        <details className="rounded-md border bg-background">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+        <details className="border-t pt-4">
+          <summary className="cursor-pointer text-sm font-semibold">
             {maintenanceCopy("recommendation.advancedScoring")}
           </summary>
-          <div className="space-y-6 border-t p-4">
+          <div className="space-y-6 pt-4">
             <RecommendationGroup title={maintenanceCopy("recommendation.mixSlots")}>
               <RecommendationLaneMix config={config} onChange={updateField} />
             </RecommendationGroup>

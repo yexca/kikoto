@@ -222,13 +222,6 @@ export const translationEnglish = {
       history: "History",
       coverage: "Coverage",
     },
-    descriptions: {
-      review: "AI translations of every work waiting for review. Anyone who can translate a category reviews it.",
-      running: "Translations that are running or queued, by work and language.",
-      attention: "Items that failed or whose result is unknown. Send them again or dismiss them.",
-      history: "What finished translations wrote, newest first, with the work each belongs to.",
-      coverage: "How much of each work a language covers. Selected works can be translated together.",
-    },
     running: "Running",
     queued: "Queued",
     runStatus: {
@@ -249,7 +242,7 @@ export const translationEnglish = {
     cancel: "Cancel",
     cancelled: "Translation cancelled.",
     cancelFailed: "The translation could not be cancelled.",
-    activity: "Activity",
+    activity: "View run",
     refresh: "Refresh",
     loading: "Loading…",
     loadFailed: "Translations could not be loaded.",

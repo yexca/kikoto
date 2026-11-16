@@ -68,7 +68,7 @@ Kikoto 为每部作品只保留一个条目，以商品编号为键，并把 DLs
   </tr>
 </table>
 
-扫描、同步、文件编辑和 AI 任务都以工作流的形式运行，可在活动中查看进度；角色决定谁可以浏览、获取、编辑和管理；所有状态都保存在同一个 SQLite 数据库中。应用的 APK 和 IPA 会附在每个[发布版本](https://github.com/yexca/kikoto/releases)中。
+扫描、同步、文件编辑和 AI 任务都以工作流的形式运行，可在工作流中查看进度；角色决定谁可以浏览、获取、编辑和管理；所有状态都保存在同一个 SQLite 数据库中。应用的 APK 和 IPA 会附在每个[发布版本](https://github.com/yexca/kikoto/releases)中。
 
 ## 工作原理
 

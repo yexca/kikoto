@@ -46,6 +46,44 @@ export type DatabaseCleanupResult = {
   results: Array<{ key: DatabaseCleanupTaskKey; removed: number; skipped: boolean }>;
 };
 
+/** One work family with local folders, carrying the viewer's own rating and Quick mark. */
+export type LocalWorkCleanupWork = {
+  workId: number;
+  primaryCode: string;
+  title: string;
+  rating: number | null;
+  listeningStatus: "none" | "want_to_listen" | "listening" | "finished" | "relisten" | "paused";
+  sizeBytes: number;
+  fileCount: number;
+  unknownSizeFiles: number;
+  folders: Array<{ id: number; path: string; online: boolean }>;
+  offline: boolean;
+  /** Another source still provides the work, so forgetting keeps it. */
+  sourceAvailable: boolean;
+};
+
+export type LocalWorkCleanupPage = {
+  works: LocalWorkCleanupWork[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type LocalWorkCleanupRequest = {
+  works: Array<{ workId: number; folders: Array<{ id: number; path: string }> }>;
+  clearRating: boolean;
+  clearMark: boolean;
+  forget: boolean;
+  confirmHighRated: boolean;
+};
+
+export type LocalWorkCleanupQueued = {
+  runId: number;
+  jobId: number;
+  status: "queued";
+  works: number;
+};
+
 /** Compaction runs as a workflow job; an active run is returned instead of a second one. */
 export type DatabaseOptimizeResult = {
   runId: number;
@@ -149,6 +187,20 @@ export type FileSource = {
   };
   healthStatus: string;
   lastCheckedAt: string | null;
+  /** Listed for a remote source that answers work checks. */
+  presenceCheck?: FileSourcePresenceCheck;
+};
+
+/** A remote source's latest library work check and its next scheduled one. */
+export type FileSourcePresenceCheck = {
+  lastRun: {
+    id: number;
+    status: string;
+    at: string;
+    checkedWorks: number;
+    availableWorks: number;
+  } | null;
+  nextRunAt: string | null;
 };
 
 /** Copy the work's own lyrics into Kikoto's lyrics folder, or move them there. */
@@ -356,6 +408,20 @@ export const settingsApi = {
   cleanupDatabase: (tasks: DatabaseCleanupTaskKey[]) =>
     postJSONBody<DatabaseCleanupResult>("/api/maintenance/database/cleanup", { tasks }),
   optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
+  listLocalWorkCleanup: (
+    filter: { maxRating: number; includeUnrated: boolean; page: number; pageSize: number },
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams({
+      maxRating: String(filter.maxRating),
+      unrated: String(filter.includeUnrated),
+      page: String(filter.page),
+      pageSize: String(filter.pageSize),
+    });
+    return getJSON<LocalWorkCleanupPage>(`/api/maintenance/local-works/cleanup?${params.toString()}`, signal);
+  },
+  cleanupLocalWorks: (request: LocalWorkCleanupRequest) =>
+    postJSONBody<LocalWorkCleanupQueued>("/api/maintenance/local-works/cleanup", request),
   getLibraryLayout: (signal?: AbortSignal) => getJSON<LibraryLayout>("/api/library/layout", signal),
   updateLibraryLayout: (payload: LibraryLayoutUpdate) => putJSONBody<LibraryLayout>("/api/library/layout", payload),
   previewLibraryMigration: (layout: LibraryLayoutUpdate) =>

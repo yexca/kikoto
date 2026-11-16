@@ -84,14 +84,17 @@ test("@smoke renders the anonymous library shell", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open appearance settings" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   const accountSheet = page.getByRole("dialog", { name: "Account" });
   await expect(accountSheet).toBeVisible();
   await expect(accountSheet.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  // Appearance is a header control of its own, not a view of the account panel.
+  await expect(accountSheet.getByRole("button", { name: /^Appearance/ })).toHaveCount(0);
+  await expect(page.locator("header").getByRole("button", { name: "Open appearance settings" })).toBeVisible();
   // Anonymous visitors choose the UI language here but have no personal metadata language.
+  await accountSheet.getByRole("button", { name: /^Language/ }).click();
   await expect(accountSheet.getByRole("combobox", { name: "UI language" })).toBeVisible();
   await expect(accountSheet.getByRole("combobox", { name: "Preferred metadata language" })).toHaveCount(0);
 });

@@ -13,7 +13,7 @@ import {
 } from "@/features/work-detail/source/sourceContextModel";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/features/work-detail/workDetailHelpers";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { DirectoryExplorer } from "@/features/work-detail/directory/DirectoryExplorer";
@@ -310,7 +310,6 @@ function directoryRouteRequestKey(routeStateKey: string | undefined, activeKey: 
 export function SourceDirectoryPanel({
   title,
   description,
-  statsLabel,
   tabs,
   activeKey,
   onActiveKeyChange,
@@ -339,7 +338,6 @@ export function SourceDirectoryPanel({
 }: {
   title: string;
   description: string;
-  statsLabel?: string;
   tabs: SourceTabInfo[];
   activeKey: string;
   onActiveKeyChange: (key: string) => void;
@@ -366,20 +364,16 @@ export function SourceDirectoryPanel({
   autoRoutePath?: string[] | null;
   routeStateKey?: string;
 }) {
-  const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
   const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
   const [requestedRouteStateKey, setRequestedRouteStateKey] = useState(() =>
     directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey),
   );
-  const trackedMenuRef = useRef<HTMLDivElement | null>(null);
+  const descriptionId = useId();
   const mobileNavigationLayout = useMobileNavigationLayout();
   const sourceTabVisibility = useSourceTabVisibility();
   const [fullNames, toggleFullNames] = useFullDirectoryNames();
   const tabMenu = useDirectoryTabMenu();
   const routeRequestKey = directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey);
-  useEffect(() => {
-    setTrackedMenuOpen(false);
-  }, [activeKey, selectedTrackedPresenceKey]);
   useEffect(() => {
     if (requestedRouteStateKey === routeRequestKey) return;
     setRequestedRouteStateKey(routeRequestKey);
@@ -493,141 +487,66 @@ export function SourceDirectoryPanel({
       )}
     </>
   );
-  // A lone source has nothing to switch to: name it in the header instead of a
-  // one-tab strip, and leave an unusable one to the empty state below.
+  // A lone source has nothing to switch to: name it instead of a one-tab
+  // strip, and leave an unusable one to the empty state below.
   const singleSource =
     !showSourceTabs && visibleTabs.length === 1 && visibleTabs[0].status === "available" ? visibleTabs[0] : null;
   const singleSourceName =
     singleSource?.sourceName && singleSource.sourceName !== singleSource.label
       ? `${singleSource.label} · ${singleSource.sourceName}`
       : singleSource?.label;
-  const tabClassName = (active: boolean) =>
-    `relative inline-flex h-10 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full ${
-      active ? "text-foreground after:bg-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
-    }`;
+  const sourceTabs = (
+    <SourceTabStrip
+      visibleTabs={visibleTabs}
+      activeKey={activeKey}
+      onActiveKeyChange={onActiveKeyChange}
+      trackedPresenceOptions={trackedPresenceOptions}
+      selectedTrackedPresenceKey={selectedTrackedPresenceKey}
+      onTrackedPresenceChange={onTrackedPresenceChange}
+    />
+  );
+  const headerControls = (hasDisplayNames || clampableNames || headerSourceControls) && (
+    <div className="flex shrink-0 items-center gap-1">
+      {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
+      {clampableNames && <FullNamesToggle full={fullNames} onToggle={toggleFullNames} />}
+      {headerSourceControls}
+    </div>
+  );
   return (
-    <section className="pb-4 lg:pb-8" data-testid="directory-panel">
+    <section className="pb-4 lg:pb-8" data-testid="directory-panel" aria-label={title} aria-describedby={descriptionId}>
+      {/* The panel opens on its sources: the source tabs, or the one source by
+          name, with the name and source controls at the row's end. What the
+          files are is stated only to assistive technology. */}
+      <p id={descriptionId} className="sr-only">
+        {description}
+      </p>
       {/* Clip rather than hide overflow so the folder navigator can stay sticky. */}
       <div className="overflow-clip rounded-xl border bg-card">
-        <div
-          className={`flex min-w-0 items-center gap-3 px-4 pt-3 lg:pt-4 ${showSourceTabs ? "" : "border-b pb-2 lg:pb-3"}`}
-        >
-          <div className="min-w-0 flex-1">
-            <h3 className="flex min-w-0 items-baseline gap-2 text-base font-semibold">
-              <span className="sr-only lg:not-sr-only">{title}</span>
-              {singleSource && (
+        {(showSourceTabs || singleSource || headerControls) && (
+          <div className="flex min-w-0 items-center gap-2 border-b pr-2 sm:pr-3">
+            {showSourceTabs ? (
+              <div className="app-scrollbar flex min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden px-2">
+                {sourceTabs}
+              </div>
+            ) : singleSource ? (
+              <div
+                className="flex h-10 min-w-0 flex-1 items-center gap-2 px-4 text-sm font-medium"
+                title={`${singleSource.label}: ${singleSource.statusLabel}`}
+                data-testid="directory-single-source"
+              >
                 <span
-                  className="inline-flex min-w-0 shrink items-center gap-1.5 self-center text-xs font-normal text-muted-foreground lg:text-sm"
-                  title={`${singleSource.label}: ${singleSource.statusLabel}`}
-                  data-testid="directory-single-source"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(singleSource.status)}`}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{singleSourceName}</span>
-                </span>
-              )}
-              {statsLabel && (
-                <span className="truncate text-xs font-normal text-muted-foreground lg:text-sm">{statsLabel}</span>
-              )}
-            </h3>
-            <p className="sr-only lg:not-sr-only lg:mt-0.5 lg:truncate lg:text-xs lg:text-muted-foreground">
-              {description}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
-            {clampableNames && <FullNamesToggle full={fullNames} onToggle={toggleFullNames} />}
-            {headerSourceControls}
-          </div>
-        </div>
-        {tabMenuControls}
-
-        {showSourceTabs && (
-          <div className="app-scrollbar mt-1 flex min-w-0 items-center overflow-x-auto overflow-y-hidden border-b px-2">
-            {visibleTabs.map((source) =>
-              source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
-                <div key={source.key} ref={trackedMenuRef} className="relative flex shrink-0 items-center">
-                  <button
-                    className={tabClassName(source.key === activeKey)}
-                    aria-pressed={source.key === activeKey}
-                    onClick={() => onActiveKeyChange(source.key)}
-                    title={`${source.label}: ${source.statusLabel}`}
-                  >
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
-                      aria-hidden="true"
-                    />
-                    <span>{source.label}</span>
-                    <span className="sr-only">{source.statusLabel}</span>
-                  </button>
-                  <button
-                    className="-ml-2 grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                    aria-label={i18n.t("detailActions.switchFork")}
-                    aria-haspopup="menu"
-                    aria-expanded={trackedMenuOpen}
-                    title={i18n.t("detailActions.switchFork")}
-                    onClick={() => setTrackedMenuOpen((open) => !open)}
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  <AnchoredPopover
-                    open={trackedMenuOpen}
-                    anchorRef={trackedMenuRef}
-                    onOpenChange={setTrackedMenuOpen}
-                    className="w-56 p-1 text-sm"
-                    zIndex={70}
-                  >
-                    <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>
-                      {trackedPresenceOptions.map((option) => (
-                        <button
-                          key={option.key}
-                          role="menuitemradio"
-                          aria-checked={option.key === selectedTrackedPresenceKey}
-                          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                          onClick={() => {
-                            onTrackedPresenceChange?.(option.key);
-                            setTrackedMenuOpen(false);
-                          }}
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`}
-                            aria-hidden="true"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate">{option.label}</span>
-                            <span className="block text-2xs text-muted-foreground">
-                              {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
-                            </span>
-                          </span>
-                          {option.key === selectedTrackedPresenceKey && (
-                            <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </AnchoredPopover>
-                </div>
-              ) : (
-                <button
-                  key={source.key}
-                  className={tabClassName(source.key === activeKey)}
-                  aria-pressed={source.key === activeKey}
-                  onClick={() => onActiveKeyChange(source.key)}
-                  title={`${source.label}: ${source.statusLabel}`}
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
-                    aria-hidden="true"
-                  />
-                  <span>{source.label}</span>
-                  <span className="sr-only">{source.statusLabel}</span>
-                </button>
-              ),
+                  className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(singleSource.status)}`}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{singleSourceName}</span>
+              </div>
+            ) : (
+              <div className="h-10 flex-1" />
             )}
+            {headerControls}
           </div>
         )}
+        {tabMenuControls}
 
         <div className="p-2 sm:p-3">
           {toolbar}
@@ -646,6 +565,116 @@ export function SourceDirectoryPanel({
       </div>
       {selectionModal}
     </section>
+  );
+}
+
+function SourceTabStrip({
+  visibleTabs,
+  activeKey,
+  onActiveKeyChange,
+  trackedPresenceOptions,
+  selectedTrackedPresenceKey,
+  onTrackedPresenceChange,
+}: {
+  visibleTabs: SourceTabInfo[];
+  activeKey: string;
+  onActiveKeyChange: (key: string) => void;
+  trackedPresenceOptions: TrackedPresenceOption[];
+  selectedTrackedPresenceKey: string;
+  onTrackedPresenceChange?: (key: string) => void;
+}) {
+  const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
+  const trackedMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setTrackedMenuOpen(false);
+  }, [activeKey, selectedTrackedPresenceKey]);
+  const tabClassName = (active: boolean) =>
+    `relative inline-flex h-10 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full ${
+      active ? "text-foreground after:bg-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
+    }`;
+  return (
+    <>
+      {visibleTabs.map((source) =>
+        source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
+          <div key={source.key} ref={trackedMenuRef} className="relative flex shrink-0 items-center">
+            <button
+              className={tabClassName(source.key === activeKey)}
+              aria-pressed={source.key === activeKey}
+              onClick={() => onActiveKeyChange(source.key)}
+              title={`${source.label}: ${source.statusLabel}`}
+            >
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+                aria-hidden="true"
+              />
+              <span>{source.label}</span>
+              <span className="sr-only">{source.statusLabel}</span>
+            </button>
+            <button
+              className="-ml-2 grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={i18n.t("detailActions.switchFork")}
+              aria-haspopup="menu"
+              aria-expanded={trackedMenuOpen}
+              title={i18n.t("detailActions.switchFork")}
+              onClick={() => setTrackedMenuOpen((open) => !open)}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            <AnchoredPopover
+              open={trackedMenuOpen}
+              anchorRef={trackedMenuRef}
+              onOpenChange={setTrackedMenuOpen}
+              className="w-56 p-1 text-sm"
+              zIndex={70}
+            >
+              <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>
+                {trackedPresenceOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    role="menuitemradio"
+                    aria-checked={option.key === selectedTrackedPresenceKey}
+                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                    onClick={() => {
+                      onTrackedPresenceChange?.(option.key);
+                      setTrackedMenuOpen(false);
+                    }}
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{option.label}</span>
+                      <span className="block text-2xs text-muted-foreground">
+                        {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
+                      </span>
+                    </span>
+                    {option.key === selectedTrackedPresenceKey && (
+                      <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </AnchoredPopover>
+          </div>
+        ) : (
+          <button
+            key={source.key}
+            className={tabClassName(source.key === activeKey)}
+            aria-pressed={source.key === activeKey}
+            onClick={() => onActiveKeyChange(source.key)}
+            title={`${source.label}: ${source.statusLabel}`}
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+              aria-hidden="true"
+            />
+            <span>{source.label}</span>
+            <span className="sr-only">{source.statusLabel}</span>
+          </button>
+        ),
+      )}
+    </>
   );
 }
 

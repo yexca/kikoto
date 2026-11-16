@@ -1,42 +1,69 @@
 import {
   ChartColumn,
+  CircleUserRound,
   Clapperboard,
   Compass,
   Database,
+  Eraser,
   Heart,
   Info,
   Languages,
   Library,
   MicVocal,
+  ServerCog,
   Settings,
+  Tags,
   Users,
   Workflow,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+
+import { CLEANUP_PATH, SYSTEM_SETTINGS_PATH } from "../pages/settingsPaths";
 
 type NavItem = {
   id: string;
   label: string;
   labelKey: string;
-  description: string;
-  descriptionKey: string;
   path: string;
   icon: LucideIcon;
   audience: "public" | "authenticated" | "admin";
   permission?: string;
-  /** Visual grouping in the sidebar: listening, administration, and account/app-level pages. */
-  group: "browse" | "manage" | "app";
+  /**
+   * Where the shell offers the destination: `browse` pages are the sidebar's
+   * listening destinations, `personal` and `manage` pages sit in its
+   * collapsible groups, and `app` pages close the sidebar after a divider.
+   */
+  group: NavigationGroup;
 };
 
+export type NavigationGroup = "browse" | "personal" | "manage" | "app";
+export type CollapsibleNavigationGroup = Exclude<NavigationGroup, "browse" | "app">;
+
+/**
+ * The sidebar's collapsible groups, in the order it shows them. A layout
+ * without the sidebar offers the same pages from the account panel: `inline`
+ * groups in its list, `nested` ones behind one entry.
+ */
+export const navigationGroups: ReadonlyArray<{
+  id: CollapsibleNavigationGroup;
+  label: string;
+  labelKey: string;
+  icon: LucideIcon;
+  accountPanel: "inline" | "nested";
+}> = [
+  { id: "personal", label: "Personal", labelKey: "nav.personal", icon: CircleUserRound, accountPanel: "inline" },
+  { id: "manage", label: "Manage", labelKey: "nav.manage", icon: Wrench, accountPanel: "nested" },
+];
+
 export const INSIGHTS_PATH = "/insights";
+export const TAGS_PATH = "/tags";
 
 export const navItems = [
   {
     id: "library",
     label: "Library",
     labelKey: "nav.library",
-    description: "Browse, filter, and play works from every configured source",
-    descriptionKey: "nav.libraryDescription",
     path: "/",
     icon: Library,
     audience: "public",
@@ -47,8 +74,6 @@ export const navItems = [
     id: "favorites",
     label: "Favorites",
     labelKey: "nav.favorites",
-    description: "Browse your favorite works, circles, voices, and lists",
-    descriptionKey: "nav.favoritesDescription",
     path: "/favorites",
     icon: Heart,
     audience: "authenticated",
@@ -57,10 +82,8 @@ export const navItems = [
   },
   {
     id: "records",
-    label: "Home videos",
-    labelKey: "nav.homeVideos",
-    description: "Browse the independent video and image library",
-    descriptionKey: "nav.homeVideosDescription",
+    label: "Record",
+    labelKey: "nav.record",
     path: "/records",
     icon: Clapperboard,
     audience: "authenticated",
@@ -71,8 +94,6 @@ export const navItems = [
     id: "circles",
     label: "Circles",
     labelKey: "nav.circles",
-    description: "Browse circles and their known catalogs",
-    descriptionKey: "nav.circlesDescription",
     path: "/circles",
     icon: Users,
     audience: "public",
@@ -83,8 +104,6 @@ export const navItems = [
     id: "voice-actors",
     label: "Voice Actors",
     labelKey: "nav.voiceActors",
-    description: "Browse voices and their credited works",
-    descriptionKey: "nav.voiceActorsDescription",
     path: "/voices",
     icon: MicVocal,
     audience: "public",
@@ -95,8 +114,6 @@ export const navItems = [
     id: "subscriptions",
     label: "Discover",
     labelKey: "nav.subscriptions",
-    description: "New works from your subscriptions, rankings, and works you are waiting for",
-    descriptionKey: "nav.subscriptionsDescription",
     path: "/discover",
     icon: Compass,
     audience: "authenticated",
@@ -104,11 +121,39 @@ export const navItems = [
     group: "browse",
   },
   {
+    id: "insights",
+    label: "Insights",
+    labelKey: "nav.insights",
+    path: INSIGHTS_PATH,
+    icon: ChartColumn,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "personal",
+  },
+  {
+    id: "tags",
+    label: "Tags",
+    labelKey: "nav.tags",
+    path: TAGS_PATH,
+    icon: Tags,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "personal",
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    labelKey: "nav.settings",
+    path: "/settings",
+    icon: Settings,
+    audience: "authenticated",
+    permission: undefined,
+    group: "personal",
+  },
+  {
     id: "workflows",
     label: "Workflows",
     labelKey: "nav.workflows",
-    description: "Run built-in operations and preset workflows",
-    descriptionKey: "nav.workflowsDescription",
     path: "/workflows",
     icon: Workflow,
     audience: "admin",
@@ -119,8 +164,6 @@ export const navItems = [
     id: "metadata",
     label: "Metadata",
     labelKey: "nav.workManagement",
-    description: "Browse metadata, resolve work issues, and configure metadata settings",
-    descriptionKey: "nav.workManagementDescription",
     path: "/metadata",
     icon: Database,
     audience: "admin",
@@ -131,8 +174,6 @@ export const navItems = [
     id: "translation",
     label: "Translation",
     labelKey: "nav.translation",
-    description: "Review AI translations and follow the ones that are running",
-    descriptionKey: "nav.translationDescription",
     path: "/translation",
     icon: Languages,
     audience: "admin",
@@ -140,35 +181,31 @@ export const navItems = [
     group: "manage",
   },
   {
-    id: "settings",
-    label: "Settings",
-    labelKey: "nav.settings",
-    description: "Manage your account, preferences, tags, and data",
-    descriptionKey: "nav.settingsDescription",
-    path: "/settings",
-    icon: Settings,
-    audience: "authenticated",
+    // Either cleanup permission opens the page; each tab follows its own.
+    id: "cleanup",
+    label: "Cleanup",
+    labelKey: "nav.cleanup",
+    path: CLEANUP_PATH,
+    icon: Eraser,
+    audience: "admin",
     permission: undefined,
-    group: "app",
+    group: "manage",
   },
   {
-    id: "insights",
-    label: "Insights",
-    labelKey: "nav.insights",
-    description: "Your listening calendar, statistics, and history",
-    descriptionKey: "nav.insightsDescription",
-    path: INSIGHTS_PATH,
-    icon: ChartColumn,
-    audience: "authenticated",
-    permission: "library:read",
-    group: "app",
+    // Instance settings follow the viewer's role, not one permission.
+    id: "system",
+    label: "System",
+    labelKey: "nav.system",
+    path: SYSTEM_SETTINGS_PATH,
+    icon: ServerCog,
+    audience: "admin",
+    permission: undefined,
+    group: "manage",
   },
   {
     id: "about",
     label: "About",
     labelKey: "nav.about",
-    description: "Version, licensing, and application information",
-    descriptionKey: "nav.aboutDescription",
     path: "/about",
     icon: Info,
     audience: "public",
@@ -178,6 +215,13 @@ export const navItems = [
 ] as const satisfies readonly NavItem[];
 
 export type PageID = (typeof navItems)[number]["id"];
+
+/**
+ * The destinations the account panel repeats as shortcut tiles where the
+ * sidebar is shown, in the order the tiles appear. The sidebar keeps them in
+ * their own groups.
+ */
+export const accountShortcutIds = ["subscriptions", "insights", "tags"] as const satisfies readonly PageID[];
 export type NavigationItem = (typeof navItems)[number];
 export type AuthViewState = "anonymous" | "authenticated";
 
@@ -186,33 +230,47 @@ export function navigationLabel(item: NavigationItem, translate: (key: string) =
   return !translated || translated === item.labelKey ? item.label : translated;
 }
 
-export function navigationDescription(item: NavigationItem, translate: (key: string) => string) {
-  const translated = translate(item.descriptionKey);
-  return !translated || translated === item.descriptionKey ? item.description : translated;
+export function navigationGroupLabel(group: (typeof navigationGroups)[number], translate: (key: string) => string) {
+  const translated = translate(group.labelKey);
+  return !translated || translated === group.labelKey ? group.label : translated;
 }
 
+/**
+ * `administrator` says whether the viewer may open instance settings: an
+ * administrator role, or Demo, which sees them read-only.
+ */
 export function visibleNavigationItems({
   state,
   hasPermission,
+  administrator = false,
 }: {
   state: AuthViewState;
   hasPermission: (permission: string) => boolean;
+  administrator?: boolean;
 }) {
-  return navItems.filter((item) => canAccessNavigationItem(item, state, hasPermission));
+  return navItems.filter((item) => canAccessNavigationItem(item, state, hasPermission, administrator));
 }
 
-export function canAccessPage(page: PageID, state: AuthViewState, hasPermission: (permission: string) => boolean) {
+export function canAccessPage(
+  page: PageID,
+  state: AuthViewState,
+  hasPermission: (permission: string) => boolean,
+  administrator = false,
+) {
   const item = navItems.find((navItem) => navItem.id === page);
-  return item ? canAccessNavigationItem(item, state, hasPermission) : true;
+  return item ? canAccessNavigationItem(item, state, hasPermission, administrator) : true;
 }
 
 function canAccessNavigationItem(
   item: NavigationItem,
   state: AuthViewState,
   hasPermission: (permission: string) => boolean,
+  administrator: boolean,
 ) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
+  if (item.id === "system") return administrator;
+  if (item.id === "cleanup") return hasPermission("downloads:manage") || hasPermission("sources:write");
   if (item.id === "metadata")
     return hasPermission("library:write") || hasPermission("sources:write") || hasPermission("metadata:sync");
   if (item.permission && !hasPermission(item.permission)) return false;

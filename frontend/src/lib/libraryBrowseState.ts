@@ -213,7 +213,6 @@ function isLibraryBrowsePath(path: string) {
       "/circles",
       "/voices",
       "/workflows",
-      "/activity",
       "/runs",
       "/settings",
       "/maintenance",

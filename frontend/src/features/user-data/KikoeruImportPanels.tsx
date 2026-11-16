@@ -156,7 +156,7 @@ export function KikoeruAccountPanel({ disabled, onLoaded }: PanelProps) {
           </div>
         </SettingsRow>
       )}
-      <fieldset className="px-4 py-3" disabled={locked}>
+      <fieldset className="py-3" disabled={locked}>
         <legend className="float-left mb-2 w-full text-sm font-medium">{t("personal.userData.kikoeru.auth")}</legend>
         <div className="clear-both grid gap-2 sm:grid-cols-3">
           {authModes.map(([option, labelKey]) => (
@@ -400,7 +400,7 @@ function ReadRow({
   const { t } = useTranslation();
   const message = errorText ?? (error ? t(`personal.userData.kikoeru.readErrors.${error}`) : null);
   return (
-    <div className="space-y-2 px-4 py-3">
+    <div className="space-y-2 py-3">
       <Button variant="outline" disabled={disabled} onClick={onRead}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : icon}
         {label}

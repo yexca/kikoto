@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { announceRemoteTrackCreated } from "@/app/remoteTrackWorkflows";
+import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
@@ -24,9 +25,10 @@ import { queuePlayerTrack } from "@/features/work-detail/media/queuePlayerTrack"
 import { usePlaybackAutoRouting, usePlaybackRoutePath } from "@/features/work-detail/media/usePlaybackAutoRouting";
 import {
   type RemoteOnlyDetailActionsProps,
-  RemoteOnlyIdentityActions,
+  RemoteOnlyHeroActions,
   RemoteOnlySourceActions,
 } from "@/features/work-detail/RemoteOnlyDetailActions";
+import { heroPlayback as heroPlaybackFor } from "@/features/work-detail/heroPlaybackModel";
 import { RemoteOnlyDirectoryPanel } from "@/features/work-detail/RemoteOnlyDirectoryPanel";
 import {
   remoteOnlyActiveSourceState,
@@ -41,7 +43,6 @@ import {
   type SourceTabInfo,
 } from "@/features/work-detail/source/sourceContextModel";
 import { useRemoteOnlyWorkDetailData } from "@/features/work-detail/useRemoteOnlyWorkDetailData";
-import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
 import {
   listeningStatusLabel,
   remoteDetailActionCode,
@@ -98,6 +99,7 @@ export function RemoteOnlyWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const auth = useAuth();
   const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
   const { t } = useTranslation();
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
@@ -360,10 +362,23 @@ export function RemoteOnlyWorkDetailController({
     playbackRouting.disable();
     setActiveRemoteTab(key);
   };
+  const heroPlayback = heroPlaybackFor({
+    root: visibleTree,
+    routingRules: directoryRoutingRules,
+    loading: isDetailLoading || treeLoading,
+    resumable: false,
+    blocked: message || treeError ? "unavailable" : null,
+  });
   const detailActionProps: RemoteOnlyDetailActionsProps = {
     detail,
     source,
     busy: isFetching || fetchWorkspace.isBusy,
+    heroPlayback,
+    canTrack: auth.demoMode || auth.hasPermission("remote:track"),
+    canFetch: auth.demoMode || (auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync")),
+    // The Hero plays the folder the Directory opens on in the selected tab.
+    onPlay: ({ tracks, locationId }) =>
+      primaryRemoteSelected ? playRemoteTracks(tracks, locationId) : playMaterializedTracks(tracks, locationId),
     primaryRemoteSelected,
     availabilityLoading,
     hasTrackedSource,
@@ -377,10 +392,8 @@ export function RemoteOnlyWorkDetailController({
     canUntrack: requireTrack,
     onFetch: openSaveWorkspace,
   };
-  const heroActions = <RemoteOnlyIdentityActions {...detailActionProps} />;
-  const renderSourceActions = (layout: SourceActionLayout) => (
-    <RemoteOnlySourceActions {...detailActionProps} layout={layout} />
-  );
+  const heroActions = <RemoteOnlyHeroActions {...detailActionProps} />;
+  const sourceActions = <RemoteOnlySourceActions {...detailActionProps} />;
   const directoryPanel = (
     <RemoteOnlyDirectoryPanel
       detail={detail}
@@ -398,7 +411,6 @@ export function RemoteOnlyWorkDetailController({
       isDetailLoading={isDetailLoading}
       treeLoading={treeLoading}
       root={visibleTree}
-      directoryStats={visibleDirectoryStats}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
@@ -464,7 +476,7 @@ export function RemoteOnlyWorkDetailController({
       mobileTab={mobileDetailTab}
       onMobileTabChange={setMobileDetailTab}
       actions={heroActions}
-      renderSourceActions={renderSourceActions}
+      sourceActions={sourceActions}
       directory={directoryPanel}
       onBack={onBack}
     >

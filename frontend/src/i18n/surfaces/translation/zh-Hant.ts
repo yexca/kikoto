@@ -214,13 +214,6 @@ export const translationHant = {
       history: "歷史",
       coverage: "覆蓋",
     },
-    descriptions: {
-      review: "所有作品中等待審核的 AI 翻譯。能翻譯某個類別的人即可審核該類別。",
-      running: "正在執行或已排入佇列的翻譯，依作品和語言顯示。",
-      attention: "失敗或結果未知的項目。可重新傳送或忽略。",
-      history: "已完成的翻譯寫入了什麼，由新到舊排列，並顯示所屬作品。",
-      coverage: "每個作品在某種語言下的覆蓋程度。可一起翻譯所選作品。",
-    },
     running: "執行中",
     queued: "已排隊",
     runStatus: {
@@ -241,7 +234,7 @@ export const translationHant = {
     cancel: "取消",
     cancelled: "翻譯已取消。",
     cancelFailed: "無法取消翻譯。",
-    activity: "活動",
+    activity: "查看執行",
     refresh: "重新整理",
     loading: "載入中…",
     loadFailed: "無法載入翻譯。",

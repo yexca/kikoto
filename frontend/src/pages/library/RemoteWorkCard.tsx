@@ -268,5 +268,6 @@ function remoteWorkCardView(
     recommendationHighlighted: work.recommendScore >= threshold,
     recommendationScore: work.recommendScore,
     sourceBadges: remoteWorkSourceBadges(work, source.id, sourceLabel),
+    mark: work.listeningStatus,
   };
 }

@@ -147,8 +147,12 @@ export function ActionItem({
   detail,
   busy,
   navigates,
+  current,
+  className,
+  id,
   onClick,
 }: {
+  id?: string;
   icon: ReactNode;
   label: string;
   /** Low-emphasis current value shown before the chevron, such as the active theme. */
@@ -156,16 +160,25 @@ export function ActionItem({
   busy?: boolean;
   /** Shows a chevron when the item opens a nested view instead of acting at once. */
   navigates?: boolean;
+  /** Marks the destination of the page on screen. */
+  current?: boolean;
+  className?: string;
   onClick: () => void;
 }) {
   return (
     <button
+      id={id}
       type="button"
-      className="flex min-h-[var(--control-height)] w-full items-center gap-2.5 rounded-md px-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted disabled:opacity-60"
+      className={cn(
+        "flex min-h-[var(--control-height)] w-full items-center gap-2.5 rounded-md px-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted disabled:opacity-60",
+        current && "bg-primary/10 font-medium hover:bg-primary/15",
+        className,
+      )}
       disabled={busy}
+      aria-current={current ? "page" : undefined}
       onClick={onClick}
     >
-      <span className="grid h-5 w-5 shrink-0 place-items-center text-muted-foreground">
+      <span className={cn("grid h-5 w-5 shrink-0 place-items-center text-muted-foreground", current && "text-primary")}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>

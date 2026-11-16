@@ -1,11 +1,12 @@
-import { Check, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { WorkCardActionButton } from "./WorkCardShell";
 
 /**
- * Adds a card's work to Availability Watch, with a visible label so the
- * action reads without a tooltip. A work already in the pool says so instead.
+ * Adds a card's work to Availability Watch: an icon action like the lists and
+ * Quick mark beside it. A work already in the pool shows the same icon lit,
+ * the way a work in a list lights the list icon.
  */
 export function WorkCardWatchButton({
   watched,
@@ -20,26 +21,25 @@ export function WorkCardWatchButton({
   if (watched) {
     return (
       <span
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground"
+        role="img"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
         title={t("workCard.watchingTitle")}
+        aria-label={t("workCard.watchingTitle")}
       >
-        <Check className="h-4 w-4" aria-hidden="true" />
-        {t("workCard.watching")}
+        <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
       </span>
     );
   }
   return (
     <WorkCardActionButton
       title={t("workCard.watchTitle")}
-      label={t("workCard.watch")}
-      showLabel
       disabled={pending}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation();
         onWatch();
       }}
     >
-      <Eye className="h-4 w-4" />
+      <Eye className="h-4 w-4 text-muted-foreground" />
     </WorkCardActionButton>
   );
 }

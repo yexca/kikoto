@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { countTextLines, formatLyricsTime, parseLyrics } from "@/features/work-detail/dialogs/textPreviewModel";
 import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
@@ -119,7 +120,7 @@ export function FilePreviewDialog({
   const player = usePlayer();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [index, setIndex] = useState(request.index);
-  const [zoomed, setZoomed] = useState(false);
+  const [zoom, setZoom] = useState<ImageZoom>("fit");
   const [details, setDetails] = useState("");
   const [textContent, setTextContent] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -131,7 +132,7 @@ export function FilePreviewDialog({
 
   useEffect(() => setIndex(request.index), [request]);
   useEffect(() => {
-    setZoomed(false);
+    setZoom("fit");
     setDetails("");
     setTextContent(null);
     setCopied(false);
@@ -237,10 +238,10 @@ export function FilePreviewDialog({
           )}
           {preview.kind === "image" && (
             <HeaderButton
-              label={zoomed ? i18n.t("libraryDetail.fitToWindow") : i18n.t("libraryDetail.actualSize")}
-              onClick={() => setZoomed((value) => !value)}
+              label={zoom === "fit" ? i18n.t("libraryDetail.actualSize") : i18n.t("libraryDetail.fitToWindow")}
+              onClick={() => setZoom((value) => (value === "fit" ? 1 : "fit"))}
             >
-              {zoomed ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {zoom === "fit" ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
             </HeaderButton>
           )}
           {preview.kind === "text" && (
@@ -276,10 +277,10 @@ export function FilePreviewDialog({
           <ImageStage
             key={`${preview.locationId}:${preview.url}`}
             preview={preview}
-            zoomed={zoomed}
+            zoom={zoom}
             canPrevious={canPrevious}
             canNext={canNext}
-            onZoomChange={setZoomed}
+            onZoomChange={setZoom}
             onStep={step}
             onDetails={setDetails}
           />
@@ -315,9 +316,6 @@ export function FilePreviewDialog({
     </Dialog>
   );
 }
-
-type ZoomFocus = { x: number; y: number };
-type PanGesture = { pointerId: number; x: number; y: number; left: number; top: number; moved: boolean };
 
 // Long enough to find the button again, short enough that a stray tap later does nothing.
 const coverConfirmWindowMs = 4000;
@@ -375,9 +373,10 @@ function SetCoverButton({
   );
 }
 
+/** The image stage: a zoomable image with a loading state and previous and next arrows on wide screens. */
 function ImageStage({
   preview,
-  zoomed,
+  zoom,
   canPrevious,
   canNext,
   onZoomChange,
@@ -385,131 +384,42 @@ function ImageStage({
   onDetails,
 }: {
   preview: Extract<FilePreviewState, { kind: "image" }>;
-  zoomed: boolean;
+  zoom: ImageZoom;
   canPrevious: boolean;
   canNext: boolean;
-  onZoomChange: (zoomed: boolean) => void;
+  onZoomChange: (zoom: ImageZoom) => void;
   onStep: (delta: number) => void;
   onDetails: (details: string) => void;
 }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const focusRef = useRef<ZoomFocus | null>(null);
-  const swipeRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const panRef = useRef<PanGesture | null>(null);
-  const suppressClickRef = useRef(false);
-
-  // Zooming in keeps the point that was clicked, or the center, in the middle of the stage.
-  useLayoutEffect(() => {
-    const container = scrollRef.current;
-    if (!zoomed || !container) return;
-    const focus = focusRef.current ?? { x: 0.5, y: 0.5 };
-    focusRef.current = null;
-    container.scrollLeft = focus.x * container.scrollWidth - container.clientWidth / 2;
-    container.scrollTop = focus.y * container.scrollHeight - container.clientHeight / 2;
-  }, [zoomed]);
 
   const arrowClassName =
     "absolute top-1/2 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-background/60 text-foreground backdrop-blur transition-colors hover:bg-background/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid";
   return (
     <div className="dark relative flex min-h-0 flex-1 bg-black text-foreground">
-      <div
-        ref={scrollRef}
-        className={cn("app-scroll min-h-0 flex-1", zoomed ? "overflow-auto" : "overflow-hidden p-2 sm:p-6")}
-        style={{ touchAction: zoomed ? "auto" : "pan-y" }}
-        onPointerDown={(event) => {
-          suppressClickRef.current = false;
-          if (zoomed && event.pointerType === "mouse" && event.button === 0) {
-            const container = event.currentTarget;
-            panRef.current = {
-              pointerId: event.pointerId,
-              x: event.clientX,
-              y: event.clientY,
-              left: container.scrollLeft,
-              top: container.scrollTop,
-              moved: false,
-            };
-            return;
-          }
-          if (!zoomed && event.pointerType !== "mouse") {
-            swipeRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-          }
-        }}
-        onPointerMove={(event) => {
-          const pan = panRef.current;
-          if (!pan || pan.pointerId !== event.pointerId) return;
-          const dx = event.clientX - pan.x;
-          const dy = event.clientY - pan.y;
-          if (!pan.moved && Math.hypot(dx, dy) < 4) return;
-          pan.moved = true;
-          event.currentTarget.scrollLeft = pan.left - dx;
-          event.currentTarget.scrollTop = pan.top - dy;
-        }}
-        onPointerUp={(event) => {
-          const pan = panRef.current;
-          panRef.current = null;
-          // A drag that panned the image must not also zoom it out.
-          if (pan?.moved) suppressClickRef.current = true;
-          const swipe = swipeRef.current;
-          swipeRef.current = null;
-          if (!swipe || swipe.pointerId !== event.pointerId) return;
-          const dx = event.clientX - swipe.x;
-          const dy = event.clientY - swipe.y;
-          if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-            suppressClickRef.current = true;
-            onStep(dx < 0 ? 1 : -1);
-          }
-        }}
-        onPointerCancel={() => {
-          panRef.current = null;
-          swipeRef.current = null;
-        }}
-      >
-        {status === "error" ? (
-          <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground" role="alert">
-            {i18n.t("libraryDetail.imageLoadFailed")}
-          </div>
-        ) : (
-          <div
-            className={cn("flex items-center justify-center", zoomed ? "min-h-full min-w-full w-max" : "h-full w-full")}
-          >
-            <img
-              src={assetURL(preview.url)}
-              alt={preview.title}
-              draggable={false}
-              className={cn(
-                "select-none transition-opacity duration-200",
-                zoomed
-                  ? "max-w-none cursor-grab active:cursor-grabbing"
-                  : "max-h-full max-w-full cursor-zoom-in object-contain",
-                status === "ready" ? "opacity-100" : "opacity-0",
-              )}
-              onLoad={(event) => {
-                setStatus("ready");
-                const image = event.currentTarget;
-                onDetails(
-                  i18n.t("libraryDetail.imageDimensions", { width: image.naturalWidth, height: image.naturalHeight }),
-                );
-              }}
-              onError={() => setStatus("error")}
-              onClick={(event) => {
-                if (suppressClickRef.current) {
-                  suppressClickRef.current = false;
-                  return;
-                }
-                if (!zoomed) {
-                  const bounds = event.currentTarget.getBoundingClientRect();
-                  focusRef.current = {
-                    x: (event.clientX - bounds.left) / Math.max(1, bounds.width),
-                    y: (event.clientY - bounds.top) / Math.max(1, bounds.height),
-                  };
-                }
-                onZoomChange(!zoomed);
-              }}
-            />
-          </div>
-        )}
-      </div>
+      {status === "error" ? (
+        <div className="grid flex-1 place-items-center px-6 text-center text-sm text-muted-foreground" role="alert">
+          {i18n.t("libraryDetail.imageLoadFailed")}
+        </div>
+      ) : (
+        <ZoomableImage
+          src={assetURL(preview.url)}
+          alt={preview.title}
+          zoom={zoom}
+          onZoomChange={onZoomChange}
+          onSwipe={onStep}
+          className="flex-1"
+          fitClassName="p-2 sm:p-6"
+          imageClassName={cn("transition-opacity duration-200", status === "ready" ? "opacity-100" : "opacity-0")}
+          onLoad={(image) => {
+            setStatus("ready");
+            onDetails(
+              i18n.t("libraryDetail.imageDimensions", { width: image.naturalWidth, height: image.naturalHeight }),
+            );
+          }}
+          onError={() => setStatus("error")}
+        />
+      )}
       {status === "loading" && (
         <div
           className="pointer-events-none absolute inset-0 grid place-items-center text-muted-foreground"

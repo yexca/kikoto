@@ -69,7 +69,7 @@ test("A translator cancels an allowed run through Translation and cannot cancel 
   await expect(own.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
   await expect(other).toBeVisible();
   await expect(other.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "View run", exact: true })).toHaveCount(0);
 
   await own.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect.poll(() => requested).toEqual([runs[0].runId]);

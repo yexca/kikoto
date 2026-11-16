@@ -14,7 +14,6 @@ import {
   weekdayAverages,
   hourRangeLabel,
   listeningProfileStatements,
-  listeningRangeYear,
   peakListeningHour,
   radarPoints,
 } from "./listeningHistoryModel";
@@ -178,12 +177,6 @@ describe("listening calendar", () => {
 });
 
 describe("calendar years and hours", () => {
-  it("tells a calendar year from a named range", () => {
-    expect(listeningRangeYear("2025")).toBe("2025");
-    expect(listeningRangeYear("30d")).toBeNull();
-    expect(listeningRangeYear("all")).toBeNull();
-  });
-
   it("starts a year on the weekday of its first day", () => {
     // 2025-01-01 is a Wednesday.
     const { weeks, days } = listeningCalendarWeeks({

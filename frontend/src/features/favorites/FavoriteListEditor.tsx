@@ -1,4 +1,4 @@
-import { ChevronDown, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ListChecks, Trash2, Zap } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError } from "@/components/ui/toast";
 import type { FavoriteList, SmartListRule } from "@/lib/api";
+import { FavoriteListConvertConfirm } from "./FavoriteListConvertConfirm";
 import { FavoriteListDeleteConfirm } from "./FavoriteListDeleteConfirm";
 import { FavoriteListIconPicker } from "./FavoriteListIconPicker";
 import { SmartRuleEditor } from "./SmartRuleEditor";
@@ -33,28 +34,34 @@ function nameKey(name: string) {
 
 /**
  * Creates one list or edits one list inside the list dialog: its header,
- * fields, and footer. An edited list can also be deleted from here.
+ * fields, and footer. An edited list can also be deleted from here, and an
+ * edited smart list converted to a regular one.
  */
 export function FavoriteListEditor({
   list,
   lists,
+  workCount,
   cancelLabel,
   deleting,
   onCancel,
   onClose,
   onSave,
   onDelete,
+  onConvert,
   onGuardChange,
 }: {
   list: FavoriteList | null;
   /** The user's lists, so a name another list already uses can be pointed out. */
   lists: FavoriteList[];
+  /** Works the edited list shows now. */
+  workCount: number;
   cancelLabel: string;
   deleting: boolean;
   onCancel: () => void;
   onClose: () => void;
   onSave: (payload: FavoriteListDraft) => Promise<void>;
   onDelete: (list: FavoriteList) => Promise<void>;
+  onConvert: (list: FavoriteList) => Promise<void>;
   onGuardChange: (guard: FavoriteListEditorGuard) => void;
 }) {
   const { t } = useTranslation();
@@ -63,6 +70,7 @@ export function FavoriteListEditor({
   const descriptionID = useId();
   const iconButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const convertButtonRef = useRef<HTMLButtonElement | null>(null);
   const [name, setName] = useState(list?.name ?? "");
   const [description, setDescription] = useState(list?.description ?? "");
   const [icon, setIcon] = useState(list?.icon ?? "");
@@ -72,6 +80,8 @@ export function FavoriteListEditor({
   const [savedRuleKey] = useState(() => smartRuleMatchKey(smartRuleDraftFromView(list?.rule)));
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingConvert, setConfirmingConvert] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const PreviewIcon = favoriteListIcon({ icon });
@@ -88,7 +98,7 @@ export function FavoriteListEditor({
     ruleChanged;
   const iconLabel = icon ? t(`favorites.iconNames.${icon}`) : t("favorites.iconDefault");
 
-  const layerOpen = iconPickerOpen || confirmingDelete;
+  const layerOpen = iconPickerOpen || confirmingDelete || confirmingConvert;
   useEffect(() => {
     onGuardChange({ dirty, layerOpen });
   }, [dirty, layerOpen, onGuardChange]);
@@ -122,6 +132,21 @@ export function FavoriteListEditor({
       setError(toastFromError(nextError, t("favorites.listDeleteFailed")).message);
     }
   };
+
+  const confirmConvert = async () => {
+    if (!list || converting) return;
+    setConverting(true);
+    try {
+      await onConvert(list);
+    } catch {
+      // Reported by onConvert; the editor stays open for a retry.
+      setConfirmingConvert(false);
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const busy = isSaving || deleting || converting;
 
   return (
     <>
@@ -248,14 +273,14 @@ export function FavoriteListEditor({
       </DialogBody>
       <DialogFooter>
         {list && (
-          <>
+          <div className="mr-auto flex flex-wrap items-center gap-1">
             <Button
               ref={deleteButtonRef}
               type="button"
               variant="ghost"
               size="sm"
-              className="mr-auto text-destructive hover:text-destructive"
-              disabled={isSaving || deleting}
+              className="text-destructive hover:text-destructive"
+              disabled={busy}
               aria-haspopup="dialog"
               aria-expanded={confirmingDelete}
               onClick={() => setConfirmingDelete(true)}
@@ -275,12 +300,42 @@ export function FavoriteListEditor({
               }}
               onConfirm={() => void confirmDelete()}
             />
-          </>
+            {list.kind === "smart" && (
+              <>
+                <Button
+                  ref={convertButtonRef}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  aria-haspopup="dialog"
+                  aria-expanded={confirmingConvert}
+                  onClick={() => setConfirmingConvert(true)}
+                >
+                  <ListChecks className="h-4 w-4" />
+                  {t("favorites.smart.convert")}
+                </Button>
+                <FavoriteListConvertConfirm
+                  name={list.name}
+                  listId={list.id}
+                  workCount={workCount}
+                  open={confirmingConvert}
+                  anchorRef={convertButtonRef}
+                  converting={converting}
+                  onCancel={() => {
+                    setConfirmingConvert(false);
+                    window.requestAnimationFrame(() => convertButtonRef.current?.focus());
+                  }}
+                  onConfirm={() => void confirmConvert()}
+                />
+              </>
+            )}
+          </div>
         )}
-        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={isSaving || deleting}>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={busy}>
           {cancelLabel}
         </Button>
-        <Button type="submit" form={formID} size="sm" disabled={isSaving || deleting || !canSave}>
+        <Button type="submit" form={formID} size="sm" disabled={busy || !canSave}>
           {isSaving ? t("favorites.saving") : list ? t("content.save") : t("favorites.createList")}
         </Button>
       </DialogFooter>

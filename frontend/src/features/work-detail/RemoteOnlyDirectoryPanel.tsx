@@ -3,12 +3,7 @@ import type { ReactNode } from "react";
 import type { DirectoryRoutingRule, RemoteWorkDetail, SourcePresenceItem } from "@/lib/api";
 import type { RemoteSourceAvailability, SourceTabInfo } from "@/features/work-detail/source/sourceContextModel";
 import { DirectorySkeleton } from "@/features/work-detail/WorkDetailLayout";
-import {
-  formatTreeStats,
-  type TreeNode,
-  type TreeStats,
-  type TreeTrack,
-} from "@/features/work-detail/media/mediaTreeModel";
+import { type TreeNode, type TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import {
   DirectoryLoadErrorPanel,
@@ -37,7 +32,6 @@ type RemoteOnlyDirectoryPanelProps = {
   isDetailLoading: boolean;
   treeLoading: boolean;
   root: TreeNode;
-  directoryStats: TreeStats;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
@@ -154,7 +148,6 @@ export function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
     <SourceDirectoryPanel
       title={i18n.t("libraryDetail.directory")}
       description={remoteOnlyDirectoryDescription(props)}
-      statsLabel={formatTreeStats(props.directoryStats)}
       tabs={props.tabs}
       activeKey={props.activeKey}
       onActiveKeyChange={props.onActiveKeyChange}

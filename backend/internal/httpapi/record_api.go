@@ -30,7 +30,8 @@ func (s *Server) getRecordRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
 		return
 	}
 	parent := int64(0)
@@ -42,15 +43,13 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 		}
 		parent = parsed
 	}
-	folders, assets, err := s.recordStore.ListTree(r.Context(), parent, 200)
+	folders, assets, err := s.recordStore.ListTree(r.Context(), parent, 200, user.ID)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "record_tree_failed", "The record directory could not be read.", true)
 		return
 	}
 	for i := range assets {
-		if assets[i].Kind == "video" || assets[i].Kind == "image" {
-			assets[i].StreamURL = "/api/records/assets/" + strconv.FormatInt(assets[i].ID, 10) + "/stream"
-		}
+		decorateRecordAsset(&assets[i])
 	}
 	for i := range folders {
 		id := strconv.FormatInt(folders[i].ID, 10)
@@ -94,9 +93,7 @@ func (s *Server) getRecordAsset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "record_asset_failed", "The record asset could not be read.", true)
 		return
 	}
-	if a.Kind == "video" || a.Kind == "image" {
-		a.StreamURL = "/api/records/assets/" + strconv.FormatInt(a.ID, 10) + "/stream"
-	}
+	decorateRecordAsset(&a)
 	writeJSON(w, http.StatusOK, map[string]any{"asset": a})
 }
 

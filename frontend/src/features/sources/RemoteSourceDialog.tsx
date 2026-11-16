@@ -242,6 +242,7 @@ export function RemoteSourceDialog({
 
             <div className="overflow-hidden rounded-lg border">
               <SettingsDisclosure
+                inset
                 title={t("sourceSetup.connection")}
                 description={source.endpoint.apiUrl.trim() || t("sourceSetup.connectionDescription")}
                 open={connectionOpen}
@@ -308,6 +309,7 @@ export function RemoteSourceDialog({
               </SettingsDisclosure>
               <div className="border-t">
                 <SettingsDisclosure
+                  inset
                   title={t("sourceSetup.networkStorage")}
                   description={t("sourceSetup.networkStorageDescription")}
                 >

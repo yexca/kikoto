@@ -1,14 +1,29 @@
-import { ArrowDownAZ, ArrowDownZA, ArrowUpDown, Check, Cloud, ListChecks, RefreshCw, Search, X } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  ArrowDownAZ,
+  ArrowDownZA,
+  ArrowUpDown,
+  BookmarkCheck,
+  Check,
+  FilterX,
+  Layers,
+  ListChecks,
+  ListFilter,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { quickMarkMeta } from "@/components/work-card/WorkCardShell";
 import type { FavoriteSort, SortDirection } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { cn } from "@/lib/tailwindClassNames";
-import type { FavoriteAvailability } from "./favoritesBrowseState";
+import type { FavoriteStatusFilterOption } from "./favoriteShelfModel";
+import type { FavoriteAvailability, FavoriteStatusFilter } from "./favoritesBrowseState";
 
 export function FavoriteSearchInput({
   value,
@@ -55,19 +70,41 @@ export function FavoriteSearchInput({
 
 const favoriteResourceOptions: FavoriteAvailability[] = ["all", "available", "local", "remote", "missing"];
 
-/** Availability filter; compact draws only the icon. */
-export function FavoriteResourceFilter({
-  value,
+/**
+ * The one filter button of a works shelf: listening status, with each status's
+ * count on the shelf, and resource availability. While either is set, the
+ * button turns primary, carries the status's quick mark icon, and a wide
+ * layout names the filters. The popover stays open so both can be set together.
+ * Phones show the status as a chip row of their own, so their popover holds
+ * only the resource.
+ */
+export function FavoriteFilterMenu({
+  status,
+  statusOptions,
+  availability,
   compact = false,
-  onChange,
+  onStatusChange,
+  onAvailabilityChange,
+  onClear,
 }: {
-  value: FavoriteAvailability;
+  status: FavoriteStatusFilter;
+  statusOptions: FavoriteStatusFilterOption[];
+  availability: FavoriteAvailability;
+  /** Phones draw only the icon, leave the status to its chips, and keep the popover clear of the bottom navigation. */
   compact?: boolean;
-  onChange: (value: FavoriteAvailability) => void;
+  onStatusChange: (value: FavoriteStatusFilter) => void;
+  onAvailabilityChange: (value: FavoriteAvailability) => void;
+  onClear: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const statusLabel = (option: FavoriteStatusFilter) =>
+    option === "all"
+      ? t("favorites.allStatuses")
+      : option === "marked"
+        ? t("favorites.anyMark")
+        : t(`library.status.${option}`);
   const resourceLabel = (option: FavoriteAvailability) => {
     switch (option) {
       case "available":
@@ -82,55 +119,170 @@ export function FavoriteResourceFilter({
         return t("favorites.allResources");
     }
   };
-  const label = resourceLabel(value);
+  const shownStatus = compact ? "all" : status;
+  const active = shownStatus !== "all" || availability !== "all";
+  const meta = shownStatus === "all" || shownStatus === "marked" ? null : quickMarkMeta(shownStatus);
+  const Icon = meta?.icon ?? (shownStatus === "marked" ? BookmarkCheck : ListFilter);
+  const value = [
+    shownStatus !== "all" ? statusLabel(shownStatus) : "",
+    availability !== "all" ? resourceLabel(availability) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const label = active ? t("favorites.filtersValue", { value }) : t("favorites.filters");
+  const named = active && !compact;
 
   return (
-    <div className="relative" ref={anchorRef}>
+    <div className="relative shrink-0" ref={anchorRef}>
       <Button
+        type="button"
         variant="toolbar"
-        size={compact ? "icon-sm" : "sm"}
+        size={named ? "sm" : "icon-sm"}
         className={cn(
-          compact ? "" : "h-8 max-w-44",
-          value !== "all" && "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+          named && "h-8 max-w-48 gap-1.5",
+          active &&
+            "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary aria-expanded:bg-primary/15 aria-expanded:text-primary",
         )}
+        aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={label}
+        title={label}
         onClick={() => setOpen((current) => !current)}
-        aria-label={`${t("favorites.resource")}: ${label}`}
-        title={`${t("favorites.resource")}: ${label}`}
       >
-        <Cloud className={compact ? "h-4 w-4" : "h-3.5 w-3.5 shrink-0"} />
-        {!compact && <span className="truncate">{label}</span>}
+        <Icon className={cn("h-4 w-4 shrink-0", meta?.className)} aria-hidden="true" />
+        {named && <span className="truncate">{value}</span>}
       </Button>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
         align="end"
-        className="w-[min(10rem,calc(100vw-1.5rem))] p-1 text-sm"
+        ariaLabel={t("favorites.filters")}
+        bottomCollisionPadding={compact ? 168 : undefined}
+        className="w-[min(16rem,calc(100vw-1.5rem))] p-1.5 text-sm"
       >
-        <div role="menu" aria-label={t("favorites.resourceFilters")}>
+        {!compact && (
+          <FilterSection label={t("favorites.statusFilters")} heading={t("favorites.status")}>
+            {statusOptions.map((option) => {
+              const optionMeta =
+                option.value === "all" || option.value === "marked" ? null : quickMarkMeta(option.value);
+              const OptionIcon = optionMeta?.icon ?? (option.value === "marked" ? BookmarkCheck : Layers);
+              return (
+                <FilterOption
+                  key={option.value}
+                  selected={option.value === status}
+                  muted={option.count === 0}
+                  icon={<OptionIcon className={cn("h-4 w-4", optionMeta?.className)} />}
+                  count={option.count}
+                  onSelect={() => onStatusChange(option.value)}
+                >
+                  {statusLabel(option.value)}
+                </FilterOption>
+              );
+            })}
+          </FilterSection>
+        )}
+        {/* Short names fit as wrapping chips, which keeps the popover within a phone screen. */}
+        <FilterSection label={t("favorites.resourceFilters")} heading={t("favorites.resource")} chips>
           {favoriteResourceOptions.map((option) => {
-            const selected = option === value;
+            const selected = option === availability;
             return (
-              <button
-                key={option}
-                type="button"
-                role="menuitemradio"
-                aria-checked={selected}
-                className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-muted ${selected ? "bg-primary/10 font-medium text-primary" : "text-foreground"}`}
-                onClick={() => {
-                  onChange(option);
-                  setOpen(false);
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">{resourceLabel(option)}</span>
-                {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
-              </button>
+              <li key={option}>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-[var(--badge-radius)] border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected
+                      ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                      : "bg-card text-foreground/80 hover:bg-muted hover:text-foreground",
+                  )}
+                  aria-pressed={selected}
+                  onClick={() => onAvailabilityChange(option)}
+                >
+                  {resourceLabel(option)}
+                </button>
+              </li>
             );
           })}
-        </div>
+        </FilterSection>
+        {active && (
+          <div className="mt-1 border-t pt-1">
+            <button
+              type="button"
+              className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={compact ? () => onAvailabilityChange("all") : onClear}
+            >
+              <FilterX className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {t("favorites.clearFilters")}
+            </button>
+          </div>
+        )}
       </AnchoredPopover>
     </div>
+  );
+}
+
+function FilterSection({
+  label,
+  heading,
+  chips = false,
+  children,
+}: {
+  label: string;
+  heading: string;
+  chips?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className="py-1 [&+&]:border-t" aria-label={label}>
+      <p className="px-2.5 pb-1 pt-0.5 text-xs font-medium text-muted-foreground" aria-hidden="true">
+        {heading}
+      </p>
+      <ul className={chips ? "flex flex-wrap gap-1.5 px-2.5 pb-1.5 pt-0.5" : undefined}>{children}</ul>
+    </section>
+  );
+}
+
+function FilterOption({
+  selected,
+  muted = false,
+  icon,
+  count,
+  onSelect,
+  children,
+}: {
+  selected: boolean;
+  /** An option that holds no works on this shelf. */
+  muted?: boolean;
+  icon: ReactNode;
+  count?: number;
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={cn(
+          "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          selected ? "bg-primary/10 font-medium text-primary" : "text-foreground",
+          muted && !selected && "opacity-60",
+        )}
+        aria-pressed={selected}
+        onClick={onSelect}
+      >
+        <span className="shrink-0" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+        {count !== undefined && (
+          <span className={cn("shrink-0 text-xs tabular-nums", selected ? "text-primary/80" : "text-muted-foreground")}>
+            {count}
+          </span>
+        )}
+        {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
+      </button>
+    </li>
   );
 }
 
@@ -177,8 +329,9 @@ export function FavoriteSortControls({
         ? t("library.ascending")
         : t("library.descending");
   return (
-    <div className="relative" ref={anchorRef}>
-      <div className="inline-flex h-8 shrink-0 items-center rounded-[var(--control-radius)] border bg-background">
+    // The order's name truncates before a narrow phone row overflows.
+    <div className="relative min-w-0" ref={anchorRef}>
+      <div className="inline-flex h-8 min-w-0 max-w-full items-center rounded-[var(--control-radius)] border bg-background">
         <button
           type="button"
           className="inline-flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-l-[var(--control-radius)] px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -194,7 +347,7 @@ export function FavoriteSortControls({
         <Button
           variant="ghost"
           size="icon"
-          className="h-full w-8 rounded-l-none border-l text-muted-foreground"
+          className="h-full w-8 shrink-0 rounded-l-none border-l text-muted-foreground"
           disabled={disabled}
           onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc"))}
           aria-label={directionTitle}

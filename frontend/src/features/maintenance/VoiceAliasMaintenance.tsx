@@ -157,9 +157,6 @@ export function VoiceAliasMaintenance({
         aria-label={t("workManagement.voiceAliasesTitle")}
         className="overflow-hidden rounded-lg border bg-card"
       >
-        <p className="border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-          {t("workManagement.voiceAliasesDescription")}
-        </p>
         <div className="min-h-64">
           {loadError && hasLoaded && (
             <div

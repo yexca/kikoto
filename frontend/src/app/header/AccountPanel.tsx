@@ -1,53 +1,129 @@
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Clipboard, LogIn, LogOut, RotateCcw, Server, Settings, Users } from "lucide-react";
+import { Clipboard, Languages, LogIn, LogOut, RotateCcw, Server, Zap } from "lucide-react";
 
-import { ActionItem, MenuSection } from "@/app/header/HeaderPopover";
-import { INSIGHTS_PATH, navItems } from "@/app/navigation";
+import { ActionItem, MenuSection, PopoverHeader } from "@/app/header/HeaderPopover";
+import {
+  accountShortcutIds,
+  navigationGroupLabel,
+  navigationGroups,
+  navigationLabel,
+  type CollapsibleNavigationGroup,
+  type NavigationItem,
+  type PageID,
+} from "@/app/navigation";
 import { LanguageControls, type LanguageControl } from "@/app/header/LanguageControls";
 import { UserAvatar, userDisplayName } from "@/app/header/UserAvatar";
 import type { ServerConnection } from "@/app/header/useServerConnection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { UI_LOCALE_OPTIONS } from "@/i18n";
 import type { CurrentUser } from "@/lib/api";
 import { versionLabel } from "@/lib/appInfo";
 import { getStoredServerURL } from "@/lib/serverConfig";
 import { cn } from "@/lib/tailwindClassNames";
-import { PERSONAL_TAB_PERMISSION, personalTabPath, personalTabs } from "@/pages/personalTabs";
 
-// Discover, Insights, and Tags are one tap away on a phone, which has no
-// sidebar. Your data stays in Settings and Quick actions.
-const personalDestinations = [
-  ...navItems.filter((item) => item.id === "subscriptions" || item.path === INSIGHTS_PATH),
-  ...personalTabs.filter((tab) => tab.id !== "data").map((tab) => ({ ...tab, path: personalTabPath(tab.id) })),
-];
+/**
+ * A destination the account panel lists. `compact` destinations appear only
+ * below the sidebar breakpoint, for pages the sidebar offers and the bottom
+ * navigation does not carry; `wide` ones only where the sidebar is shown, for
+ * pages the bottom navigation already carries. A shortcut destination is a tile
+ * where the sidebar is shown and, below it, a list entry unless the bottom
+ * navigation carries it, so `always` and `wide` both hold its tile.
+ */
+export type AccountDestination = { item: NavigationItem; placement: "always" | "compact" | "wide" };
+
+const placementClass: Record<AccountDestination["placement"], string | undefined> = {
+  always: undefined,
+  compact: "lg:hidden",
+  wide: "max-lg:hidden",
+};
+
+const isShortcut = (item: NavigationItem) => (accountShortcutIds as readonly string[]).includes(item.id);
+
+type AccountView = "main" | "language" | CollapsibleNavigationGroup;
 
 /**
  * The account surface behind the header avatar, or behind Sign in for anonymous
- * visitors: profile, personal shortcuts, UI and metadata languages, Settings,
- * and authentication. Phones in the native shell also reach server actions here.
+ * visitors: profile, the Language view, and authentication. Where the sidebar
+ * is shown, Discover, Insights, and Tags are also shortcut tiles under the
+ * profile. A layout without the sidebar lists the sidebar's pages that the
+ * bottom navigation does not carry, with the Manage group behind one entry. On phones the panel also opens Quick actions, and in the native shell
+ * it holds the server connection.
  */
 export function AccountPanel({
   user,
-  canView,
   language,
   server,
-  onNavigate,
+  destinations,
+  currentPage,
+  onOpenPage,
+  onOpenQuickActions,
   onLogout,
   onOpenLogin,
 }: {
   user: CurrentUser | null;
-  canView: (permission: string) => boolean;
   language: LanguageControl;
-  /** Present in the native shell on phones. */
+  /** Present in the native shell. */
   server?: ServerConnection;
-  onNavigate: (path: string) => void;
+  destinations: readonly AccountDestination[];
+  currentPage: string;
+  onOpenPage: (id: PageID) => void;
+  /** Present where the header has no Quick actions button of its own. */
+  onOpenQuickActions?: () => void;
   onLogout: () => void;
   onOpenLogin: () => void;
 }) {
   const { t } = useTranslation();
+  const [view, setView] = useState<AccountView>("main");
+  const returnFocus = useRef<AccountView | null>(null);
+  const viewIds = useId();
+  const back = (from: AccountView) => () => {
+    returnFocus.current = from;
+    setView("main");
+  };
+
+  // A shortcut is a tile where the sidebar is shown, so its list entry only serves the layouts below it.
+  const destinationItem = ({ item, placement }: AccountDestination) => {
+    const shortcut = isShortcut(item);
+    if (shortcut && placement === "wide") return null;
+    return (
+      <ActionItem
+        key={item.id}
+        icon={<item.icon className="h-4 w-4" />}
+        label={navigationLabel(item, t)}
+        current={currentPage === item.id}
+        className={shortcut ? placementClass.compact : placementClass[placement]}
+        onClick={() => onOpenPage(item.id)}
+      />
+    );
+  };
+  const shortcuts = accountShortcutIds.flatMap((id) => {
+    const destination = destinations.find((entry) => entry.item.id === id);
+    return destination ? [destination.item] : [];
+  });
+  const groupDestinations = (group: NavigationItem["group"]) =>
+    destinations.filter((destination) => destination.item.group === group);
+  if (view === "language") {
+    return (
+      <NestedView title={t("account.language")} onBack={back("language")}>
+        <LanguageControls {...language} />
+      </NestedView>
+    );
+  }
+  const openGroup = navigationGroups.find((group) => group.id === view);
+  if (openGroup) {
+    return (
+      <NestedView title={navigationGroupLabel(openGroup, t)} onBack={back(openGroup.id)}>
+        <MenuSection>{groupDestinations(openGroup.id).map(destinationItem)}</MenuSection>
+      </NestedView>
+    );
+  }
+
+  const localeOption = UI_LOCALE_OPTIONS.find((option) => option.value === language.localePreference);
 
   return (
-    <>
+    <MainView focusReturn={returnFocus} idPrefix={viewIds}>
       {user ? (
         <ProfileHeader user={user} />
       ) : (
@@ -61,44 +137,78 @@ export function AccountPanel({
         </div>
       )}
 
-      {user && canView(PERSONAL_TAB_PERMISSION) && (
-        <div className="grid grid-cols-3 gap-1.5 border-b p-2">
-          {personalDestinations.map((destination) => (
-            <button
-              key={destination.path}
-              type="button"
-              className="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/60 px-1 py-2.5 text-xs font-medium text-foreground transition-[background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
-              onClick={() => onNavigate(destination.path)}
-            >
-              <destination.icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              <span className="w-full truncate text-center">{t(destination.labelKey)}</span>
-            </button>
-          ))}
+      {shortcuts.length > 0 && (
+        <div className="grid auto-cols-fr grid-flow-col gap-1.5 border-b p-2 max-lg:hidden">
+          {shortcuts.map((item) => {
+            const current = currentPage === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={cn(
+                  "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/60 px-1 py-2.5 text-xs font-medium text-foreground transition-[background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100",
+                  current && "bg-primary/10 text-primary hover:bg-primary/15",
+                )}
+                aria-current={current ? "page" : undefined}
+                onClick={() => onOpenPage(item.id)}
+              >
+                <item.icon
+                  className={cn("h-5 w-5", current ? "text-primary" : "text-muted-foreground")}
+                  aria-hidden="true"
+                />
+                <span className="w-full truncate text-center">{navigationLabel(item, t)}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      <div className="border-b">
-        <LanguageControls {...language} />
-      </div>
-
-      {user && (
-        <MenuSection>
+      {/* Where the sidebar is shown it offers every page, so this list serves only the layouts without it. */}
+      <MenuSection className="lg:hidden">
+        {onOpenQuickActions && (
           <ActionItem
-            icon={<Settings className="h-4 w-4" />}
-            label={t("account.settings")}
-            onClick={() => onNavigate("/settings")}
+            icon={<Zap className="h-4 w-4" />}
+            label={t("header.quickActions")}
+            className="sm:hidden"
+            onClick={onOpenQuickActions}
           />
-          {canView("users:manage") && (
+        )}
+        {groupDestinations("browse").map(destinationItem)}
+        {navigationGroups.map((group) => {
+          const entries = groupDestinations(group.id);
+          if (entries.length === 0) return null;
+          if (group.accountPanel === "inline") return entries.map(destinationItem);
+          // A nested group is one entry that names the current page while it holds it.
+          const current = entries.find((entry) => entry.item.id === currentPage);
+          return (
             <ActionItem
-              icon={<Users className="h-4 w-4" />}
-              label={t("account.users")}
-              onClick={() => onNavigate("/settings?tab=users")}
+              key={group.id}
+              icon={<group.icon className="h-4 w-4" />}
+              label={navigationGroupLabel(group, t)}
+              detail={current ? navigationLabel(current.item, t) : undefined}
+              current={Boolean(current)}
+              navigates
+              id={`${viewIds}-${group.id}`}
+              className={placementClass.compact}
+              onClick={() => setView(group.id)}
             />
-          )}
-        </MenuSection>
-      )}
+          );
+        })}
+        {groupDestinations("app").map(destinationItem)}
+      </MenuSection>
 
-      {server && <ServerSection server={server} className={user ? "border-t" : undefined} />}
+      <MenuSection className="border-t lg:border-t-0">
+        <ActionItem
+          icon={<Languages className="h-4 w-4" />}
+          label={t("account.language")}
+          detail={localeOption ? t(localeOption.labelKey) : undefined}
+          navigates
+          id={`${viewIds}-language`}
+          onClick={() => setView("language")}
+        />
+      </MenuSection>
+
+      {server && <ServerSection server={server} className="border-t" />}
 
       {user &&
         (user.devMode || user.demoMode ? (
@@ -110,7 +220,49 @@ export function AccountPanel({
             <ActionItem icon={<LogOut className="h-4 w-4" />} label={t("account.signOut")} onClick={onLogout} />
           </MenuSection>
         ))}
-    </>
+    </MainView>
+  );
+}
+
+/** Returns focus to the entry of the view the user came back from. */
+function MainView({
+  focusReturn,
+  idPrefix,
+  children,
+}: {
+  focusReturn: { current: AccountView | null };
+  idPrefix: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const from = focusReturn.current;
+    if (!from) return;
+    focusReturn.current = null;
+    document.getElementById(`${idPrefix}-${from}`)?.focus();
+  }, [focusReturn, idPrefix]);
+  return <>{children}</>;
+}
+
+function NestedView({
+  title,
+  subtitle,
+  onBack,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("button")?.focus();
+  }, []);
+  return (
+    <div ref={ref} className="contents">
+      <PopoverHeader title={title} subtitle={subtitle} onBack={onBack} />
+      {children}
+    </div>
   );
 }
 

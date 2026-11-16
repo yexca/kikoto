@@ -21,3 +21,19 @@ export function favoriteListCreateName(lists: readonly { name: string }[], query
   const key = nameKey(name);
   return lists.some((list) => nameKey(list.name) === key) ? null : name;
 }
+
+/**
+ * The lists holding a work, in the order its list button names them: the list
+ * the work was added to most recently first. `lists` is a work's lists in list
+ * order; a list without a place keeps that order after the placed ones.
+ */
+export function workMemberLists<T extends { kind: string; selected?: boolean; memberOrder?: number }>(
+  lists: readonly T[],
+): T[] {
+  const place = (list: T) => list.memberOrder || Number.POSITIVE_INFINITY;
+  return lists
+    .filter((list) => list.kind !== "marked" && list.selected)
+    .map((list, index) => ({ list, index }))
+    .sort((left, right) => place(left.list) - place(right.list) || left.index - right.index)
+    .map(({ list }) => list);
+}

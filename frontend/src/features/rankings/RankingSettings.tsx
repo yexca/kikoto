@@ -5,8 +5,16 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { LatestRunStatus } from "@/features/workflows/LatestRunStatus";
+import { useLatestRun } from "@/features/workflows/useLatestRun";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, type LibrarySource, type RankingListPatch, type RankingOverview } from "@/lib/api";
+import {
+  api,
+  type LibrarySource,
+  type RankingListPatch,
+  type RankingOverview,
+  type RankingWorkflowState,
+} from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { EarlierYearsRow, RankingDeleteDialog, RankingSettingRowView } from "./RankingSettingRow";
@@ -19,6 +27,7 @@ import {
   type RankingSettingRow,
 } from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
+import { useRankingQueuedNotice } from "./useRankingQueuedNotice";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -39,16 +48,20 @@ export function RankingSettings({
   rankings,
   readOnly,
   canManage,
+  canOpenRuns,
   onOpenRun,
 }: {
   rankings: RankingOverviewState;
   readOnly: boolean;
   /** `metadata:sync`: rankings, their schedules, and the history setting may be changed. */
   canManage: boolean;
+  /** `workflows:run`: the latest runs show their time and open in Activity. */
+  canOpenRuns: boolean;
   onOpenRun: (runId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const queuedNotice = useRankingQueuedNotice(canOpenRuns);
   const { overview, error, reload, updateList } = rankings;
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [sources, setSources] = useState<LibrarySource[]>([]);
@@ -117,8 +130,8 @@ export function RankingSettings({
   const pullNow = (row: RankingSettingRow) =>
     run(row.key, async () => {
       if (!row.list) return;
-      await api.runRankingRefresh([row.list.id]);
-      toast.success(t("subscriptions.rankings.refreshQueued"));
+      const { runs } = await api.runRankingRefresh([row.list.id]);
+      queuedNotice(runs);
       await reload();
     });
   const confirmDelete = (row: RankingSettingRow) =>
@@ -150,7 +163,14 @@ export function RankingSettings({
 
   return (
     <div className="grid grid-cols-1 gap-5">
-      <RankingPullsHeader overview={overview} editable={editable} now={now} onOpenRun={onOpenRun} />
+      <RankingPullsHeader
+        overview={overview}
+        editable={editable}
+        canOpenRuns={canOpenRuns}
+        now={now}
+        onQueued={() => void reload()}
+        onOpenRun={onOpenRun}
+      />
       {!editable && !overview.demo && (
         <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.readOnly")}</p>
       )}
@@ -223,20 +243,29 @@ function RankingRowSection({
   );
 }
 
-/** Who shares the rankings and when they were last pulled, refresh every shown ranking, and the latest runs. */
+/**
+ * Who shares the rankings and when they were last pulled, refresh every shown
+ * ranking, and the latest run of each pulling workflow. A remote workflow
+ * shows once a remote list exists or it has run.
+ */
 function RankingPullsHeader({
   overview,
   editable,
+  canOpenRuns,
   now,
+  onQueued,
   onOpenRun,
 }: {
   overview: RankingOverview;
   editable: boolean;
+  canOpenRuns: boolean;
   now: number;
+  onQueued: () => void;
   onOpenRun: (runId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const queuedNotice = useRankingQueuedNotice(canOpenRuns);
   const { resolvedLocale } = useLocale();
   const [running, setRunning] = useState(false);
   const canRun = editable && overview.lists.some((list) => list.enabled);
@@ -244,15 +273,21 @@ function RankingPullsHeader({
   const runNow = async () => {
     setRunning(true);
     try {
-      await api.runRankingRefresh();
-      toast.success(t("subscriptions.rankings.refreshQueued"));
+      const { runs } = await api.runRankingRefresh();
+      queuedNotice(runs);
+      onQueued();
     } catch (runError) {
       toast.notify(toastFromError(runError, t("subscriptions.rankings.refreshFailed")));
     } finally {
       setRunning(false);
     }
   };
-  const runs = overview.workflows.filter((workflow) => workflow.latestRun);
+  const workflows = overview.workflows.filter(
+    (workflow) =>
+      workflow.latestRun ||
+      workflow.code === "dlsite_popular_collection" ||
+      overview.lists.some((list) => list.provider !== "dlsite"),
+  );
   const summary = [t("subscriptions.rankings.settings.shared")];
   if (latest) {
     summary.push(
@@ -268,20 +303,9 @@ function RankingPullsHeader({
           {t("subscriptions.rankings.settings.title")}
         </h2>
         <p className="text-xs text-muted-foreground">{summary.join(" · ")}</p>
-        {editable && runs.length > 0 && (
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-            {runs.map((workflow) => (
-              <button
-                key={workflow.code}
-                type="button"
-                className="rounded-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => workflow.latestRun && onOpenRun(workflow.latestRun.id)}
-              >
-                {t(`subscriptions.rankings.settings.latestRun.${workflow.code}`)}
-              </button>
-            ))}
-          </div>
-        )}
+        {workflows.map((workflow) => (
+          <RankingRunLine key={workflow.code} workflow={workflow} canOpenRuns={canOpenRuns} onOpenRun={onOpenRun} />
+        ))}
       </div>
       {editable && (
         <Button size="sm" variant="outline" disabled={!canRun || running} onClick={() => void runNow()}>
@@ -290,6 +314,27 @@ function RankingPullsHeader({
         </Button>
       )}
     </section>
+  );
+}
+
+/** One pulling workflow's latest run: how it ended or stands, when, and the way to it in Activity. */
+function RankingRunLine({
+  workflow,
+  canOpenRuns,
+  onOpenRun,
+}: {
+  workflow: RankingWorkflowState;
+  canOpenRuns: boolean;
+  onOpenRun: (runId: number) => void;
+}) {
+  const { t } = useTranslation();
+  const run = useLatestRun({ code: workflow.code, enabled: canOpenRuns, known: workflow.latestRun });
+  return (
+    <LatestRunStatus
+      label={t(`subscriptions.rankings.settings.latestRun.${workflow.code}`)}
+      run={run}
+      onOpen={canOpenRuns ? onOpenRun : undefined}
+    />
   );
 }
 

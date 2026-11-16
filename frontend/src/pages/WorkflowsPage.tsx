@@ -1,158 +1,111 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarPlus, ChevronDown, Clapperboard, Compass } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
-import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { SubscriptionsManagedWorkflowPanel } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
-import { openWorkflowPath } from "@/features/workflows/workflowLinks";
+import { metadataSyncSources } from "@/features/workflows/metadataSyncModel";
+import { MetadataOptionsDialog } from "@/features/workflows/operations/MetadataOptionsDialog";
+import {
+  metadataRunOptionsChanged,
+  metadataRunPayload,
+  readMetadataRunOptions,
+  usableMetadataRunOptions,
+  writeMetadataRunOptions,
+  type MetadataRunOptions,
+} from "@/features/workflows/operations/metadataRunOptions";
+import { OperationCard } from "@/features/workflows/operations/OperationCard";
+import {
+  operationLocked,
+  operationState,
+  operationsFromDefinitions,
+  type Operation,
+} from "@/features/workflows/operations/operationModel";
+import { useOperationRuns } from "@/features/workflows/operations/useOperationRuns";
 import { RunDetail } from "@/features/workflows/RunDetail";
-import { isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
-import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
-import { type ActivityView, useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
-import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
-import { useWorkflowOverview } from "@/features/workflows/useWorkflowOverview";
-import { WorkflowDetail } from "@/features/workflows/WorkflowDetail";
-import { workflowHistorySize } from "@/features/workflows/RunHistoryStrip";
-import { builtInWorkflowOrder, groupWorkflowDefinitions } from "@/features/workflows/workflowCategories";
-import { WorkflowNavigator } from "@/features/workflows/WorkflowNavigator";
-import {
-  configurableSystemWorkflowCodes,
-  manuallyRunnableSystemWorkflows,
-  workflowCopy,
-  type CurrentTriggerRunOptions,
-  type LocalScanMode,
-  type RemoteFetchRunOptions,
-  type SystemRunKind,
-  type SystemRunOptions,
-} from "@/features/workflows/workflowPageModel";
+import { AttentionRuns, RunningRuns } from "@/features/workflows/runs/NowRuns";
+import { WorkflowRuns } from "@/features/workflows/runs/WorkflowRuns";
+import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/triggers/NextTriggers";
+import { TriggerDialog } from "@/features/workflows/triggers/TriggerDialog";
+import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation";
+import { openWorkflowPath } from "@/features/workflows/workflowLinks";
+import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import { WorkflowPulse } from "@/features/workflows/WorkflowPulse";
-import { WorkflowRunSlotProvider } from "@/features/workflows/WorkflowRunSlot";
-import {
-  subscriptionsScheduledWorkflowCodes,
-  type CreatableAutomationTriggerType,
-} from "@/features/workflows/workflowTriggerModel";
+import { pageManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
+import { workflowIcon } from "@/features/workflows/workflowVisuals";
+import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
-import {
-  api,
-  type MetadataSyncOptions,
-  type SourcePresenceCheckOptions,
-  type WorkflowDefinition,
-  type WorkflowPreset,
-  type WorkflowRun,
-  type WorkflowTrigger,
-} from "@/lib/api";
-import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { api, type WorkflowDefinition, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
+import { systemSettingsPath } from "@/pages/settingsPaths";
 
-// The editor is bound to the workflow and run options shown when it opened, not to a tab selected later.
-type TriggerEditorState =
-  | {
-      mode: "create";
-      definitionId: number;
-      triggerType: CreatableAutomationTriggerType;
-      runOptions: CurrentTriggerRunOptions | null;
-    }
-  | { mode: "edit"; definitionId: number; trigger: WorkflowTrigger; runOptions: CurrentTriggerRunOptions | null }
-  | null;
+/** A run requested here that the run list has not shown yet; `runId` is null until the request answers. */
+type PendingRun = { runId: number | null };
 
-const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
+/** How long a requested run may stay unlisted before its operation stops waiting for it. */
+const pendingRunTimeoutMs = 20_000;
 
-/** Where the Discover page configures a workflow it manages. */
-const subscriptionsManagedWorkflowPaths: Record<string, { message: string; path: string }> = {
-  availability_watch: {
-    message: "availabilityWatchManagedOnSubscriptions",
-    path: "/discover?view=watch&panel=watch",
-  },
-  creator_subscription_refresh: {
-    message: "subscriptionRefreshManagedOnSubscriptions",
-    path: "/discover?panel=subscriptions",
-  },
-  dlsite_popular_collection: {
-    message: "rankingsManagedOnSubscriptions",
-    path: "/discover?view=rankings&panel=rankings",
-  },
-  remote_popular_collection: {
-    message: "rankingsManagedOnSubscriptions",
-    path: "/discover?view=rankings&panel=rankings",
-  },
-};
+type TriggerDialogState = { trigger: WorkflowTrigger | null } | null;
 
+/**
+ * Workflows: the library maintenance an administrator starts by hand, as
+ * three cards (Scan, Metadata, and Index), above every workflow's runs: Now
+ * holds what runs, what needs attention, and what triggers run next, and
+ * History the runs that ended. One run's details open beside the list.
+ */
 export function WorkflowsPage({
   canRun,
   canSyncMetadata,
-  canTagWorks,
-  canFetchRemote,
-  canManageSources = false,
   readOnly = false,
 }: {
   canRun: boolean;
   canSyncMetadata: boolean;
-  canTagWorks: boolean;
-  /** Fetch also refreshes DLsite family metadata and needs `metadata:sync`. */
-  canFetchRemote: boolean;
-  /** Instance settings such as the remote metadata fallback need `sources:write`. */
-  canManageSources?: boolean;
   readOnly?: boolean;
 }) {
   const toast = useToast();
   const { t } = useTranslation();
   const auth = useAuth();
-  const workflowDefinitionStorageKey = currentScopedStorageKey(workflowDefinitionStorageBaseKey, auth.user?.id ?? null);
-  const activityLocation = useWorkflowActivityLocation();
-  const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null, !auth.demoMode);
-  const linkedRun = activityRun.run?.id === activityLocation.runId ? activityRun.run : null;
-  const linkedCode = activityLocation.workflowCode;
-  const [activityRevision, setActivityRevision] = useState(0);
+  const location = useWorkflowsLocation();
+  const mobile = useMobileNavigationLayout();
+  const operationsHeadingId = useId();
+  const [revision, setRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
-  const [presets, setPresets] = useState<WorkflowPreset[]>([]);
-  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
-    storedPositiveInt(workflowDefinitionStorageKey),
-  );
-  const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
-  const triggerAnchorRef = useRef<HTMLElement | null>(null);
-  const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
-  const [isRunningScan, setIsRunningScan] = useState(false);
-  const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
-  const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
-  const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
-  const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
-  const [workflowMetaError, setWorkflowMetaError] = useState("");
-  const [remoteSourceAvailability, setRemoteSourceAvailability] = useState<"loading" | "available" | "unavailable">(
-    "loading",
-  );
-  const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
-  const fetchWorkspace = useRemoteFetchWorkspace({
-    onWorksChanged: () => {
-      void refreshRecentRuns("remote_work_fetch");
-      showQueuedRun();
-    },
-  });
-  const workflowMetaRequestSeq = useRef(0);
-  const recentRunsRequestSeq = useRef(0);
+  const [pending, setPending] = useState<Record<string, PendingRun>>({});
+  const [fullChoices, setFullChoices] = useState<Record<string, boolean>>({});
+  const [triggerDialog, setTriggerDialog] = useState<TriggerDialogState>(null);
+  const [metadataOptions, setMetadataOptions] = useState<MetadataRunOptions>(readMetadataRunOptions);
+  const [metadataOptionsOpen, setMetadataOptionsOpen] = useState(false);
+  const metadataSources = useMetadataSyncSources(canSyncMetadata);
+  const capableSources = metadataSources.sources ? metadataSyncSources(metadataSources.sources) : null;
+  // Sources switched off or removed since the options were saved drop out of the fallback.
+  const metadataRun = usableMetadataRunOptions(metadataOptions, capableSources);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const requestSeq = useRef(0);
 
   const refresh = () => {
-    const seq = ++workflowMetaRequestSeq.current;
-    setIsWorkflowMetaLoading(true);
-    setWorkflowMetaError("");
-    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers(), api.listWorkflowPresets()])
-      .then(([nextDefinitions, nextTriggers, nextPresets]) => {
-        if (seq !== workflowMetaRequestSeq.current) return;
+    const seq = ++requestSeq.current;
+    setIsLoading(true);
+    setLoadError("");
+    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers()])
+      .then(([nextDefinitions, nextTriggers]) => {
+        if (seq !== requestSeq.current) return;
         setDefinitions(nextDefinitions);
         setTriggers(nextTriggers);
-        setPresets(nextPresets);
-        setHasWorkflowMetaSnapshot(true);
+        setHasSnapshot(true);
       })
       .catch(() => {
-        if (seq === workflowMetaRequestSeq.current) setWorkflowMetaError(workflowCopy("metadataLoadFailed"));
+        if (seq === requestSeq.current) setLoadError(workflowCopy("metadataLoadFailed"));
       })
       .finally(() => {
-        if (seq === workflowMetaRequestSeq.current) setIsWorkflowMetaLoading(false);
+        if (seq === requestSeq.current) setIsLoading(false);
       });
   };
 
@@ -160,319 +113,95 @@ export function WorkflowsPage({
     refresh();
   }, []);
 
+  const operations = useMemo(() => operationsFromDefinitions(definitions), [definitions]);
+  const codes = useMemo(() => operations.map((operation) => operation.definition.code), [operations]);
+  const runs = useOperationRuns({ codes, refreshKey: revision, staticDemo: auth.demoMode });
+
+  // A run that starts or ends moves its trigger's next run, so Next reloads with the queue.
+  const queueSignature = runs.activeRuns.map((run) => run.id).join(",");
+  const lastQueue = useRef(queueSignature);
   useEffect(() => {
-    let active = true;
+    if (lastQueue.current === queueSignature) return;
+    lastQueue.current = queueSignature;
     api
-      .listLibrarySources()
-      .then((sources) => {
-        if (!active) return;
-        setRemoteSourceAvailability(
-          sources.some(
-            (source) =>
-              source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-          )
-            ? "available"
-            : "unavailable",
-        );
-      })
-      .catch(() => {
-        if (active) setRemoteSourceAvailability("unavailable");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const presetByCode = useMemo(() => new Map(presets.map((preset) => [preset.code, preset])), [presets]);
-  const visibleDefinitions = useMemo(() => {
-    const choices = [...definitions];
-    if (linkedCode && !choices.some((definition) => definition.code === linkedCode)) {
-      choices.push({
-        id: -(linkedRun?.definitionId ?? linkedRun?.id ?? 1),
-        code: linkedCode,
-        displayName: linkedRun?.workflowCode === linkedCode ? linkedRun.displayName : linkedCode,
-        description: "",
-        definitionJson: "{}",
-        scope: "system",
-        editable: false,
-        ownerUserId: null,
-        triggerCount: 0,
-        createdAt: linkedRun?.createdAt ?? "",
-        updatedAt: linkedRun?.createdAt ?? "",
-      });
-    }
-    const builtInRank = (definition: WorkflowDefinition) =>
-      builtInWorkflowOrder.includes(definition.code) ? builtInWorkflowOrder.indexOf(definition.code) : 99;
-    return choices
-      .filter(
-        (definition) =>
-          configurableSystemWorkflowCodes.has(definition.code) ||
-          presetByCode.has(definition.code) ||
-          definition.code === linkedCode,
-      )
-      .sort((left, right) => builtInRank(left) - builtInRank(right) || left.id - right.id);
-  }, [definitions, linkedCode, linkedRun, presetByCode]);
-  const selectedDefinition = useMemo(() => {
-    return (
-      visibleDefinitions.find((definition) => definition.code === linkedCode) ??
-      visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ??
-      visibleDefinitions[0] ??
-      null
-    );
-  }, [linkedCode, selectedDefinitionId, visibleDefinitions]);
-
-  const categoryGroups = useMemo(() => groupWorkflowDefinitions(visibleDefinitions), [visibleDefinitions]);
-  const visibleCodes = useMemo(() => visibleDefinitions.map((definition) => definition.code), [visibleDefinitions]);
-  const overview = useWorkflowOverview({
-    codes: visibleCodes,
-    refreshKey: activityRevision,
-    staticDemo: auth.demoMode,
-  });
-  // The mobile layout lands on the workflow list and opens one workflow, or Activity, at a time.
-  const mobile = useMobileNavigationLayout();
-  const mobileDetailOpen = mobile && (Boolean(activityLocation.workflowCode) || activityLocation.open);
-  const runOpen = activityLocation.runId !== null;
-  usePageHeaderBack({
-    label: runOpen ? t("workflowActivity.backToHistory") : t("workflowPage.console.backToWorkflows"),
-    onBack: runOpen
-      ? activityLocation.backToList
-      : activityLocation.open
-        ? activityLocation.closeActivity
-        : activityLocation.clearWorkflow,
-    enabled: mobileDetailOpen,
-  });
-
-  useEffect(() => {
-    if (!linkedCode) return;
-    const linked = visibleDefinitions.find((definition) => definition.code === linkedCode);
-    if (!linked) return;
-    setSelectedDefinitionID(linked.id);
-    storePositiveInt(workflowDefinitionStorageKey, linked.id);
-  }, [linkedCode, visibleDefinitions, workflowDefinitionStorageKey]);
-
-  const refreshRecentRuns = useCallback((workflowCode: string) => {
-    if (!workflowCode) {
-      setRecentDefinitionRuns([]);
-      return Promise.resolve();
-    }
-    const seq = ++recentRunsRequestSeq.current;
-    return api
-      .listWorkflowRuns(1, workflowHistorySize, "", "", workflowCode)
-      .then((page) => {
-        if (seq === recentRunsRequestSeq.current) setRecentDefinitionRuns(page.runs);
-      })
+      .listWorkflowTriggers()
+      .then(setTriggers)
       .catch(() => undefined);
-  }, []);
+  }, [queueSignature]);
 
-  // Recent runs follow the selected workflow's code, not the definition object's identity.
-  const selectedCode = selectedDefinition?.code;
+  // A requested run that never shows up stops holding its operation.
   useEffect(() => {
-    setRecentDefinitionRuns([]);
-    if (!selectedCode) return;
-    void refreshRecentRuns(selectedCode);
-    return () => {
-      recentRunsRequestSeq.current += 1;
-    };
-  }, [refreshRecentRuns, selectedCode]);
+    if (Object.keys(pending).length === 0) return;
+    const timer = window.setTimeout(() => setPending({}), pendingRunTimeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [pending]);
 
-  const hasActiveRecentRun = recentDefinitionRuns.some(
-    (run) => (run.status === "queued" || run.status === "running") && !isDemoShowcaseActiveRun(run),
-  );
-  useEffect(() => {
-    if (!selectedCode || !hasActiveRecentRun) return;
-    // A hidden tab skips ticks and catches up as soon as it is shown again.
-    const poll = () => {
-      if (!document.hidden) void refreshRecentRuns(selectedCode);
-    };
-    const timer = window.setInterval(poll, 2000);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [hasActiveRecentRun, refreshRecentRuns, selectedCode]);
-
-  const selectedPreset = selectedDefinition ? (presetByCode.get(selectedDefinition.code) ?? null) : null;
-  const selectedSystemRunKinds = selectedDefinition
-    ? selectedPreset
-      ? (["preset"] as SystemRunKind[])
-      : manuallyRunnableSystemWorkflows[selectedDefinition.code]
-    : undefined;
-  const definitionEmptyText = workflowCopy("definitionEmpty");
-
-  useEffect(() => {
-    if (isWorkflowMetaLoading) return;
-    const linkedCode = new URLSearchParams(window.location.search).get("workflow")?.trim();
-    const linkedDefinition = linkedCode
-      ? visibleDefinitions.find((definition) => definition.code === linkedCode)
-      : undefined;
-    const nextID = linkedDefinition?.id ?? selectedDefinition?.id ?? null;
-    if (selectedDefinitionId !== nextID) {
-      setSelectedDefinitionID(nextID);
-    }
-    storePositiveInt(workflowDefinitionStorageKey, nextID);
-  }, [
-    isWorkflowMetaLoading,
-    selectedDefinition?.id,
-    selectedDefinitionId,
-    visibleDefinitions,
-    workflowDefinitionStorageKey,
-  ]);
-
-  const selectDefinition = (definition: WorkflowDefinition) => {
-    setSelectedDefinitionID(definition.id);
-    storePositiveInt(workflowDefinitionStorageKey, definition.id);
-    // Opening a workflow from the mobile list is a history step that Back returns from.
-    activityLocation.selectWorkflow(definition.code, mobile && !mobileDetailOpen);
+  const watched = useWorkflowRunWatcher(location.runId, !auth.demoMode);
+  const openRun = watched.run?.id === location.runId ? watched.run : null;
+  usePageHeaderBack({
+    label: t("workflowActivity.backToHistory"),
+    onBack: location.backToList,
+    enabled: mobile && location.runId !== null,
+  });
+  const refreshRun = async () => {
+    await watched.refresh(true);
+    setRevision((value) => value + 1);
   };
+  const selectRun = (run: Pick<WorkflowRun, "id">) => location.openRun(run.id);
 
-  // The workflow stays open: its Latest run card, its list entry, and the status strip show the new run.
-  const showQueuedRun = () => {
-    setActivityRevision((value) => value + 1);
-  };
-
-  const runLocalScan = async (followUpRun = false) => {
-    setIsRunningScan(true);
+  /**
+   * Marks the operation as starting at once, then waits for the run list to
+   * show the run the request created. An operation that runs per target says
+   * when its new run waits behind another of its runs, which its card keeps
+   * showing.
+   */
+  const startRun = async (operation: Operation, request: () => Promise<{ runId: number }>, failure: string) => {
+    const code = operation.definition.code;
+    const active = runs.activeRunsOf(code);
+    setPending((current) => ({ ...current, [code]: { runId: null } }));
+    // Full applies to the run it was chosen for.
+    setFullChoices((current) => ({ ...current, [code]: false }));
     try {
-      await api.runLocalScan({ followUpRun });
-      void refreshRecentRuns("local_library_scan");
-      showQueuedRun();
+      const result = await request();
+      setPending((current) => ({ ...current, [code]: { runId: result.runId } }));
+      setRevision((value) => value + 1);
+      if (!operation.exclusive && active.length > 0 && !active.some((run) => run.id === result.runId))
+        toast.notify({
+          kind: "info",
+          message: t("workflowPage.operations.queuedBehind", { id: result.runId }),
+          actionLabel: t("workflowPage.viewRun"),
+          onAction: () => selectRun({ id: result.runId }),
+        });
     } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("localScanCreateFailed")));
-    } finally {
-      setIsRunningScan(false);
+      setPending((current) => {
+        const next = { ...current };
+        delete next[code];
+        return next;
+      });
+      toast.notify(toastFromError(error, failure));
     }
   };
 
-  const runLocalMediaIndex = async (mode: LocalScanMode) => {
-    setRunningSystemAction("local_media_index");
-    try {
-      await api.runLocalMediaIndex({ mode });
-      void refreshRecentRuns("local_media_index");
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("localMediaIndexCreateFailed")));
-    } finally {
-      setRunningSystemAction(null);
-    }
+  const runOperation = (operation: Operation, full: boolean) => {
+    if (operation.kind === "local_scan")
+      return startRun(operation, () => api.runLocalScan({ followUpRun: false }), workflowCopy("localScanCreateFailed"));
+    if (operation.kind === "local_media_index")
+      return startRun(
+        operation,
+        () => api.runLocalMediaIndex({ mode: full ? "full" : "incremental" }),
+        workflowCopy("localMediaIndexCreateFailed"),
+      );
+    return startRun(
+      operation,
+      () => api.runDLsiteSync(metadataRunPayload(metadataRun, full)),
+      workflowCopy("metadataSyncCreateFailed"),
+    );
   };
 
-  const runSourcePresenceCheck = async (options: SourcePresenceCheckOptions) => {
-    setRunningSystemAction("source_presence_check");
-    try {
-      await api.runSourcePresenceCheck(options);
-      void refreshRecentRuns("source_presence_check");
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("sourcePresenceCheckCreateFailed")));
-    } finally {
-      setRunningSystemAction(null);
-    }
-  };
+  /** Every operation scans or syncs the library, so starting or scheduling one needs `metadata:sync`. */
+  const permitted = !readOnly && canRun && canSyncMetadata;
 
-  const runMetadataSync = async (options?: MetadataSyncOptions) => {
-    setIsSyncingMetadata(true);
-    try {
-      await api.runDLsiteSync(options);
-      void refreshRecentRuns("metadata_sync");
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("metadataSyncCreateFailed")));
-    } finally {
-      setIsSyncingMetadata(false);
-    }
-  };
-
-  const runRemoteFetch = async (options: RemoteFetchRunOptions) => {
-    if (readOnly || !canRun || !canFetchRemote) return false;
-    return fetchWorkspace.open({
-      sourceId: options.sourceId,
-      remoteCode: options.workCode,
-      sourceDisplayName: options.sourceDisplayName,
-      excludeExtensions: options.excludeExtensions,
-    });
-  };
-
-  const runPreset = async (inputs: Record<string, unknown>) => {
-    if (!selectedPreset || !selectedDefinition) return;
-    setRunningSystemAction("preset");
-    try {
-      await api.runWorkflowPreset(selectedPreset.code, inputs);
-      void refreshRecentRuns(selectedDefinition.code);
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("presetQueueFailed")));
-    } finally {
-      setRunningSystemAction(null);
-    }
-  };
-
-  const runSystemAction = async (kind: SystemRunKind, options: SystemRunOptions = {}) => {
-    if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
-    if (kind === "local_media_index") return runLocalMediaIndex(options.localMediaIndexMode ?? "incremental");
-    if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
-    if (kind === "source_presence_check" && options.sourcePresence)
-      return runSourcePresenceCheck(options.sourcePresence);
-  };
-
-  const systemActionBusy = (kind: SystemRunKind) => {
-    if (kind === "remote_fetch") return fetchWorkspace.isBusy;
-    if (kind === "local_scan") return isRunningScan;
-    if (kind === "metadata_sync") return isSyncingMetadata;
-    return runningSystemAction === kind;
-  };
-
-  /** What starting, configuring, or scheduling a kind of run requires; source health is checked separately. */
-  const systemActionPermitted = (kind: SystemRunKind) => {
-    if (readOnly) return false;
-    if (kind === "local_scan" || kind === "local_media_index" || kind === "metadata_sync")
-      return canRun && canSyncMetadata;
-    if (kind === "remote_fetch") return canRun && canFetchRemote;
-    if (kind === "source_presence_check") return canRun && canManageSources;
-    // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
-    if (kind === "preset") return canRun && canSyncMetadata;
-    return canRun;
-  };
-
-  const systemActionAllowed = (kind: SystemRunKind) => {
-    if (!systemActionPermitted(kind)) return false;
-    if (kind === "source_presence_check") return remoteSourceAvailability !== "unavailable";
-    return true;
-  };
-
-  const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => {
-    if (!selectedDefinition) return;
-    triggerAnchorRef.current = anchor ?? null;
-    setTriggerEditor({
-      mode: "create",
-      definitionId: selectedDefinition.id,
-      triggerType,
-      runOptions: currentTriggerRunOptions,
-    });
-  };
-
-  const editAutomationTrigger = (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => {
-    triggerAnchorRef.current = anchor ?? null;
-    setTriggerEditor({
-      mode: "edit",
-      definitionId: trigger.workflowDefinitionId,
-      trigger,
-      runOptions: currentTriggerRunOptions,
-    });
-  };
-
-  const closeTriggerEditor = () => {
-    triggerAnchorRef.current = null;
-    setTriggerEditor(null);
-  };
-  // A definition that disappears after a refresh closes its editor instead of retargeting it.
-  const triggerEditorDefinition = triggerEditor
-    ? (definitions.find((definition) => definition.id === triggerEditor.definitionId) ?? null)
-    : null;
-  const triggerEditorRunOptions =
-    triggerEditor && triggerEditor.runOptions?.code === triggerEditorDefinition?.code ? triggerEditor.runOptions : null;
-
-  const toggleAutomationTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
+  const toggleTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
     try {
       const saved = await api.updateWorkflowTrigger(trigger.id, {
@@ -496,236 +225,276 @@ export function WorkflowsPage({
     }
   };
 
-  const refreshSelectedRunReview = async () => {
-    await activityRun.refresh(true);
-    setActivityRevision((value) => value + 1);
-    if (selectedDefinition) await refreshRecentRuns(selectedDefinition.code);
+  const cardName = (operation: Operation) =>
+    t(`workflowPage.cards.names.${operation.definition.code}`, { defaultValue: operation.definition.displayName });
+  const workflowName = (code: string, fallback: string) =>
+    t(`workflowPage.builtInDefinitions.${code}.name`, { defaultValue: fallback });
+  const definitionsById = useMemo(
+    () => new Map(definitions.map((definition) => [definition.id, definition])),
+    [definitions],
+  );
+  const triggerOwner = (trigger: WorkflowTrigger): NextTriggerOwner => {
+    const operation = operations.find((item) => item.definition.id === trigger.workflowDefinitionId);
+    if (operation) return { name: cardName(operation), editable: true, path: null };
+    const definition = definitionsById.get(trigger.workflowDefinitionId);
+    const code = definition?.code ?? trigger.workflowCode;
+    return {
+      name: workflowName(code, definition?.displayName ?? code),
+      editable: false,
+      path:
+        pageManagedWorkflows[code]?.path ?? (code === "source_presence_check" ? systemSettingsPath("library") : null),
+    };
   };
-  const openActivityRun = (run: WorkflowRun) => activityLocation.openRun(run.id);
-  // Opening Activity from the mobile list is a history step that Back returns from.
-  const openActivity = (view?: ActivityView) => activityLocation.openActivity(view, mobile && !mobileDetailOpen);
-  const activityScope = definitions.find((definition) => definition.code === activityLocation.runsOf) ?? null;
+  const operationTriggers = triggers.filter((trigger) =>
+    operations.some((operation) => operation.definition.id === trigger.workflowDefinitionId),
+  );
+
+  const workflowOptions = definitions
+    .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const managed = pageManagedWorkflows[location.workflowCode];
+
+  const renderCard = (operation: Operation) => {
+    const { definition } = operation;
+    const code = definition.code;
+    const run = runs.runOf(code);
+    const active = runs.activeRunsOf(code);
+    // A requested run is listed once it is active, even while the card follows an older running one.
+    const requested = pending[code];
+    const listed = requested?.runId != null && active.some((item) => item.id >= (requested.runId ?? 0));
+    const state = operationState(run, listed ? undefined : requested);
+    const locked = operationLocked(operation, state);
+    const full = fullChoices[code] ?? false;
+    return (
+      <OperationCard
+        key={definition.id}
+        code={code}
+        icon={workflowIcon(code)}
+        name={cardName(operation)}
+        schedule={workflowTriggerSummary(triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id))}
+        state={state}
+        moreActive={Math.max(0, active.length - 1)}
+        stageCount={parseNodes(definition.definitionJson).length}
+        locked={locked}
+        runAllowed={permitted}
+        runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
+        full={
+          operation.kind === "local_scan"
+            ? null
+            : {
+                checked: full,
+                hint: t(`workflowPage.cards.fullHint.${code}`),
+                onChange: (checked) => setFullChoices((current) => ({ ...current, [code]: checked })),
+              }
+        }
+        options={
+          operation.kind === "metadata_sync"
+            ? {
+                label: t("workflowPage.cards.metadataOptions"),
+                summary: metadataOptionsSummary(),
+                onOpen: () => setMetadataOptionsOpen(true),
+              }
+            : undefined
+        }
+        onRun={() => void runOperation(operation, full)}
+        onOpenRun={selectRun}
+      />
+    );
+  };
+
+  /** What the Metadata card's runs change from the defaults, in one line. */
+  const metadataOptionsSummary = () => {
+    if (!metadataRunOptionsChanged(metadataRun)) return null;
+    const names = new Map((capableSources ?? []).map((source) => [source.id, source.displayName]));
+    const fallback = metadataRun.remoteMetadataFallback;
+    return [
+      fallback.enabled
+        ? t("workflowPage.cards.fallbackSummary", {
+            sources: fallback.sourceIds.map((id) => names.get(id) ?? `#${id}`).join(" → "),
+          })
+        : null,
+      metadataRun.purchaseBonusAutoLink ? null : t("workflowPage.cards.bonusOff"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+
+  const runOpen = location.runId !== null;
+  // Library folds while a run is open and opens again with the list; a choice in between holds until then.
+  const [libraryChoice, setLibraryChoice] = useState<{ runOpen: boolean; open: boolean | null }>({
+    runOpen,
+    open: null,
+  });
+  if (libraryChoice.runOpen !== runOpen) setLibraryChoice({ runOpen, open: null });
+  const libraryOpen = (libraryChoice.runOpen === runOpen ? libraryChoice.open : null) ?? !runOpen;
 
   return (
-    <div className="space-y-4">
+    <div className={cn(contentPageClassName, "space-y-8")}>
       {readOnly && <DemoReadOnlyNotice />}
-      {hasWorkflowMetaSnapshot && workflowMetaError && (
+      {hasSnapshot && loadError && (
         <div
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
           role="alert"
         >
           <span className="text-sm text-error-foreground">
-            {workflowMetaError} {t("workflow.existingDataShown")}
+            {loadError} {t("workflow.existingDataShown")}
           </span>
           <Button size="sm" variant="outline" onClick={refresh}>
             {t("common.retry")}
           </Button>
         </div>
       )}
-      <WorkflowPulse
-        pulse={overview.pulse}
-        definitions={visibleDefinitions}
-        onOpenActivity={() => openActivity()}
-        onOpenAttention={() => openActivity("attention")}
-      />
-      <WorkflowRunSlotProvider>
-        <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
-          {hasWorkflowMetaSnapshot && (!mobile || !mobileDetailOpen) && categoryGroups.length > 0 && (
-            <WorkflowNavigator
-              groups={categoryGroups}
-              selectedId={activityLocation.open ? null : (selectedDefinition?.id ?? null)}
-              latestRun={overview.latestRun}
-              triggers={triggers}
-              mobile={mobile}
-              onSelect={selectDefinition}
-              activity={{
-                selected: activityLocation.open,
-                running: overview.pulse.running,
-                attention: overview.pulse.attention,
-                onSelect: () => openActivity(),
-              }}
-            />
-          )}
-          {/* Activity needs no workflow metadata, so it shows while that loads or fails. */}
-          {activityLocation.open && (!mobile || mobileDetailOpen) ? (
-            <div className="min-w-0 flex-1">
-              <WorkflowActivity
-                workflowCode={activityScope?.code ?? "all"}
-                workflowName={activityScope ? workflowName(activityScope, t) : ""}
-                onShowAllWorkflows={activityScope ? activityLocation.showAllWorkflows : undefined}
-                view={activityLocation.view}
-                onViewChange={activityLocation.setView}
-                selectedRunId={activityLocation.runId}
-                onSelectRun={openActivityRun}
-                onBack={activityLocation.backToList}
-                refreshKey={activityRevision}
-                readOnly={readOnly}
-                staticDemo={auth.demoMode}
-                canSyncMetadata={canSyncMetadata}
-                mobile={mobile}
-                detail={
-                  activityLocation.runId ? (
-                    <>
-                      {activityRun.error && (
-                        <div role="alert" className="mb-4 rounded-md border p-3 text-sm">
-                          {workflowCopy("activityLoadFailed")}{" "}
-                          <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
-                            {t("common.retry")}
-                          </Button>
-                        </div>
-                      )}
-                      <RunDetail
-                        key={activityLocation.runId}
-                        run={linkedRun}
-                        candidates={linkedRun ? activityRun.candidates : []}
-                        events={linkedRun ? activityRun.events : []}
-                        loading={!linkedRun && !activityRun.error}
-                        onCandidateUpdate={refreshSelectedRunReview}
-                        onRunAction={refreshSelectedRunReview}
-                        canSyncMetadata={canSyncMetadata}
-                        readOnly={readOnly}
-                      />
-                    </>
-                  ) : undefined
-                }
+      <section aria-labelledby={operationsHeadingId} className="min-w-0 space-y-3">
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          <h2 id={operationsHeadingId} className="text-base font-semibold">
+            <button
+              type="button"
+              className="-ml-1 flex items-center gap-1.5 rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-expanded={libraryOpen}
+              aria-controls={`${operationsHeadingId}-cards`}
+              onClick={() => setLibraryChoice({ runOpen, open: !libraryOpen })}
+            >
+              {t("workflowPage.operations.groups.library")}
+              <ChevronDown
+                className={cn("h-4 w-4 text-muted-foreground transition-transform", !libraryOpen && "-rotate-90")}
+                aria-hidden
               />
-            </div>
-          ) : !hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
-            <div className="min-w-0 flex-1">
-              <WorkflowMetadataLoadingState />
-            </div>
-          ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
-            <div className="min-w-0 flex-1">
-              <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
-            </div>
-          ) : (
-            (!mobile || mobileDetailOpen) && (
-              <div
-                id="workflow-definition-panel"
-                role="region"
-                aria-label={selectedDefinition ? workflowName(selectedDefinition, t) : undefined}
-                className="min-w-0 flex-1"
-              >
-                {selectedDefinition && subscriptionsScheduledWorkflowCodes.has(selectedDefinition.code) ? (
-                  <SubscriptionsManagedWorkflowPanel
-                    definition={selectedDefinition}
-                    recentRuns={recentDefinitionRuns}
-                    message={workflowCopy(subscriptionsManagedWorkflowPaths[selectedDefinition.code].message)}
-                    onOpenRun={openActivityRun}
-                    onOpenRuns={() => activityLocation.openWorkflowRuns(selectedDefinition.code)}
-                    onOpenSubscriptions={() =>
-                      openWorkflowPath(subscriptionsManagedWorkflowPaths[selectedDefinition.code].path)
-                    }
-                  />
-                ) : (
-                  <WorkflowDetail
-                    definition={selectedDefinition}
-                    definitionTriggers={triggers.filter(
-                      (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
-                    )}
-                    canManageTriggers={
-                      !readOnly &&
-                      (selectedDefinition?.id ?? 0) > 0 &&
-                      (selectedSystemRunKinds ?? []).every(systemActionPermitted)
-                    }
-                    readOnly={readOnly}
-                    systemRunKinds={selectedSystemRunKinds}
-                    isSystemActionRunning={systemActionBusy}
-                    canRunSystemAction={systemActionAllowed}
-                    onRunSystemAction={runSystemAction}
-                    onRunRemoteFetch={runRemoteFetch}
-                    canTag={canTagWorks}
-                    remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
-                    onOpenRemoteSourceSettings={openRemoteSourcesSettings}
-                    preset={selectedPreset}
-                    onRunPreset={runPreset}
-                    onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
-                    recentRuns={recentDefinitionRuns}
-                    onOpenRun={openActivityRun}
-                    onOpenRuns={
-                      selectedDefinition ? () => activityLocation.openWorkflowRuns(selectedDefinition.code) : undefined
-                    }
-                    onCreateTrigger={createAutomationTrigger}
-                    onEditTrigger={editAutomationTrigger}
-                    onToggleTrigger={toggleAutomationTrigger}
-                    emptyText={definitionEmptyText}
-                  />
-                )}
-              </div>
-            )
+            </button>
+          </h2>
+          {(permitted || readOnly) && operations.length > 0 && (
+            <Button size="sm" variant="outline" disabled={readOnly} onClick={() => setTriggerDialog({ trigger: null })}>
+              <CalendarPlus className="h-4 w-4" aria-hidden />
+              {t("workflowPage.triggers.add")}
+            </Button>
           )}
         </div>
-      </WorkflowRunSlotProvider>
-      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
-
-      {triggerEditor && triggerEditorDefinition && (
-        <TriggerModal
-          key={
-            triggerEditor.mode === "edit" ? `edit:${triggerEditor.trigger.id}` : `create:${triggerEditorDefinition.id}`
-          }
-          definition={triggerEditorDefinition}
-          preset={presetByCode.get(triggerEditorDefinition.code) ?? null}
-          canTag={canTagWorks}
-          trigger={triggerEditor.mode === "edit" ? triggerEditor.trigger : null}
-          readOnly={triggerEditor.mode === "edit" ? readOnly : undefined}
-          initialTriggerType={
-            triggerEditor.mode === "create"
-              ? triggerEditor.triggerType
-              : triggerEditor.trigger.triggerType === "startup"
-                ? "startup"
-                : "schedule"
-          }
-          currentRunOptions={triggerEditorRunOptions}
-          anchorRef={triggerAnchorRef}
-          onClose={closeTriggerEditor}
-          onSaved={() => {
-            closeTriggerEditor();
-            refresh();
+        <div id={`${operationsHeadingId}-cards`} hidden={!libraryOpen}>
+          {!libraryOpen ? null : !hasSnapshot && isLoading ? (
+            <WorkflowMetadataLoadingState />
+          ) : !hasSnapshot && loadError ? (
+            <WorkflowMetadataErrorState message={loadError} onRetry={refresh} />
+          ) : operations.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">{workflowCopy("definitionEmpty")}</p>
+          ) : (
+            <ul className="grid gap-3 md:grid-cols-3">{operations.map(renderCard)}</ul>
+          )}
+        </div>
+      </section>
+      <WorkflowRuns
+        tab={location.tab}
+        onTabChange={location.setTab}
+        nowCount={runs.running + runs.attention}
+        now={
+          <div className="grid min-w-0 gap-6">
+            <RunningRuns
+              runs={runs.activeRuns}
+              total={runs.running}
+              selectedRunId={location.runId}
+              canSyncMetadata={canSyncMetadata}
+              onSelectRun={selectRun}
+            />
+            <AttentionRuns
+              refreshKey={revision}
+              staticDemo={auth.demoMode}
+              readOnly={readOnly}
+              canSyncMetadata={canSyncMetadata}
+              selectedRunId={location.runId}
+              onSelectRun={selectRun}
+              onChanged={() => setRevision((value) => value + 1)}
+            />
+            <NextTriggers
+              triggers={triggers}
+              ownerOf={triggerOwner}
+              canManage={permitted}
+              readOnly={readOnly}
+              loading={!hasSnapshot && isLoading}
+              onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
+              onEdit={(trigger) => setTriggerDialog({ trigger })}
+              onOpenPath={openWorkflowPath}
+            />
+          </div>
+        }
+        status={location.status}
+        onStatusChange={location.setStatus}
+        workflowCode={location.workflowCode}
+        workflowOptions={workflowOptions}
+        onWorkflowChange={location.setWorkflow}
+        query={location.query}
+        onQueryChange={location.setQuery}
+        note={
+          managed ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+              <p className="min-w-0">{workflowCopy(managed.message)}</p>
+              <Button size="sm" variant="outline" onClick={() => openWorkflowPath(managed.path)}>
+                {managed.page === "records" ? <Clapperboard className="h-4 w-4" /> : <Compass className="h-4 w-4" />}
+                {workflowCopy(managed.page === "records" ? "openRecords" : "openSubscriptions")}
+              </Button>
+            </div>
+          ) : undefined
+        }
+        selectedRunId={location.runId}
+        onSelectRun={selectRun}
+        onBack={location.backToList}
+        refreshKey={revision}
+        staticDemo={auth.demoMode}
+        canSyncMetadata={canSyncMetadata}
+        mobile={mobile}
+        detail={
+          location.runId ? (
+            <>
+              {watched.error && (
+                <div role="alert" className="mb-4 rounded-md border p-3 text-sm">
+                  {workflowCopy("activityLoadFailed")}{" "}
+                  <Button variant="outline" onClick={() => void watched.refresh(true)}>
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              )}
+              <RunDetail
+                key={location.runId}
+                run={openRun}
+                candidates={openRun ? watched.candidates : []}
+                events={openRun ? watched.events : []}
+                loading={!openRun && !watched.error}
+                onCandidateUpdate={refreshRun}
+                onRunAction={refreshRun}
+                canSyncMetadata={canSyncMetadata}
+                readOnly={readOnly}
+              />
+            </>
+          ) : undefined
+        }
+      />
+      {metadataOptionsOpen && (
+        <MetadataOptionsDialog
+          value={metadataRun}
+          sources={capableSources}
+          sourcesFailed={metadataSources.failed}
+          readOnly={readOnly || !permitted}
+          onRetrySources={metadataSources.retry}
+          onSave={(next) => {
+            setMetadataOptions(next);
+            writeMetadataRunOptions(next);
+            setMetadataOptionsOpen(false);
           }}
-          onDeleted={() => {
-            closeTriggerEditor();
+          onClose={() => setMetadataOptionsOpen(false)}
+        />
+      )}
+      {triggerDialog && (
+        <TriggerDialog
+          key={triggerDialog.trigger?.id ?? "add"}
+          operations={operations.map((operation) => ({ definition: operation.definition, name: cardName(operation) }))}
+          triggers={operationTriggers}
+          trigger={triggerDialog.trigger}
+          readOnly={readOnly}
+          metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
+          onClose={() => setTriggerDialog(null)}
+          onSaved={() => {
+            setTriggerDialog(null);
             refresh();
           }}
         />
       )}
     </div>
   );
-}
-
-function workflowName(definition: WorkflowDefinition, t: (key: string, options?: Record<string, unknown>) => string) {
-  return t(`workflowPage.builtInDefinitions.${definition.code}.name`, { defaultValue: definition.displayName });
-}
-
-function storedPositiveInt(key: string) {
-  const value = Number(readSessionValue(key));
-  return Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function storeSessionValue(key: string, value: string | null) {
-  try {
-    if (value === null) {
-      window.sessionStorage.removeItem(key);
-    } else {
-      window.sessionStorage.setItem(key, value);
-    }
-  } catch {
-    // Storage can be unavailable in restricted browsing contexts.
-  }
-}
-
-function storePositiveInt(key: string, value: number | null) {
-  storeSessionValue(key, value && value > 0 ? String(value) : null);
-}
-
-function openRemoteSourcesSettings() {
-  window.history.pushState({}, "", "/settings?tab=library#remote-sources");
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }

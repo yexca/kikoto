@@ -36,7 +36,12 @@ export type RecordAsset = {
   width?: number;
   height?: number;
   availability: "available" | "missing" | "unreadable";
+  /** The media stream for videos and images; WebVTT for a WebVTT or SubRip sidecar. */
   streamUrl?: string;
+  /** A JPEG thumbnail of a video or image, made on first request. */
+  thumbnailUrl?: string;
+  /** The viewer's saved position for a video. */
+  progress?: RecordProgress;
 };
 
 export type RecordTree = {
@@ -69,6 +74,8 @@ export const recordsApi = {
     ),
   getRecordAsset: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<{ asset: RecordAsset }>(`/api/records/assets/${id}`, signal),
+  listRecordContinue: (signal?: AbortSignal) =>
+    sharedGetJSON<{ assets: RecordAsset[] }>("/api/records/continue", signal),
   queueRecordScan: () => postJSON<RecordScan>("/api/records/scans"),
   getRecordProgress: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),

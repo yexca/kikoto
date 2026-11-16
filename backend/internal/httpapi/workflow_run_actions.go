@@ -550,7 +550,14 @@ func workflowJobRetryPermissions(job workflowJobRecord) []string {
 			return []string{"remote:fetch", "metadata:sync"}
 		}
 		return []string{"remote:fetch"}
-	case "media_cache_limit_cleanup", "media_cache_cleanup", "local_media_delete", "local_location_cleanup", "media_location_cleanup":
+	case "media_cache_limit_cleanup", "media_cache_cleanup", "local_media_delete", "local_location_cleanup":
+		return []string{"downloads:manage"}
+	case "media_location_cleanup":
+		var payload mediaCleanupJobPayload
+		_ = decodeWorkflowJobPayload(job.PayloadJSON, &payload)
+		if payload.Mode == mediaCleanupForgetWork {
+			return []string{"downloads:manage", "sources:write"}
+		}
 		return []string{"downloads:manage"}
 	case workFolderEditWorkerType:
 		var payload workFolderEditJobPayload

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { TranslationReviewList, type TranslationReviewMode } from "@/components/translation/TranslationReviewList";
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
@@ -17,9 +18,10 @@ import {
 import { ActivityRunLink, TranslationRunList } from "@/features/translation/TranslationRunList";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { api, type TranslationCenterCounts, type TranslationItem, type TranslationRun } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { cn } from "@/lib/tailwindClassNames";
 
 const pollMs = 4000;
 
@@ -148,9 +150,9 @@ export function TranslationPage({
   const activityLink = canOpenActivity
     ? (runId: number) => (
         <ActivityRunLink
-          href={workflowActivityRunPath(runId)}
+          href={workflowRunPath(runId)}
           label={t("translationCenter.activity")}
-          onOpen={() => openWorkflowPath(workflowActivityRunPath(runId))}
+          onOpen={() => openWorkflowPath(workflowRunPath(runId))}
         />
       )
     : undefined;
@@ -181,7 +183,7 @@ export function TranslationPage({
   };
 
   return (
-    <div className="min-w-0 space-y-3">
+    <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
       <div className="flex min-h-10 flex-wrap items-center gap-2" data-toast-avoid>
         <div role="tablist" aria-label={t("translationCenter.views.label")} className={segmentedListClassName()}>
           {views.map((value) => (
@@ -220,7 +222,6 @@ export function TranslationPage({
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{t(`translationCenter.descriptions.${view}`)}</p>
       {loadError && (
         <div
           role="alert"

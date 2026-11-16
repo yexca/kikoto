@@ -1,96 +1,58 @@
-import { ListChecks, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CollectionFilterPicker, type CollectionFilterOption } from "@/components/collection/CollectionFilterPicker";
-import { Button } from "@/components/ui/button";
-import {
-  WorkCollectionDisplayPicker,
-  type WorkCardMode,
-  type WorkCollectionColumnSetting,
-} from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 
 /**
- * First-row toolbar for the works of one circle or voice actor. It mirrors the
- * Library and creator-list toolbars: optional view tabs on the left, a bounded
- * search field, and the sort control with quiet icon actions (display options,
- * availability filter, selection) on the right. Narrow layouts keep their
- * options sheet, so the search and actions stay desktop-only unless
- * `mobileSearch` opts in; `mobileSort` sits beside the view tabs there.
+ * The toolbar of one circle or voice actor's works, holding at most five
+ * controls: optional view tabs, the search field, the order, the availability
+ * filter, and one View entry for everything else (display options and
+ * selection), with the result caption before the order. Wide layouts keep
+ * them on one row. A phone puts the tabs on their own row, the search field
+ * full width below, and then the caption with the order, filter, and View at
+ * its end.
  */
 export function CatalogWorkToolbar<FilterValue extends string>({
   leading,
   query,
   searchLabel,
-  mobileSearch = false,
-  mobileSearchAction,
   onQueryChange,
   sort,
-  mobileSort,
-  cardModes,
   filterLabel,
   filter,
   defaultFilter,
   filterOptions,
   onFilterChange,
-  pageSize,
-  pageSizeOptions,
-  onPageSizeChange,
-  mobileColumns,
-  desktopColumns,
-  onMobileColumnsChange,
-  onDesktopColumnsChange,
-  selectionMode,
-  onSelectionModeChange,
+  view,
+  caption,
 }: {
   leading?: ReactNode;
   query: string;
   searchLabel: string;
-  mobileSearch?: boolean;
-  mobileSearchAction?: ReactNode;
   onQueryChange: (value: string) => void;
-  /** The sort control of the wide action cluster. */
+  /** The order control; absent where the view lists no works to order. */
   sort?: ReactNode;
-  /** The sort control shown beside the view tabs on narrow layouts. */
-  mobileSort?: ReactNode;
-  cardModes?: {
-    mobile: WorkCardMode;
-    desktop: WorkCardMode;
-    onMobileChange: (value: WorkCardMode) => void;
-    onDesktopChange: (value: WorkCardMode) => void;
-  };
   filterLabel: string;
   filter: FilterValue;
   defaultFilter: FilterValue;
   filterOptions: readonly CollectionFilterOption<FilterValue>[];
   onFilterChange: (value: FilterValue) => void;
-  pageSize?: number;
-  pageSizeOptions?: readonly number[];
-  onPageSizeChange?: (value: number) => void;
-  mobileColumns: WorkCollectionColumnSetting;
-  desktopColumns: WorkCollectionColumnSetting;
-  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  selectionMode?: boolean;
-  onSelectionModeChange?: (value: boolean) => void;
+  /** The View entry. */
+  view: ReactNode;
+  /** The result caption before the controls. */
+  caption?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const visibleOnMobile = Boolean(leading) || mobileSearch || Boolean(mobileSort);
-  const selectionLabel = selectionMode ? t("library.cancelSelection") : t("library.select");
-
   return (
-    <section className={`${visibleOnMobile ? "flex" : "hidden lg:flex"} flex-wrap items-center gap-2`} data-toast-avoid>
-      {leading && <div className="min-w-0 max-w-full">{leading}</div>}
-      {mobileSort && <div className={`min-w-0 lg:hidden ${leading ? "ml-auto" : ""}`}>{mobileSort}</div>}
-      <div
-        className={`search-field min-h-10 w-full min-w-0 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:flex lg:w-auto lg:min-w-[14rem] lg:max-w-xl lg:flex-1 ${
-          mobileSearch ? "flex" : "hidden"
-        }`}
-      >
+    <section className="flex flex-wrap items-center gap-x-2 gap-y-3" data-toast-avoid>
+      {leading && <div className="w-full min-w-0 max-w-full lg:w-auto">{leading}</div>}
+      <div className="search-field flex min-h-10 w-full min-w-0 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:w-auto lg:min-w-[14rem] lg:max-w-xl lg:flex-1">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+          enterKeyHint="search"
           value={query}
           onKeyDown={dismissKeyboardOnEnter}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -100,7 +62,7 @@ export function CatalogWorkToolbar<FilterValue extends string>({
         {query.trim() && (
           <button
             type="button"
-            className="rounded-sm text-muted-foreground hover:text-foreground"
+            className="touch-target grid h-8 w-8 shrink-0 place-items-center rounded-sm text-muted-foreground hover:text-foreground"
             onClick={() => onQueryChange("")}
             aria-label={t("collection.clearSearch")}
             title={t("collection.clearSearch")}
@@ -108,20 +70,10 @@ export function CatalogWorkToolbar<FilterValue extends string>({
             <X className="h-4 w-4" />
           </button>
         )}
-        {mobileSearchAction && <div className="-mr-1.5 shrink-0 lg:hidden">{mobileSearchAction}</div>}
       </div>
-      <div className="ml-auto hidden shrink-0 gap-2 lg:flex">
+      {caption && <div className="min-w-0 flex-1 lg:flex-none lg:px-1">{caption}</div>}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         {sort}
-        <WorkCollectionDisplayPicker
-          mobileColumns={mobileColumns}
-          desktopColumns={desktopColumns}
-          onMobileColumnsChange={onMobileColumnsChange}
-          onDesktopColumnsChange={onDesktopColumnsChange}
-          cardModes={cardModes}
-          pageSize={pageSize}
-          pageSizeOptions={pageSizeOptions}
-          onPageSizeChange={onPageSizeChange}
-        />
         <CollectionFilterPicker
           label={filterLabel}
           value={filter}
@@ -129,20 +81,7 @@ export function CatalogWorkToolbar<FilterValue extends string>({
           options={filterOptions}
           onChange={onFilterChange}
         />
-        {onSelectionModeChange && (
-          <Button
-            type="button"
-            variant="toolbar"
-            size="icon-sm"
-            className="relative"
-            aria-pressed={Boolean(selectionMode)}
-            title={selectionLabel}
-            aria-label={selectionLabel}
-            onClick={() => onSelectionModeChange(!selectionMode)}
-          >
-            <ListChecks className={`h-4 w-4 ${selectionMode ? "text-primary" : ""}`} />
-          </Button>
-        )}
+        {view}
       </div>
     </section>
   );

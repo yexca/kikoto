@@ -5,18 +5,12 @@ import type {
   ListeningPeriodStatistic,
   ListeningProfile,
   ListeningProfileTrait,
-  ListeningStatisticsRange,
 } from "@/lib/listeningApi";
 
 export const LISTENING_HISTORY_PAGE_SIZE = 30;
 
 /** Named report ranges in switcher order; the first is the default. */
 export const LISTENING_REPORT_RANGES: readonly ListeningNamedRange[] = ["30d", "12m", "all"];
-
-/** The calendar year a range names, or null for a named range. */
-export function listeningRangeYear(range: ListeningStatisticsRange) {
-  return /^[0-9]{4}$/.test(range) ? range : null;
-}
 
 export type ListeningDurationParts =
   | { key: "hoursMinutes"; values: { hours: number; minutes: number } }

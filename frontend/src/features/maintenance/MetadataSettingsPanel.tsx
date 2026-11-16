@@ -73,7 +73,7 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
       proxy={settings.proxy}
       readOnly={readOnly}
       onSaved={setSettings}
-      onManage={() => navigate("/settings?tab=proxy")}
+      onManage={() => navigate("/system?tab=proxy")}
     />
   );
   return (
@@ -87,11 +87,8 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
           <h3 id="metadata-settings-elsewhere" className="text-xs font-semibold text-muted-foreground">
             {maintenanceCopy("metadata.elsewhere")}
           </h3>
-          <SettingsLink onClick={() => navigate("/settings?tab=library")}>
+          <SettingsLink onClick={() => navigate("/system?tab=library")}>
             {maintenanceCopy("metadata.openCatalogFreshness")}
-          </SettingsLink>
-          <SettingsLink onClick={() => navigate("/workflows?workflow=metadata_sync")}>
-            {maintenanceCopy("metadata.openRemoteFallback")}
           </SettingsLink>
         </section>
       </div>

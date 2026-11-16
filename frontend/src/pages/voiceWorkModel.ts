@@ -1,5 +1,8 @@
 import type { CircleSourceStat, VoiceRemoteObservation, VoiceWork } from "@/lib/api";
 
+/** The availability filter of a voice actor's works. */
+export type VoiceWorkFilter = "all" | "available" | "local" | "remote" | "missing";
+
 /** A work on a voice actor page, as its works endpoint pages it. */
 export type VoiceWorkView = VoiceWork;
 
