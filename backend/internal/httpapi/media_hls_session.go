@@ -278,7 +278,7 @@ func (session *hlsSession) waitFor(ctx context.Context, index int, segmentPath s
 }
 
 func hlsSessionRelativeDir(profile *hlsEncodeProfile, source hlsPlaybackSource) string {
-	return path.Join(transcodeCacheRootRelative, profile.cacheDir, strconv.FormatInt(source.LocationID, 10), source.Revision)
+	return path.Join(transcodeCacheRootRelative, profile.cacheDir, source.cacheKey(), source.Revision)
 }
 
 func hlsSegmentName(index int) string {

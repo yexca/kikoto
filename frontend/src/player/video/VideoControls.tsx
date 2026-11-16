@@ -25,8 +25,8 @@ import { useTranslation } from "react-i18next";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { cn } from "@/lib/tailwindClassNames";
 import { GlyphButton, PlayPauseGlyph, SeekBar, SeekIcon } from "@/player/mediaControls";
-import type { RenderedSubtitleTrack } from "@/features/work-detail/media/useVideoSubtitleTracks";
-import { useVideoElementState } from "@/features/work-detail/media/useVideoElementState";
+import type { RenderedSubtitleTrack } from "@/player/video/useVideoSubtitleTracks";
+import { useVideoElementState } from "@/player/video/useVideoElementState";
 import {
   CONTROLS_HIDE_MS,
   controlsStayVisible,
@@ -41,9 +41,9 @@ import {
   tapZone,
   toggleVideoPlayback,
   videoDuration,
-} from "@/features/work-detail/media/videoControlsModel";
-import { videoFullscreenMode } from "@/features/work-detail/media/videoFullscreen";
-import { VIDEO_PLAYBACK_RATES } from "@/features/work-detail/media/videoShortcuts";
+} from "@/player/video/videoControlsModel";
+import { videoFullscreenMode } from "@/player/video/videoFullscreen";
+import { VIDEO_PLAYBACK_RATES } from "@/player/video/videoShortcuts";
 
 type VideoControlsProps = {
   videoRef: RefObject<HTMLVideoElement | null>;

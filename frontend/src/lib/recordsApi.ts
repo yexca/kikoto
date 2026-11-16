@@ -1,4 +1,5 @@
-import { postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import { getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import type { VideoPlaybackInfo } from "@/lib/mediaApi";
 
 export type RecordRoot = {
   id: number;
@@ -29,18 +30,20 @@ export type RecordAsset = {
   folderId: number;
   name: string;
   relativePath?: string;
-  kind: "video" | "image" | "subtitle" | "metadata" | "other";
+  kind: "video" | "audio" | "image" | "subtitle" | "metadata" | "other";
   mimeType: string;
   sizeBytes?: number;
   durationSeconds?: number;
   width?: number;
   height?: number;
   availability: "available" | "missing" | "unreadable";
-  /** The media stream for videos and images; WebVTT for a WebVTT or SubRip sidecar. */
+  /** The media stream for videos, audio, and images; WebVTT for a WebVTT or SubRip sidecar. */
   streamUrl?: string;
   /** A JPEG thumbnail of a video or image, made on first request. */
   thumbnailUrl?: string;
-  /** The viewer's saved position for a video. */
+  /** The file as a download, for any available file. */
+  downloadUrl?: string;
+  /** The viewer's saved position for a video or audio file. */
   progress?: RecordProgress;
 };
 
@@ -77,6 +80,23 @@ export const recordsApi = {
   listRecordContinue: (signal?: AbortSignal) =>
     sharedGetJSON<{ assets: RecordAsset[] }>("/api/records/continue", signal),
   queueRecordScan: () => postJSON<RecordScan>("/api/records/scans"),
+  /**
+   * How a record video or audio file plays, as library playback info answers:
+   * directly, as a remux, or as a transcode. The audio profile plays only the
+   * audio of a video.
+   */
+  getRecordPlayback: (
+    id: number,
+    options: { capabilities: string[]; profile?: "audio"; forceTranscode?: boolean },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams();
+    if (options.capabilities.length > 0) query.set("capabilities", options.capabilities.join(","));
+    if (options.profile) query.set("profile", options.profile);
+    if (options.forceTranscode) query.set("forceTranscode", "1");
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return getJSON<VideoPlaybackInfo>(`/api/records/assets/${id}/playback${suffix}`, signal);
+  },
   getRecordProgress: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),
   updateRecordProgress: (id: number, progress: RecordProgress) =>

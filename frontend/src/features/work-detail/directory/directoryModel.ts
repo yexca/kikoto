@@ -9,7 +9,7 @@ import {
   treeStats,
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
-import { videoSubtitlesFor } from "@/features/work-detail/media/videoSubtitles";
+import { videoSubtitlesFor } from "@/player/video/videoSubtitles";
 import { formatFolderStats } from "@/features/work-detail/dialogs/mediaFilePresentation";
 import i18n from "@/i18n";
 import type { FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";

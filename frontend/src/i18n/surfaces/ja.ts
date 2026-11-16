@@ -628,6 +628,15 @@ export const surfaceJapanese = {
     airPlay: "AirPlay",
     seekBackHint: "−{{seconds}} 秒",
     seekForwardHint: "+{{seconds}} 秒",
+    shortcuts: {
+      title: "キーボードショートカット",
+      playPause: "再生 / 一時停止",
+      back: "{{seconds}} 秒戻る",
+      forward: "{{seconds}} 秒進む",
+      mute: "ミュート / 解除",
+      slower: "遅くする",
+      faster: "速くする",
+    },
   },
   permissions: {
     demoReadOnly: "デモモードは読み取り専用です。",

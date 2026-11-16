@@ -627,6 +627,15 @@ export const surfaceKorean = {
     airPlay: "AirPlay",
     seekBackHint: "−{{seconds}}초",
     seekForwardHint: "+{{seconds}}초",
+    shortcuts: {
+      title: "키보드 단축키",
+      playPause: "재생 / 일시정지",
+      back: "{{seconds}}초 뒤로",
+      forward: "{{seconds}}초 앞으로",
+      mute: "음소거 / 해제",
+      slower: "느리게",
+      faster: "빠르게",
+    },
   },
   permissions: {
     demoReadOnly: "데모 모드는 읽기 전용입니다.",

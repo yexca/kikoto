@@ -39,7 +39,7 @@ type storedVideoKeyframeIndex struct {
 
 func videoKeyframeIndexRelativePath(source hlsPlaybackSource) string {
 	return path.Join(transcodeCacheRootRelative, videoKeyframeIndexCacheDir,
-		strconv.FormatInt(source.LocationID, 10), videoKeyframeIndexKey(source)+".json")
+		source.cacheKey(), videoKeyframeIndexKey(source)+".json")
 }
 
 // loadStoredVideoKeyframeIndex returns the stored index of a source revision,
@@ -179,13 +179,20 @@ func videoCommonlyPlaysDirectly(probe playbackProbe) bool {
 	return direct && defaultVideoAudioTrack(videoAudioTracks(probe)) == 0
 }
 
-// videoKeyframePrefetch queues the videos of opened works for a keyframe scan
-// that runs one at a time behind the response.
+// videoKeyframePrefetch queues the videos of opened works and record folders
+// for a keyframe scan that runs one at a time behind the response.
 type videoKeyframePrefetch struct {
 	mu      sync.Mutex
-	queue   []int64
-	queued  map[int64]bool
+	queue   []videoKeyframePrefetchItem
+	queued  map[string]bool
 	running bool
+}
+
+// videoKeyframePrefetchItem names a queued video by its cache key and loads it
+// when its turn comes.
+type videoKeyframePrefetchItem struct {
+	key  string
+	load func(context.Context) (hlsPlaybackSource, error)
 }
 
 // prefetchWorkVideoKeyframes queues the local and cached videos of a work the
@@ -195,32 +202,42 @@ func (s *Server) prefetchWorkVideoKeyframes(items []mediaItemDetail) {
 	if s.cfg.IsDemo() {
 		return
 	}
-	var locations []int64
+	var videos []videoKeyframePrefetchItem
 	for _, item := range items {
 		for _, location := range item.Locations {
 			if effectiveMediaKind(item.Kind, location.Path) != "video" || location.Availability != "available" ||
 				(location.LocationType != "local" && location.LocationType != "cache") {
 				continue
 			}
-			locations = append(locations, location.ID)
+			id := location.ID
+			videos = append(videos, videoKeyframePrefetchItem{
+				key:  strconv.FormatInt(id, 10),
+				load: func(ctx context.Context) (hlsPlaybackSource, error) { return s.loadHLSPlaybackSource(ctx, id) },
+			})
 		}
 	}
-	if len(locations) == 0 {
+	s.queueVideoKeyframePrefetch(videos)
+}
+
+// queueVideoKeyframePrefetch adds videos to the bounded prefetch queue, once
+// each, and starts its worker.
+func (s *Server) queueVideoKeyframePrefetch(videos []videoKeyframePrefetchItem) {
+	if len(videos) == 0 {
 		return
 	}
 	prefetch := &s.videoKeyframePrefetch
 	prefetch.mu.Lock()
 	defer prefetch.mu.Unlock()
 	if prefetch.queued == nil {
-		prefetch.queued = map[int64]bool{}
+		prefetch.queued = map[string]bool{}
 	}
-	for _, location := range locations {
+	for _, video := range videos {
 		if len(prefetch.queue) >= videoKeyframePrefetchQueueSize {
 			break
 		}
-		if !prefetch.queued[location] {
-			prefetch.queued[location] = true
-			prefetch.queue = append(prefetch.queue, location)
+		if !prefetch.queued[video.key] {
+			prefetch.queued[video.key] = true
+			prefetch.queue = append(prefetch.queue, video)
 		}
 	}
 	if prefetch.running || len(prefetch.queue) == 0 {
@@ -243,18 +260,18 @@ func (s *Server) runVideoKeyframePrefetch(lifetime context.Context) {
 			prefetch.mu.Unlock()
 			return
 		}
-		location := prefetch.queue[0]
+		video := prefetch.queue[0]
 		prefetch.queue = prefetch.queue[1:]
-		delete(prefetch.queued, location)
+		delete(prefetch.queued, video.key)
 		prefetch.mu.Unlock()
 
-		source, err := s.loadHLSPlaybackSource(lifetime, location)
+		source, err := video.load(lifetime)
 		if err != nil || source.Profile != playbackProfileVideo || !videoRemuxCandidate(source) {
 			continue
 		}
 		if _, err := s.prefetchVideoKeyframeIndex(lifetime, source); err != nil &&
 			!errors.Is(err, context.Canceled) && !errors.Is(err, errVideoKeyframeIndexUnusable) {
-			slog.Debug("video keyframe prefetch failed", "location_id", location, "error", err)
+			slog.Debug("video keyframe prefetch failed", "source", video.key, "error", err)
 		}
 	}
 }

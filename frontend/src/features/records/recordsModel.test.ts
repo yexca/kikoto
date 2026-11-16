@@ -33,13 +33,26 @@ describe("recordFolderView", () => {
     asset(8, "Poster.JPG", "image", "/s/8"),
     asset(9, "fanart.webp", "image", "/s/9"),
     asset(10, "Day 3.ass", "subtitle"),
+    asset(11, "Narration 10.mp3", "audio", "/s/11"),
+    asset(12, "Narration 2.flac", "audio", "/s/12"),
+    { ...asset(13, "Gone.mp3", "audio", "/s/13"), availability: "missing" as const },
   ];
 
-  it("orders by natural name and hides non-media files and folder artwork", () => {
+  it("orders by natural name, lists other files below the tiles, and hides folder artwork", () => {
     const view = recordFolderView([folder(9, "B"), folder(8, "a")], assets);
     expect(view.folders.map((item) => item.name)).toEqual(["a", "B"]);
     expect(view.videos.map((item) => item.id)).toEqual([2, 1]);
     expect(view.photos.map((item) => item.id)).toEqual([4]);
+    expect(view.audio.map((item) => item.id)).toEqual([12, 11]);
+    expect(view.files.map((item) => item.name)).toEqual([
+      "Day 2 - Town.srt",
+      "Day 2 - Town.vtt",
+      "Day 3.ass",
+      "Day 10 - Hike.srt",
+      "Narration 2.flac",
+      "Narration 10.mp3",
+      "notes.nfo",
+    ]);
   });
 
   it("pairs a served same-name subtitle with each video, WebVTT before SubRip", () => {

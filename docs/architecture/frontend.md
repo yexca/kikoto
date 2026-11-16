@@ -231,7 +231,9 @@ entry is the Record section of System → Library, which turns Record on and
 initializes the independent record root. The navigation offers Record only
 while the runtime settings report it on. `RecordsBrowser` browses the root one
 folder at a time through `recordsApi`, ordering subfolders, videos, and photos
-by natural name.
+by natural name, and lists the folder's audio, subtitle, metadata, and other
+files below them in `RecordFileList`, where audio rows open the player and
+every row offers its download.
 `recordsLocation` keeps the open folder and an open video (`?play=`) or photo
 (`?photo=`) in the `/records` URL. Opening a folder or an overlay pushes a
 history entry; previous or next inside an overlay replaces it; closing an
@@ -250,17 +252,30 @@ during the visit, so tiles update without reading the folder again.
 `RecordContinuePicker` lists the viewer's unfinished videos in a popover on
 wide screens or a sheet on phones and opens one over its own folder in a new
 entry (`openFolderVideoNavigation`), resuming without asking, so closing it
-returns to the folder where it was opened. The full-screen `RecordVideoPlayer`
-asks whether to continue from a saved position and saves progress through
-`RecordProgressTracker` every ten seconds, on pause, at the end, and when it
-closes. A same-name subtitle sidecar the server serves as WebVTT becomes the
-video's `<track>`, a WebVTT file before a SubRip one. `RecordPhotoViewer`
+returns to the folder where it was opened. The full-screen `RecordMediaPlayer`
+plays videos and audio files: it asks whether to continue from a saved
+position, reads Record playback info while it asks, attaches the chosen source
+through the shared `attachPlaybackSource` (a direct file, native HLS on iOS,
+or hls.js), and asks for a transcode after a direct file or a remux fails to
+decode. It saves progress through `RecordProgressTracker` every ten seconds,
+on pause, at the end, and when it closes. A video plays on the work video
+stage with `VideoControls`, its shortcuts, and its subtitle menu, filling both
+dimensions of the overlay, and outside the phone layout the header's
+`RecordShortcutsButton` lists the shortcuts through `VideoShortcutList`, which
+reads `VIDEO_SHORTCUT_GUIDE` beside the key mapping. On the phone layout it requests stage fullscreen
+once it starts, within the tap that opened or started it, and
+`watchVideoFullscreenOrientation` turns a wide video to landscape. Audio only, which the browser
+keeps per device, plays a video's sound through an `<audio>` element under the
+video's frame or the folder's poster, continuing from the same moment. A
+same-name subtitle sidecar the server serves as WebVTT is the video's sidecar
+track for `useVideoSubtitleTracks`, a WebVTT file before a SubRip one, and
+embedded text subtitles from playback info follow it. `RecordPhotoViewer`
 steps through photos by button, arrow key, or touch swipe and shows each photo
 in the shared `ZoomableImage`, the same zoomable stage as the work file viewer.
 Both overlays are
 modal dialogs over authenticated asset routes and never play through the
-global audio player; a record video that starts playing pauses it through
-`usePlayer`.
+global audio player; a record video or audio file that starts playing pauses
+it through `usePlayer`.
 
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search
@@ -511,14 +526,17 @@ moves parsed lines by the listener's lyrics offset, so the active line, line
 seeking, and screen lyrics share one timeline.
 
 The work detail file viewer plays video in `VideoPreview`
-(`features/work-detail/media`), outside the global player. It attaches an HLS
+(`features/work-detail/media`), and Record plays video in `RecordMediaPlayer`,
+both outside the global player and on the same video stage, whose parts live in
+`player/video`. `VideoPreview` attaches an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
 lazily loaded hls.js elsewhere. The `<video>` element has no native controls;
 `VideoControls` lays its own over it, reading the element through
 `useVideoElementState` and keeping tap zones, double-tap streaks, the hide
 rule, and seeking in the pure `videoControlsModel`. It reuses the player's
 control primitives and seek steps through `player/mediaControls`. Keyboard
-shortcuts, buttons, and double taps all seek through `seekVideoTo`.
+shortcuts, which `handleVideoStageKeyDown` applies on the stage, buttons, and
+double taps all seek through `seekVideoTo`.
 `videoFullscreen` makes the stage element fullscreen, so the controls stay,
 except on iOS and iPadOS (`appleMobileWebKit`), whose fullscreen is the system
 player; the stage leaves fullscreen when it unmounts. Its menus pass the stage
@@ -989,7 +1007,7 @@ volatile queue with a diagnostic and a normal network loss window of up to
   slider, or a horizontally scrollable region. While the Android WebView shows
   an element fullscreen, the back button leaves fullscreen before this order.
 - A fullscreen video wider than it is tall locks the screen to landscape until
-  fullscreen ends (`features/work-detail/media/videoFullscreenOrientation`),
+  fullscreen ends (`player/video/videoFullscreenOrientation`),
   however fullscreen was entered. Browsers use the Screen Orientation API, and
   a rejected lock leaves the screen as it is. The Android WebView rejects that
   API, so the shell shows WebView fullscreen itself, over the content frame and

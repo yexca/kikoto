@@ -6,7 +6,7 @@ import {
   videoSubtitlesFor,
   videoSubtitleTracks,
   videoSubtitleWebVtt,
-} from "@/features/work-detail/media/videoSubtitles";
+} from "@/player/video/videoSubtitles";
 import type { VideoEmbeddedSubtitle } from "@/lib/api";
 import type { LyricsChoice } from "@/player/lyricsMatching";
 

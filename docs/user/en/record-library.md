@@ -2,8 +2,9 @@
 
 [English](record-library.md) · [简体中文](../zh-Hans/record-library.md) · [繁體中文](../zh-Hant/record-library.md) · [日本語](../ja/record-library.md) · [한국어](../ko/record-library.md)
 
-Record is an independent library for personal videos and images. It uses
-the `/record` mount and never adds files to the audio Library or to a work.
+Record is an independent library for personal videos, images, and audio files.
+It uses the `/record` mount and never adds files to the audio Library or to a
+work.
 
 ## Set up
 
@@ -40,16 +41,22 @@ address keeps the open folder, so browser Back, Forward, and reload return to
 the same place; Backspace also steps up one folder.
 
 Items are ordered naturally by name: subfolders first, then videos, then
-photos. Group headings appear when a folder holds more than one kind of item.
+photos, then the folder's other files. Group headings appear when a folder
+holds more than one kind of item.
 Subfolders appear as square tiles that show their poster, their backdrop when
 they have no poster, or a folder icon when they have neither; videos as wide
 tiles with a frame from the video, their length, and a bar for how much you
 have watched; photos as square thumbnails. Thumbnails are made the first time a
-folder shows them, so a large folder can take a moment the first time. Subtitle,
-metadata, and other files stay hidden, and so do the folder's artwork images.
+folder shows them, so a large folder can take a moment the first time. The
+folder's artwork images stay hidden.
 
-From any folder, **Continue watching** opens a list of the videos you stopped
-part way through, most recent first, with the folder each one is in. Selecting
+**Files** lists everything else in the folder, one row each with its type and
+size: audio files with their length and a bar for how much you have heard,
+subtitles, metadata, and any other file. Selecting an audio file plays it, and
+the download button beside each row saves the file.
+
+From any folder, **Continue watching** opens a list of the videos and audio files
+you stopped part way through, most recent first, with the folder each one is in. Selecting
 one plays it from where you stopped, and closing the player returns to the
 folder where you opened it.
 
@@ -68,18 +75,38 @@ cannot be read keeps no length and is read again once it changes.
 Folder artwork uses these image names: `folder`, `poster`, or `cover` for a
 poster, and `backdrop`, `fanart`, or `background` for a backdrop. Supported
 video extensions include `.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, and
-`.ts`; supported image extensions include `.jpg`, `.jpeg`, `.png`, `.webp`, and
-`.avif`.
+`.ts`; supported audio extensions include `.mp3`, `.m4a`, `.aac`, `.flac`,
+`.wav`, `.ogg`, `.opus`, `.wma`, `.aiff`, and `.mka`; supported image
+extensions include `.jpg`, `.jpeg`, `.png`, `.webp`, and `.avif`.
 
 ## Watching videos and photos
 
-Select a video to open it in a full-screen player. When you stopped part way
-through, Kikoto asks whether to continue from that time or start over. A
-`.vtt` or `.srt` file with the same name as the video shows as its subtitles;
-`.srt` files must be UTF-8. The previous and next buttons step through the folder's videos, and Back or Esc
-closes the player. The position is saved per account about every ten seconds,
-on pause, at the end, and when the player closes; saving it needs library write
-access. A video that starts playing pauses the global audio player, which stays
+Select a video to open it in a full-screen player that fits the picture and
+its controls to the screen. It has the on-screen controls, touch gestures,
+Subtitles menu, and keyboard shortcuts of
+[video in a work's file viewer](work-detail.md#current-behavior); on a
+computer, the keyboard button at the top lists the shortcuts. On a phone,
+the video switches to fullscreen when it starts, and a video wider than it is
+tall turns the screen to landscape until fullscreen ends; on iPhone and iPad,
+**Full screen** opens the system player. When you stopped part way through, Kikoto asks
+whether to continue from that time or start over. A video your browser cannot
+play as it is, such as an MPEG-TS (`.ts`) recording or HEVC on a browser
+without it, plays the way the Library's videos do: the server repackages it
+without re-encoding when the browser decodes its picture, and converts it
+otherwise. A `.vtt` or `.srt` file with the same name as the video shows as
+its subtitles; `.srt` files must be UTF-8. Text subtitles inside the video
+are offered too. The previous and next buttons step through the folder's
+videos, and Back or Esc closes the player.
+
+The headphones button plays a video as audio only: the player loads only its
+sound and shows the video's frame or the folder's poster. Switching continues from the same moment, and this device remembers the
+choice for the next video. An audio file opens in the same player, steps
+through the folder's audio files, and plays directly or converted like a
+video's sound.
+
+The position is saved per account about every ten seconds, on pause, at the
+end, and when the player closes; saving it needs library write access. A video
+or audio file that starts playing pauses the global audio player, which stays
 paused after the player closes.
 
 Select a photo to view it full screen. Step through the folder's photos with

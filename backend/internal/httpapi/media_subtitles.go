@@ -106,7 +106,7 @@ func videoSubtitleTracksFor(source hlsPlaybackSource) []videoSubtitleTrack {
 			Title:    boundedSubtitleText(stream.Tags.Title),
 			Default:  stream.Disposition.Default == 1,
 			Forced:   stream.Disposition.Forced == 1,
-			URL: fmt.Sprintf("/api/media/%d/subtitles/%d.vtt?v=%s", source.LocationID, stream.StreamIndex,
+			URL: fmt.Sprintf("%s/subtitles/%d.vtt?v=%s", source.route(), stream.StreamIndex,
 				videoSubtitleRevision(source.Path, info, stream.StreamIndex)),
 		})
 	}
@@ -144,6 +144,12 @@ func (s *Server) serveVideoSubtitle(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
 		return
 	}
+	s.serveVideoSubtitleStream(w, r, source, stream)
+}
+
+// serveVideoSubtitleStream serves one embedded text subtitle stream of a
+// loaded video source.
+func (s *Server) serveVideoSubtitleStream(w http.ResponseWriter, r *http.Request, source hlsPlaybackSource, stream int) {
 	found := false
 	for _, candidate := range videoSubtitleStreams(source.Probe) {
 		found = found || candidate.StreamIndex == stream
@@ -163,7 +169,7 @@ func (s *Server) serveVideoSubtitle(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) && r.Context().Err() != nil {
 			return
 		}
-		slog.Warn("video subtitle extraction failed", "location_id", locationID, "stream", stream, "error", err)
+		slog.Warn("video subtitle extraction failed", "source", source.route(), "stream", stream, "error", err)
 		switch {
 		case errors.Is(err, errRealtimeResourceBusy):
 			w.Header().Set("Retry-After", "1")

@@ -61,6 +61,7 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"folderId": parent, "folders": folders, "assets": assets})
+	s.prefetchRecordVideoKeyframes(assets)
 }
 
 func (s *Server) initializeRecordRoot(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +112,7 @@ func (s *Server) streamRecordAsset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "record_asset_not_found", "Record asset not found.", false)
 		return
 	}
-	if err != nil || (asset.Kind != "video" && asset.Kind != "image") || asset.Availability != "available" {
+	if err != nil || (asset.Kind != "video" && asset.Kind != "audio" && asset.Kind != "image") || asset.Availability != "available" {
 		writeAPIError(w, http.StatusNotFound, "record_media_unavailable", "The record media is unavailable.", false)
 		return
 	}
@@ -125,6 +126,9 @@ func (s *Server) streamRecordAsset(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusNotFound, "record_media_unavailable", "The record media is unavailable.", false)
 			return
 		}
+	}
+	if asset.Kind == "audio" && asset.MimeType != "" {
+		w.Header().Set("Content-Type", asset.MimeType)
 	}
 	if err := record.ServeContent(w, r, path, info.ModTime()); err != nil {
 		writeAPIError(w, http.StatusNotFound, "record_media_unavailable", "The record media is unavailable.", false)
@@ -208,8 +212,8 @@ func (s *Server) getRecordProgress(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "record_asset_failed", "The record asset could not be read.", true)
 		return
 	}
-	if asset.Kind != "video" {
-		writeAPIError(w, http.StatusBadRequest, "record_progress_not_supported", "Progress is supported for videos only.", false)
+	if asset.Kind != "video" && asset.Kind != "audio" {
+		writeAPIError(w, http.StatusBadRequest, "record_progress_not_supported", "Progress is supported for videos and audio only.", false)
 		return
 	}
 	p, err := s.recordStore.Progress(r.Context(), user.ID, id)
@@ -239,8 +243,8 @@ func (s *Server) updateRecordProgress(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "record_asset_failed", "The record asset could not be read.", true)
 		return
 	}
-	if asset.Kind != "video" {
-		writeAPIError(w, http.StatusBadRequest, "record_progress_not_supported", "Progress is supported for videos only.", false)
+	if asset.Kind != "video" && asset.Kind != "audio" {
+		writeAPIError(w, http.StatusBadRequest, "record_progress_not_supported", "Progress is supported for videos and audio only.", false)
 		return
 	}
 	var input struct {

@@ -83,17 +83,21 @@ func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
 }
 
 // decorateRecordAsset sets the authenticated URLs an asset is read through:
-// the stream and a revision-keyed thumbnail for videos and images, and the
-// WebVTT route for WebVTT and SubRip sidecars.
+// the download of any file, the stream and a revision-keyed thumbnail for
+// videos and images, the stream of audio files, and the WebVTT route for
+// WebVTT and SubRip sidecars.
 func decorateRecordAsset(a *record.Asset) {
 	if a.Availability != "available" {
 		return
 	}
 	id := strconv.FormatInt(a.ID, 10)
+	a.DownloadURL = "/api/records/assets/" + id + "/download"
 	switch a.Kind {
 	case "video", "image":
 		a.StreamURL = "/api/records/assets/" + id + "/stream"
 		a.ThumbnailURL = "/api/records/assets/" + id + "/thumbnail?v=" + recordThumbnailSource(*a).Revision()
+	case "audio":
+		a.StreamURL = "/api/records/assets/" + id + "/stream"
 	case "subtitle":
 		if record.ServesSubtitle(a.Name) {
 			a.StreamURL = "/api/records/assets/" + id + "/subtitle"

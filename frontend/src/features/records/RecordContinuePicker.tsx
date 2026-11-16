@@ -1,4 +1,4 @@
-import { History, Video, X } from "lucide-react";
+import { History, Music, Video, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -19,6 +19,7 @@ function folderCaption(relativePath: string | undefined) {
 function ContinueThumbnail({ video }: { video: RecordAsset }) {
   const [failed, setFailed] = useState(false);
   const fraction = watchedFraction(video.progress);
+  const Placeholder = video.kind === "audio" ? Music : Video;
   return (
     <span className="relative block aspect-video w-20 shrink-0 overflow-hidden rounded-[calc(var(--radius)-2px)] border bg-muted">
       {video.thumbnailUrl && !failed ? (
@@ -32,7 +33,7 @@ function ContinueThumbnail({ video }: { video: RecordAsset }) {
         />
       ) : (
         <span className="grid h-full w-full place-items-center">
-          <Video className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
+          <Placeholder className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
         </span>
       )}
       {fraction !== null && (

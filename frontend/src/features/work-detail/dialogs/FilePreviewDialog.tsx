@@ -20,7 +20,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { countTextLines, formatLyricsTime, parseLyrics } from "@/features/work-detail/dialogs/textPreviewModel";
 import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
-import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
+import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 import { formatBytes, formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { api, assetURL, mediaDownloadURL } from "@/lib/api";

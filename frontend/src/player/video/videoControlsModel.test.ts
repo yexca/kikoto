@@ -15,7 +15,7 @@ import {
   type TapState,
   tapZone,
   toggleVideoPlayback,
-} from "@/features/work-detail/media/videoControlsModel";
+} from "@/player/video/videoControlsModel";
 
 const steps = { backward: 10, forward: 30 };
 

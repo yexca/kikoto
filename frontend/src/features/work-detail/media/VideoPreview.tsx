@@ -12,15 +12,15 @@ import { api, assetURL, type VideoAudioTrack, type VideoEmbeddedSubtitle, type V
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlaybackSeekPreferences } from "@/player/mediaControls";
 import { playbackURL, prefersNativeVideoHls, videoPlaybackCapabilities } from "@/player/mediaPlayback";
-import { VideoControls } from "@/features/work-detail/media/VideoControls";
-import { formatVideoDuration, seekVideoBy, toggleVideoPlayback } from "@/features/work-detail/media/videoControlsModel";
-import { toggleVideoFullscreen, useStageFullscreen } from "@/features/work-detail/media/videoFullscreen";
+import { VideoControls } from "@/player/video/VideoControls";
+import { formatVideoDuration } from "@/player/video/videoControlsModel";
+import { toggleVideoFullscreen, useStageFullscreen } from "@/player/video/videoFullscreen";
 import {
   CONSERVATIVE_HLS_CONFIG,
   prepareVideoPlayback,
   retriesRemuxAsTranscode,
   videoPlaybackFailureKey,
-} from "@/features/work-detail/media/videoPlaybackModel";
+} from "@/player/videoPlaybackModel";
 import {
   readVideoResumePosition,
   videoResumeStorageKey,
@@ -34,13 +34,10 @@ import {
   videoAudioTrackChoices,
   videoAudioTrackLabel,
 } from "@/features/work-detail/media/videoAudioTracks";
-import {
-  videoLandscapeLock,
-  watchVideoFullscreenOrientation,
-} from "@/features/work-detail/media/videoFullscreenOrientation";
-import { nextVideoPlaybackRate, videoShortcut } from "@/features/work-detail/media/videoShortcuts";
-import { useVideoSubtitleTracks } from "@/features/work-detail/media/useVideoSubtitleTracks";
-import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
+import { videoLandscapeLock, watchVideoFullscreenOrientation } from "@/player/video/videoFullscreenOrientation";
+import { handleVideoStageKeyDown } from "@/player/video/videoShortcuts";
+import { useVideoSubtitleTracks } from "@/player/video/useVideoSubtitleTracks";
+import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 
 type VideoPreviewProps = {
   locationId: number;
@@ -344,33 +341,12 @@ function VideoPlayback({
     setRateNotice(video.playbackRate);
   };
 
-  const handleStageKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const video = videoRef.current;
-    // Buttons beside the video keep Space and Enter.
-    if (!video || event.defaultPrevented || event.nativeEvent.isComposing) return;
-    if (event.target !== event.currentTarget && event.target !== video) return;
-    const shortcut = videoShortcut(event);
-    if (!shortcut) return;
-    event.preventDefault();
-    switch (shortcut.action) {
-      case "togglePlay":
-        if (event.repeat) return;
-        toggleVideoPlayback(video);
-        return;
-      case "seek":
-        seekVideoBy(video, shortcut.seconds, displayedDuration);
-        return;
-      case "fullscreen":
-        toggleFullscreen();
-        return;
-      case "mute":
-        video.muted = !video.muted;
-        return;
-      case "rate":
-        changeRate(nextVideoPlaybackRate(video.playbackRate, shortcut.step));
-        return;
-    }
-  };
+  const handleStageKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) =>
+    handleVideoStageKeyDown(event, videoRef.current, {
+      duration: displayedDuration,
+      toggleFullscreen,
+      changeRate,
+    });
 
   return (
     <div

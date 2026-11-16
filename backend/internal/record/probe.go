@@ -41,7 +41,7 @@ type ProbeResult struct {
 	Unavailable bool `json:"unavailable,omitempty"`
 }
 
-// MediaInfo is what a probe stores for a video or image.
+// MediaInfo is what a probe stores for a video, audio file, or image.
 type MediaInfo struct {
 	DurationSeconds *float64
 	Width           *int
@@ -111,9 +111,10 @@ type ffprobeOutput struct {
 	} `json:"format"`
 }
 
-// ParseMediaInfo reads ffprobe JSON for a video or image. A video needs a
-// video stream; its duration comes from the container. An image needs a
-// decodable picture with dimensions.
+// ParseMediaInfo reads ffprobe JSON for a video, audio file, or image. A video
+// needs a video stream and an audio file an audio stream; both take their
+// duration from the container. An image needs a decodable picture with
+// dimensions.
 func ParseMediaInfo(data []byte, kind string) (MediaInfo, error) {
 	var probe ffprobeOutput
 	if err := json.Unmarshal(data, &probe); err != nil {
@@ -135,6 +136,17 @@ func ParseMediaInfo(data []byte, kind string) (MediaInfo, error) {
 			}
 			hasAudio = true
 		}
+	}
+	if kind == "audio" {
+		// Cover art reads as a video stream; an audio file keeps only its sound.
+		if !hasAudio {
+			return MediaInfo{}, errors.New("probe found no audio")
+		}
+		info = MediaInfo{AudioCodec: info.AudioCodec, HasAudio: &hasAudio}
+		if duration, err := strconv.ParseFloat(strings.TrimSpace(probe.Format.Duration), 64); err == nil && duration > 0 && !math.IsInf(duration, 0) && !math.IsNaN(duration) {
+			info.DurationSeconds = &duration
+		}
+		return info, nil
 	}
 	if info.Width == nil {
 		return MediaInfo{}, errors.New("probe found no picture")
@@ -168,10 +180,11 @@ type probeOutcome struct {
 	err       error
 }
 
-// ProbePending fills duration and dimensions for available videos and images
-// whose probe is pending, at most limit of them, with concurrency probes at a
-// time. A file the prober cannot read is marked failed and never fails the
-// pass; a cancelled context stops it and leaves the rest pending.
+// ProbePending fills duration and dimensions for available videos, audio
+// files, and images whose probe is pending, at most limit of them, with
+// concurrency probes at a time. A file the prober cannot read is marked failed
+// and never fails the pass; a cancelled context stops it and leaves the rest
+// pending.
 func (s *Store) ProbePending(ctx context.Context, probe ProbeFunc, limit, concurrency int) (ProbeResult, error) {
 	if probe == nil {
 		return ProbeResult{Unavailable: true}, nil
@@ -247,14 +260,14 @@ func (s *Store) ProbePending(ctx context.Context, probe ProbeFunc, limit, concur
 		return result, stopErr
 	}
 	countContext := context.WithoutCancel(ctx)
-	if err := s.db.QueryRowContext(countContext, `SELECT COUNT(*) FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','image') AND probe_state='pending'`).Scan(&result.Remaining); err != nil {
+	if err := s.db.QueryRowContext(countContext, `SELECT COUNT(*) FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','audio','image') AND probe_state='pending'`).Scan(&result.Remaining); err != nil {
 		return result, err
 	}
 	return result, nil
 }
 
 func (s *Store) pendingProbes(ctx context.Context, limit int) ([]probeCandidate, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, relative_path, kind FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','image') AND probe_state='pending' ORDER BY id LIMIT ?`, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, relative_path, kind FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','audio','image') AND probe_state='pending' ORDER BY id LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}

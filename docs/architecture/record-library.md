@@ -1,7 +1,7 @@
 # Record Library
 
-The record library is an independent local media subsystem for home videos and
-images. Its root is configured separately from the audio data root, with
+The record library is an independent local media subsystem for home videos,
+audio files, and images. Its root is configured separately from the audio data root, with
 `KIKOTO_RECORD_ROOT` defaulting to `/record` in the container. It is not a
 storage pool and it is never included in the audio local-work scan.
 
@@ -25,8 +25,8 @@ media, while record metadata, progress, and state stay in record tables.
 
 The schema keeps one row per folder and one row per regular file. Paths are
 relative to the record root and normalized for lookup. The scanner walks the
-whole configured record root and classifies video, image, subtitle, metadata,
-and other files by a bounded extension allowlist. It does not follow links or
+whole configured record root and classifies video, audio, image, subtitle,
+metadata, and other files by a bounded extension allowlist. It does not follow links or
 junctions and skips Kikoto transaction directories and operating-system
 metadata directories.
 
@@ -37,11 +37,13 @@ Discovery records file size and modification time. A file whose size,
 modification time, or kind changed returns to the pending probe state and loses
 its earlier duration and dimensions.
 
-After the walk, the same scan probes pending videos and images with `ffprobe`:
+After the walk, the same scan probes pending videos, audio files, and images
+with `ffprobe`:
 at most 2,000 per scan, two at a time, each with a 20-second timeout, one
 thread, the file protocol only, and a bounded output. A video records its
-duration, dimensions, codecs, and whether it has audio; an image records its
-dimensions. A file the probe cannot read is marked failed without failing the
+duration, dimensions, codecs, and whether it has audio; an audio file records
+its duration and audio codec, and embedded cover art does not make it a video;
+an image records its dimensions. A file the probe cannot read is marked failed without failing the
 scan, and it is probed again only after it changes. Files past the per-scan
 bound, and every pending file when `ffprobe` is missing, stay pending for the
 next scan. Cancelling the scan stops the probe and leaves the rest pending. The
@@ -74,6 +76,15 @@ that are no longer available videos or images are removed, and the run summary
 counts them; a partial scan leaves them in place. An evicted or cleared
 thumbnail is made again on its next request.
 
+Record videos and audio files play through the library media playback
+pipeline described in [Backend](backend.md): playback info chooses direct
+playback, a remux, or a transcode from the client's capabilities; HLS segments,
+embedded text subtitles, keyframe indexes, transcode slots, failure memory, and
+the transcode cache quota follow the same rules. A record asset's playlists and
+cache directories are keyed `record-<asset id>` beside the numeric keys of
+library locations, and its revision covers the asset id, relative path, size,
+and modification time, so it never shares segments with a library file.
+
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop
 candidates. The server checks image signatures before serving record artwork or
@@ -84,11 +95,21 @@ The HTTP surface is under `/api/records`:
 - `GET /api/records` reports root state; `POST /api/records/root/initialize`
   creates the marker for an administrator with `sources:write`.
 - `GET /api/records/tree?folderId=<id>` returns up to 200 children for one
-  folder with their artwork, stream, thumbnail, and subtitle URLs and the
-  viewer's saved progress on each video.
+  folder with their artwork, stream, thumbnail, subtitle, and download URLs and
+  the viewer's saved progress on each video and audio file.
 - `GET /api/records/assets/{id}` returns asset metadata; `GET
-  /api/records/assets/{id}/stream` serves an authenticated Range-capable video
-  or image.
+  /api/records/assets/{id}/stream` serves an authenticated Range-capable video,
+  audio file, or image.
+- `GET /api/records/assets/{id}/playback` answers how a video or audio file
+  plays, in the shape of library playback info, for the `capabilities`,
+  `forceTranscode`, and `audioStream` queries. `profile=audio` asks for the
+  sound of a video, which always plays as an audio encode; an audio file plays
+  directly when the client decodes it and as an audio encode otherwise.
+- `GET /api/records/assets/{id}/hls/{file}` serves the playlists and segments
+  playback info names, and `GET /api/records/assets/{id}/subtitles/{stream}.vtt`
+  an embedded text subtitle stream as WebVTT.
+- `GET /api/records/assets/{id}/download` sends any available record file as
+  an attachment with the untrusted-file headers.
 - `GET /api/records/assets/{id}/thumbnail?v=<revision>` serves a video or
   image thumbnail. The tree names the file revision in `v`; a matching
   revision is cached by the browser as immutable, any other is revalidated.
@@ -97,16 +118,16 @@ The HTTP surface is under `/api/records`:
   file over 2 MiB, text that is not UTF-8, WebVTT without its header, and
   other subtitle formats are not served.
 - `GET /api/records/continue?limit=<1-50>` lists the viewer's most recently
-  played available videos that stopped past their first five seconds and
-  before their last five, 12 by default.
+  played available videos and audio files that stopped past their first five
+  seconds and before their last five, 12 by default.
 - `GET /api/records/folders/{id}/artwork/{poster|backdrop}` serves recognized
   sidecar artwork after signature validation.
 - `POST /api/records/scans` queues the coalesced durable scan for
   `library:write` users after the root is online.
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
-  video progress.
+  video and audio progress.
 
 The **Record** navigation entry opens a folder browser over this tree with a
-full-screen video player and photo viewer, described in
-[Frontend](frontend.md). Record video playback does not go through the global
-audio player; starting a record video pauses it.
+full-screen media player and photo viewer, described in
+[Frontend](frontend.md). Record playback does not go through the global audio
+player; starting a record video or audio file pauses it.

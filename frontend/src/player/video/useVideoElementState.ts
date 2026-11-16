@@ -1,6 +1,6 @@
 import { type RefObject, useEffect, useState } from "react";
 
-import { bufferedFractions, shownVideoSubtitle } from "@/features/work-detail/media/videoControlsModel";
+import { bufferedFractions, shownVideoSubtitle } from "@/player/video/videoControlsModel";
 
 export type VideoElementState = {
   paused: boolean;

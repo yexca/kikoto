@@ -674,6 +674,15 @@ export const surfaceEnglish = {
     airPlay: "AirPlay",
     seekBackHint: "−{{seconds}} seconds",
     seekForwardHint: "+{{seconds}} seconds",
+    shortcuts: {
+      title: "Keyboard shortcuts",
+      playPause: "Play or pause",
+      back: "Back {{seconds}} seconds",
+      forward: "Forward {{seconds}} seconds",
+      mute: "Mute or unmute",
+      slower: "Slower",
+      faster: "Faster",
+    },
   },
   permissions: {
     demoReadOnly: "Demo mode is read-only.",

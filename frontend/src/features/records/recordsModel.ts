@@ -3,14 +3,21 @@ import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 import type { RecordCrumb } from "./recordsLocation";
 
-/** What the grid shows for one folder: subfolders, then videos, then photos. */
+/** What a folder shows: subfolders, videos, and photos as tiles, then its other files as a list. */
 export type RecordFolderView = {
   folders: RecordFolder[];
   videos: RecordAsset[];
   photos: RecordAsset[];
+  /** Audio files the player plays, in list order. */
+  audio: RecordAsset[];
+  /** Every other file by name: audio, subtitles, metadata, and the rest. */
+  files: RecordAsset[];
   /** Same-name subtitle sidecars the server serves as WebVTT, by video id. */
   subtitles: Map<number, RecordAsset>;
 };
+
+/** Kinds that show in a folder's file list rather than as tiles. */
+const listedFileKinds = new Set<RecordAsset["kind"]>(["audio", "subtitle", "metadata", "other"]);
 
 /** Image names the server reads as folder artwork; they never show as photos. */
 const artworkStems = new Set(["folder", "poster", "cover", "backdrop", "fanart", "background"]);
@@ -38,10 +45,11 @@ export function isFolderArtwork(asset: Pick<RecordAsset, "kind" | "name">) {
 }
 
 /**
- * Splits a folder listing into what the grid shows. Subtitle, metadata, and
- * other files and the folder's artwork images stay hidden; a WebVTT or SubRip
- * file whose base name matches a video becomes that video's subtitle, WebVTT
- * first, when the server serves it.
+ * Splits a folder listing into what the folder shows. Videos and photos are
+ * tiles; audio, subtitle, metadata, and other files are listed as files; the
+ * folder's artwork images stay hidden. A WebVTT or SubRip file whose base name
+ * matches a video becomes that video's subtitle, WebVTT first, when the server
+ * serves it, and stays in the file list.
  */
 export function recordFolderView(folders: readonly RecordFolder[], assets: readonly RecordAsset[]): RecordFolderView {
   const videos = assets.filter((asset) => asset.kind === "video" && playable(asset)).sort(byName);
@@ -61,7 +69,25 @@ export function recordFolderView(folders: readonly RecordFolder[], assets: reado
     const match = vttByBase.get(baseName(video.name).toLocaleLowerCase());
     if (match) subtitles.set(video.id, match);
   }
-  return { folders: [...folders].sort(byName), videos, photos, subtitles };
+  const audio = assets.filter((asset) => asset.kind === "audio" && playable(asset)).sort(byName);
+  const files = assets
+    .filter((asset) => asset.availability === "available" && listedFileKinds.has(asset.kind))
+    .sort(byName);
+  return { folders: [...folders].sort(byName), videos, photos, audio, files, subtitles };
+}
+
+/** A file size in binary units, one decimal below 10. */
+export function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+/** The upper-case extension a file list shows as the file's type. */
+export function fileTypeLabel(name: string) {
+  return extension(name).toUpperCase();
 }
 
 export function formatPlaybackTime(value: number) {

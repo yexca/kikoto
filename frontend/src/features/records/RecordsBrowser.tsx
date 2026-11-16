@@ -6,7 +6,8 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/lib/api";
 
-import { RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
+import { RecordFileList, RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
+import { RecordMediaPlayer } from "./RecordMediaPlayer";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
 import {
   RecordDemoNotice,
@@ -16,7 +17,6 @@ import {
   RecordSetupNotice,
 } from "./RecordStates";
 import { RecordsToolbar } from "./RecordsToolbar";
-import { RecordVideoPlayer } from "./RecordVideoPlayer";
 import {
   closeOverlayNavigation,
   openCrumbNavigation,
@@ -31,7 +31,25 @@ import { useRecordContinue, useRecordProgress } from "./useRecordProgress";
 import { useRecordScan } from "./useRecordScan";
 import { useRecordsLocation } from "./useRecordsLocation";
 
-const noVideos: readonly RecordAsset[] = [];
+const noMedia: readonly RecordAsset[] = [];
+const audioOnlyStorageKey = "kikoto.records.audioOnly";
+
+function readAudioOnly() {
+  try {
+    return window.localStorage.getItem(audioOnlyStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeAudioOnly(value: boolean) {
+  try {
+    if (value) window.localStorage.setItem(audioOnlyStorageKey, "1");
+    else window.localStorage.removeItem(audioOnlyStorageKey);
+  } catch {
+    // The choice then lasts for this visit only.
+  }
+}
 
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -63,11 +81,18 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   } = useRecordTree(location.folderId, historyState, enabled && online);
   const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
+  // Whether videos play as audio only; remembered on this device.
+  const [audioOnly, setAudioOnly] = useState(readAudioOnly);
+  const changeAudioOnly = (value: boolean) => {
+    setAudioOnly(value);
+    writeAudioOnly(value);
+  };
 
   const listing = tree.status === "ready" && tree.folderId === location.folderId ? tree : null;
   const view = useMemo(() => (listing ? recordFolderView(listing.folders, listing.assets) : null), [listing]);
 
-  const { progress, remember } = useRecordProgress(location.folderId, view?.videos ?? noVideos);
+  const playableItems = useMemo(() => (view ? [...view.videos, ...view.audio] : noMedia), [view]);
+  const { progress, remember } = useRecordProgress(location.folderId, playableItems);
   const [savedToken, setSavedToken] = useState(0);
   const continueAssets = useRecordContinue(enabled && online && location.overlay === null, savedToken);
 
@@ -148,15 +173,24 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   }
 
   const overlay = location.overlay;
+  // A video and an audio file both open in the player, which steps through items of their own kind.
   const overlayVideo =
-    overlay?.kind === "video" && view ? (view.videos.find((video) => video.id === overlay.assetId) ?? null) : null;
+    overlay?.kind === "video" && view ? (playableItems.find((item) => item.id === overlay.assetId) ?? null) : null;
+  const openFolderCrumb = trail.length > 0 ? trail[trail.length - 1] : undefined;
+  // Listening shows the item's own frame, or the open folder's artwork.
+  const folderPoster = openFolderCrumb?.posterUrl ?? openFolderCrumb?.backdropUrl;
+  const overlayList = overlayVideo?.kind === "audio" ? (view?.audio ?? noMedia) : (view?.videos ?? noMedia);
   const overlayPhoto =
     overlay?.kind === "photo" && view ? (view.photos.find((photo) => photo.id === overlay.assetId) ?? null) : null;
-  const isEmpty = view !== null && view.folders.length + view.videos.length + view.photos.length === 0;
+  const isEmpty =
+    view !== null && view.folders.length + view.videos.length + view.photos.length + view.files.length === 0;
   const scanBusy =
     scan.state.status === "queueing" || scan.state.status === "queued" || scan.state.status === "running";
   const sectionCount = view
-    ? (view.folders.length > 0 ? 1 : 0) + (view.videos.length > 0 ? 1 : 0) + (view.photos.length > 0 ? 1 : 0)
+    ? (view.folders.length > 0 ? 1 : 0) +
+      (view.videos.length > 0 ? 1 : 0) +
+      (view.photos.length > 0 ? 1 : 0) +
+      (view.files.length > 0 ? 1 : 0)
     : 0;
   const showSectionHeadings = sectionCount > 1;
 
@@ -182,6 +216,10 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
         <RecordPhotoTile key={photo.id} photo={photo} onOpen={openPhoto} />
       ))}
     </div>
+  );
+
+  const filesList = view && view.files.length > 0 && (
+    <RecordFileList files={view.files} progress={progress} onPlay={openVideo} />
   );
 
   return (
@@ -241,20 +279,32 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
             ) : (
               photosGrid
             ))}
+          {filesList &&
+            (showSectionHeadings ? (
+              <RecordSection title={t("records.sections.files")} count={view.files.length}>
+                {filesList}
+              </RecordSection>
+            ) : (
+              filesList
+            ))}
         </div>
       )}
 
       {overlayVideo && view && (
-        <RecordVideoPlayer
+        <RecordMediaPlayer
           key={overlayVideo.id}
-          video={overlayVideo}
+          asset={overlayVideo}
           subtitle={view.subtitles.get(overlayVideo.id)}
-          index={view.videos.indexOf(overlayVideo)}
-          total={view.videos.length}
-          {...siblingProps(view.videos, overlayVideo.id)}
+          artworkUrl={folderPoster}
+          index={overlayList.indexOf(overlayVideo)}
+          total={overlayList.length}
+          {...siblingProps(overlayList, overlayVideo.id)}
           knownProgress={progress.get(overlayVideo.id)}
           autoResume={autoResumeId === overlayVideo.id}
+          audioOnly={audioOnly}
+          onAudioOnlyChange={changeAudioOnly}
           canSaveProgress={canScan}
+          phone={phone}
           onStep={stepOverlay}
           onClose={closeOverlay}
           onProgressSaved={rememberProgress}

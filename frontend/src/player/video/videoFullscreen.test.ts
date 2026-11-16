@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  exitStageFullscreen,
-  toggleVideoFullscreen,
-  videoFullscreenMode,
-} from "@/features/work-detail/media/videoFullscreen";
+import { exitStageFullscreen, toggleVideoFullscreen, videoFullscreenMode } from "@/player/video/videoFullscreen";
 
 function fullscreenDocument(element: Element | null = null) {
   return {

@@ -70,8 +70,10 @@ The backend is a Go HTTP API with SQLite persistence.
 - Enforce the production instance access policy before API handlers, with
   sign-in required by default and optional anonymous `GET`/`HEAD` access.
 - Scan local libraries.
-- Scan the independent record library and serve its authenticated video and
-  image routes without coupling it to audio work identity.
+- Scan the independent record library and serve its authenticated video,
+  audio, and image routes without coupling it to audio work identity; record
+  videos and audio files use the playback pipeline below under their own
+  routes and cache keys.
 - Sync metadata snapshots.
 - Serve library and detail APIs.
 - Browse and sync remote sources.
@@ -213,8 +215,9 @@ scanning again; reading it counts as a use for the cache limit, and a stored
 index that is malformed or was cut by other rules is scanned again.
 
 `GET /api/works/{id}` with media and `GET /api/works/{id}/media` queue the
-work's available local and cached videos for a keyframe scan after writing
-their response. A queue of at most 32 locations runs one video at a time
+work's available local and cached videos, and `GET /api/records/tree` the
+listed folder's available record videos, for a keyframe scan after writing
+their response. A queue of at most 32 videos runs one video at a time
 behind the response, skips a video whose probe shows no stream a remux copies
 or whose average bitrate exceeds the remux limit, skips a video that every
 current browser plays directly with its default audio track (H.264 up to High

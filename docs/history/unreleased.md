@@ -8,22 +8,30 @@
 <details>
 <summary><strong>Record</strong></summary>
 
-- Record is a separate library for personal videos and photos in the
-  sidebar. An administrator turns it on and initializes its root under
+- Record is a separate library for personal videos, photos, and audio files
+  in the sidebar. An administrator turns it on and initializes its root under
   **Record** in **System → Library**; it reads its own `/record` mount and
   never adds files to the audio Library or to a work.
 - Record browses one folder at a time under a path bar that leads back to every
   parent, with **Continue watching** and **Scan** on the right, and the address
   keeps the open folder for Back, Forward, and reload. Items are ordered
-  naturally by name, and **Continue watching** opens from any folder to resume
-  videos you stopped part way through.
-- Videos play in a full-screen player that steps through the folder, offers to
-  continue where you stopped, saves the position per account, and pauses the
-  global audio player. A `.vtt` or UTF-8 `.srt` file named like a video plays
-  as its subtitles. Photos open full screen with arrow keys and swipes, and
-  zoom like the work image viewer.
-- A scan reads each video's length and size. Video tiles show a frame from the
-  video and photos show small thumbnails, both made the first time a folder
+  naturally by name, the folder's other files are listed under **Files** with
+  their type and size and a download button, and **Continue watching** opens
+  from any folder to resume videos and audio files you stopped part way
+  through.
+- Videos play in a full-screen player that fits the screen, has the controls,
+  gestures, and shortcuts of the work video player, lists those shortcuts
+  behind a keyboard button on a computer, switches to landscape fullscreen
+  when a video starts on a phone, steps through the folder, offers to continue
+  where you stopped, saves the position per account, and pauses the global
+  audio player. A video the browser cannot play as it is, such as an MPEG-TS
+  recording, is repackaged or converted like the Library's videos. A `.vtt` or
+  UTF-8 `.srt` file named like a video, or a text subtitle inside it, plays as
+  its subtitles. The headphones button plays a video as audio only, and audio
+  files play in the same player. Photos open full screen with arrow keys and
+  swipes, and zoom like the work image viewer.
+- A scan reads each video's and audio file's length and size. Video tiles show
+  a frame from the video and photos show small thumbnails, both made the first time a folder
   shows them; folder artwork images stay out of the photos.
 - Record thumbnails are kept in the transcode cache and count against its
   limit in **System → Cache & Fetch**. The least recently viewed are removed

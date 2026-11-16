@@ -609,6 +609,15 @@ export const surfaceHant = {
     airPlay: "AirPlay",
     seekBackHint: "−{{seconds}} 秒",
     seekForwardHint: "+{{seconds}} 秒",
+    shortcuts: {
+      title: "鍵盤快速鍵",
+      playPause: "播放 / 暫停",
+      back: "倒退 {{seconds}} 秒",
+      forward: "前進 {{seconds}} 秒",
+      mute: "靜音 / 取消靜音",
+      slower: "減速",
+      faster: "加速",
+    },
   },
   permissions: {
     demoReadOnly: "示範模式為唯讀。",

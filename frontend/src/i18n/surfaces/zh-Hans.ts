@@ -609,6 +609,15 @@ export const surfaceHans = {
     airPlay: "AirPlay",
     seekBackHint: "−{{seconds}} 秒",
     seekForwardHint: "+{{seconds}} 秒",
+    shortcuts: {
+      title: "键盘快捷键",
+      playPause: "播放 / 暂停",
+      back: "后退 {{seconds}} 秒",
+      forward: "前进 {{seconds}} 秒",
+      mute: "静音 / 取消静音",
+      slower: "减速",
+      faster: "加速",
+    },
   },
   permissions: {
     demoReadOnly: "演示模式为只读。",

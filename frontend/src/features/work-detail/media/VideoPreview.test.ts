@@ -5,7 +5,7 @@ import {
   prepareVideoPlayback,
   retriesRemuxAsTranscode,
   videoPlaybackFailureKey,
-} from "@/features/work-detail/media/videoPlaybackModel";
+} from "@/player/videoPlaybackModel";
 import { prefersNativeVideoHls } from "@/player/mediaPlayback";
 
 afterEach(() => vi.useRealTimers());

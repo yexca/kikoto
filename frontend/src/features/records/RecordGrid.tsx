@@ -1,12 +1,13 @@
-import { Check, Folder, Play, Video } from "lucide-react";
+import { Check, Download, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Video } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { assetURL, type RecordAsset, type RecordFolder, type RecordProgress } from "@/lib/api";
 
 import { watchedFraction } from "./recordProgress";
-import { baseName, formatPlaybackTime } from "./recordsModel";
+import { baseName, fileTypeLabel, formatFileSize, formatPlaybackTime } from "./recordsModel";
 
 const tileFocus =
   "rounded-lg text-left outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[var(--press-scale)] motion-reduce:active:scale-100";
@@ -166,5 +167,113 @@ export const RecordPhotoTile = memo(function RecordPhotoTile({
         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
       />
     </button>
+  );
+});
+
+function fileIcon(kind: RecordAsset["kind"]) {
+  switch (kind) {
+    case "audio":
+      return Music;
+    case "subtitle":
+      return Subtitles;
+    case "metadata":
+      return FileText;
+    default:
+      return FileIcon;
+  }
+}
+
+/**
+ * A folder's files that are not tiles, one row each with its type and size.
+ * Audio rows open the player and show how much was heard; every row offers
+ * the file as a download.
+ */
+export const RecordFileList = memo(function RecordFileList({
+  files,
+  progress,
+  onPlay,
+}: {
+  files: readonly RecordAsset[];
+  progress: ReadonlyMap<number, RecordProgress>;
+  onPlay: (id: number) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ul className="divide-y overflow-hidden rounded-lg border">
+      {files.map((file) => {
+        const Icon = fileIcon(file.kind);
+        const playable = file.kind === "audio" && Boolean(file.streamUrl);
+        const heard = playable ? progress.get(file.id) : undefined;
+        const fraction = watchedFraction(heard);
+        const details = [
+          fileTypeLabel(file.name),
+          file.sizeBytes !== undefined ? formatFileSize(file.sizeBytes) : null,
+          file.durationSeconds ? formatPlaybackTime(file.durationSeconds) : null,
+        ].filter(Boolean);
+        const body = (
+          <>
+            <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted">
+              <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              {playable && (
+                <span className="absolute inset-0 grid place-items-center rounded-md bg-primary text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-sm font-medium group-hover:text-primary">{file.name}</span>
+              <span className="flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+                <span className="truncate">{details.join(" · ")}</span>
+                {heard?.completed && (
+                  <span className="inline-flex shrink-0 items-center gap-1">
+                    <Check className="h-3 w-3" aria-hidden="true" />
+                    {t("records.played")}
+                  </span>
+                )}
+              </span>
+              {fraction !== null && (
+                <span
+                  role="progressbar"
+                  aria-label={t("records.heardShare", { percent: Math.round(fraction * 100) })}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(fraction * 100)}
+                  className="mt-0.5 block h-1 w-full max-w-48 overflow-hidden rounded-full bg-foreground/15"
+                >
+                  <span className="block h-full bg-primary" style={{ width: `${fraction * 100}%` }} />
+                </span>
+              )}
+            </span>
+          </>
+        );
+        return (
+          <li key={file.id} className="flex min-w-0 items-center gap-1 pr-1.5">
+            {playable ? (
+              <button
+                type="button"
+                className="group flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => onPlay(file.id)}
+              >
+                {body}
+              </button>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2">{body}</div>
+            )}
+            {file.downloadUrl && (
+              <Button asChild variant="ghost" size="icon" className="h-9 w-9 shrink-0">
+                <a
+                  href={assetURL(file.downloadUrl)}
+                  download={file.name}
+                  aria-label={t("records.files.download", { name: file.name })}
+                  title={t("records.files.download", { name: file.name })}
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              </Button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 });

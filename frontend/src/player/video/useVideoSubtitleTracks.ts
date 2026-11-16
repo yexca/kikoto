@@ -2,7 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 
 import { api, assetURL, type VideoEmbeddedSubtitle } from "@/lib/api";
-import { keepOneVideoSubtitle } from "@/features/work-detail/media/videoControlsModel";
+import { keepOneVideoSubtitle } from "@/player/video/videoControlsModel";
 import {
   initialVideoSubtitleKey,
   sidecarSubtitleKey,
@@ -11,7 +11,7 @@ import {
   type VideoSubtitleTrack,
   videoSubtitleTracks,
   videoSubtitleWebVtt,
-} from "@/features/work-detail/media/videoSubtitles";
+} from "@/player/video/videoSubtitles";
 
 const MAX_SUBTITLE_BYTES = 512 * 1024;
 const trackSelector = "track[data-subtitle-key]";

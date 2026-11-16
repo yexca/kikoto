@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  type LandscapeLock,
-  watchVideoFullscreenOrientation,
-} from "@/features/work-detail/media/videoFullscreenOrientation";
+import { type LandscapeLock, watchVideoFullscreenOrientation } from "@/player/video/videoFullscreenOrientation";
 
 function fixture(size: { width: number; height: number }, lockResult: "resolve" | "reject" = "resolve") {
   const video = Object.assign(new EventTarget(), { videoWidth: size.width, videoHeight: size.height });

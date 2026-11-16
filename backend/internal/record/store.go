@@ -84,7 +84,9 @@ type Asset struct {
 	Availability    string   `json:"availability"`
 	StreamURL       string   `json:"streamUrl,omitempty"`
 	ThumbnailURL    string   `json:"thumbnailUrl,omitempty"`
-	// Progress is the viewer's saved position for a video, when there is one.
+	DownloadURL     string   `json:"downloadUrl,omitempty"`
+	// Progress is the viewer's saved position for a video or audio file, when
+	// there is one.
 	Progress *Progress `json:"progress,omitempty"`
 	// MtimeNs and the size identify the file revision a thumbnail belongs to.
 	MtimeNs *int64 `json:"-"`
@@ -404,6 +406,8 @@ func classify(name string) (string, string) {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts":
 		return "video", mimeFor(name)
+	case ".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus", ".aac", ".aiff", ".aif", ".mka":
+		return "audio", mimeFor(name)
 	case ".jpg", ".jpeg", ".png", ".webp", ".avif":
 		return "image", mimeFor(name)
 	case ".vtt", ".srt", ".ass", ".ssa":
@@ -417,7 +421,7 @@ func classify(name string) (string, string) {
 
 func mimeFor(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
-	mapType := map[string]string{".mp4": "video/mp4", ".mkv": "video/x-matroska", ".webm": "video/webm", ".mov": "video/quicktime", ".avi": "video/x-msvideo", ".m4v": "video/x-m4v", ".ts": "video/mp2t", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".avif": "image/avif", ".vtt": "text/vtt", ".srt": "application/x-subrip", ".ass": "text/x-ssa", ".ssa": "text/x-ssa"}
+	mapType := map[string]string{".mp4": "video/mp4", ".mkv": "video/x-matroska", ".webm": "video/webm", ".mov": "video/quicktime", ".avi": "video/x-msvideo", ".m4v": "video/x-m4v", ".ts": "video/mp2t", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".flac": "audio/flac", ".wav": "audio/wav", ".wma": "audio/x-ms-wma", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg", ".aac": "audio/aac", ".aiff": "audio/aiff", ".aif": "audio/aiff", ".mka": "audio/x-matroska", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".avif": "image/avif", ".vtt": "text/vtt", ".srt": "application/x-subrip", ".ass": "text/x-ssa", ".ssa": "text/x-ssa"}
 	return mapType[ext]
 }
 
@@ -487,7 +491,7 @@ func (s *Store) ListTree(ctx context.Context, parentID int64, limit int, userID 
 		f.Artwork = s.artworkForFolder(f)
 		folders = append(folders, f)
 	}
-	assetRows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind='video' WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ?`, userID, parentID, limit)
+	assetRows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind IN ('video','audio') WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ?`, userID, parentID, limit)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -508,8 +512,8 @@ func (s *Store) ListTree(ctx context.Context, parentID int64, limit int, userID 
 // ContinueLimitMax bounds the Continue watching list.
 const ContinueLimitMax = 50
 
-// ContinueWatching lists userID's most recently played available videos that
-// stopped part way: past the first five seconds and not within five seconds
+// ContinueWatching lists userID's most recently played available videos and
+// audio files that stopped part way: past the first five seconds and not within five seconds
 // of the end.
 func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) ([]Asset, error) {
 	if limit <= 0 || limit > ContinueLimitMax {
@@ -521,7 +525,7 @@ func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) (
 		JOIN record_folder f ON f.id=a.folder_id AND f.state='active'
 		WHERE p.user_id=? AND p.completed=0 AND p.position_seconds>=5
 			AND (p.duration_seconds IS NULL OR p.position_seconds < p.duration_seconds-5)
-			AND a.kind='video' AND a.availability='available'
+			AND a.kind IN ('video','audio') AND a.availability='available'
 		ORDER BY p.last_played_at DESC, a.id DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
