@@ -50,8 +50,9 @@ const sideBySideListClassName =
  * For you: three small draws from the local library, Maybe like, Try new,
  * and Listen again, under one temperature. Narrow views switch between the
  * columns. Wide views put row cards in three columns side by side; a third of
- * the width is too narrow for full cards and too short a run for mini covers,
- * so those modes stack the three columns as sections in Discover's card grid.
+ * the width is too narrow for full or simple cards and too short a run for
+ * mini covers, so those modes stack the three columns as sections in
+ * Discover's card grid.
  * Cards offer the Library's own actions, and opening one records an open so
  * later draws rotate. The draw stays as drawn for the browser session.
  */
@@ -111,31 +112,25 @@ function ForYouDraws({
   return (
     <section className="@container min-w-0 space-y-4" aria-label={t("subscriptions.forYou.label")}>
       {demoMode && <DemoPreviewNotice surface="forYou" />}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div
-          role="radiogroup"
-          aria-label={t("subscriptions.forYou.temperature.label")}
-          className={segmentedListClassName()}
-        >
-          {FOR_YOU_TEMPERATURES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="radio"
-              aria-checked={forYou.temperature === item}
-              className={segmentedItemClassName(forYou.temperature === item)}
-              disabled={forYou.temperature === null}
-              onClick={() => forYou.temperature !== item && void forYou.changeTemperature(item)}
-            >
-              {t(`subscriptions.forYou.temperature.${item}`)}
-            </button>
-          ))}
-        </div>
-        {forYou.temperature && (
-          <p className="min-w-0 text-xs text-muted-foreground">
-            {t(`subscriptions.forYou.temperature.hints.${forYou.temperature}`)}
-          </p>
-        )}
+      <div
+        role="radiogroup"
+        aria-label={t("subscriptions.forYou.temperature.label")}
+        className={segmentedListClassName()}
+      >
+        {FOR_YOU_TEMPERATURES.map((item) => (
+          <button
+            key={item}
+            type="button"
+            role="radio"
+            aria-checked={forYou.temperature === item}
+            className={segmentedItemClassName(forYou.temperature === item)}
+            title={t(`subscriptions.forYou.temperature.hints.${item}`)}
+            disabled={forYou.temperature === null}
+            onClick={() => forYou.temperature !== item && void forYou.changeTemperature(item)}
+          >
+            {t(`subscriptions.forYou.temperature.${item}`)}
+          </button>
+        ))}
       </div>
       {forYou.status === "failed" || forYou.status === "preparing" ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border bg-card px-4 py-10 text-center text-sm">
@@ -236,7 +231,6 @@ function ForYouColumnSection({
         title={title}
         count={loading ? undefined : state.items.length}
         countLabel={t("subscriptions.feed.dayCount", { count: state.items.length })}
-        description={t(`subscriptions.forYou.descriptions.${column}`)}
         action={
           <Button
             variant="toolbar"

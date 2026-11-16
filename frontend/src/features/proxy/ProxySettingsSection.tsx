@@ -128,7 +128,6 @@ export function ProxySettingsSection({
       <SettingsSection
         id="proxy"
         title={t("maintenance.proxy.title")}
-        description={t("maintenance.proxy.description")}
         action={
           <Button
             variant="outline"
@@ -142,7 +141,7 @@ export function ProxySettingsSection({
         }
       >
         {draft.proxies.map((proxy, index) => (
-          <div key={proxy.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
+          <div key={proxy.id} className="flex min-w-0 items-center gap-3 py-3">
             <span
               className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground"
               title={t("maintenance.proxy.priority", { count: index + 1 })}
@@ -205,7 +204,7 @@ export function ProxySettingsSection({
           </div>
         ))}
         {!hasProxies && (
-          <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
             <span className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
               <Network className="h-5 w-5" />
             </span>
@@ -256,11 +255,11 @@ export function ProxySettingsSection({
                 />
               </SettingsRow>
               {scope === "remote" && remoteSources.length > 0 && (
-                <div className="divide-y border-t bg-muted/15">
+                <div className="divide-y border-t">
                   {remoteSources.map((source) => {
                     const value = sourceSelection(draft.routes, source.id);
                     return (
-                      <SettingsRow key={source.id} className="py-2.5 sm:pl-10" title={source.displayName}>
+                      <SettingsRow key={source.id} className="py-2.5 sm:pl-6" title={source.displayName}>
                         <NativeSelect
                           fieldSize="sm"
                           className={cn("w-full min-w-0 sm:w-52", value !== "inherit" && "font-medium")}
@@ -305,7 +304,7 @@ export function ProxySettingsSection({
         title={t("maintenance.proxy.bypassTitle")}
         description={t("maintenance.proxy.bypassDescription")}
       >
-        <div className="grid gap-3 px-4 py-3">
+        <div className="grid gap-3 py-3">
           <TokenInput
             values={bypass}
             onChange={setBypassEdit}

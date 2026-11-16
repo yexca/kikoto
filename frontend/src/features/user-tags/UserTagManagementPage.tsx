@@ -121,7 +121,7 @@ export function UserTagManagementPage({ canEdit, demoMode }: { canEdit: boolean;
     );
 
   return (
-    <div className="w-full max-w-4xl space-y-4">
+    <div className="space-y-4">
       {!demoMode && !canEdit && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div role="radiogroup" aria-label={t("personal.tags.scope")} className={segmentedListClassName()}>

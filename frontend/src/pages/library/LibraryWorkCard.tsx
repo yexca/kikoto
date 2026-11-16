@@ -103,6 +103,8 @@ export const LibraryWorkCard = memo(function LibraryWorkCard({
                   <WorkCardActionButton
                     title={i18n.t("detailActions.untrack")}
                     disabled={isUntracking}
+                    popup="dialog"
+                    expanded={untrackOpen && !isUntracking}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (!untrackOpen && canUntrack && !canUntrack()) return;
@@ -218,6 +220,7 @@ function libraryWorkCardView(
     recommended: showRecommendationScore && Number.isFinite(work.recommendScore),
     recommendationHighlighted: work.recommendScore >= threshold,
     recommendationScore: work.recommendScore,
+    mark: work.listeningStatus,
   };
 }
 

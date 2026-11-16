@@ -12,12 +12,15 @@ import type {
   FileSourceDetectResult,
   FileSourceHealthCheckResult,
   LibraryLayout,
+  LocalWorkCleanupPage,
   MaintenanceWorkPage,
   ManagedUser,
   RecommendationConfig,
   RecommendationTelemetrySummary,
   TranscodeCacheClearResult,
   UserPreferences,
+  WorkflowDefinition,
+  WorkflowTrigger,
 } from "../../src/lib/api";
 import {
   type ApiErrorBody,
@@ -439,6 +442,10 @@ async function mockCacheSettings(
       await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 4 } satisfies MaintenanceWorkPage });
       return;
     }
+    if (url.pathname === "/api/maintenance/local-works/cleanup" && route.request().method() === "GET") {
+      await route.fulfill({ json: { works: [], page: 1, pageSize: 50, total: 0 } satisfies LocalWorkCleanupPage });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
   return { transcodeClearRequests, databaseCleanupRequests };
@@ -454,7 +461,7 @@ test("@desktop a cache setting saves on its own when its edit finishes and links
       settingsPayloads.push(payload);
     },
   );
-  await page.goto("/settings?tab=cache");
+  await page.goto("/system?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
@@ -473,8 +480,10 @@ test("@desktop a cache setting saves on its own when its edit finishes and links
   await page.getByLabel("Per-file download limit").press("Tab");
   expect(settingsPayloads).toHaveLength(1);
   await page.getByTestId("cache-configuration-card").getByRole("button", { name: "Cleanup", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=cleanup$/);
-  await expect(page.getByRole("tab", { name: "Cleanup", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/\/cleanup\?tab=cache$/);
+  await expect(
+    page.getByRole("tablist", { name: "Cleanup", exact: true }).getByRole("tab", { name: "Cache", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
 });
 
@@ -488,7 +497,7 @@ test("@desktop video conversion saves its slots and encoder and follows the enco
       settingsPayloads.push(payload);
     },
   );
-  await page.goto("/settings?tab=cache");
+  await page.goto("/system?tab=cache");
 
   const section = page.getByRole("region", { name: "Video conversion" });
   await expect(section.getByRole("combobox", { name: "Hardware encoder", exact: true })).toHaveText("Off (CPU)");
@@ -519,7 +528,7 @@ test("@desktop cleanup page scans managed media and requires cleanup confirmatio
   const mocks = await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/settings?tab=cleanup");
+  await page.goto("/cleanup?tab=cache");
 
   const transcodeCache = page.getByRole("region", { name: "Transcode cache" });
   await expect(transcodeCache.getByText("24 MB", { exact: true })).toBeVisible();
@@ -553,7 +562,7 @@ test("@desktop cleanup page scans managed media and requires cleanup confirmatio
 
 test("cleanup page removes only the selected database records after confirmation", async ({ page }) => {
   const mocks = await mockCacheSettings(page, () => undefined);
-  await page.goto("/settings?tab=cleanup");
+  await page.goto("/cleanup?tab=database");
 
   const database = page.getByRole("region", { name: "Database records" });
   const libraryGroup = database.getByRole("button", { name: "Library records", exact: true });
@@ -583,7 +592,7 @@ test("enabling global playback cache explains tracked synchronization before cha
     undefined,
     false,
   );
-  await page.goto("/settings?tab=cache");
+  await page.goto("/system?tab=cache");
 
   const cacheSwitch = page.getByRole("switch", { name: "Cache remote playback", exact: true });
   await expect(cacheSwitch).toHaveAttribute("aria-checked", "false");
@@ -613,7 +622,7 @@ test("cleanup page can clear referenced cache for selected works", async ({ page
   await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/settings?tab=cleanup");
+  await page.goto("/cleanup?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
@@ -622,17 +631,18 @@ test("cleanup page can clear referenced cache for selected works", async ({ page
   expect(cleanupRequests[0]).toEqual({ mode: "works", workIds: [1] });
 });
 
-test("personal settings expose administrator tabs only to administrators", async ({ page }) => {
+test("personal settings hold the account's own tabs and no administration", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Recommendations", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
-
-  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Settings", exact: true }).getByRole("tab")).toHaveText([
+    "Account",
+    "Playback",
+    "Recommendations",
+  ]);
 });
 
 test.describe("on a device in another time zone", () => {
@@ -661,102 +671,116 @@ test.describe("on a device in another time zone", () => {
   });
 });
 
-test("administrators see administration tabs after the personal tabs in one list", async ({ page }) => {
+test("Settings and System keep their own tabs and open tab in the address", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings?tab=playback");
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveText([
-    "Account",
-    "Playback",
-    "Recommendations",
-    "Tags",
-    "Library",
-    "Cache & Fetch",
-    "Proxy",
-    "ASR & LLM",
-    "Cleanup",
-    "Users",
-  ]);
-  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveAccessibleDescription("Administration");
-  await expect(tabs.getByRole("tab", { name: "Playback", exact: true })).not.toHaveAccessibleDescription(
-    "Administration",
-  );
+  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
 
-  // Arrow keys select across the group boundary.
+  // Arrow keys move and select.
   await tabs.getByRole("tab", { name: "Playback", exact: true }).focus();
-  for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowRight");
-  await expect(tabs.getByRole("tab", { name: "Library", exact: true })).toBeFocused();
-  await expect(tabs.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(/\/settings\?tab=library$/);
-
-  await tabs.getByRole("tab", { name: "Users", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=users$/);
+  await page.keyboard.press("ArrowRight");
+  await expect(tabs.getByRole("tab", { name: "Recommendations", exact: true })).toBeFocused();
+  await expect(tabs.getByRole("tab", { name: "Recommendations", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
   await tabs.getByRole("tab", { name: "Account", exact: true }).click();
   await expect(page).toHaveURL(/\/settings$/);
+
+  // A link to an administration tab of Settings opens it on the System page.
+  await page.goto("/settings?tab=cache");
+  await expect(page).toHaveURL(/\/system\?tab=cache$/);
+  await expect(page.getByRole("heading", { name: "System", exact: true, level: 1 })).toBeVisible();
+  const systemTabs = page.getByRole("tablist", { name: "System", exact: true });
+  await expect(systemTabs.getByRole("tab")).toHaveText(["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Users"]);
+  await expect(systemTabs.getByRole("tab", { name: "Cache & Fetch", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await systemTabs.getByRole("tab", { name: "Users", exact: true }).click();
+  await expect(page).toHaveURL(/\/system\?tab=users$/);
+  await systemTabs.getByRole("tab", { name: "Library", exact: true }).click();
+  await expect(page).toHaveURL(/\/system$/);
 });
 
-test("@desktop the Settings column rail names every tab and remembers hiding them", async ({ page }) => {
+test("Cleanup is its own page with Works, Cache, and Database tabs", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
-  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  const name = tabs.getByRole("tab", { name: "Recommendations", exact: true }).getByText("Recommendations");
-  const nameWidth = async () => (await name.boundingBox())?.width ?? 0;
-  await expect.poll(nameWidth).toBeGreaterThan(1);
+  // A link to the former System tab opens the page.
+  await page.goto("/system?tab=cleanup");
+  await expect(page).toHaveURL(/\/cleanup$/);
+  await expect(page.getByRole("heading", { name: "Cleanup", exact: true, level: 1 })).toBeVisible();
+  const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveText(["Works", "Cache", "Database"]);
+  await expect(tabs.getByRole("tab", { name: "Works", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Local works by rating" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toHaveCount(0);
 
-  // A collapsed rail keeps an inactive tab's name only visually hidden.
-  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
-  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
-  await page.reload();
-  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
+  await tabs.getByRole("tab", { name: "Cache", exact: true }).click();
+  await expect(page).toHaveURL(/\/cleanup\?tab=cache$/);
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Managed media cache" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Database records" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Show tab names", exact: true }).click();
-  await expect.poll(nameWidth).toBeGreaterThan(1);
-  await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toBeVisible();
+  await tabs.getByRole("tab", { name: "Database", exact: true }).click();
+  await expect(page).toHaveURL(/\/cleanup\?tab=database$/);
+  await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Local works by rating" })).toHaveCount(0);
 });
 
-test("@desktop the Settings tabs start in a row above the content and can move beside it", async ({ page }) => {
+test("Cleanup offers only the tabs the account may use", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
-  await page.goto("/settings?tab=library");
-  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
-  await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toHaveCount(0);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "synthetic-user",
+        displayName: "Example User",
+        permissions: ["sources:write"],
+      }),
+    }),
+  );
+  await page.goto("/cleanup?tab=cache");
+  const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveText(["Database"]);
+  await expect(tabs.getByRole("tab", { name: "Database", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
+});
 
-  // The row stays on one line above the panel and names as much as fits: every tab, then the
-  // selected tab's group beside the other group's icons, then only the selected tab.
-  const namedTabs = () =>
-    tabs
-      .getByRole("tab")
-      .evaluateAll((buttons) =>
-        buttons.filter((button) => button.querySelector("span:not(.sr-only)")).map((button) => button.textContent),
-      );
-  const rowLayout = () =>
-    tabs.getByRole("tab").evaluateAll((buttons) => {
+test("@desktop Settings, System, and Cleanup tabs sit above the content with an icon and a name", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  // Browser storage left by the former row and column options changes nothing.
+  await page.addInitScript(() => {
+    localStorage.setItem("kikoto:settings-rail-orientation", "vertical");
+    localStorage.setItem("kikoto:settings-rail-labels-shown", "false");
+  });
+  for (const [path, label, names] of [
+    ["/settings", "Settings", ["Account", "Playback", "Recommendations"]],
+    ["/system", "System", ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Users"]],
+    ["/cleanup", "Cleanup", ["Works", "Cache", "Database"]],
+  ] as const) {
+    await page.goto(path);
+    const tabs = page.getByRole("tablist", { name: label, exact: true });
+    await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
+    for (const name of names) {
+      const tab = tabs.getByRole("tab", { name, exact: true });
+      await expect(tab.getByText(name)).toBeVisible();
+      await expect(tab.locator("svg")).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: /Show tabs|tab names/ })).toHaveCount(0);
+
+    // The row sits above the panel, and every tab's text shows without a toggle.
+    const layout = await tabs.getByRole("tab").evaluateAll((buttons) => {
       const panel = document.querySelector('[role="tabpanel"]')!.getBoundingClientRect();
       const boxes = buttons.map((button) => button.getBoundingClientRect());
       return {
-        lines: new Set(boxes.map((box) => Math.round(box.top))).size,
         abovePanel: boxes.every((box) => box.bottom <= panel.top),
+        oneRow: Math.max(...boxes.map((box) => box.top)) - Math.min(...boxes.map((box) => box.top)) <= 1,
         pageFits: document.documentElement.scrollWidth <= window.innerWidth,
       };
     });
-  const administration = ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Cleanup", "Users"];
-  for (const [width, named] of [
-    [1920, ["Account", "Playback", "Recommendations", "Tags", ...administration]],
-    [1280, administration],
-    [1024, ["Library"]],
-  ] as const) {
-    await page.setViewportSize({ width, height: 800 });
-    await expect.poll(namedTabs).toEqual(named);
-    expect(await rowLayout()).toEqual({ lines: 1, abovePanel: true, pageFits: true });
+    expect(layout).toEqual({ abovePanel: true, oneRow: true, pageFits: true });
   }
-
-  await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
-  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
-  await page.reload();
-  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
-  await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
-  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
 });
 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
@@ -813,8 +837,8 @@ test("development super administrator can configure production anonymous access"
     await route.fulfill({ json: payload satisfies AccessPolicy });
   });
 
-  await page.goto("/settings?tab=users");
-  await expect(page).toHaveURL(/\/settings\?tab=users$/);
+  await page.goto("/system?tab=users");
+  await expect(page).toHaveURL(/\/system\?tab=users$/);
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
@@ -907,7 +931,7 @@ test("users mounts before settings and a one-user result does not collapse the p
     await route.fallback();
   });
 
-  await page.goto("/settings?tab=users");
+  await page.goto("/system?tab=users");
   await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
   const content = page.getByTestId("maintenance-content");
   const loadingBox = await content.boundingBox();
@@ -922,45 +946,46 @@ test("users mounts before settings and a one-user result does not collapse the p
 });
 
 for (const layout of ["mobile", "@desktop"]) {
-  // Compact layouts keep every section in one scrollable row; the wide column stacks them.
-  const orientation = layout === "mobile" ? "horizontal" : "vertical";
-  test(`${layout} Settings sections stay in one ${orientation} list`, async ({ page }) => {
+  // A row with room names every tab; a phone folds the others to icons and names the open one.
+  test(`${layout} System tabs stay in one row along the top`, async ({ page }) => {
     await mockCacheSettings(page, () => undefined);
-    await page.goto("/settings?tab=library");
-    if (orientation === "vertical") await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
-    const navigation = page.getByRole("tablist", { name: "Settings", exact: true });
-    await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await expect(navigation).toHaveAttribute("aria-orientation", orientation);
-    // Only the wide rail names every tab; the compact row already names the active one.
-    await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toHaveCount(
-      orientation === "vertical" ? 1 : 0,
-    );
-    // A deep link to a later tab scrolls the compact row so the selected tab shows.
-    await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(navigation.getByRole("tab")).toHaveCount(10);
+    await page.goto("/system?tab=users");
+    const navigation = page.getByRole("tablist", { name: "System", exact: true });
+    const users = navigation.getByRole("tab", { name: "Users", exact: true });
+    await expect(users).toHaveAttribute("aria-selected", "true");
+    await expect(navigation).toHaveAttribute("aria-orientation", "horizontal");
+    // The row has no display toggles at any width.
+    await expect(page.getByRole("button", { name: /Show tabs|tab names/ })).toHaveCount(0);
+    // A deep link to a later tab keeps the selected tab in view, with its name shown.
+    await expect(users).toBeInViewport({ ratio: 1 });
+    await expect(users.getByText("Users", { exact: true })).toBeInViewport();
+    await expect(navigation.getByRole("tab")).toHaveCount(5);
+    const namedTabs = await navigation
+      .getByRole("tab")
+      .evaluateAll(
+        (buttons) => buttons.filter((button) => button.querySelector("span")!.getBoundingClientRect().width > 1).length,
+      );
+    expect(namedTabs).toBe(layout === "mobile" ? 1 : 5);
     const boxes = await navigation.getByRole("tab").evaluateAll((buttons) =>
       buttons.map((button) => {
         const box = button.getBoundingClientRect();
-        return { top: box.top, left: box.left };
+        return { top: box.top, left: box.left, width: box.width, height: box.height };
       }),
     );
-    const sharedEdge = boxes.map((box) => (orientation === "horizontal" ? box.top : box.left));
-    expect(Math.max(...sharedEdge) - Math.min(...sharedEdge)).toBeLessThanOrEqual(1);
-    const flow = boxes.map((box) => (orientation === "horizontal" ? box.left : box.top));
+    const tops = boxes.map((box) => box.top);
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+    const flow = boxes.map((box) => box.left);
     expect(flow).toEqual([...flow].sort((a, b) => a - b));
-    if (orientation === "horizontal") {
-      // The row scrolls only sideways; a vertical wheel over it must not nudge the tabs.
-      const row = await navigation.boundingBox();
-      await page.mouse.move(row!.x + 20, row!.y + row!.height / 2);
-      await page.mouse.wheel(0, 40);
-      // Give a wheel scroll time to land before asserting that nothing moved.
-      await page.waitForTimeout(300);
-      expect(await navigation.evaluate((list) => list.scrollTop)).toBe(0);
-    }
+    expect(boxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
+    // The row scrolls only sideways; a vertical wheel over it must not nudge the tabs.
+    const row = await navigation.boundingBox();
+    await page.mouse.move(row!.x + 20, row!.y + row!.height / 2);
+    await page.mouse.wheel(0, 40);
+    // Give a wheel scroll time to land before asserting that nothing moved.
+    await page.waitForTimeout(300);
+    expect(await navigation.evaluate((list) => list.scrollTop)).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await navigation.getByRole("tab", { name: "Library", exact: true }).click();
     await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
     await navigation.getByRole("tab", { name: "Users", exact: true }).click();
     await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
@@ -969,7 +994,7 @@ for (const layout of ["mobile", "@desktop"]) {
   });
 }
 
-test("non-admin users cannot open administrator Settings tabs", async ({ page }) => {
+test("non-admin users cannot open the System page", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   let settingsRequests = 0;
   await page.route("**/api/settings", async (route) => {
@@ -986,9 +1011,17 @@ test("non-admin users cannot open administrator Settings tabs", async ({ page })
     }),
   );
   await page.goto("/settings?tab=users");
-  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page).toHaveURL(/\/system\?tab=users$/);
+  await expect(page.getByText("Your account does not have permission to access this page.")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
   expect(settingsRequests).toBe(0);
+  // Settings offers the account's own tabs only.
+  await page.goto("/settings");
+  await expect(page.getByRole("tablist", { name: "Settings", exact: true }).getByRole("tab")).toHaveText([
+    "Account",
+    "Playback",
+    "Recommendations",
+  ]);
   await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
 });
 
@@ -1004,7 +1037,7 @@ test("maintenance combines library sources and exposes read-only paths with heal
     },
     (payload) => sourceUpdates.push(payload),
   );
-  await page.goto("/settings?tab=library");
+  await page.goto("/system?tab=library");
 
   // The library overview lists the local library and every remote source above the settings.
   const libraries = page.getByRole("region", { name: "Libraries", exact: true });
@@ -1068,7 +1101,7 @@ test("remote sources toggle in place and new sources start from address detectio
     () => undefined,
     (payload) => sourceWrites.push(payload),
   );
-  await page.goto("/settings?tab=library");
+  await page.goto("/system?tab=library");
 
   const toggle = page.getByRole("switch", { name: "Enable Example Remote", exact: true });
   const wasEnabled = (await toggle.getAttribute("aria-checked")) === "true";
@@ -1108,13 +1141,75 @@ test("remote sources toggle in place and new sources start from address detectio
 
 test("remote source deep links open the requested source configuration", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
-  await page.goto("/settings?tab=library&source=8");
+  await page.goto("/system?tab=library&source=8");
 
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog).toBeVisible();
   await expect(sourceDialog.getByLabel("Name")).toHaveValue("Example Remote");
   await sourceDialog.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=library$/);
+  await expect(page).toHaveURL(/\/system\?tab=library$/);
+});
+
+test("libraries lists one card per storage pool and opens storage settings in a dialog", async ({ page }) => {
+  let layout: LibraryLayout = {
+    mode: "pools",
+    configured: true,
+    locked: true,
+    onboardingCompleted: true,
+    hasLegacyWorkflows: false,
+    pools: [
+      { path: "pool-a", online: true, canReconnect: false },
+      { path: "pool-b", online: false, canReconnect: true },
+    ],
+    candidates: ["pool-a", "pool-b", "pool-c"],
+    fetchPool: "pool-a",
+    localScanTriggers: { startupScan: true, watchFolders: false },
+  };
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/library/layout", async (route) => {
+    if (route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON() as {
+        mode: "standard" | "pools";
+        pools?: string[];
+        fetchPool?: string;
+      };
+      layout = {
+        ...layout,
+        mode: payload.mode,
+        fetchPool: payload.fetchPool ?? "",
+        pools: (payload.pools ?? []).map((path) => ({ path, online: true, canReconnect: false })),
+      };
+      await route.fulfill({ json: layout });
+      return;
+    }
+    await route.fulfill({ json: layout });
+  });
+  await page.route("**/api/library/pools/reconnect", async (route) => {
+    layout = {
+      ...layout,
+      pools: layout.pools.map((pool) => ({ ...pool, online: true, canReconnect: false })),
+    };
+    await route.fulfill({ json: layout });
+  });
+
+  await page.goto("/system?tab=library");
+  const libraries = page.getByRole("region", { name: "Libraries", exact: true });
+  await expect(page.getByRole("region", { name: "Library storage", exact: true })).toHaveCount(0);
+  await expect(libraries.getByText("/data/pool-a", { exact: true })).toBeVisible();
+  await expect(libraries.getByText("/data/pool-b", { exact: true })).toBeVisible();
+  await expect(libraries.getByText("Fetch pool", { exact: true })).toBeVisible();
+
+  await libraries.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await expect(libraries.getByRole("button", { name: "Reconnect", exact: true })).toHaveCount(0);
+
+  await libraries.getByRole("button", { name: "Library storage", exact: true }).click();
+  const storageDialog = page.getByRole("dialog", { name: "Library storage" });
+  await expect(storageDialog).toBeVisible();
+  await storageDialog.getByRole("checkbox", { name: "Use pool-c as a storage pool" }).click();
+  await storageDialog.getByRole("button", { name: "Save library storage", exact: true }).click();
+
+  await expect(storageDialog).toHaveCount(0);
+  await expect(libraries.getByText("/data/pool-c", { exact: true })).toBeVisible();
 });
 
 test("routing drag order becomes the saved internal priority", async ({ page }) => {
@@ -1222,10 +1317,10 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-  // Catalog freshness lives in Library settings and the remote fallback in Metadata sync; the popover links to both.
+  // Catalog freshness lives in Library settings; the popover links there.
   await expect(settingsDialog.getByRole("spinbutton")).toHaveCount(0);
   await expect(settingsDialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
-  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toHaveCount(0);
 
   // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
   const dlsiteProxy = settingsDialog.getByRole("switch", { name: "Use proxy for DLsite", exact: true });
@@ -1265,7 +1360,7 @@ test("@desktop the metadata DLsite proxy shortcut opens proxy management in Sett
     .getByRole("dialog", { name: "Metadata settings", exact: true })
     .getByRole("button", { name: "Manage proxies", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/settings\?tab=proxy$/);
+  await expect(page).toHaveURL(/\/system\?tab=proxy$/);
   await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
 });
 
@@ -1281,7 +1376,7 @@ test("@desktop administrators set catalog freshness in Library settings", async 
     .getByRole("dialog", { name: "Metadata settings", exact: true })
     .getByRole("button", { name: "Catalog freshness", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/settings\?tab=library$/);
+  await expect(page).toHaveURL(/\/system\?tab=library$/);
   await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
   // There is no instance metadata language, so Settings has no Metadata tab.
   await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveCount(0);
@@ -1304,7 +1399,7 @@ test("administrators add proxies by priority and choose where they apply", async
     () => undefined,
     (payload) => saves.push(payload),
   );
-  await page.goto("/settings?tab=proxy");
+  await page.goto("/system?tab=proxy");
   const proxySaves = () =>
     saves.filter((payload) => "proxy" in payload).map((payload) => payload.proxy as ProxyPayload);
 
@@ -1414,6 +1509,10 @@ test("@desktop appearance saves a personal metadata language for any signed-in u
   });
   await page.goto("/settings?tab=playback");
   await page.getByRole("button", { name: "User menu" }).click();
+  await page
+    .getByRole("dialog", { name: "Account" })
+    .getByRole("button", { name: /^Language/ })
+    .click();
   const groups = page.getByRole("dialog", { name: "Account" }).getByRole("group");
   await expect(groups.nth(0)).toHaveAccessibleName("UI language");
   await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
@@ -1467,7 +1566,7 @@ test("ordinary users save folder preferences without instance administration", a
 
 test("modal dialogs keep Tab focus inside the top-most dialog", async ({ page }) => {
   await mockCacheSettings(page, () => undefined, undefined, undefined, undefined, false);
-  await page.goto("/settings?tab=cache");
+  await page.goto("/system?tab=cache");
   await page.getByRole("switch", { name: "Cache remote playback", exact: true }).click();
   const cacheDialog = page.getByRole("alertdialog", { name: "Enable remote playback cache?" });
   const cancel = cacheDialog.getByRole("button", { name: "Cancel", exact: true });
@@ -1490,7 +1589,7 @@ test("modal dialogs keep Tab focus inside the top-most dialog", async ({ page })
       ],
     }),
   );
-  await page.goto("/settings?tab=users");
+  await page.goto("/system?tab=users");
   await page.getByRole("button", { name: "Details for Example Member", exact: true }).click();
   const details = page.getByRole("dialog");
   await details.getByRole("button", { name: "Delete user", exact: true }).click();
@@ -1517,11 +1616,16 @@ test("password forms tell password managers whose credential each field holds", 
 
   // Changing the viewer's own password names their account so the saved sign-in is updated.
   await page.goto("/settings");
-  const passwordForm = page.locator("form").filter({ has: page.getByLabel("Current password", { exact: true }) });
+  await page.getByRole("button", { name: "Edit account", exact: true }).click();
+  const accountDialog = page.getByRole("dialog", { name: "Edit account", exact: true });
+  const passwordForm = accountDialog
+    .locator("form")
+    .filter({ has: page.getByLabel("Current password", { exact: true }) });
   await expect(passwordForm.locator('input[autocomplete="username"]')).toHaveValue("admin");
+  await accountDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
   // Another user's account must never be filled from or saved as the viewer's sign-in.
-  await page.goto("/settings?tab=users");
+  await page.goto("/system?tab=users");
   await page.getByRole("button", { name: "Add user", exact: true }).click();
   const userDialog = page.getByRole("dialog", { name: "Add user", exact: true });
   await expect(userDialog.getByRole("textbox", { name: "Username", exact: true })).toHaveAttribute(
@@ -1532,7 +1636,7 @@ test("password forms tell password managers whose credential each field holds", 
   await userDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
   // Neither may a proxy login.
-  await page.goto("/settings?tab=proxy");
+  await page.goto("/system?tab=proxy");
   await page.getByRole("button", { name: "Add proxy", exact: true }).click();
   const proxyDialog = page.getByRole("dialog", { name: "Add proxy", exact: true });
   await expect(proxyDialog.getByRole("textbox", { name: "Username", exact: true })).toHaveAttribute(
@@ -1540,4 +1644,127 @@ test("password forms tell password managers whose credential each field holds", 
     "off",
   );
   await expect(proxyDialog.getByLabel("Password", { exact: true })).toHaveAttribute("autocomplete", "off");
+});
+
+test("a remote source's library work check runs and schedules from its row", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  const remote = fileSourceFixture({
+    id: 8,
+    code: "example-remote",
+    displayName: "Example Remote",
+    sourceType: "kikoeru_compatible",
+    priority: 30,
+    endpoint: {
+      ...fileSourceFixture().endpoint,
+      baseUrl: "https://remote.example",
+      apiUrl: "https://api.remote.example",
+    },
+  });
+  const runs: unknown[] = [];
+  const triggerWrites: Record<string, unknown>[] = [];
+  let triggers: WorkflowTrigger[] = [];
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "admin",
+        displayName: "Admin",
+        role: "admin",
+        permissions: ["library:read", "sources:write", "downloads:manage", "users:manage", "workflows:run"],
+        devMode: true,
+      }),
+    }),
+  );
+  await page.route("**/api/file-sources", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: [
+        {
+          ...remote,
+          presenceCheck: {
+            lastRun: { id: 61, status: "succeeded", at: fixtureTimestamp, checkedWorks: 100, availableWorks: 12 },
+            nextRunAt: null,
+          },
+        },
+      ] satisfies FileSource[],
+    });
+  });
+  await page.route("**/api/workflow-definitions", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 21,
+          code: "source_presence_check",
+          displayName: "Check works on a source",
+          description: "",
+          definitionJson: "{}",
+          scope: "system",
+          editable: false,
+          ownerUserId: null,
+          triggerCount: 0,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ] satisfies WorkflowDefinition[],
+    }),
+  );
+  await page.route("**/api/workflow-triggers", async (route) => {
+    if (route.request().method() === "POST") {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      triggerWrites.push(payload);
+      const created: WorkflowTrigger = {
+        id: 71,
+        workflowDefinitionId: 21,
+        workflowCode: "source_presence_check",
+        displayName: String(payload.displayName),
+        triggerType: String(payload.triggerType),
+        enabled: true,
+        scheduleJson: String(payload.scheduleJson),
+        configJson: String(payload.configJson),
+        nextRunAt: "2099-01-01 00:00:00",
+        lastRunAt: null,
+        lastSuccessAt: null,
+        lastErrorMessage: "",
+        createdAt: "",
+        updatedAt: "",
+      };
+      triggers = [created];
+      await route.fulfill({ status: 201, json: created });
+      return;
+    }
+    await route.fulfill({ json: triggers });
+  });
+  await page.route("**/api/workflow-runs/source-presence-check", async (route) => {
+    runs.push(route.request().postDataJSON());
+    await route.fulfill({ status: 202, json: { runId: 62, jobId: 72, status: "queued", existing: false } });
+  });
+
+  await page.goto("/system?tab=library");
+  const libraries = page.getByRole("region", { name: "Libraries", exact: true });
+  // The row says how the latest check went and opens the check.
+  await expect(libraries.getByText("Works checked", { exact: false })).toContainText("12 available");
+  await libraries.getByRole("button", { name: "Check library works…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Check library works" });
+  await expect(dialog.getByRole("switch", { name: "At startup", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+
+  // A schedule stores the options Run uses, for this source.
+  await dialog.getByRole("group", { name: "Works per run", exact: true }).getByRole("button", { name: "250" }).click();
+  await dialog.getByRole("switch", { name: "On a schedule", exact: true }).click();
+  await expect.poll(() => triggerWrites.length).toBe(1);
+  expect(triggerWrites[0]).toMatchObject({ workflowDefinitionId: 21, triggerType: "schedule", enabled: true });
+  expect(JSON.parse(String(triggerWrites[0].configJson))).toEqual({
+    sourceId: 8,
+    library: "local",
+    filter: "no_remote_source",
+    limit: 250,
+  });
+  expect(JSON.parse(String(triggerWrites[0].scheduleJson))).toEqual({ intervalMinutes: 1440 });
+  await expect(dialog.getByRole("combobox", { name: "Interval", exact: true })).toHaveValue("1440");
+
+  await dialog.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => runs).toEqual([{ sourceId: 8, library: "local", filter: "no_remote_source", limit: 250 }]);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Library work check queued as run #62.", { exact: true })).toBeVisible();
 });

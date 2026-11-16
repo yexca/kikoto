@@ -1,56 +1,18 @@
-import { ExternalLink, Loader2, RotateCcw, Save } from "lucide-react";
+import { Loader2, RotateCcw, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { AvailabilityWatchState } from "@/features/workflows/availability-watch/useAvailabilityWatch";
+import { LatestRunStatus } from "@/features/workflows/LatestRunStatus";
 import { OptionField, SegmentedControl } from "@/features/workflows/RunOptionControls";
-import { DefinitionRunMonitor, WorkflowPanel } from "@/features/workflows/WorkflowDetail";
-import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
-import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
+import { useLatestRun } from "@/features/workflows/useLatestRun";
+import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { ErrorPanel, SkeletonLine, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
-import { api, type AvailabilityWatch, type LibrarySource, type WorkflowDefinition, type WorkflowRun } from "@/lib/api";
+import { api, type AvailabilityWatch, type LibrarySource } from "@/lib/api";
 
-/**
- * A workflow configured on the Discover page, such as Availability Watch
- * and the subscription refresh, keeps its run history on Workflows and links
- * to where it is managed.
- */
-export function SubscriptionsManagedWorkflowPanel({
-  definition,
-  recentRuns,
-  message,
-  onOpenRun,
-  onOpenRuns,
-  onOpenSubscriptions,
-}: {
-  definition: WorkflowDefinition;
-  recentRuns: WorkflowRun[];
-  message: string;
-  onOpenRun: (run: WorkflowRun) => void;
-  /** Opens Activity on this workflow's runs. */
-  onOpenRuns: () => void;
-  onOpenSubscriptions: () => void;
-}) {
-  const nodes = parseNodes(definition.definitionJson);
-  return (
-    <WorkflowDetailFrame definition={definition}>
-      <div className="grid min-w-0 gap-5">
-        <WorkflowPanel>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="min-w-0 text-sm text-muted-foreground">{message}</p>
-            <Button size="sm" variant="outline" onClick={onOpenSubscriptions}>
-              <ExternalLink className="h-4 w-4" />
-              {workflowCopy("openSubscriptions")}
-            </Button>
-          </div>
-        </WorkflowPanel>
-        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} onOpenRuns={onOpenRuns} />
-      </div>
-    </WorkflowDetailFrame>
-  );
-}
+const AVAILABILITY_WATCH_CODE = "availability_watch";
 
 /** A loading or failed shared watch, in place of the surface that needs it. */
 export function AvailabilityWatchLoadState({ state }: { state: AvailabilityWatchState }) {
@@ -74,21 +36,29 @@ export function AvailabilityWatchLoadState({ state }: { state: AvailabilityWatch
 
 /**
  * The watch's one setting, in the page's settings: which remote source it
- * checks. The watch only monitors; checking, Track, and Fetch are on the
- * Watch view, which shares this watch state and its poll.
+ * checks, and the latest check. The watch only monitors; checking, Track, and
+ * Fetch are on the Watch view, which shares this watch state and its poll. It
+ * has no schedule: it runs after each subscription refresh that includes it,
+ * and when someone checks, so its latest run may be either's.
  */
 export function AvailabilityWatchSettings({
   state,
   readOnly,
+  onOpenRun,
 }: {
   state: AvailabilityWatchState;
   /** Demo, or an account without `metadata:sync`, which every check needs. */
   readOnly: boolean;
+  onOpenRun: (runId: number) => void;
 }) {
   const { watch } = state;
+  const latestRun = useLatestRun({ code: AVAILABILITY_WATCH_CODE, enabled: true });
   if (!watch) return <AvailabilityWatchLoadState state={state} />;
   return (
-    <AvailabilityWatchSourceForm watch={watch} sources={state.sources} readOnly={readOnly} onSaved={state.setWatch} />
+    <div className="grid min-w-0 gap-4">
+      <LatestRunStatus label={workflowCopy("watchView.latestRun")} run={latestRun} onOpen={onOpenRun} />
+      <AvailabilityWatchSourceForm watch={watch} sources={state.sources} readOnly={readOnly} onSaved={state.setWatch} />
+    </div>
   );
 }
 

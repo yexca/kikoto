@@ -3,6 +3,9 @@ import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import type { WorkDetailIntent } from "@/app/workDetailNavigation";
 import type { RemoteWorkTarget } from "@/pages/remoteBulkRunModel";
 
+/** The availability filter of a circle's catalog works. */
+export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
+
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },

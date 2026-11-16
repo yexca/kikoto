@@ -443,7 +443,7 @@ test.describe("on a device in another time zone", () => {
   });
 });
 
-test("@desktop a calendar year opens with its highlights, its own calendar, and its hours", async ({ page }) => {
+test("@desktop the calendar's year opens its highlights and leaves the report's range alone", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   await mockListeningServer(page);
@@ -455,14 +455,15 @@ test("@desktop a calendar year opens with its highlights, its own calendar, and 
   });
   await page.goto("/insights");
   await expect(page.getByRole("heading", { name: "2025 highlights" })).toHaveCount(0);
-  // The last segment of the range switcher opens the years and names the chosen one.
+  const calendar = page.getByRole("region", { name: "Listening calendar" });
+  const years = calendar.getByRole("combobox", { name: "Year", exact: true });
+  await expect(years).toHaveText("Past year");
   const ranges = page.getByRole("group", { name: "Report period" });
-  const years = ranges.getByRole("combobox", { name: "Year", exact: true });
-  await expect(years).toHaveText("Year");
+  await ranges.getByRole("button", { name: "12 months" }).click();
 
   await years.click();
   await page.getByRole("option", { name: "2025", exact: true }).click();
-  await expect(years).toHaveText("Year: 2025");
+  await expect(years).toHaveText("2025");
   const highlights = page.getByRole("region", { name: "2025 highlights" });
   await expect(highlights).toBeVisible();
   // The streak comes from the year's own calendar: two listening days in a row.
@@ -470,21 +471,16 @@ test("@desktop a calendar year opens with its highlights, its own calendar, and 
   await expect(highlights.getByText("22:00–23:00", { exact: true })).toBeVisible();
   await expect(highlights.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
   await expect(highlights.getByText("3 works", { exact: true })).toBeVisible();
-  await expect(page.getByText("Most at 22:00–23:00", { exact: true })).toBeVisible();
-  await expect(page.getByRole("table", { name: "Monthly listening time" })).toBeAttached();
+  // The year is the calendar's alone; the report keeps its own range.
+  await expect(ranges.getByRole("button", { name: "12 months" })).toHaveAttribute("aria-pressed", "true");
   await expect
     .poll(() => [...new Set(requested)].sort())
-    .toEqual([
-      "/api/listening-breakdown",
-      "/api/listening-calendar",
-      "/api/listening-profile",
-      "/api/listening-statistics",
-    ]);
+    .toEqual(["/api/listening-calendar", "/api/listening-statistics"]);
 
-  // A named range leaves the year, without highlights.
-  await ranges.getByRole("button", { name: "30 days" }).click();
+  await years.click();
+  await page.getByRole("option", { name: "Past year", exact: true }).click();
   await expect(highlights).toHaveCount(0);
-  await expect(years).toHaveText("Year");
+  await expect(years).toHaveText("Past year");
 });
 
 test("@desktop the taste profile says what the listening leans toward", async ({ page }) => {

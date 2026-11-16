@@ -6,7 +6,7 @@ import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkfl
 import type { WorkFolderEditResult } from "@/lib/api";
 
 function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
+  window.history.pushState({}, "", `/workflows?run=${runId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

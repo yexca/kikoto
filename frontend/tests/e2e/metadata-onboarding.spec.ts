@@ -36,7 +36,7 @@ for (const layout of ["mobile", "@desktop"]) {
     releaseStart();
     await expect(notice).toContainText("Metadata sync in progress");
     expect(starts).toBe(1);
-    await expect(notice.getByRole("button", { name: "View Activity" })).toBeVisible();
+    await expect(notice.getByRole("button", { name: "View run" })).toBeVisible();
     state = { status: "succeeded", missingWorks: 0, runId: 42 };
     await expect(notice).toContainText("Metadata sync completed");
     await page.screenshot({ path: `test-results/metadata-onboarding-${layout.replace("@", "")}.png` });

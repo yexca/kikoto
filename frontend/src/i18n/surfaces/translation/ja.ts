@@ -223,14 +223,6 @@ export const translationJapanese = {
       history: "履歴",
       coverage: "カバレッジ",
     },
-    descriptions: {
-      review:
-        "レビュー待ちのすべての作品の AI 翻訳です。カテゴリーを翻訳できるユーザーなら、そのカテゴリーをレビューできます。",
-      running: "実行中またはキュー待ちの翻訳を、作品と言語別に表示します。",
-      attention: "失敗した項目や結果が不明な項目です。再送信するか、閉じてください。",
-      history: "完了した翻訳が書き込んだ内容を、新しい順に所属する作品とともに表示します。",
-      coverage: "各作品を言語がどこまでカバーしているかを表示します。選択した作品をまとめて翻訳できます。",
-    },
     running: "実行中",
     queued: "待機中",
     runStatus: {
@@ -251,7 +243,7 @@ export const translationJapanese = {
     cancel: "キャンセル",
     cancelled: "翻訳をキャンセルしました。",
     cancelFailed: "翻訳をキャンセルできませんでした。",
-    activity: "アクティビティ",
+    activity: "実行を表示",
     refresh: "更新",
     loading: "読み込み中…",
     loadFailed: "翻訳を読み込めませんでした。",

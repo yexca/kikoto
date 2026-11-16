@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { LatestRunStatus } from "@/features/workflows/LatestRunStatus";
+import { isActiveRunStatus } from "@/features/workflows/runPresentation";
+import { useLatestRun } from "@/features/workflows/useLatestRun";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import {
@@ -18,20 +21,36 @@ import {
 } from "@/lib/api";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
-import { SUBSCRIPTION_INTERVAL_HOURS, subscriptionSubjectName, subscriptionSubjectPath } from "./subscriptionModel";
+import {
+  SUBSCRIPTION_INTERVAL_HOURS,
+  SUBSCRIPTION_REFRESH_CODE,
+  subscriptionSubjectName,
+  subscriptionSubjectPath,
+} from "./subscriptionModel";
 
 const kindOrder: CreatorSubscriptionKind[] = ["circle", "series", "voice"];
 
-/** The account's subscriptions and the shared refresh schedule. */
+/**
+ * The account's subscriptions and the shared refresh schedule. Each part
+ * follows its own permission: the subscriptions are personal, the schedule and
+ * its Refresh now belong to metadata sync. Demo changes nothing.
+ */
 export function SubscriptionManager({
   readOnly,
+  canSubscribe,
   canManageSchedule,
+  canOpenRuns,
   onOpenPath,
   onOpenRun,
 }: {
+  /** Demo shows the subscriptions and the schedule read-only. */
   readOnly: boolean;
+  /** `favorites:write`: the account's subscriptions may be changed. */
+  canSubscribe: boolean;
   /** `metadata:sync`: the shared schedule may be changed and run now. */
   canManageSchedule: boolean;
+  /** `workflows:run`: the latest run shows its time and opens in Activity. */
+  canOpenRuns: boolean;
   onOpenPath: (path: string) => void;
   onOpenRun: (runId: number) => void;
 }) {
@@ -60,6 +79,20 @@ export function SubscriptionManager({
     return () => controller.abort();
   }, [load]);
 
+  // The schedule's own run state, which Refresh now waits on, is read again while a refresh is active.
+  const refreshActive = Boolean(view?.schedule.latestRun && isActiveRunStatus(view.schedule.latestRun.status));
+  useEffect(() => {
+    if (!refreshActive) return;
+    const controller = new AbortController();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load(controller.signal);
+    }, 5000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [load, refreshActive]);
+
   if (!view) {
     return error ? (
       <div className="space-y-3 rounded-lg border border-error-border bg-error-surface p-4 text-sm" role="alert">
@@ -76,7 +109,8 @@ export function SubscriptionManager({
     );
   }
 
-  const editable = !readOnly && !view.demo;
+  const demo = readOnly || view.demo;
+  const editable = !demo && canSubscribe;
   const update = async (subscription: CreatorSubscription, watchAvailability: boolean) => {
     setBusyId(subscription.id);
     try {
@@ -115,7 +149,8 @@ export function SubscriptionManager({
     <div className="grid gap-6">
       <SubscriptionSchedulePanel
         schedule={view.schedule}
-        editable={editable && canManageSchedule}
+        editable={!demo && canManageSchedule}
+        canOpenRuns={canOpenRuns}
         onSaved={(schedule) => setView((current) => (current ? { ...current, schedule } : current))}
         onOpenRun={onOpenRun}
       />
@@ -221,11 +256,13 @@ function SubscriptionRow({
 function SubscriptionSchedulePanel({
   schedule,
   editable,
+  canOpenRuns,
   onSaved,
   onOpenRun,
 }: {
   schedule: CreatorSubscriptionSchedule;
   editable: boolean;
+  canOpenRuns: boolean;
   onSaved: (schedule: CreatorSubscriptionSchedule) => void;
   onOpenRun: (runId: number) => void;
 }) {
@@ -252,7 +289,13 @@ function SubscriptionSchedulePanel({
     try {
       const run = await api.runCreatorSubscriptionRefresh();
       onSaved({ ...schedule, latestRun: { id: run.runId, status: run.status } });
-      toast.success(t("subscriptions.schedule.queued"));
+      toast.notify({
+        kind: "success",
+        message: t("subscriptions.schedule.queued"),
+        ...(canOpenRuns
+          ? { actionLabel: t("subscriptions.actions.viewRun"), onAction: () => onOpenRun(run.runId) }
+          : {}),
+      });
     } catch (runError) {
       toast.notify(toastFromError(runError, t("subscriptions.schedule.runFailed")));
     } finally {
@@ -274,7 +317,17 @@ function SubscriptionSchedulePanel({
     });
   }
   const nextRun = parseServerTimestamp(schedule.nextRunAt);
-  const lastRun = parseServerTimestamp(schedule.lastRunAt);
+  const latestRun = useLatestRun({
+    code: SUBSCRIPTION_REFRESH_CODE,
+    enabled: canOpenRuns,
+    known: schedule.latestRun
+      ? {
+          ...schedule.latestRun,
+          // The schedule's last run is the previous run's time while a new one is active.
+          at: isActiveRunStatus(schedule.latestRun.status) ? null : schedule.lastRunAt,
+        }
+      : null,
+  });
   return (
     <section className="grid gap-4 rounded-lg border bg-card p-4" aria-labelledby="subscription-schedule">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -339,25 +392,13 @@ function SubscriptionSchedulePanel({
             {schedule.enabled && nextRun ? formatDateTime(nextRun, resolvedLocale) : t("subscriptions.schedule.off")}
           </dd>
         </div>
-        {lastRun && (
-          <div className="flex gap-1">
-            <dt>{t("subscriptions.schedule.lastRun")}</dt>
-            <dd>{formatDateTime(lastRun, resolvedLocale)}</dd>
-          </div>
-        )}
-        {schedule.latestRun && editable && (
-          <div>
-            <button
-              type="button"
-              className="underline-offset-2 hover:underline"
-              onClick={() => schedule.latestRun && onOpenRun(schedule.latestRun.id)}
-            >
-              {t("subscriptions.schedule.viewRun")}
-            </button>
-          </div>
-        )}
       </dl>
-      {schedule.lastError && (
+      <LatestRunStatus
+        label={t("subscriptions.schedule.latestRun")}
+        run={latestRun}
+        onOpen={canOpenRuns ? onOpenRun : undefined}
+      />
+      {schedule.lastError && latestRun?.status !== "failed" && (
         <p className="text-xs text-warning-foreground">{t("subscriptions.schedule.lastErrorNotice")}</p>
       )}
     </section>

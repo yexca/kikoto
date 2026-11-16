@@ -32,7 +32,7 @@
 
 ## Remote Sources Fail
 
-- Check the source endpoint in Settings.
+- Check the source endpoint in System -> Library.
 - Run or wait for a source availability check.
 - Confirm the source supports Kikoeru-compatible APIs.
 - Remember that source outages should not affect local or cached playback.
@@ -42,7 +42,7 @@
 - Confirm local scan detected the work code.
 - Run the independent metadata sync workflow, or explicitly enable
   `Follow-up run` when starting or scheduling a local scan.
-- Check Activity for `metadata_sync` failures.
+- Check Workflows for `metadata_sync` failures.
 - Some provider products may be removed or unavailable; those should appear as
   reviewable workflow candidates rather than fatal scan failures.
 

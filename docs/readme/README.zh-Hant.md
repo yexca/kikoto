@@ -68,7 +68,7 @@ Kikoto 為每個作品只保留一筆項目，以商品代碼為索引，並把 
   </tr>
 </table>
 
-掃描、同步、檔案編輯與 AI 任務都以工作流程執行，可在活動中追蹤；角色決定誰能瀏覽、取得、編輯與管理；所有狀態都存放在同一個 SQLite 資料庫中。應用程式的 APK 與 IPA 附加在每個[發佈版本](https://github.com/yexca/kikoto/releases)上。
+掃描、同步、檔案編輯與 AI 任務都以工作流程執行，可在工作流程中追蹤；角色決定誰能瀏覽、取得、編輯與管理；所有狀態都存放在同一個 SQLite 資料庫中。應用程式的 APK 與 IPA 附加在每個[發佈版本](https://github.com/yexca/kikoto/releases)上。
 
 ## 運作方式
 

@@ -75,7 +75,7 @@ settings where they apply.
 
 ## Maintenance
 
-Settings -> Cleanup lists the record types that the database cleanup can
+Cleanup -> Database lists the record types that the database cleanup can
 remove. Manual cleanup runs after confirmation and writes a `database.cleanup`
 audit entry.
 
@@ -93,7 +93,7 @@ presented.
 `202 Accepted` with its run ID. Only one optimization can be queued or running;
 a repeated request returns the active run. The workflow executor then runs
 `VACUUM`, a query planner statistics refresh, and a truncating WAL checkpoint. The run appears in
-Activity. On completion, the run summary and a `database.optimize` audit entry
+Workflows. On completion, the run summary and a `database.optimize` audit entry
 record the database size before and after compaction.
 
 Query planner statistics are also refreshed without compaction: at startup,
@@ -130,7 +130,7 @@ backup is always complete.
 | --- | --- | --- |
 | `pre-migration` | At startup, before the first pending numbered migration of an existing database | 3 |
 | `scheduled` | By the workflow coordinator when the newest routine backup is older than 24 hours, checked hourly | 7 |
-| `manual` | **Back up now** in Settings -> Cleanup (`POST /api/maintenance/database/backups`) | 5 |
+| `manual` | **Back up now** in Cleanup -> Database (`POST /api/maintenance/database/backups`) | 5 |
 
 A fresh install and an up-to-date database start without a pre-migration
 backup. Because numbered migrations cannot be reverted, startup stops without
@@ -138,9 +138,9 @@ changing the schema when the pre-migration backup fails; free space on the
 configuration volume and start again. A direct backend run can instead point
 `KIKOTO_DB_BACKUP_DIR` at a writable directory; the Compose stacks always use
 `/config/backups`. Routine
-backups run as `database_backup` workflow runs and appear in Activity; a
+backups run as `database_backup` workflow runs and appear in Workflows; a
 manual backup also writes a `database.backup` audit entry. Only one backup can
-be queued or running. Settings lists backup names, kinds, sizes, and times
+be queued or running. Cleanup lists backup names, kinds, sizes, and times
 without revealing the backup directory. An in-memory or URI-configured
 database has no default backup directory and is backed up only when
 `KIKOTO_DB_BACKUP_DIR` is set.

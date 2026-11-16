@@ -11,6 +11,8 @@ data/*
 !data/.gitkeep
 cache/*
 !cache/.gitkeep
+record/*
+!record/.gitkeep
 config/*
 !config/.gitkeep
 !config/remote-sources.example.yml

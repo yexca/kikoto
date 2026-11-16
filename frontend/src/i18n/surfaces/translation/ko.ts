@@ -220,14 +220,6 @@ export const translationKorean = {
       history: "기록",
       coverage: "현황",
     },
-    descriptions: {
-      review:
-        "검토를 기다리는 모든 작품의 AI 번역입니다. 분류를 번역할 수 있는 사용자는 해당 분류를 검토할 수 있습니다.",
-      running: "실행 중이거나 대기 중인 번역을 작품과 언어별로 보여 줍니다.",
-      attention: "실패했거나 결과를 알 수 없는 항목입니다. 다시 전송하거나 닫으세요.",
-      history: "완료된 번역이 기록한 내용을 최신순으로, 각 항목이 속한 작품과 함께 보여 줍니다.",
-      coverage: "각 작품을 언어가 얼마나 채우는지 보여 줍니다. 선택한 작품을 함께 번역할 수 있습니다.",
-    },
     running: "실행 중",
     queued: "대기 중",
     runStatus: {
@@ -248,7 +240,7 @@ export const translationKorean = {
     cancel: "취소",
     cancelled: "번역을 취소했습니다.",
     cancelFailed: "번역을 취소할 수 없습니다.",
-    activity: "활동",
+    activity: "실행 보기",
     refresh: "새로 고침",
     loading: "불러오는 중…",
     loadFailed: "번역을 불러올 수 없습니다.",

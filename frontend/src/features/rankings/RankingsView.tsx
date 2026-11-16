@@ -37,6 +37,7 @@ import {
   type RankingFilter,
 } from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
+import { useRankingQueuedNotice } from "./useRankingQueuedNotice";
 
 /** The recorded order whose works the page's actions may sync or check. */
 export type RankingActionTarget = { listId: number; snapshotId: number };
@@ -62,6 +63,7 @@ export function RankingsView({
   orderPreferences,
   readOnly,
   canManage,
+  canOpenRuns,
   canMarkSeen,
   canMark,
   canWatch,
@@ -93,6 +95,8 @@ export function RankingsView({
   readOnly: boolean;
   /** `metadata:sync`: rankings may be configured and refreshed. */
   canManage: boolean;
+  /** `workflows:run`: a run may be opened in Activity. */
+  canOpenRuns: boolean;
   /** Opening the latest order records it as seen; Demo keeps its sample state. */
   canMarkSeen: boolean;
   /** The account may add library works to lists, rate, and mark them. */
@@ -120,6 +124,7 @@ export function RankingsView({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const queuedNotice = useRankingQueuedNotice(canOpenRuns);
   const { resolvedLocale } = useLocale();
   const { overview, error: overviewError, reload, markSeen } = rankings;
   const lists = (overview?.lists ?? []).filter((list) => list.enabled);
@@ -201,8 +206,8 @@ export function RankingsView({
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await api.runRankingRefresh(selectedId === null ? undefined : [selectedId]);
-      toast.success(t("subscriptions.rankings.refreshQueued"));
+      const { runs } = await api.runRankingRefresh(selectedId === null ? undefined : [selectedId]);
+      queuedNotice(runs);
     } catch (refreshError) {
       toast.notify(toastFromError(refreshError, t("subscriptions.rankings.refreshFailed")));
     } finally {
@@ -407,7 +412,7 @@ export function RankingsView({
           role="status"
         >
           <span>{t(`subscriptions.rankings.stale.${stale}`, { time: time(recorded.snapshot.pulledAt) })}</span>
-          {canManage && latestRunId && (
+          {canOpenRuns && latestRunId && (
             <button
               type="button"
               className="font-medium underline-offset-2 hover:underline"

@@ -40,7 +40,7 @@
   canonical work reuse one queued or running run.
 - Fetch, remote playback cache, and cache/local location deletion run as durable
   recoverable jobs with lease heartbeats and restart checkpoints.
-- Fetch Activity records transferred bytes, the known byte total, and the
+- A Fetch run records transferred bytes, the known byte total, and the
   count of selected downloads whose size is still unknown. It shows a
   percentage only when every remaining transfer has a known total.
 - Fetch staging, backup, and trash live at the root of the pool that holds the
@@ -59,7 +59,7 @@
   root. Publication refuses to replace an existing backup. The manifest
   completes in the same transaction that retires the work's `remote_stream`
   rows, so registration can always be repeated. A Fetch that startup recovery
-  cannot finish is logged and recorded in Activity without stopping startup.
+  cannot finish is logged and recorded in its run without stopping startup.
 - A single cache/local deletion and a mixed batch deletion use the same queued
   workflow. Deleting a local location preserves work progress and listening
   marks.

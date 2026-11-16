@@ -1,3 +1,19 @@
+import { legacyRunLogPath } from "@/features/workflows/workflowLinks";
+
+import { TAGS_PATH } from "./navigation";
+import {
+  CLEANUP_PATH,
+  SYSTEM_SETTINGS_PATH,
+  systemSettingsTabAliases,
+  systemSettingsTabs,
+  type SystemSettingsTab,
+} from "../pages/settingsPaths";
+
+function systemTabFor(tab: string): SystemSettingsTab | null {
+  if ((systemSettingsTabs as readonly string[]).includes(tab)) return tab as SystemSettingsTab;
+  return systemSettingsTabAliases[tab] ?? null;
+}
+
 export function legacyLibraryRedirect(pathname: string, search = "") {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   // Translation coverage lives on the Translation page.
@@ -12,27 +28,41 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
   if (path === "/work-management" || (path === "/metadata" && pathname !== path)) {
     return `/metadata${normalizedSearch(search)}`;
   }
-  if (path === "/activity" || path === "/runs") {
-    const params = new URLSearchParams(search);
-    params.set("activity", "1");
-    return `/workflows?${params}`;
-  }
+  // The run log is part of Workflows.
+  const runLog = legacyRunLogPath(path, search);
+  if (runLog) return runLog;
   if (path === "/no-source" || path === "/library/no-source") {
     const params = new URLSearchParams(search);
     params.set("reason", "no_source");
     params.delete("metadataRun");
     return `/metadata?${params}`;
   }
-  if (path === "/settings" && new URLSearchParams(search).get("tab") === "appearance") return "/settings";
-  if (path === "/settings" && new URLSearchParams(search).get("tab") === "history") return "/insights";
-  if (path === "/users") return "/settings?tab=users";
-  if (path === "/cleanup") return "/settings?tab=cleanup";
+  // Cleanup is a page of its own.
+  if ((path === "/settings" || path === SYSTEM_SETTINGS_PATH) && new URLSearchParams(search).get("tab") === "cleanup") {
+    const params = new URLSearchParams(search);
+    params.delete("tab");
+    return `${CLEANUP_PATH}${params.size ? `?${params}` : ""}`;
+  }
+  if (path === "/settings") {
+    const params = new URLSearchParams(search);
+    const tab = params.get("tab") ?? "";
+    if (tab === "appearance") return "/settings";
+    if (tab === "history") return "/insights";
+    if (tab === "tags") return TAGS_PATH;
+    // Instance settings are the System page; its tabs keep their ids.
+    const systemTab = systemTabFor(tab);
+    if (systemTab) {
+      params.set("tab", systemTab);
+      return `${SYSTEM_SETTINGS_PATH}?${params}`;
+    }
+  }
+  if (path === "/users") return `${SYSTEM_SETTINGS_PATH}?tab=users`;
   if (path === "/maintenance") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab");
     if (!tab) {
       params.set("tab", "library");
-      return `/settings?${params}`;
+      return `${SYSTEM_SETTINGS_PATH}?${params}`;
     }
     if (tab === "routing") {
       params.set("tab", "playback");
@@ -41,9 +71,9 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     if (tab === "recommendation") return `/settings?${params}`;
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {
       params.set("tab", tab === "security" ? "users" : "library");
-      return `/settings?${params}`;
+      return `${SYSTEM_SETTINGS_PATH}?${params}`;
     }
-    if (tab === "library" || tab === "cache" || tab === "users") return `/settings?${params}`;
+    if (tab === "library" || tab === "cache" || tab === "users") return `${SYSTEM_SETTINGS_PATH}?${params}`;
     if (tab === "works" || tab === "unlinked" || tab === "metadata") {
       params.delete("tab");
       if (tab === "works" && !params.has("reason")) params.set("reason", "all");
@@ -54,9 +84,19 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     }
   }
   // Subscriptions is the Discover page; its query names the same view.
+  // Followed circles and voice actors are the Favorite view of their own pages.
+  if (path === "/favorites") {
+    const params = new URLSearchParams(search);
+    const entity = params.get("entity");
+    if (entity === "circles" || entity === "voices") {
+      const target = new URLSearchParams({ filter: "favorite" });
+      const query = params.get("q")?.trim();
+      if (query) target.set("q", query);
+      return `/${entity}?${target}`;
+    }
+  }
   if (path === "/subscriptions") return `/discover${normalizedSearch(search)}`;
   if (path === "/history") return "/insights";
-  if (path === "/tags") return "/settings?tab=tags";
   if (path === "/user-data") return "/settings?tab=data";
   if (path === "/library/all" || path === "/library/remote") {
     return `/${normalizedSearch(search)}`;

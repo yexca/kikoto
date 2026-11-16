@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, LogIn, Server, Zap } from "lucide-react";
+import { LogIn, Zap } from "lucide-react";
 
 import { AppearanceControls } from "@/app/AppearanceControls";
-import { AccountPanel, ServerSection } from "@/app/header/AccountPanel";
+import { AccountPanel, type AccountDestination } from "@/app/header/AccountPanel";
 import { HeaderPopover, PopoverHeader, trayButtonClass } from "@/app/header/HeaderPopover";
 import type { LanguageControl } from "@/app/header/LanguageControls";
 import { NotificationCenter } from "@/app/header/NotificationCenter";
 import { UserAvatar, userDisplayName } from "@/app/header/UserAvatar";
 import { useServerConnection } from "@/app/header/useServerConnection";
+import type { PageID } from "@/app/navigation";
 import {
   applyThemeMode,
   applyThemePalette,
@@ -31,6 +32,7 @@ import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { useMetadataDisplayLanguage } from "@/features/maintenance/useMetadataDisplayLanguage";
 import { Button } from "@/components/ui/button";
 import type { CurrentUser } from "@/lib/api";
+import { cx } from "@/lib/classNames";
 import { isNativeApp } from "@/lib/serverConfig";
 import type { UiLocale } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -39,26 +41,42 @@ type HeaderActionsProps = {
   user: CurrentUser | null;
   /** Gates navigation and read-only views; Demo can open every surface it cannot change. */
   canView: (permission: string) => boolean;
+  /** Destinations the account panel lists. */
+  accountDestinations: readonly AccountDestination[];
+  /** The page on screen. */
+  currentPage: string;
   onLogout: () => void;
   onOpenLogin: () => void;
+  onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
   onOpenCommandPalette: () => void;
   onLocaleChange: (locale: UiLocale) => Promise<void>;
+};
+
+// The selected state of the account trigger, on the layouts where its panel lists the current page.
+const accountTriggerCurrentClass: Record<AccountDestination["placement"], string> = {
+  always: "bg-primary/10 ring-1 ring-primary/30",
+  compact: "max-lg:bg-primary/10 max-lg:ring-1 max-lg:ring-primary/30",
+  wide: "lg:bg-primary/10 lg:ring-1 lg:ring-primary/30",
 };
 
 const appleShortcuts = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const commandShortcutLabel = appleShortcuts ? "⌘K" : "Ctrl K";
 const commandShortcutKeys = appleShortcuts ? "Meta+K" : "Control+K";
 
-// Phones show Quick actions, Notifications, Appearance, and the account avatar,
-// whose panel also holds the native server actions. Wider screens group Quick
-// actions, the server connection, Notifications, and Appearance in a tray. Quick
-// actions stays an icon so it is not mistaken for the library search field.
+// Phones show Notifications, Appearance, and the account avatar; the account
+// panel opens Quick actions there. Wider screens group Quick actions,
+// Notifications, and Appearance in a tray before the avatar. Quick actions stays
+// an icon so it is not mistaken for the library search field. Languages and the
+// native server connection live in the account panel on every screen size.
 export function HeaderActions({
   user,
   canView,
+  accountDestinations,
+  currentPage,
   onLogout,
   onOpenLogin,
+  onOpenPage,
   onOpenPath,
   onOpenCommandPalette,
   onLocaleChange,
@@ -70,7 +88,6 @@ export function HeaderActions({
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
   const [themeOpen, setThemeOpen] = useState(false);
-  const [connectionOpen, setConnectionOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
   const [localeBusy, setLocaleBusy] = useState(false);
@@ -152,12 +169,45 @@ export function HeaderActions({
       : undefined,
   };
 
-  const openMobileAccount = (open: boolean) => {
-    setMobileAccountOpen(open);
+  const openAccount = (setOpen: (open: boolean) => void) => (open: boolean) => {
+    setOpen(open);
     if (open) server.reset();
   };
 
-  const accountPanelProps = { user, canView, language };
+  // One panel serves both triggers; `close` belongs to the popover it is in.
+  const accountPanel = (close: () => void, quickActions: boolean) => (
+    <AccountPanel
+      user={user}
+      language={language}
+      server={native ? server : undefined}
+      destinations={accountDestinations}
+      currentPage={currentPage}
+      onOpenPage={(id) => {
+        close();
+        onOpenPage(id);
+      }}
+      onOpenQuickActions={
+        quickActions
+          ? () => {
+              close();
+              onOpenCommandPalette();
+            }
+          : undefined
+      }
+      onLogout={() => {
+        close();
+        onLogout();
+      }}
+      onOpenLogin={() => {
+        close();
+        onOpenLogin();
+      }}
+    />
+  );
+
+  // The account trigger carries the selected state while its panel holds the current page.
+  const currentPlacement = accountDestinations.find((destination) => destination.item.id === currentPage)?.placement;
+  const currentClass = currentPlacement && accountTriggerCurrentClass[currentPlacement];
 
   return (
     <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
@@ -168,41 +218,11 @@ export function HeaderActions({
           aria-label={t("header.quickActions")}
           aria-keyshortcuts={commandShortcutKeys}
           title={`${t("header.quickActions")} (${commandShortcutLabel})`}
-          className={trayButtonClass}
+          className={cx(trayButtonClass, "max-sm:hidden")}
           onClick={onOpenCommandPalette}
         >
           <Zap className="h-4 w-4" />
         </Button>
-
-        {native && (
-          <div className="hidden sm:block">
-            <HeaderPopover
-              open={connectionOpen}
-              onOpenChange={(open) => {
-                setConnectionOpen(open);
-                if (open) server.reset();
-              }}
-              trigger={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("account.serverConnection")}
-                  title={t("account.serverConnection")}
-                  className={trayButtonClass}
-                >
-                  <Server className="h-4 w-4" />
-                </Button>
-              }
-              align="right"
-              ariaLabel={t("account.serverConnection")}
-            >
-              <div className="w-80">
-                <PopoverHeader title={t("account.connection")} subtitle={t("account.androidClientServer")} />
-                <ServerSection server={server} />
-              </div>
-            </HeaderPopover>
-          </div>
-        )}
 
         {user && <NotificationCenter user={user} canView={canView} readOnly={readOnly} onOpenPath={onOpenPath} />}
 
@@ -242,7 +262,7 @@ export function HeaderActions({
       <div className="sm:hidden">
         <HeaderPopover
           open={mobileAccountOpen}
-          onOpenChange={openMobileAccount}
+          onOpenChange={openAccount(setMobileAccountOpen)}
           trigger={
             user ? (
               <Button
@@ -250,7 +270,7 @@ export function HeaderActions({
                 size="icon"
                 aria-label={t("account.accountMenu")}
                 title={t("account.accountMenu")}
-                className="relative h-11 w-11 rounded-full aria-expanded:bg-muted"
+                className={cx("relative h-11 w-11 rounded-full aria-expanded:bg-muted", currentClass)}
               >
                 <UserAvatar user={user} className="h-8 w-8 text-xs" />
               </Button>
@@ -260,7 +280,7 @@ export function HeaderActions({
                 size="icon"
                 aria-label={t("account.signIn")}
                 title={t("account.signIn")}
-                className={trayButtonClass}
+                className={cx(trayButtonClass, currentClass)}
               >
                 <LogIn className="h-4 w-4" />
               </Button>
@@ -269,47 +289,26 @@ export function HeaderActions({
           align="right"
           ariaLabel={t("account.account")}
         >
-          <div className="w-[min(20rem,calc(100vw-1rem))]">
-            <AccountPanel
-              {...accountPanelProps}
-              server={native ? server : undefined}
-              onNavigate={(path) => {
-                setMobileAccountOpen(false);
-                onOpenPath(path);
-              }}
-              onLogout={() => {
-                setMobileAccountOpen(false);
-                onLogout();
-              }}
-              onOpenLogin={() => {
-                setMobileAccountOpen(false);
-                onOpenLogin();
-              }}
-            />
-          </div>
+          <div className="w-[min(20rem,calc(100vw-1rem))]">{accountPanel(() => setMobileAccountOpen(false), true)}</div>
         </HeaderPopover>
       </div>
 
       <div className="hidden sm:block">
         <HeaderPopover
           open={userOpen}
-          onOpenChange={setUserOpen}
+          onOpenChange={openAccount(setUserOpen)}
           trigger={
             user ? (
               <Button
                 variant="ghost"
-                className="h-[var(--control-height)] gap-2 rounded-full px-1 aria-expanded:bg-muted xl:pr-2.5"
+                className={cx(
+                  "h-[var(--control-height)] gap-2 rounded-full px-1 aria-expanded:bg-muted xl:pr-3",
+                  currentClass,
+                )}
                 aria-label={t("account.userMenu")}
               >
                 <UserAvatar user={user} className="h-8 w-8 text-xs" />
-                <span className="hidden min-w-0 text-left xl:block">
-                  <span className="block max-w-32 truncate text-xs font-medium leading-4">{userDisplayName(user)}</span>
-                  <span className="block max-w-32 truncate text-3xs leading-3 text-muted-foreground">
-                    {t(`account.roles.${user.role}`, { defaultValue: user.role })}
-                    {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
-                  </span>
-                </span>
-                <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground xl:block" />
+                <span className="hidden max-w-32 truncate text-xs font-medium xl:block">{userDisplayName(user)}</span>
               </Button>
             ) : (
               <Button className="h-[var(--control-height)] gap-2 rounded-full px-4">
@@ -321,23 +320,7 @@ export function HeaderActions({
           align="right"
           ariaLabel={t("account.account")}
         >
-          <div className="w-72">
-            <AccountPanel
-              {...accountPanelProps}
-              onNavigate={(path) => {
-                setUserOpen(false);
-                onOpenPath(path);
-              }}
-              onLogout={() => {
-                setUserOpen(false);
-                onLogout();
-              }}
-              onOpenLogin={() => {
-                setUserOpen(false);
-                onOpenLogin();
-              }}
-            />
-          </div>
+          <div className="w-72">{accountPanel(() => setUserOpen(false), false)}</div>
         </HeaderPopover>
       </div>
     </div>

@@ -87,14 +87,6 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function EmptyPanel({ text }: { text: string }) {
-  return (
-    <Card>
-      <CardContent className="p-5 text-sm text-muted-foreground">{text}</CardContent>
-    </Card>
-  );
-}
-
 export function ErrorPanel({ error }: { error: string }) {
   return (
     <div className="min-w-0 break-words rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground [overflow-wrap:anywhere]">

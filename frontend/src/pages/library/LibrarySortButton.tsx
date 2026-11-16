@@ -22,9 +22,10 @@ export type LibrarySortProps = {
 /**
  * The Library sort control: one button names the current order and its
  * direction, and its popover holds the orders with the direction, or the
- * reshuffle action for a random order. The toolbar variant matches the wide
- * layout's icon controls and adds a one-click reshuffle beside the button for
- * the orders that draw from a seed.
+ * reshuffle action for a random order. The toolbar variant matches the
+ * toolbar's icon controls and adds a one-click reshuffle beside the button for
+ * the orders that draw from a seed; `size` matches it to an 8 or 10 unit row,
+ * and `phone` keeps its popover clear of the bottom navigation and player.
  */
 export function LibrarySortButton({
   options,
@@ -35,7 +36,9 @@ export function LibrarySortButton({
   onReshuffle,
   reshuffling = false,
   variant = "pill",
-}: LibrarySortProps & { variant?: "pill" | "toolbar" }) {
+  size = "sm",
+  phone = false,
+}: LibrarySortProps & { variant?: "pill" | "toolbar"; size?: "sm" | "md"; phone?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -47,24 +50,32 @@ export function LibrarySortButton({
   const reshuffleLabel = value === "recommend" ? t("library.refreshRecommendations") : t("library.reshuffle");
   const showReshuffle = toolbar && (random || value === "recommend");
   const directionLabel = direction === "asc" ? t("library.ascending") : t("library.descending");
+  const medium = size === "md";
   return (
     <div
       className={cn(
         "relative min-w-0",
-        toolbar && "inline-flex h-8 shrink-0 items-center rounded-[var(--control-radius)] border bg-background",
+        toolbar &&
+          cn(
+            "inline-flex max-w-full items-center rounded-[var(--control-radius)] border bg-background",
+            medium ? "h-10" : "h-8",
+            // A phone row lets the order's name truncate instead of overflowing.
+            !phone && "shrink-0",
+          ),
       )}
       ref={anchorRef}
     >
       <button
         type="button"
         className={cn(
-          "inline-flex max-w-full min-w-0 shrink items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "touch-target inline-flex max-w-full min-w-0 shrink items-center gap-1.5 font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           toolbar
             ? cn(
-                "h-full max-w-44 rounded-[var(--control-radius)] px-2.5 aria-expanded:bg-muted",
+                "h-full rounded-[var(--control-radius)] aria-expanded:bg-muted",
+                medium ? "max-w-56 px-3 text-sm" : "max-w-44 px-2.5 text-xs",
                 showReshuffle && "rounded-r-none",
               )
-            : "touch-target h-8 rounded-[var(--control-radius)] border bg-background px-2.5 aria-expanded:bg-muted",
+            : "h-8 rounded-[var(--control-radius)] border bg-background px-2.5 text-xs aria-expanded:bg-muted",
         )}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -85,7 +96,7 @@ export function LibrarySortButton({
         <Button
           variant="ghost"
           size="icon"
-          className="h-full w-8 rounded-l-none border-l text-muted-foreground"
+          className={cn("h-full shrink-0 rounded-l-none border-l text-muted-foreground", medium ? "w-10" : "w-8")}
           disabled={reshuffling}
           onClick={onReshuffle}
           aria-label={reshuffleLabel}
@@ -99,7 +110,7 @@ export function LibrarySortButton({
         anchorRef={anchorRef}
         onOpenChange={setOpen}
         ariaLabel={t("library.sort")}
-        bottomCollisionPadding={toolbar ? undefined : 168}
+        bottomCollisionPadding={toolbar && !phone ? undefined : 168}
         className="w-[min(15rem,calc(100vw-1.5rem))] space-y-1.5 p-1.5 text-sm"
       >
         {random ? (

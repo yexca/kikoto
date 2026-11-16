@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody } from "@/components/ui/dialog";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { SubNavTabs } from "@/components/ui/sub-nav";
 import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
 import {
   discoverCardLayout,
@@ -59,8 +60,7 @@ import {
 import { useAvailabilityWatch } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { useWatchTargetActions } from "@/features/workflows/availability-watch/useWatchTargetActions";
 import { WatchTargetFooterButtons } from "@/features/workflows/availability-watch/WatchActionButtons";
-import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { useShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
@@ -70,8 +70,6 @@ import type { RankingOrder } from "@/lib/rankingApi";
 import { cn } from "@/lib/tailwindClassNames";
 
 const feedDaysStorageKey = "kikoto:release-feed-days";
-const SETTINGS_BESIDE_QUERY = "(min-width: 1280px)";
-const SETTINGS_BESIDE_ID = "subscriptions-settings";
 
 function readFeedDays(): ReleaseFeedDayCount {
   try {
@@ -130,7 +128,7 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
  * apart from the Library's, under one toolbar whose Actions, Display options,
  * and Settings keep their places; Actions is disabled where a view has none.
  * The subscriptions with their refresh schedule, the tracked rankings, and the
- * watch's configuration live in a settings panel beside them.
+ * watch's configuration open in a settings dialog, a sheet on phones.
  */
 export function SubscriptionsPage({
   readOnly,
@@ -152,9 +150,6 @@ export function SubscriptionsPage({
 }) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
-  const besideLayout = useMediaQuery(SETTINGS_BESIDE_QUERY);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
-  const besideRef = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<SubscriptionPanel | null>(() =>
     subscriptionPanelFromSearch(window.location.search),
   );
@@ -185,14 +180,13 @@ export function SubscriptionsPage({
   const activePanel = panel && panels.includes(panel) ? panel : panel ? "subscriptions" : null;
   const views = SUBSCRIPTION_VIEWS.filter((item) => item !== "watch" || canRunWorkflows);
   const activeView = views.includes(view) ? view : "releases";
-  const settingsBeside = besideLayout && Boolean(activePanel);
   // The Watch view and the watch's settings share one watch and its poll.
   const watchState = useAvailabilityWatch(canRunWorkflows && (activeView === "watch" || activePanel === "watch"));
   const [watchTargetId, setWatchTargetId] = useState<number | null>(null);
   const [revealAvailable, setRevealAvailable] = useState(0);
   const [feedReload, setFeedReload] = useState(0);
   const [watchPreselect, setWatchPreselect] = useState<{ key: number; codes: string[] } | null>(null);
-  const openRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const openRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
   const watchActions = useWatchTargetActions({
     onChanged: (next) => {
       if (next) watchState.setWatch(next);
@@ -238,12 +232,6 @@ export function SubscriptionsPage({
   }, []);
   useEffect(takeWatchLink, [takeWatchLink]);
 
-  // The panel beside the feed follows the whole feed in reading order, so it
-  // takes focus when it opens, as the drawer does.
-  useEffect(() => {
-    if (settingsBeside) besideRef.current?.focus({ preventScroll: true });
-  }, [settingsBeside]);
-
   useEffect(() => {
     const sync = () => {
       takeWatchLink();
@@ -266,12 +254,6 @@ export function SubscriptionsPage({
   const showPanel = (next: SubscriptionPanel | null) => {
     setPanel(next);
     replaceSearch({ panel: next, dialog: null, target: null, run: null });
-  };
-  // Closing from inside the panel returns focus to the toolbar button.
-  const closeBesideSettings = () => {
-    const focusInside = besideRef.current?.contains(document.activeElement) ?? false;
-    showPanel(null);
-    if (focusInside) settingsButtonRef.current?.focus({ preventScroll: true });
   };
   const showView = (next: SubscriptionView) => {
     setView(next);
@@ -398,7 +380,7 @@ export function SubscriptionsPage({
           className={cn("shrink-0 text-muted-foreground", !mobile && "-mr-2")}
           aria-label={t("subscriptions.closeSettings")}
           title={t("subscriptions.closeSettings")}
-          onClick={() => (settingsBeside ? closeBesideSettings() : showPanel(null))}
+          onClick={() => showPanel(null)}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -411,15 +393,23 @@ export function SubscriptionsPage({
       >
         {activePanel === "subscriptions" ? (
           <SubscriptionManager
-            readOnly={readOnly || !canSubscribe}
+            readOnly={readOnly}
+            canSubscribe={canSubscribe}
             canManageSchedule={canManageSchedule}
+            canOpenRuns={canRunWorkflows}
             onOpenPath={openWorkflowPath}
             onOpenRun={openRun}
           />
         ) : activePanel === "rankings" ? (
-          <RankingSettings rankings={rankings} readOnly={readOnly} canManage={canManageSchedule} onOpenRun={openRun} />
+          <RankingSettings
+            rankings={rankings}
+            readOnly={readOnly}
+            canManage={canManageSchedule}
+            canOpenRuns={canRunWorkflows}
+            onOpenRun={openRun}
+          />
         ) : (
-          <AvailabilityWatchSettings state={watchState} readOnly={readOnly || !canManageSchedule} />
+          <AvailabilityWatchSettings state={watchState} readOnly={readOnly || !canManageSchedule} onOpenRun={openRun} />
         )}
       </div>
     </div>
@@ -428,94 +418,86 @@ export function SubscriptionsPage({
   return (
     <div className="w-full space-y-5">
       {readOnly && <DemoReadOnlyNotice />}
-      <div
-        className={cn(
-          "min-w-0",
-          settingsBeside && "grid grid-cols-[minmax(0,1fr)_clamp(26rem,36%,36rem)] items-start gap-4",
-        )}
-      >
+      <div className="min-w-0">
         <div ref={feedRef} className="min-w-0 scroll-mt-4 space-y-4">
-          <div className="flex items-center justify-between gap-3" data-toast-avoid>
-            <div role="tablist" aria-label={t("subscriptions.views.label")} className={segmentedListClassName()}>
-              {views.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  id={`subscriptions-view-${item}`}
-                  aria-selected={activeView === item}
-                  aria-controls="subscriptions-view-panel"
-                  className={segmentedItemClassName(activeView === item)}
-                  onClick={() => showView(item)}
-                >
-                  {t(`subscriptions.views.${item}`)}
-                  {item === "releases" && unread > 0 && (
+          <div data-toast-avoid>
+            <SubNavTabs
+              label={t("subscriptions.views.label")}
+              selected={activeView}
+              onSelect={showView}
+              items={views.map((item) => ({
+                value: item,
+                label: t(`subscriptions.views.${item}`),
+                id: `subscriptions-view-${item}`,
+                controls: "subscriptions-view-panel",
+                suffix:
+                  item === "releases" && unread > 0 ? (
                     <span className="text-xs font-normal tabular-nums text-muted-foreground">
                       {t("subscriptions.feed.unreadCount", { count: unread })}
                     </span>
-                  )}
-                  {item === "rankings" && rankingsUnseen && (
+                  ) : item === "rankings" && rankingsUnseen ? (
                     <span
                       className="h-2 w-2 shrink-0 rounded-full bg-primary"
                       title={t("subscriptions.views.rankingsUnseen")}
                     >
                       <span className="sr-only">{t("subscriptions.views.rankingsUnseen")}</span>
                     </span>
+                  ) : undefined,
+              }))}
+              trailing={
+                <>
+                  {/* Every view keeps the same three controls in place; Actions is disabled where it offers none. */}
+                  {activeView === "releases" ? (
+                    <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
+                  ) : activeView === "rankings" ? (
+                    <ShownWorksActionMenu actions={rankingActions} requests={rankingActionRequests} />
+                  ) : activeView === "watch" ? (
+                    <WatchPoolActionMenu
+                      watch={watchState.watch}
+                      permissions={watchPermissions}
+                      actions={watchActions}
+                    />
+                  ) : (
+                    <ShownWorksActionMenu actions={feedActions} requests={{}} />
                   )}
-                </button>
-              ))}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Every view keeps the same three controls in place; Actions is disabled where it offers none. */}
-              {activeView === "releases" ? (
-                <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
-              ) : activeView === "rankings" ? (
-                <ShownWorksActionMenu actions={rankingActions} requests={rankingActionRequests} />
-              ) : activeView === "watch" ? (
-                <WatchPoolActionMenu watch={watchState.watch} permissions={watchPermissions} actions={watchActions} />
-              ) : (
-                <ShownWorksActionMenu actions={feedActions} requests={{}} />
-              )}
-              {/* One display choice for every view; only the feed is paged. */}
-              <WorkCollectionDisplayPicker
-                mobileColumns={layout.mobileColumns}
-                desktopColumns={layout.desktopColumns}
-                onMobileColumnsChange={layout.setMobileColumns}
-                onDesktopColumnsChange={layout.setDesktopColumns}
-                cardModes={{
-                  mobile: layout.mobileCardMode,
-                  desktop: layout.desktopCardMode,
-                  onMobileChange: layout.setMobileCardMode,
-                  onDesktopChange: layout.setDesktopCardMode,
-                }}
-                {...(activeView === "releases"
-                  ? {
-                      pageSize: feedDays,
-                      pageSizeOptions: RELEASE_FEED_DAY_OPTIONS,
-                      onPageSizeChange: changeFeedDays,
-                      pageSizeLabels: {
-                        heading: t("subscriptions.feed.daysPerPage"),
-                        value: (count: number) => t("subscriptions.feed.daysPerPageValue", { count }),
-                      },
-                    }
-                  : {})}
-              />
-              <Button
-                ref={settingsButtonRef}
-                variant="toolbar"
-                size="icon-sm"
-                aria-haspopup={besideLayout ? undefined : "dialog"}
-                aria-controls={settingsBeside ? SETTINGS_BESIDE_ID : undefined}
-                aria-expanded={Boolean(activePanel)}
-                aria-label={t("subscriptions.settings")}
-                title={t("subscriptions.settings")}
-                onClick={() =>
-                  settingsBeside ? closeBesideSettings() : showPanel(subscriptionPanelForView(activeView))
-                }
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </div>
+                  {/* One display choice for every view; only the feed is paged. */}
+                  <WorkCollectionDisplayPicker
+                    mobileColumns={layout.mobileColumns}
+                    desktopColumns={layout.desktopColumns}
+                    onMobileColumnsChange={layout.setMobileColumns}
+                    onDesktopColumnsChange={layout.setDesktopColumns}
+                    cardModes={{
+                      mobile: layout.mobileCardMode,
+                      desktop: layout.desktopCardMode,
+                      onMobileChange: layout.setMobileCardMode,
+                      onDesktopChange: layout.setDesktopCardMode,
+                    }}
+                    {...(activeView === "releases"
+                      ? {
+                          pageSize: feedDays,
+                          pageSizeOptions: RELEASE_FEED_DAY_OPTIONS,
+                          onPageSizeChange: changeFeedDays,
+                          pageSizeLabels: {
+                            heading: t("subscriptions.feed.daysPerPage"),
+                            value: (count: number) => t("subscriptions.feed.daysPerPageValue", { count }),
+                          },
+                        }
+                      : {})}
+                  />
+                  <Button
+                    variant="toolbar"
+                    size="icon-sm"
+                    aria-haspopup="dialog"
+                    aria-expanded={Boolean(activePanel)}
+                    aria-label={t("subscriptions.settings")}
+                    title={t("subscriptions.settings")}
+                    onClick={() => showPanel(subscriptionPanelForView(activeView))}
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </>
+              }
+            />
           </div>
           <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${activeView}`}>
             {activeView === "for-you" ? (
@@ -581,6 +563,7 @@ export function SubscriptionsPage({
                   orderPreferences={rankingOrderPreferences}
                   readOnly={readOnly}
                   canManage={canManageSchedule}
+                  canOpenRuns={canRunWorkflows}
                   canMarkSeen={canSubscribe && !readOnly}
                   canMark={canMark}
                   canWatch={!readOnly && canRunWorkflows && canManageSchedule}
@@ -602,35 +585,14 @@ export function SubscriptionsPage({
             )}
           </div>
         </div>
-        {settingsBeside && (
-          // From 1280px the panel sits beside the feed, which reflows to the
-          // remaining width. A sticky panel contains its descendants' stacking,
-          // so it rises to the dialog layer while a dialog opened from it is up.
-          <aside
-            ref={besideRef}
-            id={SETTINGS_BESIDE_ID}
-            aria-label={t("subscriptions.settings")}
-            tabIndex={-1}
-            className="theme-card-surface sticky top-[calc(var(--header-height)+1rem)] flex max-h-[calc(100dvh-var(--header-height)-2rem-var(--app-content-bottom-clearance))] flex-col overflow-hidden rounded-lg border bg-card outline-none duration-200 animate-in fade-in-0 slide-in-from-right-8 has-[[aria-modal=true]]:z-overlay"
-            onKeyDown={(event) => {
-              // Escape in a portaled popover or a dialog opened from the panel belongs to that layer.
-              const target = event.target as Element;
-              if (event.key !== "Escape" || event.defaultPrevented || !event.currentTarget.contains(target)) return;
-              if (target.closest("[aria-modal='true']")) return;
-              closeBesideSettings();
-            }}
-          >
-            <DialogBody className="px-4">{settings}</DialogBody>
-          </aside>
-        )}
       </div>
-      {settings && !mobile && !besideLayout && (
-        // Narrower desktops keep a drawer over the right edge, like the Library's controls: the feed keeps its width.
+      {settings && !mobile && (
+        // One fixed height for every tab, so switching tabs never resizes the dialog.
         <Dialog
           onClose={() => showPanel(null)}
           ariaLabel={t("subscriptions.settings")}
-          overlayClassName="!place-items-stretch !justify-items-end !p-0"
-          className="!h-full !max-h-none w-[min(36rem,100vw)] !max-w-none !rounded-none border-y-0 border-r-0 slide-in-from-bottom-0 slide-in-from-right-8 zoom-in-100"
+          size="2xl"
+          className="h-[min(85dvh,var(--dialog-max-height))]"
         >
           <DialogBody className="px-4">{settings}</DialogBody>
         </Dialog>

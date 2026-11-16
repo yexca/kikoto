@@ -4,9 +4,7 @@ import type { FavoriteList, Work } from "@/lib/api";
 import {
   favoriteResumeFraction,
   favoriteResumeRemainingSeconds,
-  favoriteShelfCovers,
   favoriteShelfKind,
-  favoriteShelfProgress,
   favoriteStatusFilterOptions,
 } from "./favoriteShelfModel";
 
@@ -33,6 +31,7 @@ describe("favorite status filters", () => {
     const counts = { want_to_listen: 2, listening: 1, finished: 3 };
     expect(favoriteStatusFilterOptions(counts, 6, "all").map((option) => option.value)).toEqual([
       "all",
+      "marked",
       "want_to_listen",
       "listening",
       "finished",
@@ -42,28 +41,12 @@ describe("favorite status filters", () => {
     expect(favoriteStatusFilterOptions(counts, 6, "none")).toContainEqual({ value: "none", count: 0 });
     expect(favoriteStatusFilterOptions({ ...counts, none: 4 }, 10, "all")).toContainEqual({ value: "none", count: 4 });
   });
-});
 
-describe("favorite shelf progress", () => {
-  it("counts finished and relisten works as listened", () => {
-    expect(favoriteShelfProgress({ finished: 5, relisten: 1, listening: 3, want_to_listen: 7, none: 4 })).toEqual({
-      total: 20,
-      listened: 6,
-      listening: 3,
-      queued: 7,
-      percent: 30,
+  it("counts every marked work, but not unmarked list works, under any mark", () => {
+    expect(favoriteStatusFilterOptions({ listening: 2, finished: 3, none: 4 }, 9, "all")).toContainEqual({
+      value: "marked",
+      count: 5,
     });
-  });
-
-  it("reports an empty shelf without dividing by zero", () => {
-    expect(favoriteShelfProgress({}).percent).toBe(0);
-  });
-});
-
-describe("favorite shelf artwork", () => {
-  it("takes distinct covers in result order and skips missing ones", () => {
-    const works = ["/a.jpg", "", "/b.jpg", "/a.jpg", "/c.jpg", "/d.jpg", "/e.jpg"].map((coverUrl) => ({ coverUrl }));
-    expect(favoriteShelfCovers(works)).toEqual(["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg"]);
   });
 });
 

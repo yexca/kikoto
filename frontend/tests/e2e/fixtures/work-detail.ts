@@ -13,9 +13,17 @@ export async function showWorkDetailTab(page: Page, tab: "Info" | "Directory") {
   await page.getByRole("button", { name: tab, exact: true }).click();
 }
 
+/** Runs an entry of the Hero's Manage menu, such as Edit metadata or Manage files. */
+export async function runManageAction(page: Page, name: string | RegExp) {
+  await page.getByTestId("hero-actions").getByRole("button", { name: "Manage this work", exact: true }).click();
+  await page
+    .getByRole("menu", { name: "Manage this work", exact: true })
+    .getByRole("menuitem", { name, exact: typeof name === "string" })
+    .click();
+}
+
 export async function openWorkMetadataEditor(page: Page) {
-  await showWorkDetailTab(page, "Info");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await runManageAction(page, "Edit metadata");
 }
 
 /** The selected source's inline action list, in Source info. */
@@ -26,17 +34,12 @@ export function sourceActionList(page: Page) {
 }
 
 /**
- * Reveals the selected source's actions: the Source menu beside the Hero
- * actions, or the inline list in the compact Info tab. Returns the role the
- * actions carry there.
+ * Reveals the selected source's actions in Source info, which a compact detail
+ * shows in its Info tab. Returns the role the actions carry there.
  */
 export async function openSourceActions(page: Page) {
-  if (isCompactWorkDetail(page)) {
-    await showWorkDetailTab(page, "Info");
-    return { scope: sourceActionList(page), role: "button" as const };
-  }
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  return { scope: page, role: "menuitem" as const };
+  await showWorkDetailTab(page, "Info");
+  return { scope: sourceActionList(page), role: "button" as const };
 }
 
 export async function runSourceAction(page: Page, name: string | RegExp) {
