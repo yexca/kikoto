@@ -1,11 +1,11 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings holds account controls, personal playback, recommendation, and tag preferences, and, for administrators, instance administration. Appearance is in the header appearance menu; UI language and the preferred metadata language are in the account menu behind your avatar, or behind **Sign in**.
+Settings holds the signed-in account's controls and its playback and recommendation preferences. Instance settings are the **System** page and cleaning up works, caches, and the database is the **Cleanup** page; administrators and Demo see both. On a wide screen Settings is in the **Personal** group of the sidebar and System and Cleanup in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
 
 ## Tabs
 
-Settings uses Account, Playback, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the tabs as one row above the settings. The row names every tab when there is room; otherwise it names the group holding the open tab (the personal or the administration tabs) and shows the other group as icons, and on the narrowest wide screens it names only the open tab. If even that does not fit, the row wraps onto a second line. The icon at the end of that row, **Show tabs beside**, moves the tabs into a column beside the settings with every tab named. Below the column, **Hide tab names** collapses it to icons, **Show tab names** expands it again, and **Show tabs above** returns to the row. Phones show the tabs as one row that scrolls sideways. Settings remembers both choices on that device.
+Settings shows its tabs along the top, each with an icon and a name: Account, Playback, and Recommendations. System shows Library, Cache & Fetch, Proxy, ASR & LLM, and Users the same way, and Cleanup shows Works, Cache, and Database. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
 
 ## Saving
 
@@ -17,22 +17,22 @@ button of their own: the password change, library storage, folder
 preferences, recommendation tuning, the content safety policy, the proxy
 bypass list, and every dialog.
 
-`/maintenance`, `/users`, `/cleanup`, `/tags`, and `/user-data` links open the matching Settings tab. `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
+`/maintenance` and `/users` links, and `/settings` links that name a System tab, open the matching System tab; `/settings?tab=cleanup` and `/system?tab=cleanup` open [Cleanup](#cleanup). `/user-data` opens **Your data** in Account, and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
 
 ## Account
 
-- Update the authenticated user's display name.
-- Change an account-managed user's password after verifying the current
-  password and confirming the replacement.
+- Select the edit icon beside your name and username to open the account dialog,
+  update your display name, or change an account-managed user's password after
+  verifying the current password and confirming the replacement.
 - Username and role are visible but read-only.
 - **Time zone** decides where a day starts in your listening report and in
   **New releases** on Discover. **Automatic** follows the device you are using; choosing
   a zone uses it on every device. See [Insights](personal-data.md#insights).
-- **Your data** at the end of Account exports and imports personal data; see
-  [Personal data](personal-data.md).
+- **Your data** at the end of Account opens **Export** and **Import** dialogs
+  for personal data; see [Personal data](personal-data.md).
 
 Changing a password preserves the current session and revokes the user's other
-sessions. An administrator password reset from Settings -> Users revokes every
+sessions. An administrator password reset from System -> Users revokes every
 session for the target user. Role, enabled state, username, and user lifecycle
 management are not self-service account settings.
 
@@ -85,7 +85,7 @@ values.
 
 ## Language And Appearance
 
-Appearance is available only from the header menu, and the UI language from the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
+Appearance opens from the palette button in the header and holds mode, style, and color. The UI language is in the **Language** view of the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and workflow run text, always uses each work's original language, so one user's choice never changes what others see.
 
 ### Multilingual titles
 
@@ -93,8 +93,8 @@ Kikoto uses the first preferred metadata language that has its own manual title 
 
 ## Demo Mode
 
-Demo mode keeps account-backed Settings read-only. The administration tabs, the
-Recommendations and Tags tabs, and the Your data section of Account
+Demo mode keeps account-backed Settings read-only. The System and Cleanup
+pages, the Recommendations tab, the Tags page, and the Your data section of Account
 stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and
@@ -106,16 +106,20 @@ Playback preferences are isolated by server identity and
 authenticated user, or by the anonymous principal when anonymous access is
 enabled.
 
-## Administration
+## System
+
+The **System** page (`/system`) holds the instance settings. Administrators see it, and Demo sees it read-only.
 
 ### Library
 
-Library opens with **Libraries**, every library the server reads: the local
-library with its storage mode and whether its storage is online, then each
-configured remote source. The settings follow below it: library storage,
-**Local library**, **Creator catalogs**, **Network and privacy**, and
-read-only storage paths. Selecting the local library jumps to **Library
-storage**.
+Library opens with **Libraries**, a card list of every library the server reads:
+the local storage first (a single card in Standard mode, or one card per pool
+in Storage pools mode with Online/Offline and Fetch pool badges plus
+**Reconnect** when an unmounted folder can be re-marked), followed by each
+configured remote source. **Library storage** or selecting any local card opens
+the storage configuration dialog. The settings follow below it: **Local
+library**, **Creator catalogs**, **Network and privacy**, and read-only storage
+paths.
 
 - **Hide addresses from accounts that do not manage sources**, under
   **Network and privacy**, is on by default. While it is
@@ -132,11 +136,11 @@ storage**.
   private address for a Kikoeru account import; turning this on, after a
   confirmation, lets every account do so.
 
-- **Library storage** shows the library mode (Standard or Storage pools), each
-  pool with an Online or Offline badge, and the Fetch pool. Pools can be added
-  or, while they hold no works, removed; the mode itself is fixed once the
-  library holds local works. **Reconnect** marks an existing folder again
-  after an operator confirmed the right disk is mounted there.
+- **Library storage** (opened from **Libraries**) configures the library mode
+  (Standard or Storage pools), which pools are active, and the Fetch pool.
+  Pools can be added or, while they hold no works, removed; the mode itself is
+  fixed once the library holds local works. **Reconnect** marks an existing
+  folder again after an operator confirmed the right disk is mounted there.
 - **Local library** holds **Scan depth** and **Lyrics of the work folder**.
   Scan depth cannot be set below the level where Fetch saves works;
   scans always reach at least that level, so Fetched works are never reported
@@ -153,6 +157,23 @@ storage**.
 - Each remote source in **Libraries** shows its health, host, a health-check
   action, and an enable switch that saves immediately. Health-check results are persisted
   through the same source health state used by automatic probes.
+- For an account that can run workflows, a source that answers work checks
+  also shows its latest library work check, such as **Works checked 2 days ago
+  · 12 available**, with the next scheduled check, and opens that run in
+  Workflows. **Check library works…** opens the check: the works it asks about
+  (**Local library**, the default, or **All works in database**), a filter
+  (**No remote source**, the default, for works that no remote source
+  currently provides, or **All**), and **Works per run** (50 to 1000, default
+  100). **Run** queues a check with these options. **Automatic checks** turn on
+  a check **At startup** and **On a schedule** of 1, 6, or 12 hours, 1 day, or
+  7 days; they use the same options and save as soon as they change. A source
+  that is switched off cannot be checked, and switching it off pauses its
+  automatic checks until they are turned on again. Deleting a source deletes
+  its automatic checks. See
+  [Check works on a source](workflows.md#current-behavior).
+- Adding a source that is on, switching a source on, or changing its API URL
+  queues one check with the default options, which Workflows shows with the
+  trigger **Source change**. Renaming or reordering a source checks nothing.
 - **Add source** starts from one address. Kikoto probes the address as entered,
   its origin, and the conventional `api.` sibling for a Kikoeru-compatible works
   API, then fills the API URL, public site, and name. When nothing is detected,
@@ -181,8 +202,8 @@ settings.
 
 Cache & Fetch contains configuration only: playback cache policy, transfer
 safety, collapsed download pacing, and video conversion. Turning on the
-playback cache is confirmed first. Cache contents are managed in the Cleanup
-tab.
+playback cache is confirmed first. Cache contents are managed in the Cache tab
+of [Cleanup](#cleanup).
 
 - The per-file remote media limit defaults to 100 GB, and unpublished staging
   from failed or cancelled Fetch runs is kept for seven days by default.
@@ -269,40 +290,6 @@ Text-only mode matches literal keywords; it does not interpret meaning, translat
 
 **Name the models in AI-made lyrics**, on by default, starts every lyrics file written by speech recognition or translation with a line in the lyrics' own language naming the models that wrote it, as [Lyrics attribution](work-detail.md#lyrics-attribution) describes. Turning it off affects files written afterwards; published files keep their text.
 
-### Cleanup
-
-**Cleanup** (`/settings?tab=cleanup`) needs `downloads:manage` for cache
-sections and `sources:write` for database sections.
-
-- **Transcode cache** shows usage against its limit and offers a confirmed clear
-  action.
-- **Managed media cache** reports on-disk, referenced, eligible, and protected
-  files, and cleans orphan or per-work cache grouped by source. Cleanup is a
-  two-step destructive action queued as a workflow run.
-- **Database records** lists record types that can be removed, each with a
-  current count: missing work folders and local files confirmed absent on disk
-  (with the empty track entries, local availability, and folder display names
-  they leave behind), orphaned metadata snapshots, unused source tags, expired
-  sessions, dismissed
-  notifications, finished workflow runs older than 90 days, recommendation
-  signals older than 90 days, unused recommendation snapshots, and
-  [ranking](discover.md#rankings) updates past the history the
-  [ranking settings](discover.md#ranking-settings) keep. Personal tags,
-  runs with reviews, Fetch records, or metadata issues, the latest run of each
-  workflow, the latest update of each ranking order, finished annual rankings,
-  and the update each account last viewed are kept.
-  Selected tasks are removed after confirmation and recorded in the audit log;
-  media files are never deleted. Expired sessions, eligible old workflow runs,
-  and old ranking updates are also removed automatically with the same rules,
-  shortly after the server starts and then every 10 days.
-- Path checks pause when the data folder is missing or empty, so an unmounted
-  library is never treated as deleted.
-- **Works without any source** links to the **No available source** filter of
-  Metadata's **DLsite works** for review and deletion.
-- **Compact database** rewrites the SQLite file to return free pages to disk.
-  It runs in the background as a workflow run shown in Activity, and only one
-  compaction can be queued or running at a time.
-
 ### Users
 
 Users manages accounts. Administrators and super administrators can create
@@ -341,11 +328,74 @@ entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an
 anonymous development session.
 
+## Cleanup
+
+The **Cleanup** page (`/cleanup`) removes local work folders, cache files, and
+database records. Its tabs follow the account's permissions: **Works** and
+**Cache** need `downloads:manage`, and **Database** needs `sources:write`,
+which forgetting works also needs. Demo sees every tab read-only.
+
+### Works
+
+- **Local works by rating** lists the works that have a local folder, one row
+  per work family and largest first, by your own rating: up to a chosen number
+  of stars, with unrated works when **Include unrated works** is on. A family
+  takes the highest rating any of its editions has. The size counts the
+  work's indexed local files: a work nobody has opened yet shows none, and a
+  size with files of unknown size ends in `+`. A work on an offline storage
+  pool cannot be selected. **Delete files** deletes every local folder of the
+  selected works, with the system files such as `Thumbs.db` or `@eaDir` in
+  them, and can also clear your rating and your Quick mark of them. **Forget
+  works**, offered only while both are cleared, also removes the works with
+  every account's ratings, marks, list entries, notes, progress, and listening
+  history for them; a work another source still provides is kept, and the
+  confirmation counts those. The confirmation says how many selected works are
+  unrated, and a selection with a work rated 3 stars or more asks again and
+  lists those works. The deletion is one workflow run that cleans the works in
+  turn: it indexes a work's folders again, deletes them, and only then changes
+  that work's rating, mark, and identity. A work whose folder cannot be deleted
+  keeps all of them; the run finishes the other works and fails, and
+  **Retry** in Workflows tries the failed works again.
+
+### Cache
+
+- **Transcode cache** shows usage against its limit and offers a confirmed clear
+  action.
+- **Managed media cache** reports on-disk, referenced, eligible, and protected
+  files, and cleans orphan or per-work cache grouped by source. Cleaning is a
+  two-step destructive action queued as a workflow run.
+
+### Database
+
+- **Database records** lists record types that can be removed, each with a
+  current count: missing work folders and local files confirmed absent on disk
+  (with the empty track entries, local availability, and folder display names
+  they leave behind), orphaned metadata snapshots, unused source tags, expired
+  sessions, dismissed
+  notifications, finished workflow runs older than 90 days, recommendation
+  signals older than 90 days, unused recommendation snapshots, and
+  [ranking](discover.md#rankings) updates past the history the
+  [ranking settings](discover.md#ranking-settings) keep. Personal tags,
+  runs with reviews, Fetch records, or metadata issues, the latest run of each
+  workflow, the latest update of each ranking order, finished annual rankings,
+  and the update each account last viewed are kept.
+  Selected tasks are removed after confirmation and recorded in the audit log;
+  media files are never deleted. Expired sessions, eligible old workflow runs,
+  and old ranking updates are also removed automatically with the same rules,
+  shortly after the server starts and then every 10 days.
+- Path checks pause when the data folder is missing or empty, so an unmounted
+  library is never treated as deleted.
+- **Works without any source** links to the **No available source** filter of
+  Metadata's **DLsite works** for review and deletion.
+- **Compact database** rewrites the SQLite file to return free pages to disk.
+  It runs in the background as a workflow run shown in Workflows, and only one
+  compaction can be queued or running at a time.
+
 ## Metadata
 
 Metadata uses `/metadata`; `/work-management` links redirect there with their filters or settings context.
 
-The **Metadata** icon rail groups **Works** (DLsite works and Custom works) and **Entries** (Tags, Circles, Voice actors). **DLsite works** lists only works with a provider catalog code, such as a DLsite code, and opens on **All**; a filter row above its list switches between **All**, **Needs attention**, **Metadata issues**, and **No available source** (`/metadata?reason=catalog`, `all`, `metadata`, and `no_source`). Custom works appear only in **Custom works** and in the coverage of the [Translation page](translation.md#coverage). Wide screens show the views as one row above the list, so the tables keep the full width. The row names every view when there is room; otherwise it names the group holding the open view and shows the other group as icons, and on the narrowest wide screens it names only the open view. **Show tabs beside**, at the end of the row, moves the views into a column beside the list that names the groups and views, where **Hide tab names** keeps only icons and **Show tabs above** returns to the row; Metadata remembers both choices on that device. Phones show a scrollable icon row, and the filter row scrolls sideways when it does not fit. **DLsite works**, **Custom works**, and each filter show how many works they list; the **Needs attention**, **Metadata issues**, and **No available source** filters take the attention color while they list any. A short line under the filters says what the current view lists. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, shared tag edits, and circle identity edits.
+The **Metadata** page shows its views as tabs along the top, grouped as **Works** (DLsite works and Custom works) and, after a divider, **Entries** (Tags, Circles, Voice actors). **DLsite works** lists only works with a provider catalog code, such as a DLsite code, and opens on **All**; a filter row above its list switches between **All**, **Needs attention**, **Metadata issues**, and **No available source** (`/metadata?reason=catalog`, `all`, `metadata`, and `no_source`). Custom works appear only in **Custom works** and in the coverage of the [Translation page](translation.md#coverage). The tabs sit above the list, so the tables keep the full width; phones scroll the tab row sideways, and the filter row scrolls sideways when it does not fit. **DLsite works**, **Custom works**, and each filter show how many works they list; the **Needs attention**, **Metadata issues**, and **No available source** filters take the attention color while they list any. A short line under the filters says what the current view lists. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, shared tag edits, and circle identity edits.
 
 **Tags** (`/metadata?view=tags`) lists shared concepts by their shared tag **ID**, ordered by ID so the list never depends on a language setting. The ID cell shows the DLsite genre id below the tag ID when there is one, and **Hidden** or **Merged** below that only for a hidden or merged tag; an active tag shows no status. The columns are ID, Japanese, Simplified Chinese, Traditional Chinese, English, Korean, **Other names**, Works, and Manage. Each language column shows the name that language displays: its own manual name, then the all-language manual name (shown muted), then the DLsite dictionary name, then a remote source's name, or "—" when there is none. **Other names** lists every other known name once: names a manual name replaced, with their language, names without a language, and a stored name without name records. Search matches names, including remote-source names, and a numeric query also matches the tag ID or DLsite genre id. On narrow screens the table scrolls sideways inside its own box while the Manage button stays pinned to its right edge. Manage opens manual names for all languages or a locale, global hiding, merge-target selection, and undo of the merge mapping. **Circles** (`?view=circles`) lists circles by their DLsite maker id (RG code), ordered by code; maker ids a merge brought along appear below the primary one, and circles known only from a remote source follow, shown by their Kikoto id. The columns are Code, Name (beside the latest known work's cover), Known names, Works, and Manage, and search also matches maker ids. Manage supports a manual name that survives provider refresh, confirmed aliases, and reviewed merges that move works, maker ids, catalogs, snapshots, series, and personal circle data. Undo processes the latest merge first and refuses to replace later edits to affected records. **Voice actors** (`/metadata?view=aliases`, with `&voice=<id>` to open one person) lists people by Kikoto id, ordered by id, with the columns ID, Name (beside the latest work's cover), Aliases, Works, Status (catalog sync), and Manage; alias and duplicate management requires `metadata:sync`. Demo allows inspection while changes remain disabled.
 
@@ -365,14 +415,12 @@ Press a row, or its inspect button, to open the work inspector: beside the table
 
 Selecting works replaces the upper pagination with a selection bar holding **Retry metadata**, **Check sources**, and, in the views that allow it, **Delete local information**, each with the number of selected works it applies to, plus **Dismiss unavailable** while a selected work has a product reported unavailable. **Retry metadata** counts only eligible selections. You can also retry an affected edition from its details, including products reported unavailable. When an enabled remote source provides metadata, the selection bar offers **Fetch from** that source and each affected DLsite edition offers the same in its details; this asks only that source, as the detail page's `From <source name>` refresh does, without automatic remote fallback being enabled. Failed retries preserve existing metadata and manual overrides. A product DLsite no longer lists, such as a delisted work, stays unavailable however often it is retried: **Dismiss** in its edition details, or **Dismiss unavailable** in the selection bar, stops listing it as a metadata issue for everyone and clears its metadata-run notice. A failed update cannot be dismissed. A later sync that fails for the work lists it again. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** filter and, for custom works, in **Custom works**; the server rechecks availability and retains media files.
 
-**Open metadata issues** in Activity opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Workflows Activity. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
+**Open metadata issues** on a run in Workflows opens the **Metadata issues** filter of **DLsite works**, narrowed to that run's unresolved metadata issues; **Show all pending works** removes the run filter. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics are in Workflows. Recovery never changes another user's review of a run. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls.
 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
-choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
+choice as the DLsite scope under `System -> Proxy -> Proxy scope`, saved
 immediately. **Manage proxies** opens that section to add or reorder proxies.
-Below it, **Catalog freshness** opens `Settings -> Library`, and **Remote
-metadata fallback** opens the Metadata sync workflow, whose **Configure** holds
-that setting.
+Below it, **Catalog freshness** opens `System -> Library`.
 
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
@@ -380,15 +428,15 @@ Hide, merge and undo save their state immediately. Related works update continuo
 
 ### Tag names in preferred languages
 
-DLsite names genres in the requested language even for Japanese-only works. When any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
+DLsite names genres in the requested language even for Japanese-only works. When any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Workflows. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
 
 ### Remote metadata fallback
 
-**Remote metadata fallback** is an option for each DLsite metadata sync run and its interval triggers, off by default. Enable it and choose up to 16 enabled sources that provide work metadata, in request order. Only an explicit DLsite not-found result triggers fallback; timeouts and temporary failures do not. Requests describe existing works only and use the shared bounded transport. Filled metadata remains after the run. These choices do not change the instance-wide ordering of stored remote values or manual/DLsite precedence.
+**Remote metadata fallback** is an option of a DLsite metadata sync run and of the interval trigger that stores it, off by default; on Workflows it is set in **Metadata options** on the **Metadata** card. Enable it and choose up to 16 enabled sources that provide work metadata, in request order. Only an explicit DLsite not-found result triggers fallback; timeouts and temporary failures do not. Requests describe existing works only and use the shared bounded transport. Filled metadata remains after the run. These choices do not change the instance-wide ordering of stored remote values or manual/DLsite precedence.
 
 ### Purchase bonuses
 
-**Link purchase bonuses to their work** is a DLsite Run option, on by default, also saved in triggers. It controls automatic detection for that run. Detection checks stored works first, then at most 10 circle pages and 5 candidate products. Existing links continue to apply when detection is off; see [purchase bonuses](work-detail.md#purchase-bonuses).
+**Link purchase bonuses to their work** is an option of a DLsite metadata sync run, on by default and set in **Metadata options** on the **Metadata** card, also saved in triggers. It controls automatic detection for that run. Detection checks stored works first, then at most 10 circle pages and 5 candidate products. Existing links continue to apply when detection is off; see [purchase bonuses](work-detail.md#purchase-bonuses).
 
 ## Related Docs
 

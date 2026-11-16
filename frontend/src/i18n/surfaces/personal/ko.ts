@@ -115,7 +115,6 @@ export const personalKorean = {
       timeZoneAuto: "하루는 {{zone}}(이 기기의 시간대)의 자정에 시작합니다.",
       changeTimeZone: "시간대 변경",
       yearLabel: "연도",
-      yearValue: "연도: {{year}}",
       hours: {
         title: "시간대별",
         peak: "가장 많은 시간대 {{hours}}",
@@ -123,8 +122,6 @@ export const personalKorean = {
       },
       profile: {
         heading: "취향 프로필",
-        basis:
-          "듣는 내용을 라이브러리와 비교한 것입니다. 태그는 청취 시간에서 차지하는 비율이 라이브러리 작품에서 차지하는 비율보다 높은 것들입니다. 각 표식은 들은 작품이 라이브러리 안에서 어디에 있는지를 청취 시간으로 가중해 보여 줍니다.",
         failed: "취향 프로필을 불러오지 못했습니다.",
         tags: "선호 태그",
         excess: "청취 시간 비율이 라이브러리 비율을 넘는 폭",
@@ -221,11 +218,6 @@ export const personalKorean = {
         failed: "청취 달력을 불러오지 못했습니다.",
       },
       breakdown: {
-        basis: {
-          preference:
-            "청취 시간에서 차지하는 비율이 라이브러리 작품에서 차지하는 비율을 얼마나 넘는지 순입니다. 막대가 앞의 비율, 세로선이 뒤의 비율입니다. 한 작품의 시간은 그 작품의 모든 태그와 성우에 그대로 반영됩니다.",
-          time: "작품의 청취 시간순입니다. 한 작품의 시간은 그 작품의 모든 태그와 성우에 그대로 반영됩니다.",
-        },
         rankLabel: "정렬 기준",
         ranks: {
           preference: "선호도",
@@ -261,16 +253,12 @@ export const personalKorean = {
     userData: {
       exportTitle: "내보내기",
       exportDescription:
-        "청취 표시, 개인 평점과 메모, 이어듣기 위치, 누적 청취 시간, 작품 태그, 사용자 태그 정의, 즐겨찾기 목록을 JSON으로 다운로드합니다.",
-      exportExcludes:
-        "미디어, 소스, 서버 정보, 인증 정보, 제공자 메타데이터, 원시 청취 세션, 일별 통계는 포함되지 않습니다.",
+        "감상 표시, 평점, 메모, 이어 듣기 위치, 누적 감상 시간, 개인 태그, 즐겨찾기 목록을 JSON 파일로 다운로드합니다. 미디어 파일, 소스 설정, 자격 증명, 일별 기록은 포함되지 않습니다.",
       exportAction: "내보내기 다운로드",
       exporting: "내보내기 준비 중...",
       exported: "내보내기를 저장했습니다.",
       exportFailed: "내보내기를 준비하지 못했습니다.",
       importTitle: "가져오기",
-      importDescription:
-        "작품은 작품 코드로 라이브러리의 기존 작품과 알려진 별칭에 대조합니다. 가져오기는 메타데이터를 가져오거나 라이브러리에 없는 작품을 추가하지 않습니다.",
       source: "가져올 곳",
       sources: {
         kikoto: "Kikoto 내보내기 파일",
@@ -402,7 +390,6 @@ export const personalKorean = {
       },
       preview: "미리 보기",
       previewing: "파일 확인 중...",
-      previewStale: "파일, 형식 또는 충돌 처리 방식을 바꾸면 미리 보기가 갱신됩니다.",
       previewCounts: {
         works: "파일의 작품",
         matchedWorks: "라이브러리와 일치",
@@ -432,8 +419,6 @@ export const personalKorean = {
   },
   timeZone: {
     title: "시간대",
-    description:
-      "청취 리포트의 하루는 이 시간대의 자정에 시작합니다. '자동'은 사용 중인 기기를 따릅니다. 이미 기록된 청취는 기록 당시의 날짜를 유지합니다.",
     auto: "자동({{zone}})",
     saveFailed: "시간대를 저장하지 못했습니다.",
     loadFailed: "시간대를 불러오지 못했습니다.",

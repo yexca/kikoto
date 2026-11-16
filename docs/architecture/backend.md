@@ -457,7 +457,7 @@ and source presence of a work's editions and the catalog's source rows; the
 search reads the editions' Library search documents and the catalog row.
 
 Public errors use a stable code and retryability decision without returning raw
-database, upstream, endpoint, or filesystem details. Logs and workflow Activity
+database, upstream, endpoint, or filesystem details. Logs and workflow runs
 may retain protected diagnostics when they are necessary to operate the
 instance.
 
@@ -760,7 +760,7 @@ land on a fetched file is a conflict. Once the Fetch completes, it queues one
 `fetch-follow-up:<run id>`, and records `follow_up_run_id` or
 `follow_up_error` in its run summary. `follow_up_error` holds only a reason
 written for the user, which a `fetch.follow_up_failed` event of the Fetch run
-repeats in Activity; any other cause stays in the server log. While the
+repeats in its run; any other cause stays in the server log. While the
 library or a storage pool the follow-up reads or writes is offline, the
 summary records `follow_up_waiting` instead, with one `fetch.follow_up_waiting`
 event, and the workflow coordinator tries again every minute until the

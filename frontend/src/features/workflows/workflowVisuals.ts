@@ -1,16 +1,13 @@
 import {
   BellRing,
   BookCopy,
-  Cloud,
-  Compass,
+  Clapperboard,
   DatabaseZap,
   Download,
   FileAudio,
   Flame,
   FolderSearch,
-  FolderSync,
   Languages,
-  Library,
   ListChecks,
   Mic,
   Radar,
@@ -19,15 +16,6 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-
-import type { WorkflowCategory } from "./workflowCategories";
-
-export const workflowCategoryIcons: Record<WorkflowCategory, LucideIcon> = {
-  basic: Library,
-  catalog: FolderSync,
-  remote: Cloud,
-  discover: Compass,
-};
 
 const workflowIcons: Record<string, LucideIcon> = {
   local_library_scan: FolderSearch,
@@ -43,6 +31,7 @@ const workflowIcons: Record<string, LucideIcon> = {
   series_catalog_sync: BookCopy,
   voice_catalog_sync: Mic,
   creator_subscription_refresh: BellRing,
+  record_library_scan: Clapperboard,
 };
 
 /** A neutral glyph that tells workflows apart; status color stays on the run state, never on the icon. */

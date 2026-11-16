@@ -1,106 +1,200 @@
 import {
-  SOURCE_PRESENCE_DEFAULT_LIMIT,
-  SOURCE_PRESENCE_MAX_LIMIT,
-  configurableSystemWorkflowCodes,
-  parseJSONRecord,
-  workflowCopy,
-  type SystemWorkflowTriggerConfig,
-} from "@/features/workflows/workflowPageModel";
-import type { WorkflowDefinition, WorkflowTrigger } from "@/lib/api";
+  metadataSyncDefaultValues,
+  metadataSyncPayload,
+  metadataSyncTriggerValues,
+} from "@/features/workflows/metadataSyncModel";
+import { parseJSONRecord, workflowCopy } from "@/features/workflows/workflowPageModel";
+import type { WorkflowTrigger } from "@/lib/api";
 
-/** Automation trigger types per workflow, their summaries, and the system workflow trigger config. */
+/**
+ * Triggers as Workflows shows them: what starts each operation on its own,
+ * the order Next lists every workflow's triggers in, and what a trigger the
+ * Add dialog saves stores.
+ */
 
-export type AutomationTriggerType = "startup" | "filesystem_event" | "schedule";
-export type CreatableAutomationTriggerType = Exclude<AutomationTriggerType, "filesystem_event">;
+/** The trigger kinds the Add dialog creates. Watching folders is the scan's one fixed trigger. */
+export type OperationTriggerKind = "startup" | "schedule";
 
-const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
+/**
+ * Workflows run and configured on another page, with that page and where each
+ * is managed there. Workflows lists their runs and their triggers under Next.
+ */
+export const pageManagedWorkflows: Record<string, { message: string; path: string; page: "discover" | "records" }> = {
+  availability_watch: {
+    message: "availabilityWatchManagedOnSubscriptions",
+    path: "/discover?view=watch&panel=watch",
+    page: "discover",
+  },
+  creator_subscription_refresh: {
+    message: "subscriptionRefreshManagedOnSubscriptions",
+    path: "/discover?panel=subscriptions",
+    page: "discover",
+  },
+  dlsite_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/discover?view=rankings&panel=rankings",
+    page: "discover",
+  },
+  remote_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/discover?view=rankings&panel=rankings",
+    page: "discover",
+  },
+  record_library_scan: {
+    message: "recordScanManagedOnRecords",
+    path: "/records",
+    page: "records",
+  },
+};
 
-export function supportedAutomationTriggerTypes(
-  definition: WorkflowDefinition,
-  isPreset = false,
-): AutomationTriggerType[] {
-  // Scheduled catalog sync is a subscription, the subscription refresh runs
-  // Availability Watch, and each ranking list keeps its own schedule; all are
-  // configured on the Discover page.
-  if (definition.scope === "system" && isPreset) return [];
-  if (definition.scope === "system" && definition.code === "remote_work_fetch") return [];
-  if (definition.scope === "system" && subscriptionsScheduledWorkflowCodes.has(definition.code)) return [];
-  if (definition.scope === "system" && definition.code === "local_library_scan")
-    return ["startup", "filesystem_event", "schedule"];
-  if (definition.scope === "system" && definition.code === "metadata_sync") return ["schedule"];
-  if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code))
-    return automationTriggerTypes;
-  return [];
+export type IntervalParts = { unit: "days" | "hours" | "minutes"; count: number };
+
+/** An interval in minutes as whole days, hours, or minutes, the largest unit that divides it. */
+export function intervalParts(minutes: number): IntervalParts {
+  if (minutes % 1440 === 0) return { unit: "days", count: minutes / 1440 };
+  if (minutes % 60 === 0) return { unit: "hours", count: minutes / 60 };
+  return { unit: "minutes", count: minutes };
 }
 
-/** Workflows whose automation is configured on the Discover page. */
-export const subscriptionsScheduledWorkflowCodes = new Set([
-  "availability_watch",
-  "creator_subscription_refresh",
-  "dlsite_popular_collection",
-  "remote_popular_collection",
-]);
+const intervalKey = {
+  minutes: "operations.schedule.everyMinutes",
+  hours: "operations.schedule.everyHours",
+  days: "operations.schedule.everyDays",
+} as const;
 
+/** An interval as "Every 6 hours". */
+export function intervalLabel(minutes: number) {
+  const parts = intervalParts(minutes);
+  return workflowCopy(intervalKey[parts.unit], { count: parts.count });
+}
+
+/** Intervals a schedule offers, in minutes: 1, 6, and 12 hours, 1 day, and 7 days. */
+export const triggerIntervals = [60, 360, 720, 1440, 10080] as const;
+export const defaultTriggerInterval = 1440;
+
+/** The interval choices, keeping a stored interval the list does not offer. */
+export function triggerIntervalChoices(current: number): number[] {
+  return [...new Set<number>([...triggerIntervals, current])].sort((left, right) => left - right);
+}
+
+/** A schedule's interval in minutes, or the default when it stores none. */
+export function triggerInterval(trigger: Pick<WorkflowTrigger, "scheduleJson"> | null | undefined): number {
+  const value = parseJSONRecord(trigger?.scheduleJson ?? "").intervalMinutes;
+  return typeof value === "number" && value > 0 ? value : defaultTriggerInterval;
+}
+
+/** When a trigger starts its workflow, as "At startup", "When folders change", or "Every 6 hours". */
 export function workflowTriggerCondition(trigger: WorkflowTrigger) {
-  if (trigger.triggerType === "startup") return workflowCopy("whenServiceStarts");
+  if (trigger.triggerType === "startup") return workflowCopy("operations.schedule.startup");
   if (trigger.triggerType === "filesystem_event") return workflowCopy("whenFoldersChange");
   if (trigger.triggerType === "schedule") {
     const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
-    if (typeof interval === "number") return workflowCopy("everyMinutes", { count: interval });
+    if (typeof interval === "number" && interval > 0) return intervalLabel(interval);
     return workflowCopy("intervalSchedule");
   }
   return trigger.triggerType.replace(/_/g, " ");
 }
 
-export function workflowTriggerNextRun(trigger: WorkflowTrigger) {
-  if (!trigger.enabled) return workflowCopy("paused");
-  if (trigger.triggerType === "startup") return workflowCopy("nextServiceStart");
-  if (trigger.triggerType === "filesystem_event") return workflowCopy("watchingFolderChanges");
-  return trigger.nextRunAt ?? workflowCopy("pendingCalculation");
-}
+/** How an operation starts on its own, in the words its card uses. */
+export type TriggerSummary = {
+  startup: boolean;
+  watching: boolean;
+  /** Interval schedules, as a count of days, hours, or minutes, shortest first. */
+  intervals: IntervalParts[];
+  /** The soonest next run among the interval schedules. */
+  nextRunAt: string | null;
+  /** Every trigger is switched off. */
+  paused: boolean;
+};
 
-export function workflowSystemTriggerConfig(
-  definitionCode: string,
-  trigger: WorkflowTrigger | null,
-): SystemWorkflowTriggerConfig {
-  const record = parseJSONRecord(trigger?.configJson ?? "");
+/** What an operation's enabled triggers start it on, or null when it has none and runs only by hand. */
+export function workflowTriggerSummary(triggers: WorkflowTrigger[]): TriggerSummary | null {
+  if (triggers.length === 0) return null;
+  const enabled = triggers.filter((trigger) => trigger.enabled);
+  const schedules = enabled.filter((trigger) => trigger.triggerType === "schedule");
+  const minutes = [
+    ...new Set(
+      schedules
+        .map((trigger) => parseJSONRecord(trigger.scheduleJson).intervalMinutes)
+        .filter((value): value is number => typeof value === "number" && value > 0),
+    ),
+  ].sort((left, right) => left - right);
+  const nextRunAt =
+    schedules
+      .map((trigger) => trigger.nextRunAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? null;
   return {
-    followUpRun: record.followUpRun === true,
-    // The local media index trigger stores its mode as `mode`.
-    scanMode:
-      (definitionCode === "local_media_index" ? record.mode : record.scanMode) === "full" ? "full" : "incremental",
-    sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
-    limit: typeof record.limit === "number" ? record.limit : SOURCE_PRESENCE_DEFAULT_LIMIT,
-    library: record.library === "all" ? "all" : "local",
-    presenceFilter: record.filter === "all" ? "all" : "no_remote_source",
+    startup: enabled.some((trigger) => trigger.triggerType === "startup"),
+    watching: enabled.some((trigger) => trigger.triggerType === "filesystem_event"),
+    intervals: minutes.map(intervalParts),
+    nextRunAt,
+    paused: enabled.length === 0,
   };
 }
 
-export function workflowSystemTriggerConfigPayload(
-  definitionCode: string,
-  triggerType: AutomationTriggerType,
-  value: SystemWorkflowTriggerConfig,
-) {
-  if (definitionCode === "local_library_scan") {
-    return triggerType === "filesystem_event"
-      ? { followUpRun: false, scanMode: value.scanMode }
-      : { followUpRun: value.followUpRun };
-  }
-  if (definitionCode === "local_media_index") return { mode: value.scanMode };
-  if (definitionCode === "source_presence_check") {
-    return { sourceId: value.sourceId, library: value.library, filter: value.presenceFilter, limit: value.limit };
-  }
-  return {};
+/**
+ * Next's order: interval schedules by their next run, then those still
+ * waiting for one, then startup and folder triggers, and paused triggers last.
+ */
+export function nextTriggerOrder(triggers: WorkflowTrigger[]): WorkflowTrigger[] {
+  const rank = (trigger: WorkflowTrigger) => {
+    if (!trigger.enabled) return 4;
+    if (trigger.triggerType === "schedule") return trigger.nextRunAt ? 0 : 1;
+    return trigger.triggerType === "startup" ? 2 : 3;
+  };
+  const time = (trigger: WorkflowTrigger) => (trigger.nextRunAt ? Date.parse(trigger.nextRunAt) : 0) || 0;
+  return [...triggers].sort(
+    (left, right) =>
+      rank(left) - rank(right) || (rank(left) === 0 ? time(left) - time(right) : 0) || left.id - right.id,
+  );
 }
 
-export function workflowSystemTriggerConfigBlockers(definitionCode: string, value: SystemWorkflowTriggerConfig) {
-  if (definitionCode === "source_presence_check") {
-    return [
-      ...(value.sourceId <= 0 ? [workflowCopy("selectRemoteSource")] : []),
-      ...(value.limit <= 0 || value.limit > SOURCE_PRESENCE_MAX_LIMIT
-        ? [workflowCopy("sourcePresenceLimitRange", { count: SOURCE_PRESENCE_MAX_LIMIT })]
-        : []),
-    ];
-  }
+/** The kinds Add offers for an operation; metadata sync runs only on a schedule. */
+export function operationTriggerKinds(code: string): OperationTriggerKind[] {
+  if (code === "metadata_sync") return ["schedule"];
+  if (code === "local_library_scan" || code === "local_media_index") return ["startup", "schedule"];
   return [];
+}
+
+/**
+ * Whether a trigger can run its operation in full rather than incrementally.
+ * A scan at startup or on a schedule always looks at every folder; only
+ * watching folders scans just the folders that changed.
+ */
+export function triggerOffersFull(code: string, triggerType: string) {
+  if (code === "local_library_scan") return triggerType === "filesystem_event";
+  return code === "local_media_index" || code === "metadata_sync";
+}
+
+/** Whether a stored trigger runs its operation in full. */
+export function triggerRunsFull(code: string, trigger: Pick<WorkflowTrigger, "triggerType" | "configJson">) {
+  const config = parseJSONRecord(trigger.configJson);
+  if (code === "local_library_scan") return trigger.triggerType === "filesystem_event" && config.scanMode === "full";
+  if (code === "local_media_index" || code === "metadata_sync") return config.mode === "full";
+  return false;
+}
+
+/**
+ * What a trigger stores for its operation. An edited trigger keeps the
+ * options Workflows does not show, such as a metadata sync's scope.
+ */
+export function operationTriggerConfig(
+  code: string,
+  triggerType: string,
+  full: boolean,
+  storedConfigJson?: string,
+): Record<string, unknown> {
+  const stored = storedConfigJson === undefined ? null : parseJSONRecord(storedConfigJson);
+  if (code === "local_library_scan")
+    return triggerType === "filesystem_event"
+      ? { followUpRun: false, scanMode: full ? "full" : "incremental" }
+      : { followUpRun: stored?.followUpRun === true };
+  if (code === "local_media_index") return { mode: full ? "full" : "incremental" };
+  if (code === "metadata_sync")
+    return {
+      ...(stored ?? metadataSyncPayload(metadataSyncTriggerValues(metadataSyncDefaultValues()))),
+      mode: full ? "full" : "missing",
+    };
+  return stored ?? {};
 }

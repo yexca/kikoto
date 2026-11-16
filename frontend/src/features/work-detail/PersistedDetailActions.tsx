@@ -1,28 +1,24 @@
 import { useTranslation } from "react-i18next";
 
-import {
-  type RemoteSourceAvailability,
-  remoteSourceCanBrowse,
-  type SourceTabInfo,
-} from "@/features/work-detail/source/sourceContextModel";
+import { workMemberLists } from "@/components/favorite-list/favoriteListPickerModel";
+import { type RemoteSourceAvailability, remoteSourceCanBrowse } from "@/features/work-detail/source/sourceContextModel";
 import type { FavoriteList, ListeningStatus, RemoteWorkDetail, SourcePresenceItem, WorkDetail } from "@/lib/api";
+import type { HeroPlayback } from "@/features/work-detail/heroPlaybackModel";
 import { safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
 import {
   type DetailActionMode,
-  EditMetadataButton,
+  HeroPrimaryAction,
   MediaContextActionBar,
-  type MetadataActionPlacement,
-  type SourceActionLayout,
   WorkIdentityActionBar,
+  WorkManageMenu,
 } from "@/features/work-detail/WorkDetailActionBars";
-import { DetailSkeletonActions } from "@/features/work-detail/WorkDetailLayout";
+import { DetailSkeletonActions, HeroActionGroups } from "@/features/work-detail/WorkDetailLayout";
 
 export type PersistedDetailActionsProps = {
   work: WorkDetail | null;
   favoriteLists: FavoriteList[];
   favoriteSelected: boolean;
-  playbackCursorLoading: boolean;
-  hasResumableCursor: boolean;
+  heroPlayback: HeroPlayback;
   isSyncingDetail: boolean;
   fetchBusy: boolean;
   cleanupBusy: boolean;
@@ -39,16 +35,20 @@ export type PersistedDetailActionsProps = {
   fetchRemote: RemoteSourceAvailability | undefined;
   selectedRemoteDetail: RemoteWorkDetail | null;
   activeSourceLabel: string;
-  sourceStatus: string;
   selectedTrackedPresence: SourcePresenceItem | null;
   trackedCacheAvailable: boolean;
-  selectedSource: SourceTabInfo | null | undefined;
+  /** The viewer may Track, Untrack, and Fork. */
+  canTrack: boolean;
+  /** The viewer may Fetch. */
+  canFetch: boolean;
+  /** The viewer may manage a tracked source's cache. */
+  canManageCache: boolean;
   onEnsureListWork: () => Promise<number | null>;
   onListSaved: (favorite: boolean, workID: number) => void;
   onResume: () => void;
+  onPlay: (playback: Extract<HeroPlayback, { kind: "play" }>) => void;
   onMark: (status: ListeningStatus) => void;
   onRate: (rating: number | null) => void;
-  onEditMetadata: () => void;
   onTrack: () => void;
   onUntrack: () => void;
   /** Checked at the first untrack click. */
@@ -56,10 +56,11 @@ export type PersistedDetailActionsProps = {
   onFork: (remote: RemoteSourceAvailability) => void;
   onFetch: () => void;
   onManage: () => void;
+  /** Each management entry is absent when the viewer may not use it or the work has nothing for it. */
+  onEditMetadata?: () => void;
+  onManageFiles?: () => void;
   onManageLyrics?: () => void;
-  /** Absent when the viewer cannot edit display names or the work has no local files. */
   onEditFileNames?: () => void;
-  /** Absent when the viewer cannot translate. */
   onTranslateWithAI?: () => void;
 };
 
@@ -67,64 +68,67 @@ function identityActionsBusy(props: PersistedDetailActionsProps) {
   return props.isSyncingDetail || props.fetchBusy || props.cleanupBusy || props.isResuming;
 }
 
-export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
+/** Play or Resume, then Mark, rating, List, and the Manage menu. */
+export function PersistedHeroActions(props: PersistedDetailActionsProps) {
   if (!props.work) return <DetailSkeletonActions />;
   const busy = identityActionsBusy(props);
   return (
-    <WorkIdentityActionBar
-      busy={busy}
-      listeningStatus={props.work.listeningStatus}
-      favorite={props.favoriteLists.length > 0 ? props.favoriteSelected : props.work.favorite}
-      memberLists={props.favoriteLists.filter((list) => list.kind !== "marked" && list.selected)}
-      listWorkId={props.work.id}
-      onEnsureListWork={props.onEnsureListWork}
-      onListSaved={props.onListSaved}
-      onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
-      onMark={props.onMark}
-      userRating={props.work.userRating}
-      onRate={props.onRate}
-    />
-  );
-}
-
-export function PersistedMetadataAction({
-  placement,
-  ...props
-}: PersistedDetailActionsProps & { placement: MetadataActionPlacement }) {
-  if (!props.work) return null;
-  return (
-    <EditMetadataButton placement={placement} disabled={identityActionsBusy(props)} onClick={props.onEditMetadata} />
+    <HeroActionGroups
+      primary={
+        <HeroPrimaryAction
+          playback={props.heroPlayback}
+          busy={props.isResuming}
+          onResume={props.onResume}
+          onPlay={props.onPlay}
+        />
+      }
+    >
+      <WorkIdentityActionBar
+        busy={busy}
+        listeningStatus={props.work.listeningStatus}
+        favorite={props.favoriteLists.length > 0 ? props.favoriteSelected : props.work.favorite}
+        memberLists={workMemberLists(props.favoriteLists)}
+        listWorkId={props.work.id}
+        onEnsureListWork={props.onEnsureListWork}
+        onListSaved={props.onListSaved}
+        onMark={props.onMark}
+        userRating={props.work.userRating}
+        onRate={props.onRate}
+      />
+      <WorkManageMenu
+        busy={busy}
+        onEditMetadata={props.onEditMetadata}
+        onManageFiles={props.onManageFiles}
+        onManageLyrics={props.onManageLyrics}
+        onEditFileNames={props.onEditFileNames}
+        onTranslateWithAI={props.onTranslateWithAI}
+      />
+    </HeroActionGroups>
   );
 }
 
 function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
-  const canFetch = Boolean(props.fetchRemote && remoteSourceCanBrowse(props.fetchRemote.summary));
+  const canFetch = props.canFetch && Boolean(props.fetchRemote && remoteSourceCanBrowse(props.fetchRemote.summary));
   return {
-    onTrack: props.selectedRemoteSource ? props.onTrack : undefined,
+    onTrack: props.canTrack && props.selectedRemoteSource ? props.onTrack : undefined,
     trackDisabled: props.selectedRemoteSource ? !props.canTrackRemote : undefined,
-    onUntrack: props.hasTrackedSourceForAction ? props.onUntrack : undefined,
+    onUntrack: props.canTrack && props.hasTrackedSourceForAction ? props.onUntrack : undefined,
     canUntrack: props.canUntrack,
+    onFork: props.canTrack ? props.onFork : undefined,
     onFetch: canFetch ? props.onFetch : undefined,
-    onManageCache: props.selectedTrackedPresence ? props.onManage : undefined,
+    onManageCache: props.canManageCache && props.selectedTrackedPresence ? props.onManage : undefined,
     manageCacheDisabled: Boolean(props.selectedTrackedPresence) && !props.trackedCacheAvailable,
-    onManageFiles: props.actionMode === "local" ? props.onManage : undefined,
-    onManageLyrics: props.actionMode === "local" ? props.onManageLyrics : undefined,
-    onEditFileNames: props.actionMode === "local" ? props.onEditFileNames : undefined,
-    onTranslateWithAI: props.actionMode === "local" ? props.onTranslateWithAI : undefined,
   };
 }
 
-export function PersistedMediaActions({
-  layout,
-  ...props
-}: PersistedDetailActionsProps & { layout: SourceActionLayout }) {
+/** The selected source's actions, listed in Source info. */
+export function PersistedMediaActions(props: PersistedDetailActionsProps) {
   const { t } = useTranslation();
   if (!props.work) return null;
   const busy = props.isSyncingDetail || props.fetchBusy || props.cleanupBusy;
   const actions = persistedMediaActionBindings(props);
   return (
     <MediaContextActionBar
-      layout={layout}
       busy={busy}
       mode={props.actionMode}
       contextKey={props.sourceContextKey}
@@ -140,11 +144,9 @@ export function PersistedMediaActions({
       untrackDisabled={props.isSyncingDetail}
       forkSources={props.forkSources}
       currentForkSource={props.currentForkSource}
-      onFork={props.onFork}
       remoteSourceWorkUrl={safeExternalHTTPURL(props.selectedRemoteDetail?.publicWorkUrl)}
       remoteSourceName={props.selectedRemoteSource?.source.displayName ?? props.selectedRemoteDetail?.sourceName}
       sourceLabel={props.activeSourceLabel}
-      sourceStatus={props.sourceStatus}
       sourceDetailsLoading={props.selectedSourceDetailsLoading}
       {...actions}
     />

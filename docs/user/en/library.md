@@ -28,9 +28,19 @@ The Library is the main browsing surface for works.
 - The `+` button in the search field opens a floating editor for a
   structured search condition. Selecting a condition badge edits it in the same
   popover without moving the results.
-- Shows cover, title, code, Circle / Series on one ellipsized line, voice
-  metadata, local availability, source tags, and quick listening marks when
-  available.
+- Cards start in the **Full** mode, which shows every detail. The **Simple**
+  mode shows the cover, the title, and one line with
+  the circle and voice actors. The cover carries quiet status only: file
+  source marks, a thin bar for your listening progress, and your Quick mark as
+  a small icon. The code, age rating, series, tags, rating and sales, price,
+  recommendation score, and the action row (DLsite, lists, your rating, and
+  Quick mark) are the card's details. With a mouse they appear over the cards
+  below while the pointer rests on the card, and with a keyboard while the
+  card or one of its controls has focus. On a touch screen the arrow at the
+  end of the credit line opens and closes them in place.
+- **Full** cards show everything at once: cover, title, code, Circle / Series
+  on one ellipsized line, voice metadata, local availability, source tags, and
+  quick listening marks when available.
 - Library and Favorites cards carry your own rating beside the Quick mark, the
   same control as in [work detail](work-detail.md#current-behavior) without
   its **Rate** label: a star with its number, or an empty star while the work
@@ -107,31 +117,36 @@ The Library is the main browsing surface for works.
   and offers Retry. Remote scores use the same frozen session preference profile
   and do not import any works.
 - Offers recently played works, ordered per user from the one cursor owned by
-  each logical work family, with the latest track position. On wide screens a
-  history button in the toolbar opens the list. On phones a Continue listening
-  button in the sort row opens a horizontally scrolling strip of recently
-  played covers below it, on any page and source.
+  each logical work family, with the latest track position. The **Recently
+  played** button in the toolbar opens the list, as a popover on wide screens
+  and a sheet on phones, on any page and source.
+- The Library toolbar holds the source tabs, the search field, the sort
+  button, the **Mark filter** button, **Recently played**, and **View**. The
+  sort button names the current order and opens the orders and direction in a
+  popover; the Recommended and Random orders add a refresh button beside it.
+  **Mark filter** opens the Quick marks; while one is set, the button turns
+  primary and shows that mark, and **All** clears it. Remote sources have no
+  Mark filter.
+- **View** opens a panel with the display options, the recommendation score
+  switch for orders other than Recommended, and **Select works** on a remote
+  source. The panel stays open while you change several settings.
+- On wide screens the source tabs start with **Source visibility**, which
+  sets whether each source's tab shows automatically, always, or never.
 - On phones the Library leads with an always-visible search field and,
   beside it, a source button that names the current source and opens every
-  source in a menu. Below them, the sort row starts with what shapes the
-  results, the sort button and a Mark filter button, and ends with extras and
-  view controls: recommendation badges, Continue listening, and display
-  options. Mark filter and Continue listening each show or hide a row below:
-  the Quick mark filter chips, then the Continue listening strip. Both rows
-  start hidden. While a mark filter is set, its button shows that mark.
-  Selecting the active chip clears the filter.
-- The sort button names the current order and opens the orders and direction
-  in a popover. The Recommended and Random orders add a refresh button beside
-  it.
-- Display options start with **Cards**, a choice of **Full**, **Compact**, and
-  **Mini** that is stored with the column settings, separately for phones and
-  wide screens. **Full** is the default. Automatic wide-screen columns fit up
-  to 5 full cards, 6 compact cards, or 7 mini cards in a row, and fewer when
-  the window is narrower. Choosing a different mode resets the other display
-  options to that mode's starting point, which can then be adjusted: automatic
-  wide-screen columns in every mode, 24 works per page with automatic cover
-  source marks for **Full** and **Compact**, and 48 works per page with no
-  cover source marks for **Mini**. Phone columns keep their own setting.
+  source in a menu. The row below starts with the sort button and **Mark
+  filter** and ends with **Recently played** and **View**, which opens its
+  panel as a sheet. The result count and page follow under that row.
+- Display options start with **Cards**, a choice of **Full**, **Simple**,
+  **Compact**, and **Mini** that is stored with the column settings,
+  separately for phones and wide screens. **Full** is the default. Automatic
+  wide-screen columns fit up to 5 full or simple cards, 6 compact cards, or 7
+  mini cards in a row, and fewer when the window is narrower. Choosing a
+  different mode resets the other display options to that mode's starting
+  point, which can then be adjusted: automatic wide-screen columns in every
+  mode, 24 works per page with automatic cover source marks for **Full**,
+  **Simple**, and **Compact**, and 48 works per page with no cover source
+  marks for **Mini**. Phone columns keep their own setting.
   **Compact** shows each work as a row
   in one phone column: the cover beside the code, title, circle and voice
   names, rating, sales, and price, then one row of tags with personal tags
@@ -147,10 +162,11 @@ The Library is the main browsing surface for works.
   Each source retains its own pagination, sort, and scroll state, while grid
   column settings remain shared. A source cannot restore stale query text after
   the user clears it elsewhere.
-- Keeps the active Local, Tracked, or remote-source page size in the toolbar's
-  display options. Local, Tracked, and remote sources all offer 24, 48, or 96
-  works per page. Wide screens show a compact top pagination with result
-  context and page navigation. Phones show the result count and the current
+- Keeps the active Local, Tracked, or remote-source page size in the **View**
+  panel's display options. Local, Tracked, and remote sources all offer 24,
+  48, or 96 works per page. Wide screens show a compact top pagination with
+  result context and page navigation when the results span more than one
+  page, and only the result count when they fit one page. Phones show the result count and the current
   page as a caption above the works and change pages from the bottom
   pagination. The bottom pagination lists the first, last, current, and
   neighboring pages; an ellipsis between them opens a field that goes to a
@@ -181,8 +197,8 @@ Favorites keeps only entity/search intent in the canonical URL. Its selected
 list, favorite filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
 `All Favorites` aggregates works with a Quick mark and works you added to any
-list. `Marked` is the fixed system list containing only works whose Quick mark
-is not Unmarked; its membership is derived and cannot be edited as a list.
+list. Its **Any mark** status filter shows only the works whose Quick mark is
+not Unmarked; a link to the Marked system list opens that filter.
 Other lists are user-created and keep explicit membership. The list button on a
 work card or on work detail, a list icon with a plus while the work is in no
 list, opens **Add to list**: your lists with a search field. On a card in
@@ -208,35 +224,45 @@ like in any list, and remove a matching work, which keeps it out of the list
 until you add it again. The list only gathers works already in your library.
 When works start to match later, the shelf shows how many are new and marks
 them **New** until you choose **Mark all as seen**; **Only new** shows just
-those works. **Convert to regular list** keeps the works the list shows now as
+those works. **Convert to regular list** in the list's editor keeps the works the list shows now as
 an ordinary list, makes all of them favorites, and removes the rule. A tag that
 is later hidden or deleted stays in the rule, crossed out, and matches no work.
 
 Switching lists keeps the
 full favorite-list row stable while results load, and Shelved is the final
 listening-state option. Playback cursors alone never add a work to Favorites.
-The resource filter narrows favorite works by the availability their cards
-show: Available (Local, Cached, or Remote), Local, Remote, or Missing. A work
-whose files belong to another language edition counts with that edition. The
-filter reads stored availability and does not request a live remote refresh.
+**Filters** holds both work filters. The listening status shows how many of the
+shelf's works carry each mark. The resource narrows favorite works by the
+availability their cards show: Available (Local, Cached, or Remote), Local,
+Remote, or Missing. While a filter is set the button names it, and **Clear
+filters** resets both. A work whose files belong to another language edition
+counts with that edition. The resource filter reads stored availability and
+does not request a live remote refresh.
 
-On wide screens a shelf rail beside the results lists All Favorites, Marked,
-your lists, and followed circles and voice actors with their counts. Like the
-Workflows and Settings rails, it can hide its names and keep only icons, and the
-choice is remembered on that device. Each user list can show an icon chosen in
-its editor, which is what tells the lists apart in the icon rail; the list icon
-also appears in the add-to-list menus. The open shelf has a header with a cover
-mosaic, its count, how many works are finished, and the works you are
-listening to. Phones show the same shelves as one scrollable row above a
-one-line header that states the finished share as a percentage. Below it come
-the search field, the named sort beside the resource, display, and selection
-buttons, the listening-status filters as a scrollable chip row, and a caption
-with the result count and page in place of a top page bar. Display options
-switch works between cards and a denser list with each work's resume point.
+Followed circles and voice actors are the **Favorite** view of the Circles and
+Voice Actors pages; `/favorites?entity=circles` and `/favorites?entity=voices`
+open that view.
+
+On wide screens a shelf list beside the results names All (the whole
+collection) and your lists with their counts, in the same column form as the
+Settings list. Each user list can show
+an icon chosen in its editor, which is what tells the lists apart at a glance;
+the list icon also appears in the add-to-list menus. The open shelf has a
+one-line header: its icon, its name, and the result count with the page in
+place of a top page bar; a description shows as the name's tooltip. Search and
+the Filters, sort, display, and selection buttons sit beside the header, or
+below it on a narrower page. **Hide shelves** at the start of the header row
+hides the shelf list so the works fill the width, and **Show shelves** brings it
+back; this device remembers the choice. Phones show the same shelves as one scrollable row whose selected chip names
+the open shelf in place of the header, then one row with the named sort and the Search, Filters,
+display, and selection buttons, and the Quick mark statuses with their counts as
+a scrollable chip row. Search opens a field above that row, which stays open
+while it holds a query; on phones Filters holds only the resource. Display options switch works
+between cards and a denser list with each work's resume point.
 
 **Add list** in the shelves and **Edit list** on a list's shelf open one list's
 editor: its name with the icon beside it, an optional description, the rule of a
-smart list, and **Delete list**. A name another list already uses is pointed out
+smart list with **Convert to regular list**, and **Delete list**. A name another list already uses is pointed out
 but allowed. **Edit lists** shows every list; **Move up** and **Move down**
 reorder them at once without leaving the open shelf, and opening a list there
 edits it and returns to all lists with **Back**.

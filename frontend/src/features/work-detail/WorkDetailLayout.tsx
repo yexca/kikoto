@@ -68,7 +68,6 @@ import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
-import type { MetadataActionPlacement, SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
 import { CompactDetailTabs } from "@/features/work-detail/CompactDetailTabs";
 import { DetailBundleLine } from "@/features/work-detail/DetailBundleLine";
 import { DetailPurchaseBonusLine } from "@/features/work-detail/DetailPurchaseBonusLine";
@@ -113,7 +112,7 @@ export type UnifiedWorkDetailPresentation = {
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
-  /** Non-voice credits, shown in their own card below Source info. */
+  /** Non-voice credits, shown in their own card above Source info. */
   staffCredits?: StaffCredit[];
   purchaseBonus?: WorkDetail["purchaseBonus"];
   purchaseBonuses?: WorkDetail["purchaseBonuses"];
@@ -130,8 +129,7 @@ export function UnifiedWorkDetailPage({
   mobileTab,
   onMobileTabChange,
   actions,
-  renderSourceActions,
-  renderMetadataAction,
+  sourceActions,
   directory,
   onBack,
   children,
@@ -140,11 +138,10 @@ export function UnifiedWorkDetailPage({
   compact: boolean;
   mobileTab: "info" | "directory";
   onMobileTabChange: (tab: "info" | "directory") => void;
+  /** The Hero actions: one primary action, then the quiet personal and Manage controls. */
   actions: ReactNode;
-  /** Actions for the selected source: a menu with the Hero actions, or an inline list in Source info. */
-  renderSourceActions?: (layout: SourceActionLayout) => ReactNode;
-  /** The metadata editor entry: among the Hero actions, or beside the metadata update time in Source info. */
-  renderMetadataAction?: (placement: MetadataActionPlacement) => ReactNode;
+  /** The selected source's actions, listed in Source info. */
+  sourceActions?: ReactNode;
   directory: ReactNode;
   onBack: () => void;
   children?: ReactNode;
@@ -163,20 +160,14 @@ export function UnifiedWorkDetailPage({
           activeTab={mobileTab}
           onActiveTabChange={onMobileTabChange}
           actions={actions}
-          sourceActions={renderSourceActions?.("list")}
-          metadataAction={renderMetadataAction?.("info")}
+          sourceActions={sourceActions}
           directory={directory}
         />
       ) : (
         <DesktopWorkDetailLayout
           {...presentation}
-          actions={
-            <>
-              {actions}
-              {renderMetadataAction?.("hero")}
-            </>
-          }
-          renderSourceActions={renderSourceActions}
+          actions={actions}
+          sourceActions={sourceActions}
           directory={directory}
         />
       )}
@@ -187,12 +178,12 @@ export function UnifiedWorkDetailPage({
 
 function DesktopWorkDetailLayout({
   actions,
-  renderSourceActions,
+  sourceActions,
   directory,
   ...presentation
 }: UnifiedWorkDetailPresentation & {
   actions: ReactNode;
-  renderSourceActions?: (layout: SourceActionLayout) => ReactNode;
+  sourceActions?: ReactNode;
   directory: ReactNode;
 }) {
   const {
@@ -226,14 +217,12 @@ function DesktopWorkDetailLayout({
   } = presentation;
   const entityResolver = useDetailEntityResolver(code);
   const versionMenu = detailVersionMenu(presentation);
-  // Source info only sits beside the Directory on wide screens; narrower desktops
-  // stack it below the Directory, so source actions stay a menu with the Hero actions.
-  const sourceActionsInPanel = useMediaQueryMatch(WIDE_DETAIL_LAYOUT_QUERY);
 
   return (
     <div className="space-y-6">
+      {/* The cover tint alone sets the Hero apart from the page; it draws no frame. */}
       <section
-        className="relative isolate overflow-clip rounded-xl border bg-card"
+        className="relative isolate overflow-clip rounded-xl bg-card"
         data-testid="detail-hero"
         aria-label={title}
       >
@@ -288,27 +277,27 @@ function DesktopWorkDetailLayout({
               onSync={onSyncMetadata}
               onLink={onLinkMetadata}
             />
-            <div data-testid="hero-actions" className="mt-auto flex min-w-0 flex-wrap gap-2 pt-1">
+            <div
+              data-testid="hero-actions"
+              className="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 pt-1"
+            >
               {actions}
-              {!sourceActionsInPanel && renderSourceActions?.("menu")}
             </div>
           </div>
         </div>
       </section>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+      {/* The files lead the main column. The side column reads like the work's
+          own page: what it is, who made it, then the facts and actions of the
+          shown source. It scrolls with the page, so the cards after a long
+          description stay reachable. Below xl the side column follows the
+          files in the same order. */}
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0">{directory}</div>
         <div className="min-w-0 space-y-4">
           <WorkDescription description={presentation.description} />
-          {directory}
-        </div>
-        <div className="min-w-0 space-y-4 xl:sticky xl:top-20">
-          <DetailInfoPanel
-            sourceInfo={sourceInfo}
-            dlsiteFetchedAt={dlsiteFetchedAt}
-            actions={sourceActionsInPanel ? renderSourceActions?.("list") : undefined}
-            className=""
-          />
           <DetailStaffCredits credits={staffCredits} />
+          <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} actions={sourceActions} />
         </div>
       </div>
     </div>
@@ -319,38 +308,24 @@ function DetailInfoPanel({
   sourceInfo,
   dlsiteFetchedAt,
   actions,
-  metadataAction,
-  className,
 }: Pick<UnifiedWorkDetailPresentation, "sourceInfo" | "dlsiteFetchedAt"> & {
+  /** The selected source's actions; a viewer allowed none sees the panel without them. */
   actions?: ReactNode;
-  /** Shown at the end of the metadata update time row. */
-  metadataAction?: ReactNode;
-  className: string;
 }) {
   return (
     <aside
-      className={`min-w-0 divide-y overflow-hidden rounded-xl border bg-card ${className}`}
+      className="min-w-0 divide-y overflow-hidden rounded-xl border bg-card"
       aria-label={i18n.t("libraryDetail.sourceInfo")}
       data-testid="detail-source-metadata"
     >
       <ActiveSourceInfo info={sourceInfo} />
       {actions && <div className="p-2 empty:hidden">{actions}</div>}
-      {(dlsiteFetchedAt || metadataAction) && (
-        <div
-          className={cn(
-            "flex items-center gap-2 px-4 text-2xs text-muted-foreground",
-            metadataAction ? "py-2" : "py-3",
-          )}
-        >
-          {dlsiteFetchedAt && (
-            <>
-              <Clock3 className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate tabular-nums">
-                {i18n.t("libraryDetail.metadataUpdatedAt", { time: dlsiteFetchedAt })}
-              </span>
-            </>
-          )}
-          {metadataAction && <div className="ml-auto shrink-0 empty:hidden">{metadataAction}</div>}
+      {dlsiteFetchedAt && (
+        <div className="flex items-center gap-2 px-4 py-3 text-2xs text-muted-foreground">
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate tabular-nums">
+            {i18n.t("libraryDetail.metadataUpdatedAt", { time: dlsiteFetchedAt })}
+          </span>
         </div>
       )}
     </aside>
@@ -630,13 +605,16 @@ function DetailStatStrip({
       (!customWork || (stat.key !== "rating" && stat.key !== "sales")) &&
       (stat.key !== "userRating" || userRating !== undefined),
   );
+  // A hairline above the figures separates them from the tags; they draw no box of their own.
+  // The strip, and so its hairline, is only as wide as its figures; a phone scrolls it sideways
+  // once they outgrow the row.
   return (
     <dl
       data-testid="dlsite-info"
       className={
         compact
-          ? "flex justify-between gap-x-2 overflow-x-auto overflow-y-hidden min-[360px]:gap-x-3 rounded-lg border bg-background/60 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          : "flex w-fit max-w-full flex-wrap gap-x-6 gap-y-2 self-start rounded-lg border bg-background/60 px-3.5 py-2 backdrop-blur-sm"
+          ? "flex w-fit max-w-full gap-x-2 overflow-x-auto overflow-y-hidden border-t border-border/70 pt-3 min-[360px]:gap-x-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "flex w-fit max-w-full flex-wrap gap-x-7 gap-y-2 self-start border-t border-border/70 pt-3"
       }
     >
       {stats.map((stat) => (
@@ -710,7 +688,6 @@ function MobileWorkDetailLayout({
   onActiveTabChange,
   actions,
   sourceActions,
-  metadataAction,
   directory,
 }: {
   coverUrl: string;
@@ -763,8 +740,6 @@ function MobileWorkDetailLayout({
   actions: ReactNode;
   /** The selected source's actions, listed in the Info tab's Source info. */
   sourceActions?: ReactNode;
-  /** The metadata editor entry, in the Info tab's Source info. */
-  metadataAction?: ReactNode;
   directory: ReactNode;
 }) {
   const entityResolver = useDetailEntityResolver(code);
@@ -832,6 +807,18 @@ function MobileWorkDetailLayout({
         })}
       />
 
+      {/* The actions follow the title so Play stays on the first screen however long
+          the credits and tags run. The row scrolls sideways into the page gutter;
+          its padding keeps the 44px touch targets and focus rings inside the
+          clipped strip, and the flow root keeps that padding out of the Hero spacing. */}
+      <div className="flow-root">
+        <div className="-mx-4 -my-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div data-testid="hero-actions" className="flex w-max items-center gap-3">
+            {actions}
+          </div>
+        </div>
+      </div>
+
       {!infoCollapsed && (
         <>
           <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
@@ -865,31 +852,14 @@ function MobileWorkDetailLayout({
         onLink={onLinkMetadata}
       />
 
-      {/* One row that scrolls sideways into the page gutter. Its padding keeps the
-          44px touch targets and focus rings inside the clipped strip, and the
-          flow root keeps that padding out of the Hero spacing. */}
-      <div className="flow-root">
-        <div className="-mx-4 -my-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div data-testid="hero-actions" className="flex w-max gap-2">
-            {actions}
-          </div>
-        </div>
-      </div>
-
       <CompactDetailTabs
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
         info={
           <div className="space-y-4">
             <WorkDescription description={description} />
-            <DetailInfoPanel
-              sourceInfo={sourceInfo}
-              dlsiteFetchedAt={dlsiteFetchedAt}
-              actions={sourceActions}
-              metadataAction={metadataAction}
-              className=""
-            />
             <DetailStaffCredits credits={staffCredits} />
+            <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} actions={sourceActions} />
           </div>
         }
         directory={directory}
@@ -1227,13 +1197,23 @@ function MetadataSyncNotice({
   );
 }
 
+/** The Hero actions: the one primary action, then the quiet personal and Manage controls. */
+export function HeroActionGroups({ primary, children }: { primary: ReactNode; children: ReactNode }) {
+  return (
+    <>
+      {primary}
+      <div className="flex items-center gap-1">{children}</div>
+    </>
+  );
+}
+
 export function DetailSkeletonActions() {
   return (
-    <div className="flex flex-wrap gap-2">
-      <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
-      <div className="h-9 w-28 animate-pulse rounded-md bg-muted" />
-      <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />
-    </div>
+    <HeroActionGroups primary={<div className="h-[var(--control-height)] w-28 animate-pulse rounded-md bg-muted" />}>
+      <div className="h-8 w-8 animate-pulse rounded-md bg-muted" />
+      <div className="h-8 w-14 animate-pulse rounded-md bg-muted" />
+      <div className="h-8 w-8 animate-pulse rounded-md bg-muted" />
+    </HeroActionGroups>
   );
 }
 
@@ -1293,9 +1273,6 @@ export function useCompactDetailLayout() {
   return useMediaQueryMatch("(max-width: 767px)");
 }
 
-// Matches Tailwind's `xl` breakpoint, where Source info becomes a sticky side panel.
-const WIDE_DETAIL_LAYOUT_QUERY = "(min-width: 1280px)";
-
 function useMediaQueryMatch(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
@@ -1342,6 +1319,7 @@ function WorkVersionMenus({
       />
       {(baseCode || translations.length > 0) && (
         <DirectoryEditionMenu
+          languageChipShown={metadataLanguageChoices(metadataPresentation, activeMetadataVariantKey).length > 1}
           baseCode={baseCode}
           baseAvailable={baseAvailable}
           translations={translations}
@@ -1367,37 +1345,18 @@ function VersionChipMenu({
   label,
   shortLabel,
   menuLabel,
-  interactive,
   children,
 }: {
   icon: ReactNode;
   label: string;
   shortLabel?: string;
   menuLabel: string;
-  interactive: boolean;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const labelId = useId();
   const visibleLabel = shortLabel || label;
-  if (!interactive) {
-    return (
-      <div role="group" aria-label={menuLabel} title={menuLabel} className={versionChipClassName}>
-        {icon}
-        {visibleLabel === label ? (
-          <span className="truncate">{label}</span>
-        ) : (
-          <>
-            <span className="truncate" aria-hidden="true">
-              {visibleLabel}
-            </span>
-            <span className="sr-only">{label}</span>
-          </>
-        )}
-      </div>
-    );
-  }
   return (
     <div ref={anchorRef} className="min-w-0 max-w-full">
       <button
@@ -1458,14 +1417,14 @@ function MetadataLanguageMenu({
         ? (short ? languageShortLabel : languageLabel)(metadataLanguage)
         : "";
   const label = chipLabel(false);
-  if (!label) return null;
+  // A work with one metadata language has nothing to choose, so the chip takes no room.
+  if (!label || choices.length < 2) return null;
   return (
     <VersionChipMenu
       icon={<Languages className="h-3 w-3 shrink-0" />}
       label={label}
       shortLabel={compact ? chipLabel(true) : undefined}
       menuLabel={i18n.t("libraryDetail.metadataLanguage")}
-      interactive={choices.length > 1}
     >
       {(close) => (
         <div role="menu" aria-label={i18n.t("libraryDetail.metadataLanguage")}>
@@ -1497,6 +1456,7 @@ function MetadataLanguageMenu({
 }
 
 function DirectoryEditionMenu({
+  languageChipShown,
   baseCode,
   baseAvailable,
   translations,
@@ -1504,6 +1464,8 @@ function DirectoryEditionMenu({
   onVersionSelect,
   remoteVersions,
 }: {
+  /** The metadata language chip beside this one names a language. */
+  languageChipShown: boolean;
   baseCode: string;
   baseAvailable: boolean;
   translations: WorkDetail["translations"];
@@ -1540,17 +1502,25 @@ function DirectoryEditionMenu({
   const activeVersion = activeGroup?.versions.find(
     (version) => version.primaryCode.trim().toUpperCase() === activeCode,
   );
+  // A work with no other edition, listed or merely known, and no base work has nothing to choose.
+  const hasOtherEdition =
+    expandedGroups.some((group) =>
+      group.versions.some((version) => version.primaryCode.trim().toUpperCase() !== activeCode),
+    ) ||
+    (baseCode !== "" && baseCode.trim().toUpperCase() !== activeCode);
   const activeLanguage = activeGroup?.language ? languageLabel(activeGroup.language) : "";
   const label =
     activeVersion?.translationKind === "origin" && activeLanguage
       ? `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
       : activeLanguage || activeVersionCode;
-  // The language chip beside this one already names the language, so a narrow
-  // header shows only "Origin", and a translation by its language code.
+  // A narrow header names a translation by its language code. The origin shows
+  // only "Origin" beside a language chip, and adds the code when that chip is absent.
   const shortLabel = !compact
     ? undefined
-    : activeVersion?.translationKind === "origin" && activeLanguage
-      ? workVersionKindLabel(activeVersion)
+    : activeVersion?.translationKind === "origin" && activeGroup?.language
+      ? languageChipShown
+        ? workVersionKindLabel(activeVersion)
+        : `${workVersionKindLabel(activeVersion)} · ${languageShortLabel(activeGroup.language)}`
       : activeGroup?.language
         ? languageShortLabel(activeGroup.language)
         : activeVersionCode;
@@ -1566,13 +1536,13 @@ function DirectoryEditionMenu({
     }
   };
 
+  if (!hasOtherEdition) return null;
   return (
     <VersionChipMenu
       icon={<FolderTree className="h-3 w-3 shrink-0" />}
       label={label}
       shortLabel={shortLabel}
       menuLabel={i18n.t("libraryDetail.directoryEdition")}
-      interactive
     >
       {(close) => (
         <div className="space-y-1">

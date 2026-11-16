@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { APP_CLIENT_VERSION, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
@@ -109,7 +110,7 @@ export function AboutPage() {
   const { t } = useTranslation();
   const update = useAvailableUpdate();
   return (
-    <div className="w-full max-w-5xl">
+    <div className={contentPageClassName}>
       <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[19rem_minmax(0,1fr)]">
         <Sleeve update={update} />
         <div className="min-w-0">

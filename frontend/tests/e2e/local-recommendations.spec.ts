@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { RecommendationAffinityBreakdown, RecommendationBreakdown } from "../../src/lib/api";
 import { authenticatedStateFixture, runtimeSettingsFixture, worksPageFixture } from "./fixtures/api";
 import { mockApplication, seedPlayer, silentWav, work } from "./fixtures/player-library";
+import { chooseLibrarySort, setRecommendationScores, showFullWorkCards } from "./fixtures/library-view";
 
 const affinityBreakdown: RecommendationAffinityBreakdown = {
   algorithmVersion: "heuristic-v6",
@@ -39,6 +40,7 @@ test("optional local badge failure preserves cards and playback while scoring re
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) =>
     route.fulfill({ contentType: "audio/wav", body: silentWav(60) }),
   );
+  await showFullWorkCards(page);
   await page.goto("/?sort=recent");
   await expect(page.getByText(work.title, { exact: true })).toBeVisible();
   await page.getByText("Test track.wav", { exact: true }).click();
@@ -47,7 +49,7 @@ test("optional local badge failure preserves cards and playback while scoring re
   await expect(audio).toHaveJSProperty("paused", false);
   await page.getByRole("button", { name: "Collapse player", exact: true }).click();
 
-  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  await setRecommendationScores(page, true);
   const failure = page.getByRole("status").filter({ hasText: "Recommendation badges are temporarily unavailable." });
   await expect(failure).toBeVisible();
   await expect(page.getByTestId("work-card")).toHaveCount(1);
@@ -88,6 +90,7 @@ test("recommendation preparation failure retains loaded cards and retries withou
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) =>
     route.fulfill({ contentType: "audio/wav", body: silentWav(60) }),
   );
+  await showFullWorkCards(page);
   await page.goto("/?sort=recent");
   await expect(page.getByTestId("work-card")).toHaveCount(1);
   await page.getByText("Test track.wav", { exact: true }).click();
@@ -95,8 +98,7 @@ test("recommendation preparation failure retains loaded cards and retries withou
   const audio = page.locator("audio").first();
   await expect(audio).toHaveJSProperty("paused", false);
   await page.getByRole("button", { name: "Collapse player", exact: true }).click();
-  await page.getByRole("button", { name: "Sort: Recently added", exact: true }).click();
-  await page.getByRole("button", { name: "Recommended", exact: true }).click();
+  await chooseLibrarySort(page, "Recommended");
   await expect(page.getByText("Recommendation preparation is temporarily unavailable.", { exact: true })).toBeVisible();
   await expect(page.getByTestId("work-card")).toHaveCount(1);
   await expect(page.getByRole("button", { name: /^Explain recommendation score/ })).toHaveCount(0);
@@ -127,6 +129,7 @@ test("explanations use the server query context and telemetry records the algori
     explanationRequests.push(new URL(route.request().url()));
     await route.fulfill({ json: affinityBreakdown });
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Explain recommendation score 66", exact: true }).click();
   await expect(page.getByText("heuristic-v6", { exact: true })).toBeVisible();
@@ -156,6 +159,7 @@ test("an expired context recovers the original session's affinity without rankin
       await route.fulfill({ json: affinityBreakdown });
     }
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Explain recommendation score 66", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -192,6 +196,7 @@ test("demo explanations label the simulated score and reshuffling keeps the scor
     components: [],
   };
   await page.route("**/api/works/1/recommendation?**", (route) => route.fulfill({ json: breakdown }));
+  await showFullWorkCards(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Explain recommendation score 72", exact: true }).click();
   const dialog = page.getByRole("dialog");

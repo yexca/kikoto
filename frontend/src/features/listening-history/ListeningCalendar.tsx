@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { dateTimeFormat } from "@/i18n/format";
@@ -33,17 +33,21 @@ export function ListeningCalendar({
   calendar,
   year,
   formatDuration,
+  action,
 }: {
   calendar: ListeningCalendarData;
   /** The calendar year shown; null for the weeks up to today. */
   year?: string | null;
   formatDuration: (seconds: number) => string;
+  /** The control that chooses the year, at the calendar's top end. */
+  action?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const { weeks, days } = useMemo(() => listeningCalendarWeeks(calendar), [calendar]);
   const streaks = useMemo(() => listeningStreaks(days), [days]);
   const [active, setActive] = useState<ListeningCalendarCell | null>(null);
+  const titleId = useId();
   const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = scroller.current;
@@ -79,16 +83,18 @@ export function ListeningCalendar({
       : t("personal.history.calendar.noListening", { date: dayLabel(active.period) });
 
   return (
-    <figure className="min-w-0 space-y-3">
-      <figcaption className="flex min-h-5 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-baseline gap-2">
-          <span className="text-sm font-semibold text-foreground">{t("personal.history.calendar.title")}</span>
-          <span>{year ?? t("personal.history.calendar.basis")}</span>
-        </span>
-        <span aria-live="polite" className="tabular-nums">
-          {readout}
-        </span>
-      </figcaption>
+    <figure className="min-w-0 space-y-3" aria-labelledby={titleId}>
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span id={titleId} className="text-sm font-semibold text-foreground">
+            {t("personal.history.calendar.title")}
+          </span>
+          <span aria-live="polite" className="tabular-nums">
+            {readout}
+          </span>
+        </div>
+        {action}
+      </div>
       <p className="sr-only">
         {t("personal.history.calendar.summary", { count: activeDays, duration: formatDuration(totalSeconds) })}
       </p>

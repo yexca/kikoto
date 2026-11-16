@@ -39,7 +39,7 @@ export function TimeZoneSelect({
   return (
     <NativeSelect
       id={id}
-      className="w-full sm:w-72"
+      className="w-48 max-w-full sm:w-72"
       value={value}
       disabled={disabled}
       aria-label={ariaLabel}

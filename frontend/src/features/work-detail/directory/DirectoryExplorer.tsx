@@ -24,6 +24,7 @@ import {
   cursorInTree,
   type DirectoryRouteMatch,
   directoryRouteSummary,
+  firstTrackPlaysFolder,
   folderAncestorKeys,
   folderLabel,
   folderNavigatorRows,
@@ -221,17 +222,6 @@ function RecommendedFolderIndicator({
       <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span className="truncate">{i18n.t("libraryDetail.openRecommendedFolder")}</span>
     </button>
-  );
-}
-
-function PlayAllButton({ tracks, onPlayFolder }: { tracks: TreeTrack[]; onPlayFolder: DirectoryPlayFolder }) {
-  if (tracks.length === 0) return null;
-  return (
-    <Button size="sm" className="h-8 gap-1.5 px-3 text-xs" onClick={() => onPlayFolder(tracks, tracks[0].locationId)}>
-      <Play className="h-3.5 w-3.5 fill-current" />
-      {i18n.t("libraryDetail.playAll")}
-      <span className="tabular-nums opacity-80">{tracks.length}</span>
-    </Button>
   );
 }
 
@@ -560,7 +550,14 @@ export function DirectoryExplorer({
     });
   }
   const labelled = blocks.length > 1;
-  const showToolbar = Boolean(summary) || currentLyricsAttachmentCount > 0 || playbackTracks.length > 0;
+  // Opening a track queues the folder's tracks in order from it, so the first
+  // track plays the folder. Only a folder whose first track opens the video
+  // viewer instead shows a quiet control for that.
+  const playFolder =
+    onPlayFolder && playbackTracks.length > 0 && !firstTrackPlaysFolder(playbackTracks)
+      ? () => onPlayFolder(playbackTracks, playbackTracks[0].locationId)
+      : null;
+  const showToolbar = Boolean(summary) || currentLyricsAttachmentCount > 0;
 
   return (
     <div ref={setContainer}>
@@ -593,12 +590,22 @@ export function DirectoryExplorer({
                   />
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                  {playFolder && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+                      onClick={playFolder}
+                    >
+                      <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                      {i18n.t("libraryDetail.playThisFolder")}
+                    </Button>
+                  )}
                   <LyricsAttachmentsToggle
                     count={currentLyricsAttachmentCount}
                     showingAll={lyricsAttachments.showingAll}
                     onToggle={lyricsAttachments.toggleAll}
                   />
-                  {onPlayFolder && <PlayAllButton tracks={playbackTracks} onPlayFolder={onPlayFolder} />}
                 </div>
               </div>
             )}

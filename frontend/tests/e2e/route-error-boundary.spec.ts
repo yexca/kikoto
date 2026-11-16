@@ -128,7 +128,14 @@ test("route render failures preserve the app shell and player", async ({ page })
   const playingElement = await audio.elementHandle();
   expect(playingElement).not.toBeNull();
   const beforeNavigation = await audio.evaluate((element: HTMLAudioElement) => element.currentTime);
-  await page.getByRole("button", { name: "Quick actions", exact: true }).click();
+  await page
+    .locator("header")
+    .getByRole("button", { name: /^(Account menu|Sign in)$/ })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Account" })
+    .getByRole("button", { name: "Quick actions", exact: true })
+    .click();
   await page.getByRole("button", { name: "About /about", exact: true }).click();
 
   const fallback = page.getByRole("alert");
@@ -169,7 +176,14 @@ test("a page chunk removed by an update offers a reload that loads the current v
   });
   await page.goto("/");
   await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Quick actions", exact: true }).click();
+  await page
+    .locator("header")
+    .getByRole("button", { name: /^(Account menu|Sign in)$/ })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Account" })
+    .getByRole("button", { name: "Quick actions", exact: true })
+    .click();
   await page.getByRole("button", { name: "About /about", exact: true }).click();
 
   const fallback = page.getByRole("alert");

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { creatorQuietActionClassName } from "@/components/creator/CreatorDetailActions";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -15,6 +16,7 @@ import {
   type CreatorSubscriptionLookup,
   type CreatorSubscriptionTarget,
 } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 import { subscribeButtonState, subscribeConfirmation, subscriptionSubjectName } from "./subscriptionModel";
 
@@ -159,11 +161,9 @@ export function SubscribeButton({
   return (
     <div ref={anchorRef} className="relative">
       <Button
-        variant={state === "active" ? "default" : "outline"}
+        variant="ghost"
         size="icon"
-        className={
-          className ?? "lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-        }
+        className={className ?? creatorQuietActionClassName}
         aria-label={title}
         aria-pressed={active}
         aria-expanded={active ? menuOpen : undefined}
@@ -174,11 +174,11 @@ export function SubscribeButton({
         {busy || state === "loading" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : active || state === "covered" ? (
-          <BellRing className="h-4 w-4" />
+          <BellRing className={cn("h-4 w-4", state === "active" && "text-primary")} />
         ) : (
           <Bell className="h-4 w-4" />
         )}
-        <span className="hidden lg:inline">{label}</span>
+        <span className="hidden sm:inline">{label}</span>
       </Button>
       {subscription && (
         <AnchoredPopover

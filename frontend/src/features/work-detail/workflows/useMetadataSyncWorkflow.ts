@@ -52,7 +52,7 @@ export function useMetadataSyncWorkflow({
         message: result.deduplicated
           ? t("libraryDetail.metadataRefreshAlreadyQueued", { runId: result.runId })
           : t("libraryDetail.metadataRefreshQueued", { code: result.primaryCode, runId: result.runId }),
-        actionLabel: t(canViewActivity ? "nav.activity" : "nav.workManagement"),
+        actionLabel: t(canViewActivity ? "workflowPage.viewRun" : "nav.workManagement"),
         onAction: () => {
           window.history.pushState({}, "", metadataSyncResultURL(result.runId, false, canViewActivity));
           window.dispatchEvent(new Event(NAVIGATION_EVENT));
@@ -71,7 +71,7 @@ export function useMetadataSyncWorkflow({
     setActiveRunId(null);
     const needsAttention = (run.metadataIssues?.pending ?? 0) > 0;
     const actionLabel = t(
-      needsAttention ? "metadataIssues.openIssues" : canViewActivity ? "nav.activity" : "nav.workManagement",
+      needsAttention ? "metadataIssues.openIssues" : canViewActivity ? "workflowPage.viewRun" : "nav.workManagement",
     );
     const onAction = () => {
       window.history.pushState({}, "", metadataSyncResultURL(run.id, needsAttention, canViewActivity));

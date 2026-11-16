@@ -25,7 +25,8 @@ Library and metadata:
 - `local_library_scan`: discover local work folders and synchronize local
   presence (see [Local Folder Trigger](#local-folder-trigger)).
 - `record_library_scan`: discover the independent record root's folders and
-  video/image assets without changing audio works (see [Record library](record-library.md)).
+  video/image assets and probe new or changed media, without changing audio
+  works (see [Record library](record-library.md)).
 - `local_media_index`: index the media files of discovered local work folders
   (see [Local Work File Refresh](#local-work-file-refresh)).
 - `metadata_sync`: bulk metadata sync of existing works and explicitly
@@ -92,7 +93,17 @@ Media, cleanup, and database:
   grace period and prune empty directories.
 - `media_location_cleanup`: delete selected cache or local files and mark their
   locations unavailable. `media_cleanup_forget_work` also removes the then
-  unlinked work family and its personal state.
+  unlinked work families and their personal state. A removed work folder takes
+  the sidecars a NAS or operating system keeps beside its files (`._` files,
+  `.DS_Store`, `Thumbs.db`, `@eaDir`, `__MACOSX`) with it. A run queued from
+  [Local works by rating](../user/en/settings.md#works) cleans its works in
+  turn while it holds the library folders: it claims the work's confirmed
+  folders, indexes them again, deletes the files inside them and the folders,
+  leaving any folder the work gained since the confirmation, and then, in one
+  transaction, clears the requester's rating and Quick mark of the work and
+  forgets it when asked. A work that cannot be cleaned gets its folders back,
+  keeps its state, and is listed in the run's failures; the run goes on with
+  the other works and then fails, so a retry cleans only the failed works.
 - `work_folder_edit`: add files from the family's other local folders and
   remote editions to one local folder of a work, as files or as lyrics of a
   declared language, arrange its files and folders, remove the files taken out
@@ -124,7 +135,7 @@ with metadata-sync permission see it; Demo mode does not offer this action.
 The prompt starts the background metadata workflow. Repeated clicks reuse its
 recorded run, and an already active bulk sync shows its current state.
 Library keeps browsing and playback while the prompt shows queued/running or
-terminal status. Activity is linked for users with workflow permission. The
+terminal status. The run is linked for users with workflow permission. The
 initiating user receives a notification when the run succeeds or needs attention.
 Choosing Later dismisses the prompt for the instance; the manual metadata sync
 entry points are unaffected. The dismissal and selected run are stored in
@@ -247,8 +258,8 @@ pairs, failures, and what remains.
 Metadata synchronization is a workflow. Metadata management owns the current
 attention list and the DLsite proxy shortcut; sync and its remote metadata
 fallback configuration live in Workflows, and creator catalog freshness in
-Settings → Library.
-Activity run detail links to the unresolved
+System → Library.
+A run's detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family, or asks one
 selected remote source instead (see
@@ -263,7 +274,7 @@ A pending metadata issue is a failed attempt, or a not-found outcome for a work
 that no remote source has filled and no operator has dismissed. A work a
 [remote metadata fallback](#remote-metadata-fallback) filled is complete: its
 DLsite not-found outcome stays recorded, but it leaves the issue list, run
-pending counts, and Activity attention. `POST /api/metadata/issues/dismiss`
+pending counts, and the run lists' Needs attention. `POST /api/metadata/issues/dismiss`
 (`metadata:sync`, refused in Demo) dismisses the selected works' not-found
 outcomes, such as delisted products, with the same effect; it skips works
 without one and never dismisses a retryable failure. A dismissal survives a
@@ -301,7 +312,7 @@ server still revalidates family availability. Each permission grants only its
 corresponding maintenance actions, without exposing settings to metadata-only
 operators. Metadata management chooses the Works group (All, attention
 categories, and Custom works) and the Entries group (Tags,
-Circles, and Voice actors) from the shared page icon rail. Work records use a
+Circles, and Voice actors) from the page's top tabs. Work records use a
 management table (code and title, circle, metadata, source, actions). The
 metadata cell reads OK, names the remote source that filled the metadata in
 the same neutral style, or flags not synced and metadata issues. The source
@@ -400,7 +411,7 @@ and case, reuse an existing concept. Canceling the editor sends no creation
 request. Hiding a merged source changes its post-undo state; only a hidden final
 target hides the current tag. Search keeps merged source names as aliases and
 rebuilds affected documents when names or mappings change.
-Activity links use `/metadata?reason=metadata&metadataRun=<id>`. Filtering by a
+Run links use `/metadata?reason=metadata&metadataRun=<id>`. Filtering by a
 run additionally checks workflow permission and that run's ownership.
 Successful recovery changes shared work state, never `workflow_run_review` or
 the historical execution status.
@@ -416,57 +427,91 @@ distributed request lock between separate application processes.
 
 ## Workflows Page
 
-The Workflows page lists the manually runnable built-in workflows and the
-preset workflows in one workflow list, grouped by a frontend-owned category
-keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
-tag names), Catalog sync (the catalog sync presets), Remote (Fetch and works on
-a source), and Discover (the DLsite and remote source ranking pulls,
-Availability Watch, and the subscription refresh). A `?workflow=` link to any
-other workflow adds a read-only entry for it, which stays with Basic.
-Activity is the list's first entry, above the categories, with the active and
-Needs attention counts beside it. The Discover
-group holds the workflows configured on the Discover page: their entries show
-the Latest run card with a link there, and have no Run options or triggers.
-Each entry is one line: its name, a dot on its icon for the latest run's
-status, and icons for the enabled automation that starts it (Startup,
-schedule, or folder watch). The status and automation are also the entry's
-accessible description. The page reads each listed workflow's
-latest run when it loads and again when the active queue or attention count
-changes; the per-workflow summaries have no timer of their own.
+The Workflows page (`/workflows`) holds the library maintenance an
+administrator starts by hand and every workflow's runs. A frontend-owned table
+keyed by workflow code lists the operations as three cards under Library:
+Scan (`local_library_scan`), Metadata (`metadata_sync`), and Index
+(`local_media_index`). Work on one target starts where the target is shown:
+Fetch from a work's detail, a catalog sync preset from its circle, series, or
+voice actor (see [Catalog Sync Dialog](#catalog-sync-dialog)), and a source
+presence check from its remote source (see
+[Source Presence Check](#source-presence-check)). A workflow that another page
+runs and configures (the DLsite and remote source ranking pulls, Availability
+Watch, and the subscription refresh, all on the Discover page) and a system
+workflow nobody starts by hand, such as Learn tag names, have no card; their
+runs are in the page's run lists.
 
-Wide layouts keep the list beside the selected workflow and can collapse it to
-an icon rail. The full workflow name stays the accessible name and tooltip, and the choice is stored locally
-for this page. The mobile navigation layout lands on the list and opens one
-workflow, or Activity, at a time: opening either adds a history entry, and the
-header back action returns to the list. The selected workflow remains the
-persisted and linked state (`?workflow=<code>`); Activity is shown in its place
-(`?activity=1`) without clearing it, so leaving Activity returns to that
-workflow.
+A card shows what the operation does, its state, what starts it on its own,
+and Run. The state is one of never run, starting, queued, running with its
+progress (finished jobs for a bulk run, otherwise the stage out of the
+workflow's stages), or how and when the latest run ended. A run that still
+waits for a candidate decision or a retryable metadata failure reads as
+needing review. Every state that has a run opens that run, so a failure stays
+on its card until a later run replaces it and leads to its details. The line
+below lists its enabled triggers (at startup, watching folders, each interval
+schedule) with the soonest next scheduled run, says automatic runs are paused
+when every trigger is off, and is absent for an operation that runs only by
+hand. The cards sit three across from 768px and stack below.
 
-A status strip above the list shows the newest active run with its progress
-and the Needs attention count. It reads the global queue every few seconds
-while work is active and every 15 seconds otherwise; Demo reads it once. Both
-cells open Activity, the attention cell on Needs attention. A workflow's next
-start is stated by its triggers.
+Run starts the operation without further options. Metadata and Index run
+incrementally: metadata sync with scope `all`, mode `missing`, DLsite, and
+the card's options; the file index with mode `incremental`. The Metadata
+card's options button sets the remote metadata fallback (off by default, 1 to
+16 enabled metadata-capable sources in order) and purchase bonus linking (on
+by default). They are a per-device convenience in local storage, scoped to the
+server; sources no longer enabled or metadata-capable drop out when the page
+reads them, and a fallback left without a source is off. The card names
+options that differ from the defaults, and new Metadata triggers start from
+them. **Full** beside Run sends mode `full`
+instead and turns off once the run is requested, so it applies to one run.
+A manual scan always walks the complete data tree, so Scan has no Full and
+requests no follow-up metadata run. The run control follows the uniqueness
+the backend enforces. Starting it marks the card as starting at once, and the
+card follows the run through queued and running. The local scan and the file
+index are exclusive: one run of each is queued or running, so their run
+control returns when the run ends. Metadata sync runs per scope, so its run
+control returns as soon as the requested run is listed and another scope can
+queue behind the active run. The card then follows the running run, ahead of a
+queued one, and counts its other active runs; a request that queued behind
+another active run of the operation says so with a link to the new run. A
+repeat of the same metadata scope joins the active run on the backend. The
+page reads the active queue every few seconds while work is active and every
+15 seconds otherwise, and reloads each operation's latest run and the triggers
+when the queue changes, so a run started by a trigger, at startup, or from
+another browser shows on its card and, for an exclusive operation, holds its
+run control the same way. Demo reads both once. A hidden tab skips the poll
+and catches up when shown again.
 
-The selected workflow shows its name and description, its run form, a Latest
-run card, and its triggers. Each fact about a run appears once on the page: the
-card holds the latest run, and Activity holds every run. Starting a run keeps
-the workflow open; its Latest run card, list entry, and the status strip report
-the queued run.
+**Add trigger** beside the cards creates a trigger for one operation: Startup
+or an interval of 1, 6, or 12 hours, 1 day, or 7 days, and Full. Metadata
+sync offers only an interval, and an operation that already has a Startup
+trigger cannot add another, as the backend enforces. A new trigger stores the
+same options as Run: `{"followUpRun": false}` for the scan, `{"mode": …}`
+for the file index, and the metadata sync options above, the card's options included, with the
+chosen mode.
+Editing a trigger changes its interval and Full and keeps every other option
+it stores, such as a metadata sync's scope, source, or fallback, so a trigger
+created through the API keeps them. The scan's fixed folder watcher edits only
+Full, which it stores as `scanMode`, and cannot be deleted.
 
-Run options form a run form that ends in a run bar holding Run, any workflow
-action, and the first reason Run is unavailable. The bar sticks above the
-page's fixed bottom controls while a long form scrolls.
-Preset option groups (Input, Filter, Actions) become columns once
-the form is wide enough. A workflow without run options keeps Run in its header.
-The Latest run card follows the form. It states the latest run's status,
-number, time, and duration, lists its stages, and holds its log, which stays
-folded for a success and opens by itself while a run is active and after a
-failed or partial one. A duration strip of the latest 20 runs closes the card;
-ordinary successes stay neutral so failures, partial results, and active runs
-stand out. **All runs** opens Activity narrowed to that workflow. Each trigger
-row states when it next starts the workflow.
+Below the cards, the run lists (see [Run Lists](#run-lists)) start on Now,
+whose Next part lists every trigger. The page's address keeps the list, its
+filters, and the open run. The Library heading folds the cards; they fold
+while a run is open and open again when the run closes, and a choice made in
+between holds until then. Phones show the same page; there is
+no landing view and no header back action outside a run.
+
+### Catalog Sync Dialog
+
+A circle's **More** menu offers its catalog sync preset, and, while one of its
+series is shown, that series' preset; a voice actor's **More** menu offers
+its own, and an unknown circle's fetch prompt opens the circle preset. Each
+opens the preset's run options (Input, Filter, Actions, stacked) in a dialog
+with the page's target filled in. **Run** posts the preset run, closes the
+dialog, and confirms with a link to the run in Workflows for a viewer who can
+open it. The dialog loads the preset definitions when it opens and says so
+when they cannot be loaded. Demo opens it read-only. The preset queues every
+request; the dialog closing after a run keeps one click to one run.
 
 ## Workflow Permissions
 
@@ -515,7 +560,8 @@ the backend.
 - Retry re-checks what the failed work needs: Fetch jobs require both
   `remote:fetch` and `metadata:sync`, media cache jobs require `remote:fetch`,
   cleanup and local deletion jobs require
-  `downloads:manage`, a folder edit, including one that merges folders,
+  `downloads:manage`, plus `sources:write` when the cleanup forgets works, a
+  folder edit, including one that merges folders,
   requires `downloads:manage` plus
   `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
   metadata jobs require `metadata:sync`, a
@@ -528,12 +574,11 @@ the backend.
   `local_symlink_media_location`) require `downloads:manage`.
 - Maintenance: stale-run recovery requires `sources:write`.
 
-## Activity Summary
+## Run Lists
 
-Workflows shows Activity in place of the selected workflow, from the first
-entry of its workflow list or the status strip. Activity
-lists every run as the administrators' diagnostic view; features with their
-own pages show their runs there too. The Translation page reads Translate with
+The run lists under the Workflows page's cards are the run log: they list
+every run as the administrators' diagnostic view; features with their own
+pages show their runs there too. The Translation page reads Translate with
 AI runs and items through `/api/translation/runs` and
 `/api/translation/items`, open to accounts with `library:write` without
 `workflows:run`, and a work's Manage lyrics lists its transcriptions.
@@ -543,20 +588,56 @@ Each returned translation run carries `canCancel`, which controls whether
 the Translation page offers the action.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
-Activity shows active runs above two server-paged views, Needs attention and
-History (`?view=history`). The active list and both views are global across
-workflow definitions, so a job submitted from one workflow remains visible
-while another definition is open. The Latest run card and list rows open full
-run details (`?run=<id>`) beside the list from 1280px and in place of it below;
-returning to the list keeps its scope. Opening a run is a history entry and
-leaves the selected workflow unchanged, so a run of a workflow outside the list
-needs no workflow context. A Latest run card's **All runs** opens Activity
-narrowed to that workflow (`?runsOf=<code>`), and its scope chip widens it to
-every workflow again; opening Activity from the list or the status strip is
-always global. `/activity` and `/runs` links redirect into Workflows with
-Activity shown. The header notification panel and Quick actions open this same
-surface. Events, candidates, progress, retries, and cancellation are available
-within the run details.
+Two tabs choose the list. **Now**, the default, shows from top to bottom the
+Running part (the active queue the cards read), the Needs attention part
+(`view=attention`), and Next, the triggers of every workflow. Running and
+Needs attention show only while they hold a run; each part shows five entries
+and **Show all** the rest, Needs attention a page of twenty at a time, and the
+tab counts the runs of both. Next lists enabled interval triggers by their
+next run, then those still waiting for one, then Startup and folder triggers,
+and paused triggers last. The operations' triggers carry a switch that pauses
+and resumes them and an edit button that opens the trigger dialog; another
+workflow's triggers name the trigger and link to where it is configured: the
+Discover panel of a ranking pull, Availability Watch, or the subscription
+refresh, and System → Library for a source presence check. **History**
+(`?tab=history`) lists the runs that ended and wait for nothing
+(`view=history`) newest first in server pages of twenty; a status filter
+narrows it to failed runs (`&status=failed`, `view=failed`), a workflow
+filter to one workflow (`&workflow=<code>`), including the workflows that have
+no card, and a search field matches the workflow name, the trigger reason, and
+the run's subject (`&q=`). A workflow that the Discover page configures,
+and the Record scan, which the Record page starts, state so above their runs
+and link there. Rows open full run details
+(`?run=<id>`) beside the list from 1280px and in place of it below, where the
+mobile layout returns through the header back action; returning to the list
+keeps its filters. Opening a run is a history entry. A card's state, the header
+notification panel, and Quick actions open runs and lists here. `/runs`,
+`/activity`, and `/workflows?activity=1` redirect here with their run;
+their ended-run lists (`history`, `completed`, `logs`, `failed`) open
+History with that list's workflow (`?runsOf=`, or `?workflow=` on
+`/activity`), and their other lists open Now. Events, candidates, progress,
+retries, and cancellation are available within the run details.
+
+The four workflows the Discover page configures (the DLsite and remote source
+ranking pulls, Availability Watch, and the subscription refresh) have no row on
+the Workflows page, so each Discover settings panel states the workflow's
+latest run in one line: never run, queued or running, or how and when the run
+ended, with a link to that run. Every run of the workflow counts,
+whoever or whatever started it, so the Watch's line includes the checks a
+subscription refresh queued. The line shows for every account that can open
+the settings. The time and the link need `workflows:run`, which the run list
+and the run lists require; an account without it sees the run's status as the
+settings endpoint reports it, without a time or link. A failed run is named
+as failed with its link always visible. The line never repeats the run's error
+text; the reason is in the run's details. A manual run from these settings
+(**Refresh all**, **Pull now**, **Refresh now** on the Rankings view and in the
+settings, and the Watch's checks) reports itself in a notice that opens the
+run it queued, or the run lists when it queued several, such as a
+DLsite pull and a remote source pull. Whether an account may start a run
+follows the endpoint's own permission and nothing more: `metadata:sync` for
+the subscription refresh and the ranking pulls; `workflows:run` with
+`metadata:sync` for an Availability Watch check. Demo shows the lines and
+starts nothing.
 
 A run record's `subject` names the one target the run acts on, read from its
 input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, folder edit, media
@@ -566,17 +647,17 @@ metadata sync; the series id for a series catalog sync; the voice actor's name
 for a voice catalog sync or a voice-scoped metadata sync; and the remote
 source's name for a source presence check, a remote ranking pull, or a
 per-source cache cleanup. Runs over many targets have an empty subject. Run
-titles append the subject to the workflow name, and Activity search matches
+titles append the subject to the workflow name, and History's search matches
 it.
 
-The active list contains running and queued jobs; Needs attention contains
+Running contains running and queued runs; Needs attention contains
 terminal runs with unresolved candidates, pending metadata issues, or
 unacknowledged failures. A dedicated metadata-sync failure with recorded issue
 outcomes leaves attention when those issues are resolved. Unrecorded failures
 require acknowledgement. The successful-attempt boundary prevents a later
 failure from reopening an older resolved association. History contains
 successful runs and runs that were cancelled or manually acknowledged, while
-unresolved failures stay in Needs attention. Acknowledgements belong to the
+unresolved failures stay in Needs attention, which marks a run reviewed. Acknowledgements belong to the
 viewer; they cannot dismiss an active run, an unresolved candidate, or a
 retryable metadata failure. A run whose remaining metadata issues are all
 not-found outcomes can be acknowledged, which removes it from that viewer's
@@ -658,8 +739,8 @@ request and keeps an enabled automatic list's next pull in the future;
 a later manual request remains due. A run that fails before it takes its
 lists consumes no request or due pull, and its target is dispatched again
 five minutes after the failure. The dispatcher is
-configured only through the lists: the Workflows page shows its next run but
-cannot edit, pause, or delete it.
+configured only through the lists: no page edits, pauses, or deletes its
+trigger.
 
 A pull whose every variant succeeded plans the list's next one an interval
 after it. A pull with any failed variant is retried after one hour, then two,
@@ -831,13 +912,13 @@ actor the graph read; their baselines come from the next successful catalog
 pull. Any other definition can be skipped or exported.
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as the selected workflow's run form.
+Workflows page renders it as that operation's run form.
 `POST /api/workflow-presets/{code}/runs`
 validates the inputs, checks that a selected source is an enabled compatible
 remote source, renders the tag template for this dispatch (`{date}`,
 `{target}`), builds the graph, validates it with the typed workflow graph
 validator, and enqueues one recoverable `custom_workflow` job. The job payload
-carries the built graph, so Activity shows the real nodes while the definition
+carries the built graph, so the run shows the real nodes while the definition
 record only stores a display pipeline. Required permissions are derived from
 the composed node capabilities: catalog refresh and metadata need
 `metadata:sync`, tagging needs `tags:write`.
@@ -858,7 +939,7 @@ graph.
 The catalog sync presets reject the unsupported inputs `newWorks`, `existing`,
 `action`, `sourceId`, `metadataRefresh`, and the Fetch limits with a
 reconfiguration message rather than reinterpret them. Preset runs are
-system-scope runs and share the visibility, cancel, retry, and Activity
+system-scope runs and share the visibility, cancel, retry, and run-list
 behavior of built-in runs.
 
 ## Local Folder Trigger
@@ -1002,7 +1083,7 @@ Each executor records its own result, but the runner settles the job when the
 executor returns. A transient source failure within the retry budget is
 requeued with a delay. A job still running under the executor's lease after
 any other exit, including an error or panic that recorded nothing, is marked
-failed and Activity records a `job.result_missing` event, so one faulty exit
+failed and its run records a `job.result_missing` event, so one faulty exit
 path cannot hold the single-executor queue.
 
 The executor is single-instance, so the process records every job lease it
@@ -1038,7 +1119,7 @@ job executor and other background work have returned.
 A running job interrupted by the stop is settled before exit. A recoverable job
 returns to the queue with its checkpoint and does not spend its resume budget,
 because a requested stop is not a failure; a job that cannot resume from a
-checkpoint fails with the stop reason. Activity records a
+checkpoint fails with the stop reason. Its run records a
 `job.interrupted_by_stop` event in both cases. A job waiting for the
 `media:cleanup` resource while another job, scan, or Fetch publication changes
 library folders stops waiting when the service stops or its run is cancelled.
@@ -1162,20 +1243,20 @@ one, cover candidates omit its images, and the duplicate-file check leaves its
 files out.
 
 `remote_work_fetch` runs are named `Fetch <code>` and record the queuing
-workflow as their trigger reason. The Workflows page's Fetch run form accepts one work code
-and an enabled compatible remote file source. Its Filter group excludes selected
-file extensions from the initial remote selection, with no exclusions by default;
-the same exclusions apply when choosing another language edition. Run opens the
-shared Fetch workspace to review files, destination, and conflicts before
-publication. Submission uses the source Fetch endpoints, permission checks, and
+workflow as their trigger reason. A work's detail page, including a remote-only
+work opened by its code, and the bulk actions open the shared Fetch workspace
+to review files, destination, and conflicts before publication. Submission uses the source Fetch endpoints, permission checks, and
 idempotent request scope; Fetch has no automation triggers.
 
 ## Source Availability
 
 Source availability is checked by the backend instead of frontend fan-out.
-Source-change checks first probe source health, then check candidate works only
-against reachable sources. The local library scan does not check remote source
-availability.
+The local library scan does not check remote source availability. A remote
+source that becomes usable, by being created enabled, switched on, or given
+another API URL, queues one [source presence check](#source-presence-check)
+with the default options and the trigger type `source_change`; renaming or
+reordering an enabled source queues nothing, and a source that cannot answer
+work checks is skipped.
 
 ## Source Presence Check
 
@@ -1219,6 +1300,19 @@ runs (`POST /api/workflow-runs/source-presence-check`), retries, and Startup
 and interval triggers require `workflows:run` and `sources:write`; a trigger
 stores the run options in its config. No trigger is seeded.
 
+The check is configured on its source, not on the Workflows page. `GET
+/api/file-sources` lists, for each remote source that answers work checks, a
+`presenceCheck` with the source's latest run (id, status, when it ended or
+started, and its checked and available counts) and the soonest next run of its
+enabled interval triggers. Source settings show that line under the source and
+read it again every few seconds while a check is queued or running. The
+source's check dialog keeps one set of options for Run and its triggers and
+offers at most one Startup and one interval trigger; it edits every stored
+trigger of a kind together, so older duplicates follow the same choice.
+Disabling a source pauses its triggers like every other source dependency;
+deleting a source deletes its source presence check triggers, which would have
+nowhere left to show.
+
 ## Availability Watch
 
 Availability Watch is one instance-level system workflow with a shared
@@ -1234,7 +1328,7 @@ queues it after each refresh while its Availability Watch option is on, using
 the account that last configured the watch, and Check now on the Discover
 page's Watch view queues it directly, for the whole pool or for listed
 targets (`POST /api/availability-watch/run` with optional `targetIds`). The
-settings hold the source. Workflows lists its runs and links to that page.
+settings hold the source. The run lists show its runs and link to that page.
 Each execution snapshots the active targets it checks and records a normal
 workflow run, node runs (pool, family metadata, availability check, available
 works), and a durable job; only one check is queued or running at a time.
@@ -1426,8 +1520,8 @@ Discover page by a user with `metadata:sync`: on or off, an interval from
 1 to 168 hours (24 by default), and whether each refresh checks Availability
 Watch. Startup plans its first run. The trigger needs no owner: the run holds
 only refresh steps, and the Availability Watch run it queues uses the watch's
-configuring account. Workflows lists its runs and links to the Discover
-page; the trigger cannot be edited or deleted there. `POST
+configuring account. The run lists show its runs and link to the Discover
+page; no page edits or deletes the trigger. `POST
 /api/subscriptions/refresh` queues a run now; a run that is already queued or
 running is kept.
 
@@ -1458,7 +1552,7 @@ Workflow candidates capture user-reviewable outcomes such as unavailable
 DLsite products and old local locations left after remote fetches. A Fetch from a source with restricted outbound hosts also creates a
 `remote_origin_blocked` candidate when a media origin is outside that source's
 boundary. The run and active node become partial, the recoverable job is not
-automatically retried, and Activity records only the normalized origin rather
+automatically retried, and its run records only the normalized origin rather
 than the media path or query. After an administrator changes the source policy,
 a manual Retry resolves that candidate and resumes the same run.
 
@@ -1475,7 +1569,7 @@ preserving their category, settings, and run context. Failed first-sync
 notifications and pending metadata results open recovery here; operators
 without workflow access use the unscoped issue list, since reading a
 run-scoped list requires workflow permission. Runs without recorded pending
-issues keep their Activity diagnostics.
+issues keep their run diagnostics.
 
 ## Language-scoped title edits
 
@@ -1526,7 +1620,7 @@ automatic fallback settings and DLsite availability. It preserves manual and
 DLsite precedence and uses the same bounded request policy described below.
 Submission and execution both validate the source's capability and enabled
 state. Repeated requests for the same work and source reuse the active run;
-Activity records source codes and fixed outcomes without endpoint details.
+The run records source codes and fixed outcomes without endpoint details.
 
 When enabled in the DLsite run options, bulk and scheduled metadata sync ask
 the selected sources after DLsite reports the requested product
@@ -1560,6 +1654,6 @@ Each attempt records a fixed outcome per source in the shared attempt ledger.
 Once a later source fills the work, earlier sources' pending states are
 cleared. A family refresh of a product DLsite reports not found succeeds
 whatever the fallback outcome. Run output and `metadata.remote_fallback`
-Activity events list source codes and outcomes, not endpoints, while protected
+events list source codes and outcomes, not endpoints, while protected
 logs keep detailed errors. See [data model](data-model.md#remote-metadata-fallback)
 for ordering, provenance and switching the fallback off.

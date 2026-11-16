@@ -47,6 +47,7 @@ type Server struct {
 	loginThrottle                  *auththrottle.Limiter
 	libraryStore                   *library.Store
 	recordStore                    *record.Store
+	recordThumbnails               *record.Thumbnailer
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
 	dlsiteEndpoints                dlsite.Endpoints
@@ -130,7 +131,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		llmRequestSlots: make(chan struct{}, 2),
 		asrStore:        asr.NewStore(db),
 		statistics:      storage.NewStatisticsMaintainer(db),
-		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot), workflowStore: workflow.NewStore(db), cfg: cfg,
+		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot, record.WithProber(record.FFprobe)), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
@@ -150,6 +151,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
 		lifetime:                       newServerLifetime(),
 	}
+	server.recordThumbnails = server.newRecordThumbnailer(record.FFmpeg)
 	server.proxyConfig = &proxyConfigStore{load: server.loadProxyConfig}
 	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, func(ctx context.Context) (proxyRoute, error) {
 		return server.resolveProxyRoute(ctx, proxyconfig.ScopeDLsite, 0)
@@ -372,6 +374,9 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("POST /api/records/scans", s.scanRecords)
 	mux.HandleFunc("GET /api/records/assets/{id}/progress", s.getRecordProgress)
 	mux.HandleFunc("PUT /api/records/assets/{id}/progress", s.updateRecordProgress)
+	mux.HandleFunc("GET /api/records/continue", s.listRecordContinue)
+	handleSlowFirstResponse("GET /api/records/assets/{id}/thumbnail", s.endsOnShutdown(s.serveRecordThumbnail))
+	mux.HandleFunc("GET /api/records/assets/{id}/subtitle", s.serveRecordSubtitle)
 	handleSlowFirstResponse("GET /api/media/{id}/stream", s.endsOnShutdown(s.streamMedia))
 	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
 	mux.HandleFunc("GET /api/media/{id}/loudness", s.getMediaLoudness)
@@ -381,6 +386,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("POST /api/media/cleanup", s.cleanupMediaLocations)
+	handleSlowFirstResponse("GET /api/maintenance/local-works/cleanup", s.listLocalWorkCleanup)
+	handleSlowFirstResponse("POST /api/maintenance/local-works/cleanup", s.cleanupLocalWorks)
 	handleSlowFirstResponse("GET /api/cache/overview", s.getCacheOverview)
 	handleSlowFirstResponse("GET /api/maintenance/database", s.getDatabaseMaintenance)
 	handleSlowFirstResponse("POST /api/maintenance/database/cleanup", s.cleanupDatabase)

@@ -48,9 +48,14 @@ test("detail list picker saves each toggle, creates a list from the search, and 
     return route.fulfill({ json: { workId: 1, favorite: selected.length > 0, lists: workLists() } });
   });
   await page.goto("/RJ00000000");
-  await page
-    .getByRole("button", { name: "Lists: Synthetic existing list and Synthetic smart list", exact: true })
-    .click();
+  const listButton = page.getByRole("button", {
+    name: "Lists: Synthetic existing list and Synthetic smart list",
+    exact: true,
+  });
+  // The button names the work's first list and counts the others.
+  await expect(listButton.getByText("Synthetic existing list", { exact: true })).toBeVisible();
+  await expect(listButton.getByText("+1", { exact: true })).toBeVisible();
+  await listButton.click();
   const picker = page.getByRole("dialog", { name: "Add to list", exact: true });
   await expect(picker.getByRole("option", { name: /^Synthetic existing list/ })).toHaveAttribute(
     "aria-selected",

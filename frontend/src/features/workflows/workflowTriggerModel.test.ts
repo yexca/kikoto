@@ -3,17 +3,19 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowTrigger } from "@/lib/api";
 
 import {
-  workflowSystemTriggerConfig,
-  workflowSystemTriggerConfigBlockers,
-  workflowSystemTriggerConfigPayload,
+  nextTriggerOrder,
+  operationTriggerConfig,
+  triggerIntervalChoices,
+  triggerRunsFull,
+  workflowTriggerSummary,
 } from "./workflowTriggerModel";
 
 function trigger(configJson: string): WorkflowTrigger {
   return {
     id: 1,
     workflowDefinitionId: 1,
-    workflowCode: "source_presence_check",
-    displayName: "Check works",
+    workflowCode: "metadata_sync",
+    displayName: "Sync work metadata",
     triggerType: "schedule",
     enabled: true,
     scheduleJson: '{"intervalMinutes":60}',
@@ -27,29 +29,92 @@ function trigger(configJson: string): WorkflowTrigger {
   };
 }
 
-describe("source presence trigger config", () => {
-  it("round-trips the stored run options", () => {
-    const stored = { sourceId: 2, library: "all", filter: "no_remote_source", limit: 500 };
-    const config = workflowSystemTriggerConfig("source_presence_check", trigger(JSON.stringify(stored)));
-    expect(workflowSystemTriggerConfigPayload("source_presence_check", "schedule", config)).toEqual(stored);
-    expect(workflowSystemTriggerConfigBlockers("source_presence_check", config)).toEqual([]);
+describe("workflowTriggerSummary", () => {
+  const scheduled = (minutes: number, nextRunAt: string | null, enabled = true): WorkflowTrigger => ({
+    ...trigger("{}"),
+    scheduleJson: JSON.stringify({ intervalMinutes: minutes }),
+    nextRunAt,
+    enabled,
   });
 
-  it("defaults to local works without a remote source and the default limit", () => {
-    const config = workflowSystemTriggerConfig("source_presence_check", null);
-    expect(workflowSystemTriggerConfigPayload("source_presence_check", "startup", { ...config, sourceId: 1 })).toEqual({
-      sourceId: 1,
-      library: "local",
-      filter: "no_remote_source",
-      limit: 100,
+  it("names what starts an operation on its own and when it next runs", () => {
+    expect(
+      workflowTriggerSummary([
+        { ...trigger("{}"), triggerType: "startup" },
+        { ...trigger("{}"), triggerType: "filesystem_event", enabled: false },
+        scheduled(1440, "2026-07-15T00:00:00Z"),
+        scheduled(360, "2026-07-14T06:00:00Z"),
+        scheduled(90, null, false),
+      ]),
+    ).toEqual({
+      startup: true,
+      watching: false,
+      intervals: [
+        { unit: "hours", count: 6 },
+        { unit: "days", count: 1 },
+      ],
+      nextRunAt: "2026-07-14T06:00:00Z",
+      paused: false,
     });
   });
 
-  it("blocks a trigger without a source or beyond the work limit", () => {
-    const config = workflowSystemTriggerConfig("source_presence_check", null);
-    expect(workflowSystemTriggerConfigBlockers("source_presence_check", config)).toHaveLength(1);
-    expect(
-      workflowSystemTriggerConfigBlockers("source_presence_check", { ...config, sourceId: 1, limit: 1001 }),
-    ).toHaveLength(1);
+  it("tells a manual-only operation from one whose triggers are all off", () => {
+    expect(workflowTriggerSummary([])).toBeNull();
+    expect(workflowTriggerSummary([scheduled(45, null, false)])).toMatchObject({ paused: true, intervals: [] });
+  });
+});
+
+describe("nextTriggerOrder", () => {
+  it("lists schedules by their next run, then startup and folder triggers, and paused ones last", () => {
+    const at = (id: number, triggerType: string, nextRunAt: string | null, enabled = true): WorkflowTrigger => ({
+      ...trigger("{}"),
+      id,
+      triggerType,
+      nextRunAt,
+      enabled,
+    });
+    const ordered = nextTriggerOrder([
+      at(1, "schedule", "2026-07-15T00:00:00Z", false),
+      at(2, "filesystem_event", null),
+      at(3, "startup", null),
+      at(4, "schedule", null),
+      at(5, "schedule", "2026-07-15T00:00:00Z"),
+      at(6, "schedule", "2026-07-14T06:00:00Z"),
+    ]);
+    expect(ordered.map((item) => item.id)).toEqual([6, 5, 4, 3, 2, 1]);
+  });
+});
+
+describe("operation trigger config", () => {
+  it("stores the mode Full chooses for file indexing and metadata sync", () => {
+    expect(operationTriggerConfig("local_media_index", "schedule", true)).toEqual({ mode: "full" });
+    expect(operationTriggerConfig("metadata_sync", "schedule", false)).toMatchObject({ scope: "all", mode: "missing" });
+    expect(triggerRunsFull("local_media_index", { triggerType: "startup", configJson: '{"mode":"full"}' })).toBe(true);
+  });
+
+  it("keeps the options an edited trigger stores that the dialog does not show", () => {
+    const stored = JSON.stringify({ scope: "circle", circleId: "RG00000001", mode: "missing" });
+    expect(operationTriggerConfig("metadata_sync", "schedule", true, stored)).toEqual({
+      scope: "circle",
+      circleId: "RG00000001",
+      mode: "full",
+    });
+    expect(operationTriggerConfig("local_library_scan", "startup", false, '{"followUpRun":true}')).toEqual({
+      followUpRun: true,
+    });
+  });
+
+  it("scans in full only when watching folders asks for it", () => {
+    expect(operationTriggerConfig("local_library_scan", "filesystem_event", true, "{}")).toEqual({
+      followUpRun: false,
+      scanMode: "full",
+    });
+    expect(triggerRunsFull("local_library_scan", { triggerType: "schedule", configJson: '{"scanMode":"full"}' })).toBe(
+      false,
+    );
+  });
+
+  it("offers the usual intervals and keeps a stored one", () => {
+    expect(triggerIntervalChoices(90)).toEqual([60, 90, 360, 720, 1440, 10080]);
   });
 });

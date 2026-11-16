@@ -68,7 +68,7 @@ Startup and source-change batch checks first verify relevant source health. The
 probe prefers `/api/health` and falls back to a one-item list request for
 compatible sources that do not expose a health endpoint.
 
-Administrators can run the same bounded probe manually from Settings -> Library with
+Administrators can run the same bounded probe manually from System -> Library with
 `POST /api/file-sources/{id}/health-check`. The response reports health, check
 time, and duration without returning the configured upstream address or raw
 upstream error.
@@ -79,7 +79,7 @@ and skips per-work checks. It does not mark every candidate work as missing.
 ## Download Pacing
 
 Remote downloads wait for configured delay and retry temporary errors with
-backoff. Settings -> Cache & Fetch also configures a bounded per-file media download size;
+backoff. System -> Cache & Fetch also configures a bounded per-file media download size;
 the default is 100 GB and the accepted range is 1–2048 GB. The limit applies to
 Fetch and playback-cache materialization even when the source does not declare
 a response size. Remote and DLsite covers use a separate fixed 20 MiB limit.
@@ -88,7 +88,7 @@ product and cover requests.
 
 When a source answers with a rate-limit or temporary-unavailable response,
 Kikoto pauses requests to that source for the time it asks for, but never
-longer than the **Maximum backoff** in Settings -> Cache & Fetch. Queued jobs for that source wait
+longer than the **Maximum backoff** in System -> Cache & Fetch. Queued jobs for that source wait
 for the pause to end without using up their retries, and jobs for other sources
 continue.
 
