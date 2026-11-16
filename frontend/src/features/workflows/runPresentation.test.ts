@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,11 +13,11 @@ import {
 } from "./runPresentation";
 
 describe("workflow run titles", () => {
-  const t = (key: string, options?: Record<string, unknown>) => {
+  const t = ((key: string, options?: Record<string, unknown>) => {
     if (key === "workflowPage.fetchRunTitle") return `Fetch ${String(options?.code)}`;
     if (key === "workflowPage.runSubjectTitle") return `${String(options?.name)} · ${String(options?.subject)}`;
     return String(options?.defaultValue ?? key);
-  };
+  }) as unknown as TFunction;
 
   it("names a Fetch after the work it downloads", () => {
     expect(

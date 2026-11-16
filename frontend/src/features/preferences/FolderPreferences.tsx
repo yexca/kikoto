@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { TokenInput } from "@/components/ui/token-input";
 import type { DirectoryRoutingRule } from "@/lib/api";
 import i18n from "@/i18n";
-const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
+const maintenanceCopy = (key: string, options: Record<string, unknown> = {}) => i18n.t(`maintenance.${key}`, options);
 
 export function FolderPreferences({
   rules,

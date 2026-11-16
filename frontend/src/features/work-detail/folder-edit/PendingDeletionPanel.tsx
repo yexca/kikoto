@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { FolderMinus, Trash2, Undo2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -101,10 +102,7 @@ export function PendingTotal({ pending }: { pending: PendingDeletions }) {
   );
 }
 
-function groupLabel(
-  group: PendingDeletions["groups"][number],
-  t: (key: string, options?: Record<string, unknown>) => string,
-) {
+function groupLabel(group: PendingDeletions["groups"][number], t: TFunction) {
   if (group.merged) return t("fileWorkspace.pending.mergedFolders");
   return group.folder ? t("fileWorkspace.pending.inFolder", { folder: group.folder }) : t("folderEdit.rootFolder");
 }

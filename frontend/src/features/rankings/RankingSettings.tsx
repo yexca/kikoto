@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { ChevronDown, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,9 +30,7 @@ import {
 import type { RankingOverviewState } from "./useRankingOverview";
 import { useRankingQueuedNotice } from "./useRankingQueuedNotice";
 
-type Translate = (key: string, options?: Record<string, unknown>) => string;
-
-function retentionLabel(days: number, t: Translate) {
+function retentionLabel(days: number, t: TFunction) {
   if (days === 0) return t("subscriptions.rankings.settings.retention.forever");
   if (days % 365 === 0) return t("subscriptions.rankings.settings.retention.years", { count: days / 365 });
   return t("subscriptions.rankings.settings.retention.days", { count: days });

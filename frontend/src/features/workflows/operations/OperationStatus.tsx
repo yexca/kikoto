@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,11 +30,7 @@ const toneText: Record<RunTone, string> = {
 };
 
 /** A running run's progress as text and, when it can be measured, a fraction. */
-function runProgress(
-  run: WorkflowRun,
-  stageCount: number,
-  t: (key: string, options?: Record<string, unknown>) => string,
-) {
+function runProgress(run: WorkflowRun, stageCount: number, t: TFunction) {
   if (run.workflowCode === "remote_work_fetch") {
     const transfer = transferProgress(run);
     if (transfer.determinate) return { text: `${Math.round(transfer.percent)}%`, fraction: transfer.percent / 100 };

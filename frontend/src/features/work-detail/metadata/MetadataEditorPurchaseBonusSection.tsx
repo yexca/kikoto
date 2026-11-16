@@ -22,7 +22,7 @@ export function MetadataEditorPurchaseBonusSection({
   onStage: (change: StagedPurchaseBonus) => void;
 }) {
   const { t } = useTranslation();
-  const bonusCopy = (key: string, options?: Record<string, unknown>) =>
+  const bonusCopy = (key: string, options: Record<string, unknown> = {}) =>
     t(`metadataEditor.purchaseBonus.${key}`, options);
   const [code, setCode] = useState("");
   const linked = bonus?.status === "linked" && bonus.parentCode ? bonus : null;

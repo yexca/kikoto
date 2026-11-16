@@ -50,7 +50,7 @@ function TitleRow({
       labelFor={id}
       labelBadges={badges}
       status={status}
-      source={own ? undefined : t("workTitles.source", { source: t(sourceLabel.key, sourceLabel.values) })}
+      source={own ? undefined : t("workTitles.source", { source: t(sourceLabel.key, sourceLabel.values ?? {}) })}
       revertLabel={
         language ? t("metadataEditor.revertTitle", { language: label }) : t("metadataEditor.revertFallbackTitle")
       }

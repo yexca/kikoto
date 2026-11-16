@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { WorkflowRun } from "@/lib/api";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
@@ -146,10 +148,7 @@ export function transferProgress(
  * runs of one workflow can be told apart in Activity. A Fetch reads as
  * fetching its work.
  */
-export function runTitle(
-  run: Pick<WorkflowRun, "workflowCode" | "displayName" | "subject">,
-  t: (key: string, options?: Record<string, unknown>) => string,
-) {
+export function runTitle(run: Pick<WorkflowRun, "workflowCode" | "displayName" | "subject">, t: TFunction) {
   if (run.workflowCode === "remote_work_fetch" && run.subject) {
     return t("workflowPage.fetchRunTitle", { code: run.subject });
   }

@@ -15,7 +15,7 @@ type FetchFilesRun = Pick<
 
 function useFetchFilesCopy() {
   const { t } = useTranslation();
-  return (key: string, options?: Record<string, unknown>) => t(`workflowPage.${key}`, options);
+  return (key: string, options: Record<string, unknown> = {}) => t(`workflowPage.${key}`, options);
 }
 
 const stateIcons: Record<FetchFileState, { icon: typeof Download; className: string; labelKey: string }> = {

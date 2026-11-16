@@ -22,7 +22,8 @@ import {
   recommendationScoreRange,
 } from "./recommendationTuningModel";
 
-const copy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.recommendation.${key}`, options);
+const copy = (key: string, options: Record<string, unknown> = {}) =>
+  i18n.t(`maintenance.recommendation.${key}`, options);
 
 type ConfigKey = keyof RecommendationConfig;
 

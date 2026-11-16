@@ -26,7 +26,7 @@ DOCKER_IMAGE ?= kikoto:dev
 GO_IMAGE ?= golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
 # Its tag follows @playwright/test in frontend/package-lock.json; make
 # playwright-image-check enforces that.
-PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579
 # Keep build contexts, .env lookup, mounts, and the project name rooted here.
 DOCKER_COMPOSE_DEV = $(DOCKER) compose --project-directory "$(CURDIR)" -f deploy/compose/dev.yml
 SMOKE_COMPOSE_PROJECT := kikoto-smoke

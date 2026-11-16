@@ -42,7 +42,7 @@ import {
 } from "./rankingModel";
 
 const t = ((key: string, options?: { year?: number }) =>
-  options?.year ? `${key.split(".").pop()} ${options.year}` : (key.split(".").pop() ?? key)) as Parameters<
+  options?.year ? `${key.split(".").pop()} ${options.year}` : (key.split(".").pop() ?? key)) as unknown as Parameters<
   typeof rankingListLabel
 >[1];
 

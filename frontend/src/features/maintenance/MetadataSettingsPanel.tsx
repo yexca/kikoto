@@ -7,7 +7,7 @@ import { DLsiteProxyQuickSwitch } from "@/features/proxy";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { InfoHint } from "./InfoHint";
 import i18n from "@/i18n";
-const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
+const maintenanceCopy = (key: string, options: Record<string, unknown> = {}) => i18n.t(`maintenance.${key}`, options);
 /**
  * Metadata settings shown in the page's settings popover: the DLsite proxy
  * shortcut, which saves on its own, and links to the metadata settings kept

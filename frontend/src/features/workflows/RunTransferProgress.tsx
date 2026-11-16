@@ -22,7 +22,7 @@ type TransferRun = Pick<
 
 function useTransferCopy() {
   const { t } = useTranslation();
-  return (key: string, options?: Record<string, unknown>) => t(`workflowPage.${key}`, options);
+  return (key: string, options: Record<string, unknown> = {}) => t(`workflowPage.${key}`, options);
 }
 
 function transferLabel(progress: TransferProgress, copy: ReturnType<typeof useTransferCopy>) {

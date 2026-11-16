@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { ChevronRight, Clapperboard, Loader2, RefreshCw, ScanLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -60,7 +61,7 @@ export function RecordBreadcrumb({
 }
 
 function scanStatusText(
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: TFunction,
   scan: RecordScanState,
   root: RecordRoot,
   locale: ReturnType<typeof useLocale>["resolvedLocale"],

@@ -38,7 +38,7 @@ export function MetadataEditorBundleSection({
   onStage: (change: StagedBundleMembers) => void;
 }) {
   const { t } = useTranslation();
-  const copy = (key: string, options?: Record<string, unknown>) => t(`metadataEditor.bundle.${key}`, options);
+  const copy = (key: string, options: Record<string, unknown> = {}) => t(`metadataEditor.bundle.${key}`, options);
   const [code, setCode] = useState("");
   const [suggestions, setSuggestions] = useState<WorkBundleCandidates | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(!readOnly);

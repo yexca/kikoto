@@ -18,7 +18,7 @@ import {
   recommendationExampleBreakdown,
   type RecommendationExample,
 } from "./recommendationTuningModel";
-const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
+const maintenanceCopy = (key: string, options: Record<string, unknown> = {}) => i18n.t(`maintenance.${key}`, options);
 
 type RecommendationConfigKey = keyof RecommendationConfig;
 

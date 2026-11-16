@@ -5,7 +5,8 @@ import type { MetadataSyncOptions, SourcePresenceFilter, SourcePresenceLibrary }
 
 /** Copy, built-in workflow tables, and run option types shared by the Workflows page panels. */
 
-export const workflowCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`workflowPage.${key}`, options);
+export const workflowCopy = (key: string, options: Record<string, unknown> = {}) =>
+  i18n.t(`workflowPage.${key}`, options);
 
 export type WorkflowNode = {
   id: string;
