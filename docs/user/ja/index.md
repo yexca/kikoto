@@ -12,6 +12,7 @@
 - [ソース](sources.md)
 - [サークル](circles.md)
 - [声優](voices.md)
+- [あなた向け](for-you.md)
 - [見つける](discover.md)
 - [翻訳](translation.md)
 - [再生](playback.md)

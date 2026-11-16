@@ -744,6 +744,7 @@ export const japaneseResource = {
         settings: "設定",
         maintenance: "メンテナンス",
         insights: "インサイト",
+        forYou: "あなた向け",
         subscriptions: "見つける",
         translation: "翻訳",
         about: "情報",
@@ -974,7 +975,6 @@ export const japaneseResource = {
 
         folderPreference: "フォルダーの優先設定",
         account: "アカウント",
-        recommendations: "おすすめ",
         playback: "再生",
         seekForward: "早送り時間",
         seekBackward: "巻き戻し時間",

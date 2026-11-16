@@ -16,7 +16,6 @@ import {
   WorkCollectionDisplayPicker,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { openWorkDetail } from "@/app/workDetailNavigation";
-import { ForYouView } from "@/features/for-you/ForYouView";
 import { RankingSettings } from "@/features/rankings/RankingSettings";
 import {
   DEFAULT_RANKING_ORDER,
@@ -120,13 +119,12 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
 }
 
 /**
- * Discover, where to find what to listen to next (`/discover`). For you
- * draws small sets from the local library; New releases shows new works from
- * subscribed circles, series, and voice actors, grouped by day; Rankings the
- * tracked rankings with how they changed; and Watch the shared Availability
- * Watch pool. All four lay their cards out alike, in one display choice kept
- * apart from the Library's, under one toolbar whose Actions, Display options,
- * and Settings keep their places; Actions is disabled where a view has none.
+ * Discover, where to find what to listen to next (`/discover`). New releases
+ * shows new works from subscribed circles, series, and voice actors, grouped
+ * by day; Rankings the tracked rankings with how they changed; and Watch the
+ * shared Availability Watch pool. All three lay their cards out alike, in one
+ * display choice kept apart from the Library's and shared with For you, under
+ * one toolbar whose Actions, Display options, and Settings keep their places.
  * The subscriptions with their refresh schedule, the tracked rankings, and the
  * watch's configuration open in a settings dialog, a sheet on phones.
  */
@@ -446,19 +444,17 @@ export function SubscriptionsPage({
               }))}
               trailing={
                 <>
-                  {/* Every view keeps the same three controls in place; Actions is disabled where it offers none. */}
+                  {/* Every view keeps the same three controls in place. */}
                   {activeView === "releases" ? (
                     <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
                   ) : activeView === "rankings" ? (
                     <ShownWorksActionMenu actions={rankingActions} requests={rankingActionRequests} />
-                  ) : activeView === "watch" ? (
+                  ) : (
                     <WatchPoolActionMenu
                       watch={watchState.watch}
                       permissions={watchPermissions}
                       actions={watchActions}
                     />
-                  ) : (
-                    <ShownWorksActionMenu actions={feedActions} requests={{}} />
                   )}
                   {/* One display choice for every view; only the feed is paged. */}
                   <WorkCollectionDisplayPicker
@@ -500,15 +496,7 @@ export function SubscriptionsPage({
             />
           </div>
           <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${activeView}`}>
-            {activeView === "for-you" ? (
-              <ForYouView
-                canMark={canMark}
-                cardLayout={cardLayout}
-                mobileColumns={layout.mobileColumns}
-                desktopColumns={layout.desktopColumns}
-                onOpenWork={(code) => openWorkCodeRoute(code)}
-              />
-            ) : activeView === "watch" ? (
+            {activeView === "watch" ? (
               <AvailabilityWatchPool
                 state={watchState}
                 actions={watchActions}

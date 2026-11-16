@@ -15,6 +15,7 @@
     { "id": "circles", "source": "en/circles.md" },
     { "id": "voices", "source": "en/voices.md" },
     { "id": "discover", "source": "en/discover.md" },
+    { "id": "for-you", "source": "en/for-you.md" },
     { "id": "translation", "source": "en/translation.md" }
   ],
   "locales": ["en", "zh-Hans", "zh-Hant", "ja", "ko"]

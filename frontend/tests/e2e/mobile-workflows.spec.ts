@@ -2091,12 +2091,9 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   // Autosaving sections hold their own status regions, so the notice is found by its text.
   const notice = page.getByRole("status").filter({ hasText: demoNotice });
   await expect(notice).toHaveText(demoNotice);
-  const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(settingsTabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
+  await expect(page.getByRole("tablist", { name: "Settings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
   const noticeBackground = await notice.evaluate((element) => getComputedStyle(element).backgroundColor);
-  await settingsTabs.getByRole("tab", { name: "Recommendations", exact: true }).click();
-  await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
   // Demo opens the Tags page and every System and Cleanup tab read-only, as administrators see them.
   await page.goto("/tags");
   await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);

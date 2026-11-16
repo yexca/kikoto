@@ -9,7 +9,6 @@ export const subscriptionsHans = {
     },
     views: {
       label: "发现视图",
-      "for-you": "为你推荐",
       releases: "新作",
       rankings: "排行榜",
       watch: "监视",
@@ -17,6 +16,11 @@ export const subscriptionsHans = {
     },
     forYou: {
       label: "为你推荐",
+      settings: "为你推荐设置",
+      panels: {
+        tuning: "调整",
+        activity: "活动",
+      },
       temperature: {
         label: "探索程度",
         safe: "稳妥",

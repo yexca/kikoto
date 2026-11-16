@@ -2,14 +2,12 @@ import {
   DevicePrivacyPreferences,
   PlaybackLoudnessPreference,
   PlaybackSourcePreferences,
-  RecommendationActivity,
   UserPreferencePanels,
 } from "@/features/preferences";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
-import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
-import { FastForward, Pencil, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -40,26 +38,22 @@ const UserDataPage = lazy(() =>
   import("@/features/user-data/UserDataPage").then((module) => ({ default: module.UserDataPage })),
 );
 
-const settingsTabs = [
-  { id: "account", labelKey: "settings.account", icon: UserRound },
-  { id: "playback", labelKey: "settings.playback", icon: FastForward },
-  { id: "recommendation", labelKey: "settings.recommendations", icon: Sparkles },
-] as const satisfies ReadonlyArray<{ id: string; labelKey: string; icon: LucideIcon }>;
+// Settings is one page; a link's `tab` parameter names the section it lands on.
+const settingsSections = ["time-zone", "playback", "data"] as const;
 
-type SettingsTab = (typeof settingsTabs)[number]["id"];
-
-// Alias tab ids keep existing links valid; each opens the Account section that holds its content.
-const settingsTabAliases: Record<string, SettingsLocation<SettingsTab>> = {
-  data: { tab: "account", section: "data" },
-  "time-zone": { tab: "account", section: "time-zone" },
-};
-
-function resolveSettingsTab(tab: string): SettingsLocation<SettingsTab> {
-  if (settingsTabs.some((candidate) => candidate.id === tab)) return { tab: tab as SettingsTab };
-  return settingsTabAliases[tab] ?? { tab: "account" };
+function resolveSettingsSection(tab: string): SettingsLocation<"settings"> {
+  return (settingsSections as readonly string[]).includes(tab)
+    ? { tab: "settings", section: tab }
+    : { tab: "settings" };
 }
 
-/** The signed-in account's own settings. Instance settings are the System page. */
+const sectionScrollMarginClassName = "scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]";
+
+/**
+ * The signed-in account's own settings on one page: the account, its time
+ * zone, playback, and Your data. Instance settings are the System page, and
+ * recommendation tuning is For you's settings.
+ */
 export function SettingsPage({
   user,
   readOnly = false,
@@ -74,11 +68,7 @@ export function SettingsPage({
 }) {
   const { t } = useTranslation();
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
-  const { tab: activeTab, select: selectTab } = useSettingsLocation<SettingsTab>(
-    "/settings",
-    "account",
-    resolveSettingsTab,
-  );
+  useSettingsLocation("/settings", "settings", resolveSettingsSection);
   const [seekPreferences, setSeekPreferences] = useState<PlaybackSeekPreferences>(() =>
     getStoredPlaybackSeekPreferences(user.id),
   );
@@ -161,137 +151,99 @@ export function SettingsPage({
     void seekStatus.track(Promise.resolve(true));
   };
 
-  const navItems: SubNavItem<SettingsTab>[] = settingsTabs.map((tab) => ({
-    value: tab.id,
-    label: t(tab.labelKey),
-    icon: tab.icon,
-    id: `settings-tab-${tab.id}`,
-    controls: `settings-panel-${tab.id}`,
-  }));
-
   const savedDisplayName = user.displayName || user.username;
 
   return (
     <div className={settingsPageClassName}>
       {readOnly && <DemoReadOnlyNotice />}
-      <SubNavTabs label={t("nav.settings")} items={navItems} selected={activeTab} onSelect={selectTab} />
-      {activeTab === "account" && (
-        <div
-          id="settings-panel-account"
-          className={settingsPanelClassName}
-          role="tabpanel"
-          aria-labelledby="settings-tab-account"
-        >
-          <SettingsSection title={t("settings.account")}>
-            <div className="flex min-w-0 items-center gap-3 py-4">
-              <span
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary"
-                aria-hidden="true"
-              >
-                {avatarInitial(savedDisplayName)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">{savedDisplayName}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  @{user.username}
-                  <span aria-hidden="true" className="px-1.5">
-                    ·
-                  </span>
-                  {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label={t("settings.editAccount")}
-                title={t("settings.editAccount")}
-                onClick={() => setIsAccountDialogOpen(true)}
-              >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </SettingsSection>
-          <AccountTimeZoneSection readOnly={readOnly} />
-          {data && (
-            <div
-              id="settings-section-data"
-              className="scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]"
+      <div className={settingsPanelClassName}>
+        <SettingsSection title={t("settings.account")}>
+          <div className="flex min-w-0 items-center gap-3 py-4">
+            <span
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary"
+              aria-hidden="true"
             >
-              <Suspense fallback={null}>
-                <UserDataPage {...data} />
-              </Suspense>
-            </div>
-          )}
-          {isAccountDialogOpen && (
-            <AccountEditDialog
-              user={user}
-              readOnly={readOnly}
-              onAccountUpdated={onAccountUpdated}
-              onClose={() => setIsAccountDialogOpen(false)}
-            />
-          )}
-        </div>
-      )}
-
-      {activeTab === "playback" && (
-        <div
-          className={settingsPanelClassName}
-          role="tabpanel"
-          id="settings-panel-playback"
-          aria-labelledby="settings-tab-playback"
-        >
-          <SettingsSection
-            title={t("settings.playback")}
-            action={<AutosaveStatus state={seekStatus.state} />}
-            footer={
-              seekError ? (
-                <span id="seek-preferences-error" className="mr-auto text-sm text-destructive" role="alert">
-                  {seekError}
+              {avatarInitial(savedDisplayName)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">{savedDisplayName}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                @{user.username}
+                <span aria-hidden="true" className="px-1.5">
+                  ·
                 </span>
-              ) : undefined
-            }
-          >
-            <SeekRow
-              id="seek-forward-seconds"
-              label={t("settings.seekForward")}
-              unit={t("settings.seconds")}
-              value={seekDraft.forward}
-              onChange={(forward) => {
-                setSeekDraft((current) => ({ ...current, forward }));
-                setSeekError(null);
-              }}
-              onCommit={commitSeekPreferences}
-            />
-            <SeekRow
-              id="seek-backward-seconds"
-              label={t("settings.seekBackward")}
-              unit={t("settings.seconds")}
-              value={seekDraft.backward}
-              onChange={(backward) => {
-                setSeekDraft((current) => ({ ...current, backward }));
-                setSeekError(null);
-              }}
-              onCommit={commitSeekPreferences}
-            />
-          </SettingsSection>
-          <PlaybackLoudnessPreference userId={user.id} />
-          <PlaybackSourcePreferences userId={user.id} />
-          {supportsNativePrivacy() && <DevicePrivacyPreferences />}
-          <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
-        </div>
-      )}
-      {activeTab === "recommendation" && (
-        <div
-          className={settingsPanelClassName}
-          role="tabpanel"
-          id="settings-panel-recommendation"
-          aria-labelledby="settings-tab-recommendation"
+                {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={t("settings.editAccount")}
+              title={t("settings.editAccount")}
+              onClick={() => setIsAccountDialogOpen(true)}
+            >
+              <Pencil className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </SettingsSection>
+        <AccountTimeZoneSection readOnly={readOnly} />
+        <SettingsSection
+          id="settings-section-playback"
+          className={sectionScrollMarginClassName}
+          title={t("settings.playback")}
+          action={<AutosaveStatus state={seekStatus.state} />}
+          footer={
+            seekError ? (
+              <span id="seek-preferences-error" className="mr-auto text-sm text-destructive" role="alert">
+                {seekError}
+              </span>
+            ) : undefined
+          }
         >
-          <RecommendationActivity userId={user.id} />
-          <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
-        </div>
+          <SeekRow
+            id="seek-forward-seconds"
+            label={t("settings.seekForward")}
+            unit={t("settings.seconds")}
+            value={seekDraft.forward}
+            onChange={(forward) => {
+              setSeekDraft((current) => ({ ...current, forward }));
+              setSeekError(null);
+            }}
+            onCommit={commitSeekPreferences}
+          />
+          <SeekRow
+            id="seek-backward-seconds"
+            label={t("settings.seekBackward")}
+            unit={t("settings.seconds")}
+            value={seekDraft.backward}
+            onChange={(backward) => {
+              setSeekDraft((current) => ({ ...current, backward }));
+              setSeekError(null);
+            }}
+            onCommit={commitSeekPreferences}
+          />
+        </SettingsSection>
+        <PlaybackLoudnessPreference userId={user.id} />
+        <PlaybackSourcePreferences userId={user.id} />
+        {supportsNativePrivacy() && <DevicePrivacyPreferences />}
+        <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
+        {data && (
+          <div id="settings-section-data" className={sectionScrollMarginClassName}>
+            <Suspense fallback={null}>
+              <UserDataPage {...data} />
+            </Suspense>
+          </div>
+        )}
+      </div>
+      {isAccountDialogOpen && (
+        <AccountEditDialog
+          user={user}
+          readOnly={readOnly}
+          onAccountUpdated={onAccountUpdated}
+          onClose={() => setIsAccountDialogOpen(false)}
+        />
       )}
     </div>
   );

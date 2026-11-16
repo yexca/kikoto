@@ -4,6 +4,7 @@ import { WORK_DETAIL_USER_STATE_EVENT, type WorkDetailUserStateDetail } from "@/
 import { useAuth } from "@/auth/AuthProvider";
 import { api, ApiError, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouTemperature } from "@/lib/forYouApi";
+import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 
 import {
   advanceForYouDrawRevision,
@@ -125,8 +126,17 @@ export function useForYou(storageScope: string) {
     setColumns((state) => patchForYouColumns(state, workId, patch));
   }, []);
 
-  // Work detail opens over Discover, which stays mounted, and reports the
-  // listening status, favorite, and rating changed there.
+  // Saved preferences, such as tuning saved from the page's settings, change
+  // what a draw picks, so the shown draw is replaced.
+  useEffect(() => {
+    const redraw = (event: Event) => {
+      if ((event as CustomEvent<unknown>).detail === storageScope) void drawAll();
+    };
+    window.addEventListener(USER_PREFERENCES_CHANGED, redraw);
+    return () => window.removeEventListener(USER_PREFERENCES_CHANGED, redraw);
+  }, [drawAll, storageScope]);
+
+  // Work detail reports the listening status, favorite, and rating changed there.
   useEffect(() => {
     const followDetail = (event: Event) => {
       const { workID, listeningStatus, favorite, userRating } = (event as CustomEvent<WorkDetailUserStateDetail>)

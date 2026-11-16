@@ -735,6 +735,7 @@ export const koreanResource = {
         settings: "설정",
         maintenance: "관리",
         insights: "인사이트",
+        forYou: "맞춤 추천",
         subscriptions: "둘러보기",
         translation: "번역",
         about: "정보",
@@ -959,7 +960,6 @@ export const koreanResource = {
 
         folderPreference: "폴더 환경설정",
         account: "계정",
-        recommendations: "추천",
         playback: "재생",
         seekForward: "빨리감기 시간",
         seekBackward: "되감기 시간",

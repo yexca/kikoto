@@ -718,6 +718,7 @@ export const zhHantResource = {
         settings: "設定",
         maintenance: "維護",
         insights: "資料面板",
+        forYou: "為你推薦",
         subscriptions: "發現",
         translation: "翻譯",
         about: "關於",
@@ -939,7 +940,6 @@ export const zhHantResource = {
 
         folderPreference: "目錄偏好",
         account: "帳戶",
-        recommendations: "推薦",
         playback: "播放",
         seekForward: "快進時間",
         seekBackward: "快退時間",

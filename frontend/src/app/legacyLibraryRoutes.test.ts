@@ -59,7 +59,8 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/system?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBe("/system?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=routing")).toBe("/settings?tab=playback");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=recommendation");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/for-you?panel=tuning");
+    expect(legacyLibraryRedirect("/settings", "?tab=recommendation")).toBe("/for-you?panel=tuning");
     expect(legacyLibraryRedirect("/settings", "?tab=appearance")).toBe("/settings");
   });
 
@@ -67,7 +68,7 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/library/source/example_remote")).toBeNull();
     expect(legacyLibraryRedirect("/system", "?tab=users")).toBeNull();
     expect(legacyLibraryRedirect("/tags/")).toBeNull();
-    for (const search of ["", "?tab=playback", "?tab=recommendation", "?tab=data", "?tab=time-zone"]) {
+    for (const search of ["", "?tab=playback", "?tab=data", "?tab=time-zone"]) {
       expect(legacyLibraryRedirect("/settings", search)).toBeNull();
     }
   });
@@ -101,6 +102,8 @@ describe("legacyLibraryRedirect", () => {
       "/discover?view=watch&dialog=ready&run=9",
     );
     expect(legacyLibraryRedirect("/discover", "?view=rankings")).toBeNull();
+    expect(legacyLibraryRedirect("/discover", "?view=for-you")).toBe("/for-you");
+    expect(legacyLibraryRedirect("/subscriptions", "?view=for-you")).toBe("/for-you");
   });
 
   it("opens former listening history locations as Insights", () => {

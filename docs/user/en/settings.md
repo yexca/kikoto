@@ -1,11 +1,11 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings holds the signed-in account's controls and its playback and recommendation preferences. Instance settings are the **System** page and cleaning up works, caches, and the database is the **Cleanup** page; administrators and Demo see both. On a wide screen Settings is in the **Personal** group of the sidebar and System and Cleanup in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
+Settings holds the signed-in account's controls and its playback preferences on one page. Recommendation tuning is in the settings of [For you](for-you.md#settings). Instance settings are the **System** page and cleaning up works, caches, and the database is the **Cleanup** page; administrators and Demo see both. On a wide screen Settings is in the **Personal** group of the sidebar and System and Cleanup in its **Manage** group; on a phone both open from the account menu behind your avatar. **Appearance** is the palette button in the header, and **Language** is in the account menu, which anonymous visitors open with **Sign in**.
 
-## Tabs
+## Layout
 
-Settings shows its tabs along the top, each with an icon and a name: Account, Playback, and Recommendations. System shows Library, Cache & Fetch, Proxy, ASR & LLM, and Users the same way, and Cleanup shows Works, Cache, and Database. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
+Settings is one page of sections: **Account**, **Time zone**, **Playback** and the playback preferences after it, and **Your data**. `/settings?tab=time-zone`, `/settings?tab=playback`, and `/settings?tab=data` open the page at that section. System shows its tabs along the top, each with an icon and a name: Library, Cache & Fetch, Proxy, ASR & LLM, and Users; Cleanup shows Works, Cache, and Database the same way. Where the screen is too narrow to name every tab, the row shows icons and names only the open tab; focus an icon for its name. Each section is a heading over a thin line followed by its settings, one per row.
 
 ## Saving
 
@@ -17,7 +17,7 @@ button of their own: the password change, library storage, folder
 preferences, recommendation tuning, the content safety policy, the proxy
 bypass list, and every dialog.
 
-`/maintenance` and `/users` links, and `/settings` links that name a System tab, open the matching System tab; `/settings?tab=cleanup` and `/system?tab=cleanup` open [Cleanup](#cleanup). `/user-data` opens **Your data** in Account, and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
+`/maintenance` and `/users` links, and `/settings` links that name a System tab, open the matching System tab; `/settings?tab=cleanup` and `/system?tab=cleanup` open [Cleanup](#cleanup). `/user-data` opens **Your data**, `/settings?tab=recommendation` opens the tuning in [For you](for-you.md#settings), and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
 
 ## Account
 
@@ -28,7 +28,7 @@ bypass list, and every dialog.
 - **Time zone** decides where a day starts in your listening report and in
   **New releases** on Discover. **Automatic** follows the device you are using; choosing
   a zone uses it on every device. See [Insights](personal-data.md#insights).
-- **Your data** at the end of Account opens **Export** and **Import** dialogs
+- **Your data** at the end of Settings opens **Export** and **Import** dialogs
   for personal data; see [Personal data](personal-data.md).
 
 Changing a password preserves the current session and revokes the user's other
@@ -42,10 +42,11 @@ whose password comes from `KIKOTO_ROOT_PASSWORD`. A forgotten administrator
 password is reset from the server host; see
 [Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
-## Playback And Recommendations
+## Playback
 
-- **Playback** contains the backward and forward seek intervals, **Loudness
-  normalization**, **Playback sources**, and **Folder preference**. Seek
+- **Playback** holds the backward and forward seek intervals and is followed
+  by **Loudness normalization**, **Playback sources**, and **Folder
+  preference**. Seek
   intervals default to 10 and 30 seconds and accept whole-second values from 1
   through 300. The Android and
   iOS apps also show **Privacy on this device**, described in
@@ -62,22 +63,8 @@ password is reset from the server host; see
   immediately.
 - **Folder preference** holds ordered folder matching and exclusion rules.
   Saving updates subsequent directory selection without stopping the player.
-- **Recommendations** starts with the **Your recommendation activity** report
-  of the signed-in user's own last 30 days of Library recommendations (how
-  impressions turned into opens and plays, the marks and reshuffles given, and
-  the affinity score distribution; Discover's **For you** is not counted),
-  followed by recommendation presets, a live preview, ordering
-  variety, and advanced scoring. The live preview scores an adjustable example
-  work on a gauge beside the highlight threshold and shows its composition;
-  ordering variety shows how variation and discovery boost can move that
-  example's ranking. Advanced scoring shows the mix slots as one proportional
-  bar, the possible score range, how much evidence each rating and unrated
-  Favorite, Relisten, or Shelved work carries, and each tag, voice, and circle
-  weight as a meter of per-match steps up to its cap. Saving creates a new
-  recommendation session for the current tab; other open tabs keep their
-  snapshots until a new session is created.
 
-Folder preferences, recommendation settings, and a chosen time zone are stored per
+Folder preferences, recommendation tuning, and a chosen time zone are stored per
 authenticated account on the server and shared across devices; changing them never changes
 another account. Accounts without their own values, and anonymous browsing,
 use the instance defaults. Failed saves keep the draft and the persisted
@@ -94,7 +81,7 @@ Kikoto uses the first preferred metadata language that has its own manual title 
 ## Demo Mode
 
 Demo mode keeps account-backed Settings read-only. The System and Cleanup
-pages, the Recommendations tab, the Tags page, and the Your data section of Account
+pages, the settings of For you, the Tags page, and the Your data section of Settings
 stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and

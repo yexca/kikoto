@@ -1298,7 +1298,7 @@ history in bounded batches. Referenced epochs remain protected. Personal
 feedback, settings, telemetry retention, and durable listening history are
 separate from these derived caches.
 
-Discover's For you (`for-you-v1`) draws from the same generation as a
+For you (`for-you-v1`) draws from the same generation as a
 sessionless explanation: the generation of the account's current inputs. It
 reads candidates through the Local-scope recall above plus the account's most
 recent 1,000 works with playback history, and measures novelty against the

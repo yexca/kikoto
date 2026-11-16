@@ -350,6 +350,7 @@ export const englishResource = {
         settings: "Settings",
         maintenance: "Maintenance",
         insights: "Insights",
+        forYou: "For you",
         subscriptions: "Discover",
         translation: "Translation",
         about: "About",
@@ -584,7 +585,6 @@ export const englishResource = {
 
         folderPreference: "Folder preference",
         account: "Account",
-        recommendations: "Recommendations",
         playback: "Playback",
         seekForward: "Forward seek",
         seekBackward: "Backward seek",

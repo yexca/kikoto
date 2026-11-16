@@ -650,18 +650,16 @@ test("cleanup page can clear referenced cache for selected works", async ({ page
   expect(cleanupRequests[0]).toEqual({ mode: "works", workIds: [1] });
 });
 
-test("personal settings hold the account's own tabs and no administration", async ({ page }) => {
+test("personal settings are one page of the account's own sections and no administration", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tablist", { name: "Settings", exact: true }).getByRole("tab")).toHaveText([
-    "Account",
-    "Playback",
-    "Recommendations",
-  ]);
+  await expect(page.getByRole("tablist", { name: "Settings", exact: true })).toHaveCount(0);
+  for (const name of ["Account", "Time zone", "Playback", "Your data"]) {
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("heading", { name: "Recommendation tuning", exact: true })).toHaveCount(0);
 });
 
 test.describe("on a device in another time zone", () => {
@@ -690,23 +688,17 @@ test.describe("on a device in another time zone", () => {
   });
 });
 
-test("Settings and System keep their own tabs and open tab in the address", async ({ page }) => {
+test("Settings links land on their section and System keeps its open tab in the address", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
+  await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/settings?tab=playback");
-  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
+  await expect(page.getByRole("region", { name: "Playback", exact: true })).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "Account", exact: true })).not.toBeInViewport();
 
-  // Arrow keys move and select.
-  await tabs.getByRole("tab", { name: "Playback", exact: true }).focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(tabs.getByRole("tab", { name: "Recommendations", exact: true })).toBeFocused();
-  await expect(tabs.getByRole("tab", { name: "Recommendations", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
-  await tabs.getByRole("tab", { name: "Account", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings$/);
+  // Recommendation tuning is For you's settings.
+  await page.goto("/settings?tab=recommendation");
+  await expect(page).toHaveURL(/\/for-you\?panel=tuning$/);
+  await expect(page.getByRole("tab", { name: "Tuning", selected: true })).toBeVisible();
 
   // A link to an administration tab of Settings opens it on the System page.
   await page.goto("/settings?tab=cache");
@@ -766,7 +758,7 @@ test("Cleanup offers only the tabs the account may use", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
 });
 
-test("@desktop Settings, System, and Cleanup tabs sit above the content with an icon and a name", async ({ page }) => {
+test("@desktop System and Cleanup tabs sit above the content with an icon and a name", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   // Browser storage left by the former row and column options changes nothing.
   await page.addInitScript(() => {
@@ -774,7 +766,6 @@ test("@desktop Settings, System, and Cleanup tabs sit above the content with an 
     localStorage.setItem("kikoto:settings-rail-labels-shown", "false");
   });
   for (const [path, label, names] of [
-    ["/settings", "Settings", ["Account", "Playback", "Recommendations"]],
     ["/system", "System", ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Users"]],
     ["/cleanup", "Cleanup", ["Works", "Cache", "Database"]],
   ] as const) {
@@ -805,8 +796,6 @@ test("@desktop Settings, System, and Cleanup tabs sit above the content with an 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
-
-  await page.getByRole("tab", { name: "Playback", exact: true }).click();
 
   const forward = page.getByRole("spinbutton", { name: /Forward seek/ });
   const backward = page.getByRole("spinbutton", { name: /Backward seek/ });
@@ -1034,13 +1023,9 @@ test("non-admin users cannot open the System page", async ({ page }) => {
   await expect(page.getByText("Your account does not have permission to access this page.")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
   expect(settingsRequests).toBe(0);
-  // Settings offers the account's own tabs only.
+  // Settings offers the account's own sections only.
   await page.goto("/settings");
-  await expect(page.getByRole("tablist", { name: "Settings", exact: true }).getByRole("tab")).toHaveText([
-    "Account",
-    "Playback",
-    "Recommendations",
-  ]);
+  await expect(page.getByRole("heading", { name: "Playback", exact: true })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
 });
 
@@ -1261,8 +1246,13 @@ test("recommendation keeps common controls visible and advanced scoring collapse
     () => undefined,
     (payload) => settingsPayloads.push(payload),
   );
+  let forYouDraws = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/for-you/draw") forYouDraws++;
+  });
   await page.goto("/maintenance?tab=recommendation");
-  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
+  await expect(page).toHaveURL(/\/for-you\?panel=tuning$/);
+  await expect.poll(() => forYouDraws).toBe(1);
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Highlight threshold")).toBeVisible();
@@ -1280,6 +1270,8 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   expect((settingsPayloads[0].recommendationConfig as { jitterAmplitude: number }).jitterAmplitude).toBe(8);
   expect((settingsPayloads[0].recommendationConfig as { explorationAmplitude: number }).explorationAmplitude).toBe(30);
   expect(Object.keys(settingsPayloads[0]).sort()).toEqual(["recommendationConfig", "recommendationThreshold"]);
+  // Saved tuning draws For you again behind its settings.
+  await expect.poll(() => forYouDraws).toBe(2);
   await page.reload();
   await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
 });
@@ -1291,8 +1283,8 @@ test("recommendation restores all default weights and threshold before saving", 
     () => undefined,
     (payload) => settingsPayloads.push(payload),
   );
-  await page.goto("/settings?tab=recommendation");
-  await expect(page.getByRole("tab", { name: "Recommendations", selected: true })).toBeVisible();
+  await page.goto("/for-you?panel=tuning");
+  await expect(page.getByRole("tab", { name: "Tuning", selected: true })).toBeVisible();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await page.getByLabel("Highlight threshold").focus();
   await page.getByLabel("Highlight threshold").press("End");

@@ -7,7 +7,7 @@ Sign in and open **Insights**, **Tags**, and **Settings** from the
 your avatar. On a wide screen that menu also has Insights and Tags as
 shortcuts. Insights holds your listening calendar, report, and history,
 Tags holds your personal tags, and **Your data** is the last section of
-**Settings → Account**. Quick actions opens each one directly. They show only
+**Settings**. Quick actions opens each one directly. They show only
 your account's data.
 
 ## Personal tags
@@ -73,7 +73,7 @@ toward that work.
 A day starts at midnight in your time zone. **Automatic**, the initial
 setting, follows each device: listening counts toward the current day of the
 device that plays it, and a report ends on the current day of the device that
-shows it. Choose a zone in **Settings → Account → Time zone** to use one zone
+shows it. Choose a zone in **Settings → Time zone** to use one zone
 on every device. The foot of the page names the zone in use and links to that
 setting. Listening is credited to a day when it is recorded, so changing the
 time zone applies to later listening and leaves recorded days as they are.

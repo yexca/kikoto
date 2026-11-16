@@ -9,7 +9,6 @@ export const subscriptionsHant = {
     },
     views: {
       label: "發現檢視",
-      "for-you": "為你推薦",
       releases: "新作",
       rankings: "排行榜",
       watch: "監視",
@@ -17,6 +16,11 @@ export const subscriptionsHant = {
     },
     forYou: {
       label: "為你推薦",
+      settings: "為你推薦設定",
+      panels: {
+        tuning: "調整",
+        activity: "活動",
+      },
       temperature: {
         label: "探索程度",
         safe: "穩妥",

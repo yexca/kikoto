@@ -97,6 +97,7 @@ import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingInd
 import {
   aboutPage,
   cleanupPage,
+  forYouPage,
   insightsPage,
   preloadRoutePage,
   recordsPage,
@@ -149,6 +150,7 @@ const WorkflowsPage = workflowsPage.Component;
 const TranslationPage = translationPage.Component;
 const AboutPage = aboutPage.Component;
 const InsightsPage = insightsPage.Component;
+const ForYouPage = forYouPage.Component;
 const SubscriptionsPage = subscriptionsPage.Component;
 const RecordsPage = recordsPage.Component;
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
@@ -722,6 +724,13 @@ function AuthenticatedApp() {
                       onOpenPath={openPath}
                     />
                   )}
+                  {showRoutePage && page === "for-you" && auth.user && (
+                    <ForYouPage
+                      userId={auth.user.id}
+                      readOnly={auth.demoMode}
+                      canMark={!auth.demoMode && effectiveHasPermission("favorites:write")}
+                    />
+                  )}
                   {showRoutePage && page === "subscriptions" && auth.user && (
                     <SubscriptionsPage
                       readOnly={auth.demoMode}
@@ -739,6 +748,7 @@ function AuthenticatedApp() {
                     "favorites",
                     "circles",
                     "voice-actors",
+                    "for-you",
                     "subscriptions",
                     "settings",
                     "system",

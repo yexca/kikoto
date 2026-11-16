@@ -12,6 +12,7 @@ import {
   MicVocal,
   ServerCog,
   Settings,
+  Sparkles,
   Tags,
   Users,
   Workflow,
@@ -56,6 +57,7 @@ export const navigationGroups: ReadonlyArray<{
   { id: "manage", label: "Manage", labelKey: "nav.manage", icon: Wrench, accountPanel: "nested" },
 ];
 
+export const FOR_YOU_PATH = "/for-you";
 export const INSIGHTS_PATH = "/insights";
 export const TAGS_PATH = "/tags";
 
@@ -108,6 +110,16 @@ export const navItems = [
     icon: MicVocal,
     audience: "public",
     permission: undefined,
+    group: "browse",
+  },
+  {
+    id: "for-you",
+    label: "For you",
+    labelKey: "nav.forYou",
+    path: FOR_YOU_PATH,
+    icon: Sparkles,
+    audience: "authenticated",
+    permission: "library:read",
     group: "browse",
   },
   {

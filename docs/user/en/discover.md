@@ -1,30 +1,30 @@
 # Discover
 [English](../en/discover.md) · [简体中文](../zh-Hans/discover.md) · [繁體中文](../zh-Hant/discover.md) · [日本語](../ja/discover.md) · [한국어](../ko/discover.md)
 
-Discover is where you find what to listen to next. **For you** draws a few
-works from your own library: ones you may like, ones unlike what you usually
-hear, and ones worth hearing again. **New releases** collects new works from
-the circles, series, and voice actors you subscribe to, and works that
-Availability Watch finds on a remote source; **Rankings** follows popular
-rankings and shows how they change; and **Watch** holds the works
-Availability Watch waits for. The switch at the top chooses the view, and
-`/discover` opens **New releases**; a dot on **Rankings** means a ranking
-changed since you last looked at it. **Watch** is shown to accounts that can
-open Workflows. Links to `/subscriptions` open Discover.
+Discover is where you find what to listen to next beyond your own library.
+**New releases** collects new works from the circles, series, and voice
+actors you subscribe to, and works that Availability Watch finds on a remote
+source; **Rankings** follows popular rankings and shows how they change; and
+**Watch** holds the works Availability Watch waits for. The switch at the top
+chooses the view, and `/discover` opens **New releases**; a dot on
+**Rankings** means a ranking changed since you last looked at it. **Watch** is
+shown to accounts that can open Workflows. Links to `/subscriptions` open
+Discover. Draws from your own library are [For you](for-you.md), a page of
+its own.
 
 ## Cards and Display Options
 
-The four views show works the same way.
+The three views show works the same way, as [For you](for-you.md) does.
 
-- A line above each card says why the work is there: why For you drew it,
-  what happened in New releases and through which subscription, how long a
+- A line above each card says why the work is there: what happened in New
+  releases and through which subscription, how long a
   work has stayed in a ranking and its best rank, or a watched work's state.
   It leaves out what the card itself already shows. Green marks a work that
   is available, amber a check that failed, and a dot a new release you have
   not seen yet.
 - **Display options**, at the top right, hold the **Cards** choice and the
-  cards per row for all four views. Discover keeps its own choice, apart from
-  the Library's, and starts with **Simple**: the cover, the title, and the
+  cards per row for all three views. Discover and For you keep one choice,
+  apart from the Library's, and start with **Simple**: the cover, the title, and the
   circle and voice actors, with the other facts and the actions on demand, as
   described in [Library](library.md). **Compact** puts a small cover beside
   the facts, in up to three columns, **Full** shows the Library's large cards,
@@ -39,56 +39,9 @@ The four views show works the same way.
 - A work Kikoto has no metadata for shows its code on the cover, the title
   and circle the ranking or catalog gives, and no rating line.
 - The top right always shows **Actions**, **Display options**, and
-  **Subscription settings** in the same places. **Actions** works on New
-  releases, Rankings, and Watch, and is unavailable on For you.
-- Each group of cards, such as a day of New releases, a For you column, or
-  the available works in Watch, starts with a heading that counts its works.
-
-## For You
-
-**For you** answers what to play next with small, changing sets of local
-works, where the Library's **Recommended** order is a stable way to browse
-all of them. Both read the same taste profile: your ratings, favorites, and
-marks, as described in [Library](library.md). For you only reads it; nothing
-you do in For you changes what the Library recommends.
-
-- Three columns hold about ten works each: **Maybe like**, works you have not
-  played yet that are close to what you like; **Try new**, works you have not
-  played whose circles, voices, and tags you rarely hear, leaving out works
-  like the ones you rated low or shelved; and **Listen again**, works you have
-  played, the more likely the more you liked them (your rating, favorite,
-  Relisten, and listening time) and the longer ago you played them. A work you are listening to now, or
-  stopped in the last two weeks, is left to **Recently played** in the
-  Library. Works you rated one or two stars are never offered.
-- A work appears in one column only. Every column holds works with local
-  files; works only on a remote source or only in a catalog are not drawn.
-- Above each card is why it was drawn, such as **A circle you like: …**,
-  **A tag you rarely hear: …**, or **4 months since last played, rated 5**.
-- With **Compact** cards on a wide screen, the three columns stand side by
-  side. **Simple**, **Full**, and **Mini** cards are too wide or too small for
-  a third of the page, so the columns follow one another, each in the card
-  grid.
-- **Safe**, **Balanced**, and **Adventurous** set how far the draws stray.
-  **Safe** keeps to the best matches, **Try new** stays near what you know,
-  and **Listen again** offers only finished works you liked or heard more
-  than once. **Adventurous** draws from every candidate, **Try new** goes as
-  far from your usual listening as the library allows, and **Listen again**
-  adds works you heard once or left half-finished. **Balanced**, the default,
-  sits between them. The choice is saved for your account.
-- The columns stay as drawn while you use Kikoto in the same browser tab,
-  including when you switch views, open a work, or reload the page. A new
-  tab, a fresh start of the app, or saving your own preferences in Settings
-  draws all three anew.
-- **Draw again** draws its column anew from your current ratings and marks,
-  leaving out what the other columns show. Each draw is random, and works
-  shown recently that you neither opened nor played are drawn less often for
-  three days, so the columns rotate.
-- Before you have rated, favorited, or marked anything, **Maybe like** follows
-  the DLsite rating and sales, and **Listen again** waits for works you play.
-- On a narrow window or a phone, the switch under the temperature chooses the
-  column to show.
-- In the demo, For you is a random sample of the demo works, labelled as
-  sample data; its reasons are examples (see [Demo](#demo)).
+  **Subscription settings** in the same places.
+- Each group of cards, such as a day of New releases or the available works
+  in Watch, starts with a heading that counts its works.
 
 ## Subscribing
 
@@ -133,7 +86,7 @@ you do in For you changes what the Library recommends.
 - **Display options** also choose how many days a page holds: 5, 10 (the
   default), or 15. Days without new works are skipped, so a page holds that
   many days that have works. A day starts at midnight in the time zone chosen
-  in **Settings → Account → Time zone**, or the device's when that is
+  in **Settings → Time zone**, or the device's when that is
   **Automatic**.
 - A card shows the work once metadata knows it, or the catalog's title,
   circle, and code until then. Accounts that can run workflows and sync
@@ -217,7 +170,7 @@ you do in For you changes what the Library recommends.
 - A past order is compared with the update before it, and the days in the
   ranking and best ranks are hidden. Looking at history does not mark a
   ranking as seen.
-- Times and days follow the time zone chosen in **Settings → Account → Time
+- Times and days follow the time zone chosen in **Settings → Time
   zone**, or the device's when that is **Automatic**, as in New releases.
   History shows when the order was pulled and last confirmed. When no pull ran
   between that confirmation and the chosen time, it says so.
@@ -417,7 +370,4 @@ sync metadata change them; others can only read them.
 
 Demo shows a sample feed, subscription list, and sample rankings with a
 short history and obviously fictional names and codes. Nothing can be
-subscribed, refreshed, or opened. For you draws a random sample of the demo
-works into each column, with example reasons taken from a work's DLsite rating
-or circle; nothing learns from what you open, and the temperature applies only
-to the draws in this browser.
+subscribed, refreshed, or opened.

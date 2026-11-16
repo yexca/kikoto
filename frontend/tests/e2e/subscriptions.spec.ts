@@ -1337,16 +1337,20 @@ test("phones reach the ranking page actions and the watch action", async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("@desktop For you keeps its draw across views and reloads until a column is drawn again", async ({ page }) => {
+test("@desktop For you keeps its draw across pages and reloads until a column is drawn again", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const server: SubscriptionServer = { requests: [], feedQueries: [], forYouDraws: [] };
   await mockSubscriptions(page, server);
+  // For you is a page of its own; a Discover link to its former view opens it.
   await page.goto("/discover?view=for-you");
+  await expect(page).toHaveURL(/\/for-you$/);
   const maybeLike = page.getByRole("region", { name: /^Maybe like/ });
   await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
+  const sidebar = page.locator("aside nav");
 
-  await page.getByRole("tab", { name: /^New releases/ }).click();
-  await page.getByRole("tab", { name: "For you" }).click();
+  await sidebar.getByRole("button", { name: "Discover", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "For you" })).toHaveCount(0);
+  await sidebar.getByRole("button", { name: "For you", exact: true }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
   await page.reload();
   await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
@@ -1355,8 +1359,8 @@ test("@desktop For you keeps its draw across views and reloads until a column is
   await maybeLike.getByRole("button", { name: "Draw Maybe like again" }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
   expect(server.forYouDraws?.[1]?.columns).toEqual(["maybe_like"]);
-  await page.getByRole("tab", { name: /^New releases/ }).click();
-  await page.getByRole("tab", { name: "For you" }).click();
+  await sidebar.getByRole("button", { name: "Discover", exact: true }).click();
+  await sidebar.getByRole("button", { name: "For you", exact: true }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
   expect(server.forYouDraws).toHaveLength(2);
 });

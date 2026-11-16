@@ -1,6 +1,6 @@
 import { legacyRunLogPath } from "@/features/workflows/workflowLinks";
 
-import { TAGS_PATH } from "./navigation";
+import { FOR_YOU_PATH, TAGS_PATH } from "./navigation";
 import {
   CLEANUP_PATH,
   SYSTEM_SETTINGS_PATH,
@@ -8,6 +8,8 @@ import {
   systemSettingsTabs,
   type SystemSettingsTab,
 } from "../pages/settingsPaths";
+
+const FOR_YOU_TUNING_PATH = `${FOR_YOU_PATH}?panel=tuning`;
 
 function systemTabFor(tab: string): SystemSettingsTab | null {
   if ((systemSettingsTabs as readonly string[]).includes(tab)) return tab as SystemSettingsTab;
@@ -43,6 +45,17 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     params.delete("tab");
     return `${CLEANUP_PATH}${params.size ? `?${params}` : ""}`;
   }
+  // Recommendation tuning is For you's settings.
+  if (
+    (path === "/settings" || path === "/maintenance") &&
+    new URLSearchParams(search).get("tab") === "recommendation"
+  ) {
+    return FOR_YOU_TUNING_PATH;
+  }
+  // For you is a page of its own.
+  if ((path === "/discover" || path === "/subscriptions") && new URLSearchParams(search).get("view") === "for-you") {
+    return FOR_YOU_PATH;
+  }
   if (path === "/settings") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab") ?? "";
@@ -68,7 +81,6 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
       params.set("tab", "playback");
       return `/settings?${params}`;
     }
-    if (tab === "recommendation") return `/settings?${params}`;
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {
       params.set("tab", tab === "security" ? "users" : "library");
       return `${SYSTEM_SETTINGS_PATH}?${params}`;

@@ -230,8 +230,8 @@ sheet on a phone. A new browse control on these pages joins View instead of the
 toolbar. A caption before the order states how many works match and, from
 tablet width, the page; these pages have no top page bar, only the bottom one.
 
-Discover's four views read as one surface. They keep one card mode of their
-own, apart from the Library's, which starts at simple and offers every mode;
+Discover's three views and For you read as one surface. They keep one card
+mode of their own, apart from the Library's, which starts at simple and offers every mode;
 there compact stays a
 row card on wide screens, up to three automatic tracks, and only two phone
 columns use tiles. Every card has a fixed-height context line above it that
@@ -271,7 +271,7 @@ a plain heading over a hairline followed by its fields, set apart from the next
 section by whitespace and from its own fields by hairlines; it has no card or
 border, and a field has no framed container around it. A repeated object such
 as a source, a proxy, a folder rule, or a user may be a card or a table row.
-Settings tabs should share the [content column](#app-shell), section spacing,
+Settings, System, and Cleanup pages share the [content column](#app-shell), section spacing,
 field rhythm, and destructive-action placement. No form, table, or section
 defines its own width.
 
@@ -467,7 +467,7 @@ Desktop:
 Mobile:
 
 - Bottom navigation.
-- Settings, System, and Cleanup tabs that do not fit fold into one row of icons that
+- System and Cleanup tabs that do not fit fold into one row of icons that
   names only the open tab; tab rows scroll sideways and a page's controls move
   below its tabs.
 - Work detail places the Hero actions directly below the title and circle, on

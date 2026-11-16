@@ -27,6 +27,7 @@ export const translationPage = preloadableComponent(() =>
 export const insightsPage = preloadableComponent(() =>
   import("@/pages/InsightsPage").then((module) => module.InsightsPage),
 );
+export const forYouPage = preloadableComponent(() => import("@/pages/ForYouPage").then((module) => module.ForYouPage));
 export const subscriptionsPage = preloadableComponent(() =>
   import("@/pages/SubscriptionsPage").then((module) => module.SubscriptionsPage),
 );
@@ -44,6 +45,7 @@ const routePageChunks: Partial<Record<AppPage, { preload: () => Promise<unknown>
   workflows: workflowsPage,
   translation: translationPage,
   insights: insightsPage,
+  "for-you": forYouPage,
   subscriptions: subscriptionsPage,
   records: recordsPage,
   about: aboutPage,

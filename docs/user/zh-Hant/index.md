@@ -10,6 +10,7 @@
 - [來源](sources.md)
 - [社團](circles.md)
 - [聲優](voices.md)
+- [為你推薦](for-you.md)
 - [發現](discover.md)
 - [翻譯](translation.md)
 - [播放](playback.md)

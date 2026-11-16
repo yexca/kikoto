@@ -44,8 +44,9 @@
   **Manage** holds Workflows, Metadata, Translation, Cleanup, and System. A
   group stays collapsed until you open it, remembers that choice on the device,
   and opens on its own while one of its pages is shown.
-- Settings holds only your own account, playback, and recommendation
-  settings. The instance settings (Library, Cache & Fetch, Proxy, ASR & LLM,
+- Settings is one page of your own account and playback settings, without
+  tabs: Account, Time zone, Playback, and Your data. Links to its former
+  Playback tab open that section. The instance settings (Library, Cache & Fetch, Proxy, ASR & LLM,
   and Users) are the new **System** page for administrators, and cleanup is
   the new **Cleanup** page in the **Manage** group, with **Works**, **Cache**,
   and **Database** tabs. Existing links to those Settings tabs open them.
@@ -62,9 +63,9 @@
 - Phones show Notifications, Appearance, and the avatar in the header. Quick
   actions, Discover, Record, the Personal pages, and a **Manage** entry for
   the administration pages open from the avatar menu.
-- Secondary navigation has two forms. Discover, Metadata, Workflows, Settings,
-  and System show their views as tabs along the top, Settings and System with
-  an icon beside each name; Favorites lists its shelves by name beside the
+- Secondary navigation has two forms. Discover, Metadata, Workflows, and
+  System show their views as tabs along the top, System with an icon beside
+  each name; Favorites lists its shelves by name beside the
   page. A tab row too narrow to name every tab shows icons and names only the
   open one. The options that moved Settings and
   Metadata tabs between a row and a column, that hid tab names in Settings,
@@ -106,6 +107,11 @@
 - The line above a New releases card labels only an event that is more than a
   new release, and names a subscription only when the card's credit line
   does not already show it.
+- **For you** is a page of its own in the sidebar instead of a Discover view,
+  and links to the view open it. Its settings icon opens recommendation
+  tuning and your recommendation activity, which leave Settings; links to the
+  Settings Recommendations tab open them. Saving the tuning draws For you
+  anew.
 - For you's column headings and Watch's summary drop their descriptions; the
   temperature choices explain themselves in their tooltips.
 - **Watch** on a card is an eye icon like the lists and Quick mark beside it,

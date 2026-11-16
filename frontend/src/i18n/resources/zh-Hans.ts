@@ -713,6 +713,7 @@ export const zhHansResource = {
         settings: "设置",
         maintenance: "维护",
         insights: "数据面板",
+        forYou: "为你推荐",
         subscriptions: "发现",
         translation: "翻译",
         about: "关于",
@@ -934,7 +935,6 @@ export const zhHansResource = {
 
         folderPreference: "目录偏好",
         account: "账户",
-        recommendations: "推荐",
         playback: "播放",
         seekForward: "快进时间",
         seekBackward: "快退时间",

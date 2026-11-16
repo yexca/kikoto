@@ -1,5 +1,5 @@
 import { Compass, Repeat, Shuffle, Sparkles, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
@@ -52,7 +52,7 @@ const sideBySideListClassName =
  * columns. Wide views put row cards in three columns side by side; a third of
  * the width is too narrow for full or simple cards and too short a run for
  * mini covers, so those modes stack the three columns as sections in
- * Discover's card grid.
+ * the card grid.
  * Cards offer the Library's own actions, and opening one records an open so
  * later draws rotate. The draw stays as drawn for the browser session.
  */
@@ -65,7 +65,9 @@ export function ForYouView(props: ForYouViewProps) {
 
 type ForYouViewProps = {
   canMark: boolean;
-  /** Discover's card layout, or null for the regular card. */
+  /** The page's controls, at the end of the temperature row. */
+  toolbar?: ReactNode;
+  /** The card layout, or null for the regular card. */
   cardLayout: CompactWorkCardLayout | null;
   mobileColumns: WorkCollectionColumnSetting;
   desktopColumns: WorkCollectionColumnSetting;
@@ -75,6 +77,7 @@ type ForYouViewProps = {
 function ForYouDraws({
   storageScope,
   canMark,
+  toolbar,
   cardLayout,
   mobileColumns,
   desktopColumns,
@@ -112,25 +115,28 @@ function ForYouDraws({
   return (
     <section className="@container min-w-0 space-y-4" aria-label={t("subscriptions.forYou.label")}>
       {demoMode && <DemoPreviewNotice surface="forYou" />}
-      <div
-        role="radiogroup"
-        aria-label={t("subscriptions.forYou.temperature.label")}
-        className={segmentedListClassName()}
-      >
-        {FOR_YOU_TEMPERATURES.map((item) => (
-          <button
-            key={item}
-            type="button"
-            role="radio"
-            aria-checked={forYou.temperature === item}
-            className={segmentedItemClassName(forYou.temperature === item)}
-            title={t(`subscriptions.forYou.temperature.hints.${item}`)}
-            disabled={forYou.temperature === null}
-            onClick={() => forYou.temperature !== item && void forYou.changeTemperature(item)}
-          >
-            {t(`subscriptions.forYou.temperature.${item}`)}
-          </button>
-        ))}
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-toast-avoid>
+        <div
+          role="radiogroup"
+          aria-label={t("subscriptions.forYou.temperature.label")}
+          className={segmentedListClassName()}
+        >
+          {FOR_YOU_TEMPERATURES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="radio"
+              aria-checked={forYou.temperature === item}
+              className={segmentedItemClassName(forYou.temperature === item)}
+              title={t(`subscriptions.forYou.temperature.hints.${item}`)}
+              disabled={forYou.temperature === null}
+              onClick={() => forYou.temperature !== item && void forYou.changeTemperature(item)}
+            >
+              {t(`subscriptions.forYou.temperature.${item}`)}
+            </button>
+          ))}
+        </div>
+        {toolbar && <div className="ml-auto flex shrink-0 items-center gap-1">{toolbar}</div>}
       </div>
       {forYou.status === "failed" || forYou.status === "preparing" ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border bg-card px-4 py-10 text-center text-sm">

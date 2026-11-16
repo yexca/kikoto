@@ -9,7 +9,6 @@ export const subscriptionsEnglish = {
     },
     views: {
       label: "Discover view",
-      "for-you": "For you",
       releases: "New releases",
       rankings: "Rankings",
       watch: "Watch",
@@ -17,6 +16,11 @@ export const subscriptionsEnglish = {
     },
     forYou: {
       label: "For you",
+      settings: "For you settings",
+      panels: {
+        tuning: "Tuning",
+        activity: "Activity",
+      },
       temperature: {
         label: "Temperature",
         safe: "Safe",

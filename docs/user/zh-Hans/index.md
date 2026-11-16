@@ -10,6 +10,7 @@
 - [来源](sources.md)
 - [社团](circles.md)
 - [声优](voices.md)
+- [为你推荐](for-you.md)
 - [发现](discover.md)
 - [翻译](translation.md)
 - [播放](playback.md)

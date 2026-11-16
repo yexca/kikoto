@@ -9,7 +9,6 @@ export const subscriptionsKorean = {
     },
     views: {
       label: "둘러보기 화면",
-      "for-you": "맞춤 추천",
       releases: "신작",
       rankings: "순위",
       watch: "모니터링",
@@ -17,6 +16,11 @@ export const subscriptionsKorean = {
     },
     forYou: {
       label: "맞춤 추천",
+      settings: "맞춤 추천 설정",
+      panels: {
+        tuning: "조정",
+        activity: "활동",
+      },
       temperature: {
         label: "모험도",
         safe: "안전",

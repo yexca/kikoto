@@ -302,19 +302,18 @@ addresses redirect into Workflows (`legacyRunLogPath`).
 
 The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
 where to find what to listen to next. A `/subscriptions` address redirects to
-it with its query. It switches between four views, For you (`?view=for-you`,
-a labelled random sample in the demo), the release feed, Rankings (`?view=rankings`), and Watch
+it with its query, and `?view=for-you` redirects to the For you page. It
+switches between three views, the release feed, Rankings (`?view=rankings`), and Watch
 (`?view=watch`, for accounts that can run workflows; any other account sees
 the release feed), as `SubNavTabs` along the top of the page with the page
 toolbar at the end of the same row (below the tabs on a phone), and composes its
 settings as a dialog of one fixed height on every tab, and as a sheet on
 phones; closing the dialog returns focus to the settings icon. The page
 toolbar always holds
-the actions menu, the display options, and the settings icon, in that order;
-the actions menu is disabled on a view without actions.
+the actions menu, the display options, and the settings icon, in that order.
 
-The four views compose the same card parts from shared code. Their cards
-follow one Discover display choice (`DISCOVER_LAYOUT_STORE` and
+The three views and For you compose the same card parts from shared code.
+Their cards follow one display choice (`DISCOVER_LAYOUT_STORE` and
 `discoverCardLayout`, in `components/work-collection/WorkCollectionLayout`),
 kept apart from the Library's, offering every card mode and starting with
 simple cards, in the shared work collection grid. Each card is a `WorkCardContextItem`: a
@@ -333,9 +332,7 @@ checks their sources, a status line in the view follows the queued run with a
 link to it, the view reloads when the run ends, and the source check's answers
 for codes without a work last for the visit. Rankings names the recorded
 order the menu acts on to the page. The release feed draws each day's families
-under a section heading. For you shows its three columns side by side on a
-wide screen with row cards, and one after another with full, simple, or mini
-cards.
+under a section heading.
 Rankings shows one tracked ranking (`?list=`) as cards beside their rank,
 under a two-row toolbar that sticks below the app header. The first row holds
 segmented controls grouped by provider, in the fixed order of the lists, with
@@ -409,15 +406,27 @@ settings, and the settings button opens the tab of the current view. `?page=`
 names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
 live in `features/subscriptions`; the Rankings view, its settings, and the
-shared ranking state live in `features/rankings`; For you, its draws, and its
-reason sentences live in `features/for-you`, which draws every column on the
-first open and after a temperature change, and one column, without the other
-columns' works, on **Draw again**. Every draw records its works as shown, so
-the settled draw is kept in server-and-user-scoped session storage, with
-memory as the fallback, and opening For you again in the same tab shows it
-without drawing; saved user preferences clear it. The Watch view, the watch
-configuration, and their shared state live in
+shared ranking state live in `features/rankings`; and the Watch view, the
+watch configuration, and their shared state live in
 `features/workflows/availability-watch`.
+
+The For you page (`/for-you`, rendered by `pages/ForYouPage`, for accounts
+with `library:read`) composes `features/for-you`, which holds the draws and
+their reason sentences, with Discover's display choice; the display options
+and the settings icon sit at the end of the temperature row. It shows its
+three columns side by side on a wide screen with row cards, and one after
+another with full, simple, or mini cards, and a labelled random sample in the
+demo. Its settings are a dialog of one fixed height, a sheet on phones, with
+two tabs: Tuning (`?panel=tuning`), the recommendation tuning of
+`features/preferences`, and Activity (`?panel=activity`),
+`RecommendationActivity`. `/settings?tab=recommendation` and
+`/maintenance?tab=recommendation` redirect to `/for-you?panel=tuning`. The
+page draws every column on the first open, after a temperature change, and
+after saved user preferences, and one column, without the other columns'
+works, on **Draw again**. Every draw records its works as shown, so the
+settled draw is kept in server-and-user-scoped session storage, with memory
+as the fallback, and opening For you again in the same tab shows it without
+drawing; saved user preferences clear it.
 
 The Favorites page keeps data loading, browse state, and history restoration.
 The shelf list, shelf header, controls, card and list views, and list
@@ -534,16 +543,17 @@ so a still-loading element never replaces it.
 - Favorites.
 - Circles.
 - Voice actors.
-- Settings (`/settings`): the signed-in account's own settings as `SubNavTabs`
-  with an icon and a name: Account, which opens with the profile row (whose
-  edit button opens the display-name and password dialog), time zone, and
-  **Your data**; Playback; and Recommendations, which shows recommendation
-  activity above recommendation tuning. Account holds the account's time zone:
+- Settings (`/settings`): the signed-in account's own settings as one page of
+  sections: Account, with the profile row (whose edit button opens the
+  display-name and password dialog); time zone; Playback with the playback
+  preferences after it; and **Your data**. The time zone section holds the
+  account's time zone:
   automatic, which follows the device, or one of the IANA zones the browser
   knows plus the zone in use. **Your data** opens dialogs for personal JSON
   export and previewed import from a Kikoto or Kikoeru file, a Kikoeru account,
   or an open-source Kikoeru database.
-- System (`/system`): the instance settings as the same tabs: Library,
+- System (`/system`): the instance settings as `SubNavTabs` with an icon and
+  a name: Library,
   Cache & Fetch, Proxy, ASR & LLM, and Users.
 - Cleanup (`/cleanup`): Works, Cache, and Database as the same tabs, each
   shown to an account that may act on it: Works and Cache need
@@ -551,14 +561,14 @@ so a still-loading element never replaces it.
   database the first time it opens. `pages/settingsLocation` keeps the open tab
   of these pages in the `tab` query parameter and scrolls to a section a link
   names.
-- Both settings pages, tabs included, are the content column of
+- Settings and System, tabs included, are the content column of
   `components/ui/page-width` (`contentPageClassName`), which every page but
   the browse destinations shares; the page sets it, never a feature inside the
   page. A
   `SettingsSection` is a plain
   heading over a hairline followed by
   its fields as rows divided by hairlines. It has no card or border of its own
-  and tabs set sections apart with whitespace, so a field never sits in a
+  and pages set sections apart with whitespace, so a field never sits in a
   container inside a container; only a repeated object such as a source, a
   proxy, a folder rule, or a user may be a card or table row. Section
   headings are plain text, and a switch or number field stays beside its label
@@ -672,20 +682,20 @@ suggestion hook owns cancellation and debounce. The maintenance tag and circle
 dialogs keep transport separate from the work editor and preserve their loaded
 state and drafts on request failure.
 
-Personal tags are the Tags page at `/tags`. Settings opens Account at
-`/settings`; `?tab=playback` and `?tab=recommendation` open the other tabs,
-`?tab=data` opens the Account data section, and `?tab=time-zone` opens the
-Account time zone section. `/user-data` redirects to `/settings?tab=data`,
+Personal tags are the Tags page at `/tags`. Settings opens at `/settings`;
+`?tab=time-zone`, `?tab=playback`, and `?tab=data` scroll to the time zone,
+Playback, and Your data sections, and `?tab=recommendation` redirects to
+`/for-you?panel=tuning`. `/user-data` redirects to `/settings?tab=data`,
 `/settings?tab=tags` to `/tags`, and `/history` and `/settings?tab=history`
 to `/insights`. System opens Library at `/system` and its other tabs at
 `?tab=cache`, `proxy`, `llm`, and `users`; `metadata` opens
 Library, and `asr` and `services` open ASR & LLM. Cleanup opens its first
 available tab at `/cleanup` and the others at `?tab=works`, `cache`, and
 `database`. A `/settings` link that names a System tab, `/users`, and the
-`/maintenance` tabs redirect to the matching System or Settings tab, and
+`/maintenance` tabs redirect to the matching System tab, Settings section, or For you settings, and
 `/settings?tab=cleanup` and `/system?tab=cleanup` to `/cleanup`, keeping the
 rest of the query.
-Insights, Tags, and the Account data section require `library:read`, and each
+Insights, Tags, For you, and the Your data section require `library:read`, and each
 page loads its own chunk independently of the global player. System appears
 only for administrators and Demo, and Cleanup for an account with
 `downloads:manage` or `sources:write` and for Demo; Demo sees every tab of both

@@ -9,7 +9,6 @@ export const subscriptionsJapanese = {
     },
     views: {
       label: "「見つける」の表示",
-      "for-you": "あなた向け",
       releases: "新着",
       rankings: "ランキング",
       watch: "監視",
@@ -17,6 +16,11 @@ export const subscriptionsJapanese = {
     },
     forYou: {
       label: "あなた向け",
+      settings: "あなた向けの設定",
+      panels: {
+        tuning: "調整",
+        activity: "アクティビティ",
+      },
       temperature: {
         label: "冒険度",
         safe: "控えめ",

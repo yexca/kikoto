@@ -94,7 +94,7 @@ cache cleanup, database cleanup, and database backups.
 There is no instance-wide metadata language.
 
 Listening reports count days in each account's time zone, which follows the
-account's device unless the account chooses a zone in Settings → Account. A
+account's device unless the account chooses a zone in Settings → Time zone. A
 client that names no zone is counted in the server's: the container's `TZ` when
 that names an IANA zone, and UTC otherwise. The server carries its own zone
 database, so the image needs no `tzdata` package.

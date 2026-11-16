@@ -262,9 +262,8 @@ test("@desktop personal pages sit in the sidebar's Personal group", async ({ pag
     await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
   }
   await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
-  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  // Your data is a section of Account, and Settings holds no tags or administration tabs.
-  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "Recommendations"]);
+  // Your data is a section of Settings, which holds no tags.
+  await expect(page.getByRole("heading", { name: "Your data", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible();
 
@@ -278,10 +277,9 @@ test("@desktop personal pages sit in the sidebar's Personal group", async ({ pag
   await expect(page).toHaveURL(/\/tags$/);
   await expect(page.getByRole("list", { name: "Personal tags" })).toBeVisible();
 
-  // The /user-data path opens the matching tab.
+  // The /user-data path opens the Your data section.
   await page.goto("/user-data");
   await expect(page).toHaveURL(/\/settings\?tab=data$/);
-  await expect(tabs.getByRole("tab", { name: "Account" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeInViewport();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const exportDialog = page.getByRole("dialog", { name: "Export", exact: true });
