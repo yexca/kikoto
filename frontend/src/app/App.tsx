@@ -22,6 +22,7 @@ import {
   canAccessPage,
   navItems,
   navigationLabel,
+  pageTurnedOff,
   visibleNavigationItems,
   type PageID,
 } from "@/app/navigation";
@@ -301,22 +302,27 @@ function AuthenticatedApp() {
     },
     [t],
   );
+  // A page the instance turned off is not found at its address.
+  const availableRoutePage: AppPage = pageTurnedOff(routePage, { recordEnabled: auth.recordEnabled })
+    ? "not-found"
+    : routePage;
   // Work detail belongs to the page it was opened from. A detail whose owner
   // the viewer cannot open stays readable under Library.
   const page: AppPage =
     workDetailOpen &&
-    routePage !== "not-found" &&
-    !canAccessPage(routePage, authState, navigationHasPermission, viewsAdministration)
+    availableRoutePage !== "not-found" &&
+    !canAccessPage(availableRoutePage, authState, navigationHasPermission, viewsAdministration)
       ? "library"
-      : routePage;
+      : availableRoutePage;
   const visibleNavItems = useMemo(
     () =>
       visibleNavigationItems({
         state: authState,
         hasPermission: navigationHasPermission,
         administrator: viewsAdministration,
+        recordEnabled: auth.recordEnabled,
       }),
-    [authState, navigationHasPermission, viewsAdministration],
+    [auth.recordEnabled, authState, navigationHasPermission, viewsAdministration],
   );
   // Every page the navigation offers loads its chunk while the shell is idle,
   // so opening it never waits on a loading placeholder.

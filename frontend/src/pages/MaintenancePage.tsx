@@ -48,6 +48,7 @@ import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
 import { LyricsAttributionSection } from "@/features/llm-settings/LyricsAttributionSection";
+import { RecordSettingsSection } from "@/features/records";
 
 type MaintenanceTab = "library" | "cache" | "proxy" | "llm" | "users";
 
@@ -71,6 +72,7 @@ type RuntimeDraft = {
   kikoeruImportPrivateAddresses: boolean;
   hideRemoteSourceAddresses: boolean;
   folderLyricsMode: FolderLyricsMode;
+  recordLibraryEnabled: boolean;
 };
 
 /**
@@ -103,6 +105,7 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     kikoeruImportPrivateAddresses: settings.kikoeruImportPrivateAddresses ?? false,
     hideRemoteSourceAddresses: settings.hideRemoteSourceAddresses ?? true,
     folderLyricsMode: settings.folderLyricsMode ?? "copy",
+    recordLibraryEnabled: settings.recordLibraryEnabled ?? false,
   };
 }
 
@@ -225,9 +228,10 @@ export function MaintenancePage({
   }, [settings]);
 
   useEffect(() => {
-    if (activeTab !== "library" || window.location.hash !== "#remote-sources") return;
+    const target = window.location.hash.slice(1);
+    if (activeTab !== "library" || (target !== "remote-sources" && target !== "record")) return;
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById("remote-sources")?.scrollIntoView({ block: "start" });
+      document.getElementById(target)?.scrollIntoView({ block: "start" });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeTab, isSettingsLoading, settings]);
@@ -512,6 +516,13 @@ export function MaintenancePage({
                 />
               </SettingsRow>
             </SettingsSection>
+
+            <RecordSettingsSection
+              enabled={draft.recordLibraryEnabled}
+              savedEnabled={settings?.recordLibraryEnabled ?? false}
+              readOnly={readOnly}
+              onEnabledChange={(recordLibraryEnabled) => saveRuntime({ recordLibraryEnabled })}
+            />
 
             <SettingsSection
               title={t("maintenance.library.creatorCatalogs")}

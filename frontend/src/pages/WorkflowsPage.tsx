@@ -238,11 +238,16 @@ export function WorkflowsPage({
     if (operation) return { name: cardName(operation), editable: true, path: null };
     const definition = definitionsById.get(trigger.workflowDefinitionId);
     const code = definition?.code ?? trigger.workflowCode;
+    const managedPage = pageManagedWorkflows[code];
     return {
       name: workflowName(code, definition?.displayName ?? code),
       editable: false,
       path:
-        pageManagedWorkflows[code]?.path ?? (code === "source_presence_check" ? systemSettingsPath("library") : null),
+        managedPage && (managedPage.page !== "records" || auth.recordEnabled)
+          ? managedPage.path
+          : code === "source_presence_check"
+            ? systemSettingsPath("library")
+            : null,
     };
   };
   const operationTriggers = triggers.filter((trigger) =>
@@ -252,7 +257,9 @@ export function WorkflowsPage({
   const workflowOptions = definitions
     .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
     .sort((left, right) => left.name.localeCompare(right.name));
-  const managed = pageManagedWorkflows[location.workflowCode];
+  const pageManaged = pageManagedWorkflows[location.workflowCode];
+  // A turned-off Record has no page to send its scans' history to.
+  const managed = pageManaged?.page === "records" && !auth.recordEnabled ? undefined : pageManaged;
 
   const renderCard = (operation: Operation) => {
     const { definition } = operation;

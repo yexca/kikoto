@@ -225,6 +225,8 @@ export type RuntimeSettings = {
   recommendationThreshold: number;
   /** How a lyrics edit brings lyrics of the work folder into Kikoto's lyrics folder by default; signed-in readers only. */
   folderLyricsMode?: FolderLyricsMode;
+  /** Whether the Record library is on; signed-in readers only. */
+  recordLibraryEnabled?: boolean;
 };
 
 export type AppUpdate = {
@@ -267,6 +269,8 @@ export type AppSettings = {
   hideRemoteSourceAddresses: boolean;
   /** How a lyrics edit brings lyrics of the work folder into Kikoto's lyrics folder unless it chooses. */
   folderLyricsMode: FolderLyricsMode;
+  /** Offers the Record library and its API. */
+  recordLibraryEnabled: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -377,6 +381,7 @@ export const settingsApi = {
     kikoeruImportPrivateAddresses?: boolean;
     hideRemoteSourceAddresses?: boolean;
     folderLyricsMode?: FolderLyricsMode;
+    recordLibraryEnabled?: boolean;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

@@ -57,7 +57,9 @@ type appSettingsResponse struct {
 	HideRemoteSourceAddresses bool `json:"hideRemoteSourceAddresses"`
 	// FolderLyricsMode is how a lyrics edit brings lyrics of the work folder
 	// into Kikoto's lyrics folder unless the edit chooses: "copy" or "move".
-	FolderLyricsMode        string                       `json:"folderLyricsMode"`
+	FolderLyricsMode string `json:"folderLyricsMode"`
+	// RecordLibraryEnabled offers the Record library and its API.
+	RecordLibraryEnabled    bool                         `json:"recordLibraryEnabled"`
 	DirectoryRoutingRules   []directoryRule              `json:"directoryRoutingRules"`
 	RecommendationThreshold int                          `json:"recommendationThreshold"`
 	RecommendationConfig    library.RecommendationConfig `json:"recommendationConfig"`
@@ -98,6 +100,7 @@ type settingsUpdatePayload struct {
 	KikoeruImportPrivateAddresses *bool                           `json:"kikoeruImportPrivateAddresses"`
 	HideRemoteSourceAddresses     *bool                           `json:"hideRemoteSourceAddresses"`
 	FolderLyricsMode              *string                         `json:"folderLyricsMode"`
+	RecordLibraryEnabled          *bool                           `json:"recordLibraryEnabled"`
 	DirectoryRoutingRules         *[]directoryRule                `json:"directoryRoutingRules"`
 	RecommendationThreshold       *int                            `json:"recommendationThreshold"`
 	RecommendationConfig          json.RawMessage                 `json:"recommendationConfig"`
@@ -165,6 +168,7 @@ func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response["folderLyricsMode"] = s.folderLyricsMode(r.Context())
+	response["recordLibraryEnabled"] = s.recordLibraryEnabled(r.Context())
 	response["directoryRoutingRules"] = preferences.DirectoryRoutingRules
 	response["recommendationThreshold"] = preferences.RecommendationThreshold
 	writeJSON(w, http.StatusOK, response)
@@ -318,6 +322,9 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 	if err := upsertOptionalBoolSetting(r, tx, payload.HideRemoteSourceAddresses, hideRemoteSourceAddressesSetting); err != nil {
 		return err
 	}
+	if err := upsertOptionalBoolSetting(r, tx, payload.RecordLibraryEnabled, recordLibraryEnabledSetting); err != nil {
+		return err
+	}
 	if err := applyVideoHardwareSettings(r, tx, payload); err != nil {
 		return err
 	}
@@ -462,6 +469,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
 		HideRemoteSourceAddresses:     s.settingBool(r, hideRemoteSourceAddressesSetting, true),
 		FolderLyricsMode:              s.folderLyricsMode(r.Context()),
+		RecordLibraryEnabled:          s.recordLibraryEnabled(r.Context()),
 		DirectoryRoutingRules:         s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold:       s.settingInt(r, "recommendation_threshold", 50),
 		RecommendationConfig:          s.libraryStore.LoadRecommendationConfig(r.Context()),

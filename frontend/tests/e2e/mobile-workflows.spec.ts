@@ -581,7 +581,9 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: runtimeSettingsFixture({ anonymousAccessEnabled: false }) });
+      await route.fulfill({
+        json: runtimeSettingsFixture({ anonymousAccessEnabled: false, recordLibraryEnabled: true }),
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: "Not mocked" } satisfies ApiErrorBody });

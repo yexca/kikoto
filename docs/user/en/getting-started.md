@@ -124,7 +124,8 @@ before fetching; until then Fetch explains what to configure.
 
 The independent **Record** library uses `/record`, which is separate from
 the audio data root and storage pools. Put video and image folders below that
-mount, initialize the record root from the Record page, and run its scan:
+mount, turn Record on and initialize the record root in System -> Library, and
+run its scan from the Record page:
 
 ```text
 record/

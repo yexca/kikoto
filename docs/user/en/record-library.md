@@ -7,9 +7,13 @@ the `/record` mount and never adds files to the audio Library or to a work.
 
 ## Set up
 
-Mount a host directory at `/record`, open **Record**, and choose
-**Initialize root**. Kikoto writes a `.kikoto-record` marker; scanning only
-starts after that explicit initialization. The default production mount is:
+Record is off until an administrator turns it on. Mount a host directory at
+`/record`, then in **System → Library** turn on **Record library** under
+**Record** and choose **Initialize root**. Kikoto writes a `.kikoto-record`
+marker; scanning only starts after that explicit initialization. While Record
+is off, the sidebar leaves it out for every account; turning it off keeps its
+folders, watched positions, and thumbnails for when it is turned on again.
+The default production mount is:
 
 ```yaml
 volumes:

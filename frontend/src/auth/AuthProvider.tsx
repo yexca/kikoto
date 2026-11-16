@@ -34,6 +34,8 @@ type AuthContextValue = {
   runtimeMode: RuntimeSettings["mode"];
   demoMode: boolean;
   anonymousAccessEnabled: boolean;
+  /** The Record library is on; known once the viewer is signed in. */
+  recordEnabled: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const [runtimeMode, setRuntimeMode] = useState<RuntimeSettings["mode"]>("production");
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
+  const [recordEnabled, setRecordEnabled] = useState(false);
 
   const userId = auth?.authenticated ? auth.user.id : null;
   const [recommendationThreshold, setRecommendationThreshold] = useState({ userId, value: 50 });
@@ -86,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const settings = await api.getRuntimeSettings();
     setRuntimeMode(settings.mode);
     setAnonymousAccessEnabled(settings.anonymousAccessEnabled ?? false);
+    setRecordEnabled(settings.recordLibraryEnabled ?? false);
   }, []);
 
   // A network failure or server error keeps the viewer's state unknown rather
@@ -116,13 +120,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       recommendationThreshold: recommendationThreshold.userId === userId ? recommendationThreshold.value : 50,
       user: auth?.authenticated ? auth.user : null,
       setupRequired: auth?.authenticated === false && auth.setupRequired === true,
+      // Signed-out readers are not told which instance features are on, so signing in reads them again.
       login: async (username, password) => {
         const state = await api.login(username, password);
         setAuth(state);
+        await refreshRuntime().catch(() => undefined);
       },
       completeSetup: async (payload) => {
         const state = await api.completeInitialSetup(payload);
         setAuth(state);
+        await refreshRuntime().catch(() => undefined);
       },
       logout: async () => {
         let logoutFailed = false;
@@ -139,7 +146,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!(error instanceof ApiSessionChangedError)) setAuth({ authenticated: false });
           }),
           refreshRuntime().catch((error) => {
-            if (!(error instanceof ApiSessionChangedError)) setAnonymousAccessEnabled(false);
+            if (error instanceof ApiSessionChangedError) return;
+            setAnonymousAccessEnabled(false);
+            setRecordEnabled(false);
           }),
         ]);
         if (logoutFailed) throw logoutError;
@@ -153,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       runtimeMode,
       demoMode: runtimeMode === "demo",
       anonymousAccessEnabled,
+      recordEnabled,
     }),
     [
       anonymousAccessEnabled,
@@ -164,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshRuntime,
       runtimeMode,
       recommendationThreshold,
+      recordEnabled,
       setAuth,
       userId,
     ],

@@ -16,6 +16,7 @@ import type {
   MaintenanceWorkPage,
   ManagedUser,
   RecommendationConfig,
+  RecordRoot,
   RecommendationTelemetrySummary,
   TranscodeCacheClearResult,
   UserPreferences,
@@ -136,6 +137,7 @@ async function mockCacheSettings(
     kikoeruImportPrivateAddresses: false,
     hideRemoteSourceAddresses: true,
     folderLyricsMode: "copy",
+    recordLibraryEnabled: false,
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {
@@ -192,6 +194,7 @@ async function mockCacheSettings(
   const replaceRemoteSource = (source: FileSource) => {
     currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
   };
+  let recordRoot: RecordRoot = { id: 1, displayName: "Record", state: "unconfigured", scanGeneration: 0 };
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -208,8 +211,24 @@ async function mockCacheSettings(
     }
     if (url.pathname === "/api/runtime-settings") {
       await route.fulfill({
-        json: runtimeSettingsFixture({ anonymousAccessEnabled: false, cacheEnabled: currentSettings.cacheEnabled }),
+        json: runtimeSettingsFixture({
+          anonymousAccessEnabled: false,
+          cacheEnabled: currentSettings.cacheEnabled,
+          recordLibraryEnabled: currentSettings.recordLibraryEnabled,
+        }),
       });
+      return;
+    }
+    if (url.pathname.startsWith("/api/records")) {
+      // Like the server: Record answers only while it is on.
+      if (!currentSettings.recordLibraryEnabled) {
+        await route.fulfill({ status: 404, json: { error: "The record library is turned off." } });
+        return;
+      }
+      if (url.pathname === "/api/records/root/initialize" && route.request().method() === "POST") {
+        recordRoot = { ...recordRoot, state: "online" };
+      }
+      await route.fulfill({ json: { root: recordRoot } });
       return;
     }
     if (url.pathname === "/api/auth/me/preferences") {
@@ -1390,6 +1409,34 @@ test("@desktop administrators set catalog freshness in Library settings", async 
   // The metadata tab id opens Library.
   await page.goto("/settings?tab=metadata");
   await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
+});
+
+test("@desktop administrators turn Record on in Library settings and initialize its root there", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  const sidebarRecord = page.locator("aside nav").getByRole("button", { name: "Record", exact: true });
+
+  // While Record is off, the sidebar does not offer it and its address is not found.
+  await page.goto("/records");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await page.goto("/system?tab=library");
+  await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(sidebarRecord).toHaveCount(0);
+
+  const section = page.getByRole("region", { name: "Record", exact: true });
+  await section.getByRole("switch", { name: "Record library", exact: true }).click();
+  await expect.poll(() => saves).toEqual([{ recordLibraryEnabled: true }]);
+  await expect(section.getByRole("status")).toHaveText("Saved");
+  await expect(sidebarRecord).toBeVisible();
+
+  await expect(section.getByText("Not initialized", { exact: true })).toBeVisible();
+  await section.getByRole("button", { name: "Initialize root", exact: true }).click();
+  await expect(section.getByText("Online", { exact: true })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Initialize root", exact: true })).toHaveCount(0);
 });
 
 test("administrators add proxies by priority and choose where they apply", async ({ page }) => {

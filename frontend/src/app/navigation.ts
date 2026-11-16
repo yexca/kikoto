@@ -237,18 +237,29 @@ export function navigationGroupLabel(group: (typeof navigationGroups)[number], t
 
 /**
  * `administrator` says whether the viewer may open instance settings: an
- * administrator role, or Demo, which sees them read-only.
+ * administrator role, or Demo, which sees them read-only. `recordEnabled`
+ * says whether the instance offers the Record library.
  */
 export function visibleNavigationItems({
   state,
   hasPermission,
   administrator = false,
+  recordEnabled = false,
 }: {
   state: AuthViewState;
   hasPermission: (permission: string) => boolean;
   administrator?: boolean;
+  recordEnabled?: boolean;
 }) {
-  return navItems.filter((item) => canAccessNavigationItem(item, state, hasPermission, administrator));
+  return navItems.filter(
+    (item) =>
+      (item.id !== "records" || recordEnabled) && canAccessNavigationItem(item, state, hasPermission, administrator),
+  );
+}
+
+/** Pages an instance can turn off; while off, their address is not found. */
+export function pageTurnedOff(page: PageID | "not-found", { recordEnabled }: { recordEnabled: boolean }) {
+  return page === "records" && !recordEnabled;
 }
 
 export function canAccessPage(

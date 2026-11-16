@@ -118,8 +118,8 @@ in Storage pools mode with Online/Offline and Fetch pool badges plus
 **Reconnect** when an unmounted folder can be re-marked), followed by each
 configured remote source. **Library storage** or selecting any local card opens
 the storage configuration dialog. The settings follow below it: **Local
-library**, **Creator catalogs**, **Network and privacy**, and read-only storage
-paths.
+library**, **Record**, **Creator catalogs**, **Network and privacy**, and
+read-only storage paths.
 
 - **Hide addresses from accounts that do not manage sources**, under
   **Network and privacy**, is on by default. While it is
@@ -151,6 +151,9 @@ paths.
   leaves the work's own files where they are, or moves them there. Copying is
   the default. It is the starting choice of every lyrics edit, which can still
   choose the other.
+- **Record** turns the [Record](record-library.md) library on or off for the
+  instance; it is off by default. While it is on, the section shows the record
+  root's state and, until the root is initialized, **Initialize root**.
 - **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30).
   A circle or voice actor
   catalog is marked Attention once its last refresh is older than that.

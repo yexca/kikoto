@@ -1,8 +1,9 @@
-import { AlertTriangle, Clapperboard, FolderOpen, Loader2, RefreshCw, ScanLine } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, Clapperboard, FolderOpen, Loader2, RefreshCw, ScanLine, Settings } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 
 /** One persistent state panel: loading, setup, unavailable, empty, or failed. */
 export function RecordNotice({
@@ -63,33 +64,30 @@ export function RecordDemoNotice() {
   );
 }
 
-export function RecordSetupNotice({
-  canInitialize,
-  busy,
-  failed,
-  onInitialize,
-}: {
-  canInitialize: boolean;
-  busy: boolean;
-  failed: boolean;
-  onInitialize: () => void;
-}) {
+/**
+ * An uninitialized record root. The root is initialized in System -> Library,
+ * which `settingsPath` opens for a viewer who may change instance settings.
+ */
+export function RecordSetupNotice({ settingsPath }: { settingsPath: string | null }) {
   const { t } = useTranslation();
+  const openSettings = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!settingsPath || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    window.history.pushState({}, "", settingsPath);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+  };
   return (
     <RecordNotice
       icon={<Clapperboard className="h-4 w-4" />}
       title={t("records.setupTitle")}
-      message={canInitialize ? t("records.setupMessage") : t("records.setupNeedsAdmin")}
+      message={settingsPath ? t("records.setupMessage") : t("records.setupNeedsAdmin")}
     >
-      {failed && (
-        <p role="alert" className="text-sm text-error-foreground">
-          {t("records.initializeFailed")}
-        </p>
-      )}
-      {canInitialize && (
-        <Button disabled={busy} onClick={onInitialize}>
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-          {busy ? t("records.initializing") : t("records.initialize")}
+      {settingsPath && (
+        <Button asChild>
+          <a href={settingsPath} onClick={openSettings}>
+            <Settings className="h-4 w-4" />
+            {t("records.openLibrarySettings")}
+          </a>
         </Button>
       )}
     </RecordNotice>

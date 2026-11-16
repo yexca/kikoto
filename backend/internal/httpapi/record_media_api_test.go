@@ -59,6 +59,9 @@ func newRecordTestServer(t *testing.T) recordTestServer {
 	if _, err := server.recordStore.Scan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES (?, 'true')`, recordLibraryEnabledSetting); err != nil {
+		t.Fatal(err)
+	}
 	createTestAdministrator(t, server, "root", "synthetic-password")
 	handler := server.Routes()
 	ids := map[string]int64{}
@@ -103,6 +106,76 @@ func TestRecordMediaRoutesRequireSignIn(t *testing.T) {
 		if response := server.get(path, false); response.Code != http.StatusUnauthorized {
 			t.Fatalf("anonymous %s = %d", path, response.Code)
 		}
+	}
+}
+
+func TestRecordRoutesAreNotFoundWhileTheRecordLibraryIsOff(t *testing.T) {
+	server := newRecordTestServer(t)
+	video := strconv.FormatInt(server.ids["Day 1.mp4"], 10)
+	if response := server.get("/api/records/assets/"+video+"/stream", true); response.Code != http.StatusOK {
+		t.Fatalf("stream while on = %d", response.Code)
+	}
+
+	server.setRecordLibraryEnabled(t, false)
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/records", nil),
+		httptest.NewRequest(http.MethodGet, "/api/records/tree", nil),
+		httptest.NewRequest(http.MethodGet, "/api/records/assets/"+video+"/stream", nil),
+		httptest.NewRequest(http.MethodPost, "/api/records/root/initialize", nil),
+		httptest.NewRequest(http.MethodPost, "/api/records/scans", nil),
+		httptest.NewRequest(http.MethodPut, "/api/records/assets/"+video+"/progress", strings.NewReader(`{"positionSeconds":12}`)),
+	} {
+		request.AddCookie(server.cookie)
+		response := httptest.NewRecorder()
+		server.handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), "record_library_disabled") {
+			t.Fatalf("%s %s while off = %d %s", request.Method, request.URL.Path, response.Code, response.Body.String())
+		}
+	}
+
+	// Turning it on again finds the library as it was left.
+	server.setRecordLibraryEnabled(t, true)
+	if response := server.get("/api/records/assets/"+video+"/stream", true); response.Code != http.StatusOK {
+		t.Fatalf("stream after turning on again = %d", response.Code)
+	}
+}
+
+func TestRecordLibrarySettingIsReportedAndSaved(t *testing.T) {
+	server := newRecordTestServer(t)
+	server.setRecordLibraryEnabled(t, false)
+	runtime := func() bool {
+		var payload struct {
+			RecordLibraryEnabled bool `json:"recordLibraryEnabled"`
+		}
+		response := server.get("/api/runtime-settings", true)
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("runtime settings = %d %s", response.Code, response.Body.String())
+		}
+		return payload.RecordLibraryEnabled
+	}
+	if runtime() {
+		t.Fatal("runtime settings report Record on while it is off")
+	}
+	server.setRecordLibraryEnabled(t, true)
+	if !runtime() {
+		t.Fatal("runtime settings report Record off after it was turned on")
+	}
+	if response := server.get("/api/records", true); response.Code != http.StatusOK {
+		t.Fatalf("root after turning on = %d", response.Code)
+	}
+}
+
+func (s recordTestServer) setRecordLibraryEnabled(t *testing.T, enabled bool) {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"recordLibraryEnabled":`+strconv.FormatBool(enabled)+`}`))
+	request.AddCookie(s.cookie)
+	response := httptest.NewRecorder()
+	s.handler.ServeHTTP(response, request)
+	var payload struct {
+		RecordLibraryEnabled bool `json:"recordLibraryEnabled"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &payload) != nil || payload.RecordLibraryEnabled != enabled {
+		t.Fatalf("save recordLibraryEnabled=%t = %d %s", enabled, response.Code, response.Body.String())
 	}
 }
 

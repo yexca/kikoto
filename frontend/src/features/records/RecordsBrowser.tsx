@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { api, type RecordAsset, type RecordFolder, type RecordProgress, type RecordRoot } from "@/lib/api";
+import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/lib/api";
 
 import { RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
@@ -45,14 +45,14 @@ function isEditableElement(target: EventTarget | null) {
  * its own full-screen video player and photo viewer. The folder and any open
  * overlay live in the URL, so Back, Forward, and reload keep the place.
  */
-export function RecordsBrowser() {
+export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: string }) {
   const auth = useAuth();
   const { t } = useTranslation();
   const phone = useMobileNavigationLayout();
   const enabled = !auth.demoMode;
   const canScan = auth.hasPermission("library:write");
   const { location, historyState, navigate } = useRecordsLocation();
-  const { state: rootState, reload: reloadRoot, setRoot } = useRecordRoot(enabled);
+  const { state: rootState, reload: reloadRoot } = useRecordRoot(enabled);
   const root: RecordRoot | null = rootState.status === "ready" ? rootState.root : null;
   const online = root?.state === "online";
   const {
@@ -62,7 +62,6 @@ export function RecordsBrowser() {
     reload: reloadTree,
   } = useRecordTree(location.folderId, historyState, enabled && online);
   const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
-  const [initializing, setInitializing] = useState<"idle" | "busy" | "failed">("idle");
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
 
   const listing = tree.status === "ready" && tree.folderId === location.folderId ? tree : null;
@@ -108,16 +107,6 @@ export function RecordsBrowser() {
     void reloadRoot();
     reloadTree();
   };
-  const initialize = async () => {
-    setInitializing("busy");
-    try {
-      const result = await api.initializeRecordRoot();
-      setRoot(result.root);
-      setInitializing("idle");
-    } catch {
-      setInitializing("failed");
-    }
-  };
 
   useEffect(() => {
     if (!online || trail.length === 0 || location.overlay !== null) return;
@@ -144,14 +133,8 @@ export function RecordsBrowser() {
     );
   }
   if (root.state === "unconfigured") {
-    return (
-      <RecordSetupNotice
-        canInitialize={auth.hasPermission("sources:write")}
-        busy={initializing === "busy"}
-        failed={initializing === "failed"}
-        onInitialize={() => void initialize()}
-      />
-    );
+    const administrator = auth.user?.role === "admin" || auth.user?.role === "super_admin";
+    return <RecordSetupNotice settingsPath={administrator ? librarySettingsPath : null} />;
   }
   if (root.state !== "online") {
     const offline = root.state === "offline";

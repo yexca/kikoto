@@ -1,17 +1,17 @@
 # Unreleased
 
 > [!NOTE]
-> Record reads its library from a separate `/record` mount. The bundled Compose
-> files mount `./record`; add the same mount to a custom Compose file to use
-> Record.
+> Record reads its library from a separate `/record` mount and is off until an
+> administrator turns it on in **System → Library**. The bundled Compose files
+> mount `./record`; add the same mount to a custom Compose file to use Record.
 
 <details>
 <summary><strong>Record</strong></summary>
 
 - Record is a separate library for personal videos and photos in the
-  sidebar. It reads its own `/record` mount, starts after an administrator
-  initializes the root, and never adds files to the audio Library or to a
-  work.
+  sidebar. An administrator turns it on and initializes its root under
+  **Record** in **System → Library**; it reads its own `/record` mount and
+  never adds files to the audio Library or to a work.
 - Record browses one folder at a time under a path bar that leads back to every
   parent, with **Continue watching** and **Scan** on the right, and the address
   keeps the open folder for Back, Forward, and reload. Items are ordered

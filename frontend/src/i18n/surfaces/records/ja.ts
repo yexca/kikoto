@@ -6,7 +6,8 @@ export const recordsJapanese = {
     demoTitle: "デモでは記録を利用できません",
     demoMessage: "記録ルートを設定するには、通常の Kikoto インスタンスに接続してください。",
     setupTitle: "記録を設定",
-    setupMessage: "独立した記録ルートを初期化し、動画と写真をスキャンします。",
+    setupMessage: "システム設定で記録ルートを初期化し、動画と写真をスキャンします。",
+    openLibrarySettings: "ライブラリ設定を開く",
     initialize: "ルートを初期化",
     initializing: "初期化中…",
     initializeFailed: "記録ルートを初期化できませんでした。",
@@ -20,6 +21,19 @@ export const recordsJapanese = {
     unreadableMessage:
       "Kikoto は記録ディレクトリを読み取れません。権限を確認してください。再び読み取れるようになるまで、既存の記録は保持されます。",
     retry: "再試行",
+    settings: {
+      title: "記録",
+      enable: "記録ライブラリ",
+      root: "記録ルート",
+      initializeDescription: "初期化すると、記録ルートに .kikoto-record マーカーが書き込まれます。",
+      rootLoadFailed: "記録ルートを読み取れませんでした。",
+      rootStates: {
+        unconfigured: "未初期化",
+        online: "オンライン",
+        offline: "オフライン",
+        unreadable: "読み取り不可",
+      },
+    },
     folderErrorTitle: "このフォルダーを読み取れませんでした",
     folderErrorMessage:
       "フォルダーの一覧を読み込めませんでした。現在の場所は保持されています。もう一度お試しください。",

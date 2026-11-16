@@ -226,9 +226,12 @@ modules into the single `api` object and re-exports their types, and is the
 entry pages, features, and tests import.
 
 `features/records` owns the Record surface, which `pages/RecordsPage` mounts
-through the feature's `RecordsBrowser` entry. It initializes the independent
-record root when permitted and browses it one folder at a time through
-`recordsApi`, ordering subfolders, videos, and photos by natural name.
+through the feature's `RecordsBrowser` entry, and its `RecordSettingsSection`
+entry is the Record section of System → Library, which turns Record on and
+initializes the independent record root. The navigation offers Record only
+while the runtime settings report it on. `RecordsBrowser` browses the root one
+folder at a time through `recordsApi`, ordering subfolders, videos, and photos
+by natural name.
 `recordsLocation` keeps the open folder and an open video (`?play=`) or photo
 (`?photo=`) in the `/records` URL. Opening a folder or an overlay pushes a
 history entry; previous or next inside an overlay replaces it; closing an

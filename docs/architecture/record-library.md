@@ -5,8 +5,16 @@ images. Its root is configured separately from the audio data root, with
 `KIKOTO_RECORD_ROOT` defaulting to `/record` in the container. It is not a
 storage pool and it is never included in the audio local-work scan.
 
+Record is off until an administrator turns it on in **System → Library**,
+which saves the `record_library_enabled` app setting. While it is off, every
+`/api/records` route answers `404` with `record_library_disabled`, the
+navigation leaves Record out, and `/records` is not found; `GET
+/api/runtime-settings` reports the setting to signed-in readers as
+`recordLibraryEnabled`. Turning it off deletes nothing: record rows, progress,
+and thumbnails stay for when it is turned on again.
+
 The root carries a `.kikoto-record` marker. An administrator initializes the
-root explicitly before the first scan. A missing, unmounted, foreign, or
+root explicitly in the same settings section before the first scan. A missing, unmounted, foreign, or
 unreadable root is reported as unavailable and leaves existing record rows
 unchanged; it never marks the whole library missing.
 

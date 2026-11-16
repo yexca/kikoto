@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { canAccessPage, navigationGroups, navigationLabel, navItems, visibleNavigationItems } from "./navigation";
+import {
+  canAccessPage,
+  navigationGroups,
+  navigationLabel,
+  navItems,
+  pageTurnedOff,
+  visibleNavigationItems,
+} from "./navigation";
 
 describe("navigation access and labels", () => {
   it("orders the Manage group Workflows, Metadata, Translation, Cleanup, System", () => {
@@ -59,6 +66,18 @@ describe("navigation access and labels", () => {
     expect(canAccessPage("system", "authenticated", () => false, true)).toBe(true);
     expect(canAccessPage("system", "anonymous", () => true, true)).toBe(false);
     expect(canAccessPage("tags", "authenticated", () => false)).toBe(false);
+  });
+
+  it("offers Record only while the instance has it on, and its address is not found while off", () => {
+    const ids = (recordEnabled: boolean) =>
+      visibleNavigationItems({ state: "authenticated", hasPermission: () => true, recordEnabled }).map(
+        (item) => item.id,
+      );
+    expect(ids(false)).not.toContain("records");
+    expect(ids(true)).toContain("records");
+    expect(pageTurnedOff("records", { recordEnabled: false })).toBe(true);
+    expect(pageTurnedOff("records", { recordEnabled: true })).toBe(false);
+    expect(pageTurnedOff("library", { recordEnabled: false })).toBe(false);
   });
 
   it("hides authenticated and admin destinations from anonymous users", () => {
