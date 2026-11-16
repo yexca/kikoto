@@ -1,27 +1,33 @@
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 
-/**
- * Links other pages use to hand work to Workflows. A run-form link selects a
- * workflow and prefills its target, so a detail page can offer a shortcut
- * without owning the workflow's options.
- */
+/** Addresses of the Workflows page: its run lists, one run, and the links other pages use to open them. */
 
-const prefillKeys = ["circleId", "personId"] as const;
+export const WORKFLOWS_PATH = "/workflows";
 
-export type WorkflowRunPrefillKey = (typeof prefillKeys)[number];
-export type WorkflowRunPrefill = Partial<Record<WorkflowRunPrefillKey, string>>;
+/** What goes on now (running, needing attention, next) and the runs that ended. */
+export const workflowTabs = ["now", "history"] as const;
+export type WorkflowTab = (typeof workflowTabs)[number];
 
-export function workflowRunFormPath(code: string, prefill: WorkflowRunPrefill = {}) {
-  const params = new URLSearchParams({ workflow: code });
-  for (const key of prefillKeys) {
-    const value = prefill[key]?.trim();
-    if (value) params.set(key, value);
+/** History narrowed to failed runs; empty for every ended run. */
+export type HistoryStatus = "" | "failed";
+
+/** Workflows on one of its lists; the status and workflow narrow History. */
+export function workflowsPath({
+  tab,
+  status,
+  workflow,
+}: { tab?: WorkflowTab; status?: HistoryStatus; workflow?: string } = {}) {
+  const params = new URLSearchParams();
+  if (tab === "history") {
+    params.set("tab", "history");
+    if (status) params.set("status", status);
+    if (workflow) params.set("workflow", workflow);
   }
-  return `/workflows?${params}`;
+  return `${WORKFLOWS_PATH}${params.size ? `?${params}` : ""}`;
 }
 
-export function workflowActivityRunPath(runId: number) {
-  return `/workflows?activity=1&run=${runId}`;
+export function workflowRunPath(runId: number) {
+  return `${WORKFLOWS_PATH}?run=${runId}`;
 }
 
 export function openWorkflowPath(path: string) {
@@ -29,26 +35,23 @@ export function openWorkflowPath(path: string) {
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-/** Returns the prefill a run-form link carries for this workflow, if any. */
-export function readWorkflowRunPrefill(code: string, search = window.location.search): WorkflowRunPrefill {
+/**
+ * Where an earlier address of the run log leads: `/activity` and `/runs`, and
+ * `/workflows?activity=1`, open Workflows with the run they named and, for a
+ * list of ended runs, History with its workflow. Any other address returns
+ * null.
+ */
+export function legacyRunLogPath(path: string, search: string): string | null {
   const params = new URLSearchParams(search);
-  if (params.get("workflow") !== code) return {};
-  const prefill: WorkflowRunPrefill = {};
-  for (const key of prefillKeys) {
-    const value = params.get(key)?.trim();
-    if (value) prefill[key] = value;
-  }
-  return prefill;
-}
-
-/** Drops consumed prefill so a reload or a later workflow switch does not reapply it. */
-export function clearWorkflowRunPrefill() {
-  const params = new URLSearchParams(window.location.search);
-  if (!prefillKeys.some((key) => params.has(key))) return;
-  for (const key of prefillKeys) params.delete(key);
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `${window.location.pathname}${params.size ? `?${params}` : ""}`,
-  );
+  if (path === WORKFLOWS_PATH ? !params.has("activity") : path !== "/activity" && path !== "/runs") return null;
+  const view = params.get("view") ?? "";
+  const tab: WorkflowTab = ["failed", "history", "completed", "logs"].includes(view) ? "history" : "now";
+  const run = Number(params.get("run"));
+  const target = workflowsPath({
+    tab,
+    status: view === "failed" ? "failed" : "",
+    workflow: params.get("runsOf") ?? (path === WORKFLOWS_PATH ? "" : (params.get("workflow") ?? "")),
+  });
+  if (!Number.isSafeInteger(run) || run <= 0) return target;
+  return `${target}${target.includes("?") ? "&" : "?"}run=${run}`;
 }

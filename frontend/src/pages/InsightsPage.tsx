@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next";
 
 import { DemoListeningNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { ListeningHistoryPage, openLinkInPlace } from "@/features/listening-history/ListeningHistoryPage";
-import { personalTabPath, TIME_ZONE_SETTINGS_PATH } from "@/pages/personalTabs";
+import { cn } from "@/lib/tailwindClassNames";
+import { TIME_ZONE_SETTINGS_PATH, YOUR_DATA_SETTINGS_PATH } from "@/pages/settingsPaths";
 
 /**
  * The account's own listening as one page: the listening dashboard, with the
@@ -23,14 +25,10 @@ export function InsightsPage({
   onOpenPath: (path: string) => void;
 }) {
   const { t } = useTranslation();
-  const dataPath = personalTabPath("data");
+  const dataPath = YOUR_DATA_SETTINGS_PATH;
   return (
-    <div className="space-y-5">
-      {demoMode && (
-        <div className="mx-auto w-full max-w-6xl">
-          <DemoListeningNotice />
-        </div>
-      )}
+    <div className={cn(contentPageClassName, "space-y-5")}>
+      {demoMode && <DemoListeningNotice />}
       <ListeningHistoryPage
         {...listening}
         timeZoneLink={{ href: TIME_ZONE_SETTINGS_PATH, open: () => onOpenPath(TIME_ZONE_SETTINGS_PATH) }}

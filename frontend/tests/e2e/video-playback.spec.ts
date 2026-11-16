@@ -73,6 +73,19 @@ async function openVideo(page: Page) {
   return page.getByLabel("Video preview, duration 3:00", { exact: true });
 }
 
+test("a folder that opens on a video offers Play folder, which plays its tracks from the video", async ({ page }) => {
+  await mockLocalVideo(page, [mediaFixture(2, "track.mp3", `${work.primaryCode}/track.mp3`, "audio")]);
+  await page.goto(`/${work.primaryCode}`);
+
+  // Opening the video itself shows the viewer, so the folder has its own way to play in order.
+  await page.getByRole("button", { name: "Play folder", exact: true }).click();
+  await expect(page.getByTestId("directory-file-row").filter({ hasText: "example.avi" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.getByLabel("Video preview, duration 3:00", { exact: true })).toHaveCount(0);
+});
+
 test("local video fallback and native HLS retry retain position and playback intent", async ({ page }) => {
   await mockLocalVideo(page);
   const requests: boolean[] = [];

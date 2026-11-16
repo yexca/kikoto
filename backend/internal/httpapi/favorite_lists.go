@@ -23,6 +23,10 @@ type favoriteListResponse struct {
 	// MatchedByRule marks a smart list that shows the work through its rule
 	// rather than because the work was added by hand.
 	MatchedByRule bool `json:"matchedByRule,omitempty"`
+	// MemberOrder is the list's one-based place among the user and smart lists
+	// that hold the work, in the order a work card names them. It is set only
+	// on such a list in a work's answer.
+	MemberOrder int `json:"memberOrder,omitempty"`
 	// Rule is set on smart lists.
 	Rule *personal.SmartRuleView `json:"rule,omitempty"`
 }
@@ -457,6 +461,17 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 	if workID != nil {
 		if err := s.markSmartListSelection(ctx, userID, *workID, lists); err != nil {
 			return nil, err
+		}
+		members, err := s.loadWorkMemberListsBatch(ctx, userID, []int64{*workID})
+		if err != nil {
+			return nil, err
+		}
+		order := map[int64]int{}
+		for index, list := range members[*workID] {
+			order[list.ID] = index + 1
+		}
+		for index := range lists {
+			lists[index].MemberOrder = order[lists[index].ID]
 		}
 	}
 	if err := s.attachSmartRuleViews(ctx, userID, lists); err != nil {

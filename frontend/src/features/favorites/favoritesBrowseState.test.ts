@@ -16,7 +16,6 @@ describe("favorites browse state", () => {
   it("keeps recoverable state outside the canonical URL", () => {
     const state = {
       ...defaultFavoritesBrowseState,
-      entity: "works" as const,
       query: 'mytag:"Sleep aid"',
       status: "listening" as const,
       availability: "local" as const,
@@ -44,10 +43,9 @@ describe("favorites browse state", () => {
 
   it("continues to read legacy full-state URLs", () => {
     const restored = favoritesBrowseStateFromSearch(
-      "?entity=voices&q=quiet&status=finished&availability=remote&list=42&page=3&pageSize=48&sort=sales&direction=asc&seed=314159",
+      "?q=quiet&status=finished&availability=remote&list=42&page=3&pageSize=48&sort=sales&direction=asc&seed=314159",
     );
     expect(restored).toMatchObject({
-      entity: "voices",
       query: "quiet",
       status: "finished",
       availability: "remote",

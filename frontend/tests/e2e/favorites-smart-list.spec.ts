@@ -29,6 +29,7 @@ async function mockSmartLists(page: Page) {
     lists: [favoriteListFixture()] as FavoriteList[],
     created: null as { kind?: string; rule?: SmartListRule } | null,
     seen: false,
+    converted: false,
   };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -76,6 +77,12 @@ async function mockSmartLists(page: Page) {
     if (path === "/api/favorite-lists/7/seen" && request.method() === "POST") {
       state.seen = true;
       await route.fulfill({ json: { listId: 7, newCount: 0 } });
+      return;
+    }
+    if (path === "/api/favorite-lists/7/convert" && request.method() === "POST") {
+      state.converted = true;
+      state.lists = state.lists.map((list) => (list.id === 7 ? { ...list, kind: "user", rule: undefined } : list));
+      await route.fulfill({ json: state.lists.find((list) => list.id === 7) });
       return;
     }
     if (path === "/api/favorite-works") {
@@ -160,4 +167,16 @@ test("@desktop a smart list is created from tags and reports its new works until
   await rule.getByRole("button", { name: "Mark all as seen" }).click();
   await expect.poll(() => state.seen).toBe(true);
   await expect(rule.getByText("1 new work")).toBeHidden();
+
+  // Converting waits in the list's editor, not on the shelf.
+  await expect(rule.getByRole("button", { name: "Convert to regular list" })).toHaveCount(0);
+  await rule.getByRole("button", { name: "Edit rule" }).click();
+  const listDialog = page.getByRole("dialog", { name: "Edit list" });
+  await listDialog.getByRole("button", { name: "Convert to regular list" }).click();
+  const confirmation = page.getByRole("alertdialog", { name: "Convert to a regular list?" });
+  await expect(confirmation).toContainText('The 3 works "Example smart list" shows now stay in the list');
+  await confirmation.getByRole("button", { name: "Convert to regular list" }).click();
+  await expect.poll(() => state.converted).toBe(true);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(rule).toHaveCount(0);
 });

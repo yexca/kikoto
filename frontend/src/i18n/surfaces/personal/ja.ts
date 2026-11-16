@@ -115,7 +115,6 @@ export const personalJapanese = {
       timeZoneAuto: "1 日は {{zone}}（この端末のタイムゾーン）の午前 0 時に始まります。",
       changeTimeZone: "タイムゾーンを変更",
       yearLabel: "年",
-      yearValue: "年：{{year}}",
       hours: {
         title: "時間帯別",
         peak: "最も多い時間帯 {{hours}}",
@@ -123,8 +122,6 @@ export const personalJapanese = {
       },
       profile: {
         heading: "好みのプロフィール",
-        basis:
-          "聴いている内容をライブラリと比べたものです。タグは、聴取時間に占める割合がライブラリの作品に占める割合を上回るものです。各マーカーは、聴いた作品がライブラリの中でどの位置にあるかを、聴取時間で重み付けして示します。",
         failed: "好みのプロフィールを読み込めませんでした。",
         tags: "好みのタグ",
         excess: "聴取時間の割合がライブラリの割合を上回る幅",
@@ -219,11 +216,6 @@ export const personalJapanese = {
         failed: "聴取カレンダーを読み込めませんでした。",
       },
       breakdown: {
-        basis: {
-          preference:
-            "聴取時間に占める割合が、ライブラリの作品に占める割合をどれだけ上回るかの順です。バーが前者、縦線が後者です。1 つの作品の時間は、その作品のすべてのタグと声優にそのまま計上されます。",
-          time: "作品の聴取時間順です。1 つの作品の時間は、その作品のすべてのタグと声優にそのまま計上されます。",
-        },
         rankLabel: "並び順",
         ranks: {
           preference: "好み",
@@ -259,16 +251,12 @@ export const personalJapanese = {
     userData: {
       exportTitle: "エクスポート",
       exportDescription:
-        "聴取マーク、個人の評価とメモ、再開位置、累計聴取時間、作品タグ、カスタムタグ定義、お気に入りリストを JSON でダウンロードします。",
-      exportExcludes:
-        "メディア、ソース、サーバー情報、認証情報、プロバイダーのメタデータ、生の聴取セッション、日別統計は含まれません。",
+        "再生マーク、評価、メモ、再生位置、累計再生時間、個人タグ、お気に入りリストを JSON ファイルとしてダウンロードします。メディアファイル、ソース設定、認証情報、日別履歴は含まれません。",
       exportAction: "エクスポートをダウンロード",
       exporting: "エクスポートを準備中...",
       exported: "エクスポートを保存しました。",
       exportFailed: "エクスポートを準備できませんでした。",
       importTitle: "インポート",
-      importDescription:
-        "作品はライブラリの既存作品と既知の別名に作品コードで照合されます。インポートでメタデータを取得したり、ライブラリにない作品を追加したりすることはありません。",
       source: "取り込み元",
       sources: {
         kikoto: "Kikoto エクスポートファイル",
@@ -404,7 +392,6 @@ export const personalJapanese = {
       },
       preview: "プレビュー",
       previewing: "ファイルを確認中...",
-      previewStale: "ファイル、形式、競合時の扱いを変更するとプレビューが更新されます。",
       previewCounts: {
         works: "ファイル内の作品",
         matchedWorks: "ライブラリと一致",
@@ -435,8 +422,6 @@ export const personalJapanese = {
   },
   timeZone: {
     title: "タイムゾーン",
-    description:
-      "聴取レポートの 1 日は、このタイムゾーンの午前 0 時に始まります。「自動」は使用中の端末に合わせます。記録済みの聴取は、記録時の日付のままです。",
     auto: "自動（{{zone}}）",
     saveFailed: "タイムゾーンを保存できませんでした。",
     loadFailed: "タイムゾーンを読み込めませんでした。",

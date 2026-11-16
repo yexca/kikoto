@@ -396,7 +396,6 @@ export function AvailabilityWatchPool({
         </div>
         {parsed && <AddPreview id="availability-watch-add-preview" parsed={parsed} />}
         {addError && <p className="mt-2 text-xs text-error-foreground">{addError}</p>}
-        <p className="mt-2 text-xs text-muted-foreground">{workflowCopy("watchPoolDescription")}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -141,3 +141,88 @@ func TestFavoriteListMembershipBatchRejectsWithoutPartialWrites(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkListsLeadWithTheMostRecentAddition(t *testing.T) {
+	server := seedFavoriteMembershipBatch(t)
+	user := currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write"}}
+	// Work 3 joins Study last and Later first; work 2 joins two lists in the
+	// same second, so only the order of insertion tells them apart.
+	if _, err := server.db.Exec(`
+		INSERT INTO favorite_list_item (list_id, work_id, created_at) VALUES
+			(13, 3, '2026-08-10 00:00:00'),
+			(12, 3, '2026-08-11 00:00:00'),
+			(11, 3, '2026-08-12 00:00:00'),
+			(11, 2, '2026-08-10 00:00:00'),
+			(21, 3, '2026-08-13 00:00:00');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := callSmartListHandler(t, server.listWorks, http.MethodGet, "/api/works?pageSize=50&sort=code&direction=asc", "", user)
+	if code != http.StatusOK {
+		t.Fatalf("list works status = %d, body = %s", code, body)
+	}
+	var page struct {
+		Works []libraryWorkSummary `json:"works"`
+	}
+	if err := json.Unmarshal([]byte(body), &page); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, work := range page.Works {
+		for _, list := range work.MemberLists {
+			got[work.PrimaryCode] = append(got[work.PrimaryCode], list.Name)
+		}
+	}
+	want := map[string][]string{
+		"RJ00000001": {"Sleep", "Study"},
+		"RJ00000002": {"Study", "Sleep"},
+		"RJ00000003": {"Study", "Sleep", "Later"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("card lists = %v, want %v: newest addition first, without another user's lists", got, want)
+	}
+
+	// The work's own answer keeps list order for the picker and says where
+	// each list stands among the lists holding the work.
+	code, body = callSmartListHandler(t, server.getWorkFavoriteLists, http.MethodGet, "/api/works/3/favorite-lists", "", user)
+	if code != http.StatusOK {
+		t.Fatalf("work lists status = %d, body = %s", code, body)
+	}
+	var lists []favoriteListResponse
+	if err := json.Unmarshal([]byte(body), &lists); err != nil {
+		t.Fatal(err)
+	}
+	type listOrder struct {
+		Name  string
+		Order int
+	}
+	gotOrder := []listOrder{}
+	for _, list := range lists {
+		gotOrder = append(gotOrder, listOrder{list.Name, list.MemberOrder})
+	}
+	wantOrder := []listOrder{{"Marked", 0}, {"Study", 1}, {"Sleep", 2}, {"Later", 3}}
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("work lists = %v, want %v", gotOrder, wantOrder)
+	}
+
+	// A list the work joins now leads; the lists it was already in keep their times.
+	code, body = callSmartListHandler(t, server.setWorkFavoriteLists, http.MethodPut, "/api/works/1/favorite-lists", `{"listIds":[11,12,13]}`, user)
+	if code != http.StatusOK {
+		t.Fatalf("set work lists status = %d, body = %s", code, body)
+	}
+	var saved struct {
+		Lists []favoriteListResponse `json:"lists"`
+	}
+	if err := json.Unmarshal([]byte(body), &saved); err != nil {
+		t.Fatal(err)
+	}
+	gotOrder = gotOrder[:0]
+	for _, list := range saved.Lists {
+		gotOrder = append(gotOrder, listOrder{list.Name, list.MemberOrder})
+	}
+	wantOrder = []listOrder{{"Marked", 0}, {"Study", 3}, {"Sleep", 2}, {"Later", 1}}
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("saved work lists = %v, want %v", gotOrder, wantOrder)
+	}
+}

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { LibraryMigrationStatus } from "../../src/lib/api";
 import { runtimeSettingsFixture, type ApiErrorBody } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
+import { showFullWorkCards } from "./fixtures/library-view";
 
 test("administrator sees storage migration progress and can retry a failed move @desktop", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
@@ -87,6 +88,7 @@ test("a request refused for maintenance shows the maintenance notice @desktop", 
     });
   });
 
+  await showFullWorkCards(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Mark: Unmarked" }).click();
   await page.getByRole("button", { name: "Want", exact: true }).click();

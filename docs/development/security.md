@@ -121,7 +121,7 @@ after DLsite reports it as not found:
   collection is limited to 32 entries, and sibling titles to 2048 bytes.
   Edition codes and declared languages supply metadata references only; a
   source-local id or relationship without a title creates no work or request.
-- Run output, Activity, and the API expose source codes, display names and
+- Run output and the API expose source codes, display names and
   fixed outcomes only. Detailed upstream errors stay in protected logs.
 
 ### Lyrics files
@@ -226,7 +226,7 @@ an administrator accepts it, so the notice does not depend on the client.
   unmarked one is refused with `lyrics_folder_blocked`. It never replaces a
   file: a different file under the track's name moves the transcription to a
   numbered name.
-- Activity and API errors expose fixed failure codes only; upstream errors,
+- Run and API errors expose fixed failure codes only; upstream errors,
   endpoints and paths stay in protected logs.
 
 ### Folder edit
@@ -326,7 +326,7 @@ family, and stops before the next edition when the request is cancelled.
   replace it. A cancelled or failed run removes its staging directory; a
   failure that is retried automatically keeps what it collected.
 - Responses expose request errors only. Upstream URLs and detailed failures
-  stay in protected logs and Activity.
+  stay in protected logs and runs.
 
 ### Remote text preview
 
@@ -474,7 +474,7 @@ cannot create an unchecked outbound path.
 
 Public API errors use a stable code, a retryability decision, and a short
 sanitized message. Detailed errors may be logged or recorded in protected
-Activity only when operationally useful.
+run events only when operationally useful.
 
 Before emitting or exporting a value, consider whether it contains:
 

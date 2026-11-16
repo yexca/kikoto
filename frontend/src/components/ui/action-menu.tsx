@@ -95,7 +95,12 @@ export function ActionMenu({
         ref={buttonRef}
         variant={toolbar ? "toolbar" : open ? "secondary" : "outline"}
         size={toolbar ? "icon-sm" : "icon"}
-        className={toolbar ? "lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs" : triggerClassName}
+        className={
+          toolbar
+            ? "lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+            : // The open look keeps the outline's border width, so the button does not shift.
+              cn(open && "border border-transparent", triggerClassName)
+        }
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -126,7 +131,8 @@ export function ActionMenu({
               tabIndex={-1}
               disabled={item.disabled}
               className={cn(
-                "flex min-h-11 w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent sm:min-h-9",
+                // The first item takes focus on open; only keyboard focus highlights it, so a click does not.
+                "flex min-h-11 w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:outline-none focus-visible:bg-muted disabled:cursor-not-allowed disabled:hover:bg-transparent sm:min-h-9",
                 item.disabled && "text-muted-foreground",
               )}
               onClick={() => {

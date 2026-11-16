@@ -8,8 +8,8 @@
     },
     {
       "url": "http://www.w3.org/2000/svg",
-      "files": ["backend/internal/httpapi/media_asset_security_test.go"],
-      "reason": "Standard SVG XML namespace used in an authored active-file security fixture; it is not fetched."
+      "files": ["backend/internal/httpapi/media_asset_security_test.go", "frontend/tests/e2e/work-detail.spec.ts"],
+      "reason": "Standard SVG XML namespace used in authored test fixtures (an active-file security fixture and a sized image-viewer fixture); it is not fetched."
     },
     {
       "url": "https://opencollective.com/parcel",

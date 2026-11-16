@@ -189,6 +189,7 @@ function catalogWorkCardView(work: CircleCatalogWork, t: TFunction): WorkCardVie
   return {
     code: work.primaryCode,
     title: work.title,
+    mark: normalizeListeningStatus(work.listeningMark),
     circle: work.circle || t("workCard.unknownCircle"),
     circleExternalId: work.circleExternalId,
     ageRating: work.ageRating,

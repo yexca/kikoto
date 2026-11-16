@@ -40,12 +40,12 @@ describe("commandActions", () => {
       "action:dlsite_sync",
       "action:recover_stale",
       "page:library",
-      "activity:open",
+      "activity:attention",
       "activity:history",
     ]);
   });
 
-  it("offers each personal Settings tab as its own destination to library readers", () => {
+  it("offers Your data beside Settings as its own destination to library readers", () => {
     const onOpenPath = vi.fn();
     const settings = navItems.filter((item) => item.id === "settings");
     const actions = commandActions({
@@ -55,9 +55,9 @@ describe("commandActions", () => {
       onOpenPath,
     });
 
-    expect(actions.map((action) => action.label)).toEqual(["Settings", "Tags", "Your data"]);
+    expect(actions.map((action) => action.label)).toEqual(["Settings", "Your data"]);
     actions[1].run();
-    expect(onOpenPath).toHaveBeenCalledWith("/settings?tab=tags");
+    expect(onOpenPath).toHaveBeenCalledWith("/settings?tab=data");
     expect(
       commandActions({ hasPermission: () => false, visibleNavItems: settings, onOpenPage: vi.fn(), onOpenPath }),
     ).toHaveLength(1);
@@ -99,6 +99,6 @@ describe("commandActions", () => {
     await actions[0].run();
 
     expect(api.runLocalScan).toHaveBeenCalledWith({ followUpRun: false });
-    expect(onOpenPath).toHaveBeenCalledWith("/workflows?activity=1&workflow=local_library_scan&run=1");
+    expect(onOpenPath).toHaveBeenCalledWith("/workflows?run=1");
   });
 });

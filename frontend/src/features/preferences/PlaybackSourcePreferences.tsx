@@ -17,12 +17,8 @@ export function PlaybackSourcePreferences({ userId }: { userId: ClientPrincipalI
     storePlaybackSourcePreferences(userId, { ...preferences, ...change });
 
   return (
-    <SettingsSection title={t("settings.playbackSources")} description={t("settings.playbackSourcesDescription")}>
-      <SettingsRow
-        htmlFor={switchingId}
-        title={t("settings.sourceSwitching")}
-        description={t("settings.sourceSwitchingDescription")}
-      >
+    <SettingsSection title={t("settings.playbackSources")}>
+      <SettingsRow htmlFor={switchingId} title={t("settings.sourceSwitching")}>
         <Switch
           id={switchingId}
           aria-label={t("settings.sourceSwitching")}
@@ -30,11 +26,7 @@ export function PlaybackSourcePreferences({ userId }: { userId: ClientPrincipalI
           onCheckedChange={(sourceSwitching) => update({ sourceSwitching })}
         />
       </SettingsRow>
-      <SettingsRow
-        htmlFor={fallbackId}
-        title={t("settings.sourceFallback")}
-        description={t("settings.sourceFallbackDescription")}
-      >
+      <SettingsRow htmlFor={fallbackId} title={t("settings.sourceFallback")}>
         <Switch
           id={fallbackId}
           aria-label={t("settings.sourceFallback")}

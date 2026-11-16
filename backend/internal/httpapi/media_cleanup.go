@@ -64,12 +64,27 @@ type mediaCleanupJobPayload struct {
 	Mode         mediaCleanupMode     `json:"mode"`
 	ActorUserID  int64                `json:"actorUserId,omitempty"`
 	ForgetNodeID int64                `json:"forgetNodeId,omitempty"`
+	// RequestedByUserID names the account that started the run, so it can
+	// cancel and retry its own run.
+	RequestedByUserID int64 `json:"requested_by_user_id,omitempty"`
+	// Works, when set, takes the place of Targets: the run cleans each
+	// work's folders in turn (see executeLocalWorkCleanup).
+	Works       []localWorkCleanupJobWork `json:"works,omitempty"`
+	ClearRating bool                      `json:"clearRating,omitempty"`
+	ClearMark   bool                      `json:"clearMark,omitempty"`
 }
 
 type mediaCleanupCheckpoint struct {
 	CompletedKeys  []string `json:"completedKeys"`
 	CompletedCount int      `json:"completedCount"`
 	Deleted        int      `json:"deleted"`
+	// The rest is the progress of a run that cleans works in turn.
+	DoneWorks      []int                         `json:"doneWorks,omitempty"`
+	Failures       []localWorkCleanupFailure     `json:"failures,omitempty"`
+	Forgotten      []string                      `json:"forgotten,omitempty"`
+	Retained       []unlinkedWorkMaintenanceSkip `json:"retained,omitempty"`
+	ClearedRatings int64                         `json:"clearedRatings,omitempty"`
+	ClearedMarks   int64                         `json:"clearedMarks,omitempty"`
 }
 
 type mediaCleanupResult struct {
@@ -121,6 +136,9 @@ func (s *Server) cleanupMediaLocations(w http.ResponseWriter, r *http.Request) {
 type mediaCleanupOptions struct {
 	Mode        mediaCleanupMode
 	ActorUserID int64
+	Works       []localWorkCleanupJobWork
+	ClearRating bool
+	ClearMark   bool
 }
 
 func parseMediaCleanupMode(value string) (mediaCleanupMode, error) {
@@ -242,8 +260,17 @@ func (s *Server) insertMediaCleanupWorkflow(ctx context.Context, targets []media
 	if err != nil {
 		return 0, 0, err
 	}
-	payload := mediaCleanupJobPayload{Targets: targets, Mode: options.Mode, ActorUserID: options.ActorUserID}
-	runID, err := workflow.InsertRun(ctx, tx, definition, spec.Code, spec.DisplayName, "queued", "manual", "delete_selected", payload, map[string]any{"locations": len(targets), "mode": options.Mode})
+	payload := mediaCleanupJobPayload{
+		Targets: targets, Mode: options.Mode, ActorUserID: options.ActorUserID, RequestedByUserID: options.ActorUserID,
+		Works: options.Works, ClearRating: options.ClearRating, ClearMark: options.ClearMark,
+	}
+	summary := map[string]any{"locations": len(targets), "mode": options.Mode}
+	progressTotal := len(targets)
+	if len(options.Works) > 0 {
+		summary = map[string]any{"works": len(options.Works), "mode": options.Mode}
+		progressTotal = len(options.Works)
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definition, spec.Code, spec.DisplayName, "queued", "manual", "delete_selected", payload, summary)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -254,7 +281,7 @@ func (s *Server) insertMediaCleanupWorkflow(ctx context.Context, targets []media
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: mediaCleanupResourceKey, Payload: payload,
 		Checkpoint: mediaCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3,
-		ProgressCurrent: 0, ProgressTotal: len(targets),
+		ProgressCurrent: 0, ProgressTotal: progressTotal,
 	})
 	if err != nil {
 		return 0, 0, err
@@ -266,9 +293,13 @@ func (s *Server) insertMediaCleanupWorkflow(ctx context.Context, targets []media
 }
 
 func insertMediaCleanupNodeRuns(ctx context.Context, tx *sql.Tx, runID int64, payload mediaCleanupJobPayload) (mediaCleanupJobPayload, int64, error) {
+	selected := map[string]any{"locations": len(payload.Targets)}
+	if len(payload.Works) > 0 {
+		selected = map[string]any{"works": len(payload.Works)}
+	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select media locations", Position: 1, Status: "succeeded",
-		Input: payload, Output: map[string]any{"locations": len(payload.Targets)},
+		Input: payload, Output: selected,
 	}); err != nil {
 		return payload, 0, err
 	}
@@ -590,6 +621,9 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 	}
 	if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
 		return err
+	}
+	if len(payload.Works) > 0 {
+		return s.executeLocalWorkCleanup(ctx, statusCtx, job, payload, checkpoint, finishCancelled)
 	}
 	completed := mediaCleanupCompletedKeys(checkpoint)
 	if stopped, err := s.processMediaCleanupTargets(ctx, statusCtx, job, payload, &checkpoint, completed, finishCancelled); stopped {
@@ -946,6 +980,15 @@ func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarg
 	// The lyrics folder's marker is never indexed, so no file target removes
 	// it; it goes with the folder that holds it.
 	if err := s.removeLyricsRootMarker(target.Path); err != nil {
+		return false, err
+	}
+	// Nor are the sidecars a NAS or operating system keeps beside the files,
+	// such as Thumbs.db or @eaDir; they go with the folder as in a merge.
+	absoluteRoot, err := validateDestructivePath(s.cfg.DataRoot, target.Path, true, true)
+	if err != nil {
+		return false, err
+	}
+	if err := s.removeWorkFolderEditMergeSidecars(absoluteRoot); err != nil {
 		return false, err
 	}
 	rootPath, err := validateDestructiveDirectoryTree(s.cfg.DataRoot, target.Path)

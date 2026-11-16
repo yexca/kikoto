@@ -88,8 +88,8 @@ export function TranscodeCacheSection({
   };
 
   return (
-    <SettingsSection title={t("maintenance.cache.transcodeCache")} description={t("cleanup.transcodeDescription")}>
-      <div className="space-y-3 px-4 py-4">
+    <SettingsSection title={t("maintenance.cache.transcodeCache")}>
+      <div className="space-y-3 py-4">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
             <span className="text-2xl font-semibold tabular-nums">
@@ -118,9 +118,8 @@ export function TranscodeCacheSection({
               : t("maintenance.cache.scanning")
           }
         />
-        <p className="text-xs text-muted-foreground">{t("cleanup.transcodeLru")}</p>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2 bg-muted/25 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 py-3">
         {status && <span className="mr-auto text-xs text-muted-foreground">{status}</span>}
         {confirming && (
           <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
@@ -264,7 +263,7 @@ export function ManagedMediaCacheSection({
         </Button>
       }
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-4 sm:grid-cols-4">
         <InlineMetric
           label={t("maintenance.cache.onDisk")}
           value={overview ? formatByteSize(overview.mediaBytes) : "--"}
@@ -297,13 +296,13 @@ export function ManagedMediaCacheSection({
       </div>
 
       {overview && (overview.missingReferences > 0 || overview.emptyDirectories > 0) && (
-        <div className="flex flex-wrap gap-x-5 gap-y-1 bg-muted/25 px-4 py-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 py-2 text-xs text-muted-foreground">
           <span>{t("maintenance.cache.missingReferences", { count: overview.missingReferences })}</span>
           <span>{t("maintenance.cache.emptyDirectories", { count: overview.emptyDirectories })}</span>
         </div>
       )}
 
-      <div className="space-y-3 px-4 py-3">
+      <div className="space-y-3 py-3">
         <div className={segmentedListClassName()} aria-label={t("maintenance.cache.cleanupMode")}>
           <button
             type="button"
@@ -442,13 +441,13 @@ export function ManagedMediaCacheSection({
         )}
 
         {overview && rows.length === 0 && (
-          <div className="rounded-lg border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">
+          <div className="py-5 text-center text-sm text-muted-foreground">
             {orphanMode ? t("maintenance.cache.noEligibleGroups") : t("maintenance.cache.noReferencedCache")}
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 bg-muted/25 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 py-3">
         {status && <span className="mr-auto text-xs text-muted-foreground">{status}</span>}
         {confirming && (
           <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>

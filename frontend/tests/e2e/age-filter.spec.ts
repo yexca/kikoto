@@ -1,12 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { workDetailFixture } from "./fixtures/api";
 import { mockApplication, work } from "./fixtures/player-library";
+import { showFullWorkCards } from "./fixtures/library-view";
 
 test("age rating chip filters the library without opening the work", async ({ page }) => {
   const requests: string[] = [];
   await mockApplication(page, (url) => requests.push(url.searchParams.get("q") ?? ""), false, 1, 0, [], undefined, {
     work: { ...work, ageRating: "adult" },
   });
+  await showFullWorkCards(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Age rating: R18", exact: true }).click();
   await expect.poll(() => requests).toContain("$age:adult$");

@@ -34,11 +34,6 @@ export const subscriptionsKorean = {
         try_new: "새로 들어 보기",
         listen_again: "다시 듣기",
       },
-      descriptions: {
-        maybe_like: "아직 듣지 않은, 취향에 가까운 작품",
-        try_new: "거의 듣지 않는 서클, 성우, 태그",
-        listen_again: "좋아했지만 한동안 재생하지 않은 작품",
-      },
       drawAgain: "다시 뽑기",
       drawAgainColumn: "{{column}} 다시 뽑기",
       coldStart:
@@ -85,6 +80,7 @@ export const subscriptionsKorean = {
       label: "표시된 작품 작업",
       button: "작업",
       viewRun: "실행 보기",
+      viewRuns: "실행 목록 보기",
       metadata: {
         label: "메타데이터 동기화",
         hint: "메타데이터가 없거나 동기화한 지 하루가 지난 작품이 대상입니다. 라이브러리에 없는 작품은 추가됩니다.",
@@ -110,7 +106,7 @@ export const subscriptionsKorean = {
         partial: "소스 확인을 마쳤습니다. 일부 작품은 확인하지 못했습니다.",
         failed: "소스 확인에 실패했습니다.",
         queueFailed: "소스 확인을 대기열에 추가할 수 없습니다.",
-        noSource: "확인할 수 있는 원격 소스가 없습니다. 먼저 설정에서 호환 소스를 추가하세요.",
+        noSource: "확인할 수 있는 원격 소스가 없습니다. 먼저 시스템 → 라이브러리에서 호환 소스를 추가하세요.",
       },
     },
     feed: {
@@ -202,9 +198,8 @@ export const subscriptionsKorean = {
       availabilityWatch: "가용성 모니터링 확인",
       availabilityWatchDescription: "새로 고침할 때마다 가용성 모니터링 확인을 실행합니다.",
       nextRun: "다음 새로 고침:",
-      lastRun: "마지막 새로 고침:",
       off: "끔",
-      viewRun: "최근 실행 보기",
+      latestRun: "최근 새로 고침",
       lastErrorNotice: "마지막 새로 고침을 확인해야 합니다. 자세한 내용은 최근 실행을 여세요.",
       saveFailed: "일정을 저장할 수 없습니다.",
       queued: "새로 고침을 대기열에 추가했습니다.",

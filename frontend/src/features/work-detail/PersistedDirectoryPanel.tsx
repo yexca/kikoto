@@ -7,12 +7,7 @@ import {
   type TrackedPresenceOption,
 } from "@/features/work-detail/source/sourceContextModel";
 import type { DirectoryRoutingRule, RemoteWorkDetail, SourcePresenceItem, WorkDetail } from "@/lib/api";
-import {
-  formatTreeStats,
-  type TreeNode,
-  type TreeStats,
-  type TreeTrack,
-} from "@/features/work-detail/media/mediaTreeModel";
+import { type TreeNode, type TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { languageLabel } from "@/features/work-detail/workDetailHelpers";
 import { DirectorySkeleton } from "@/features/work-detail/WorkDetailLayout";
@@ -38,7 +33,6 @@ export type PersistedDirectoryPanelProps = {
   checkingSources: boolean;
   checkedAt: string;
   root: TreeNode;
-  directoryStats: TreeStats;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
@@ -155,7 +149,6 @@ export function PersistedDirectoryPanel(props: PersistedDirectoryPanelProps) {
     <SourceDirectoryPanel
       title={i18n.t("libraryDetail.directory")}
       description={description}
-      statsLabel={formatTreeStats(props.directoryStats)}
       tabs={props.tabs}
       activeKey={props.activeKey}
       onActiveKeyChange={props.onActiveKeyChange}

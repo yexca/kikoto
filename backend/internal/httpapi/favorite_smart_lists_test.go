@@ -217,7 +217,7 @@ func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testin
 	}
 }
 
-func TestWorkCardsNameTheViewersListsInListOrder(t *testing.T) {
+func TestWorkCardsNameHandAddedListsBeforeRuleMatches(t *testing.T) {
 	server, db := openSmartListTestServer(t)
 	code, body := callSmartListHandler(t, server.createFavoriteList, http.MethodPost, "/api/favorite-lists", `{"name":"Example List"}`, smartListUser)
 	if code != http.StatusCreated {
@@ -257,10 +257,10 @@ func TestWorkCardsNameTheViewersListsInListOrder(t *testing.T) {
 	}
 	want := map[string][]string{
 		"RJ00000001": {"Example List", "Example Smart"},
-		"RJ00000003": {"Example List", "Example Smart"},
+		"RJ00000003": {"Example Smart", "Example List"},
 	}
 	if len(got) != len(want) || !slices.Equal(got["RJ00000001"], want["RJ00000001"]) || !slices.Equal(got["RJ00000003"], want["RJ00000003"]) {
-		t.Fatalf("card lists = %v, want %v: hand adds and rule matches in list order, without removed matches or another user's lists", got, want)
+		t.Fatalf("card lists = %v, want %v: hand adds newest first, then rule matches, without removed matches or another user's lists", got, want)
 	}
 }
 

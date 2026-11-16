@@ -45,15 +45,8 @@ export function VideoHardwareSettingsSection({
   const { t } = useTranslation();
   const autosave = useAutosaveStatus();
   return (
-    <SettingsSection
-      title={t("maintenance.cache.videoHardware")}
-      description={t("maintenance.cache.videoHardwareDescription")}
-      action={<AutosaveStatus state={autosave.state} />}
-    >
-      <SettingsRow
-        title={t("maintenance.cache.transcodeSlots")}
-        description={t("maintenance.cache.transcodeSlotsDescription")}
-      >
+    <SettingsSection title={t("maintenance.cache.videoHardware")} action={<AutosaveStatus state={autosave.state} />}>
+      <SettingsRow title={t("maintenance.cache.transcodeSlots")}>
         <SettingsNumberInput
           disabled={readOnly}
           label={t("maintenance.cache.transcodeSlots")}

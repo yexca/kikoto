@@ -1,6 +1,8 @@
 {
   "frontend/src/app/App.tsx": [
-    "alt: Kikoto",
+    "alt: Kikoto"
+  ],
+  "frontend/src/app/AppSidebar.tsx": [
     "text: Kikoto"
   ],
   "frontend/src/components/creator/CreatorListToolbar.tsx": [

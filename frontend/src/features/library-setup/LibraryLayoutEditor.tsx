@@ -36,12 +36,16 @@ export function LibraryLayoutEditor({
   readOnly,
   saveLabel,
   onSaved,
+  onDone,
+  onCancel,
   onContinue,
 }: {
   layout: LibraryLayout;
   readOnly: boolean;
   saveLabel?: string;
   onSaved: (layout: LibraryLayout) => void;
+  onDone?: () => void;
+  onCancel?: () => void;
   onContinue?: () => void;
 }) {
   const { t } = useTranslation();
@@ -103,6 +107,7 @@ export function LibraryLayoutEditor({
       setDraft(draftFromLayout(next));
       onSaved(next);
       toast.success(t("librarySetup.saved"));
+      onDone?.();
     } catch (error) {
       reportSaveError(error);
     } finally {
@@ -123,6 +128,7 @@ export function LibraryLayoutEditor({
       );
       window.dispatchEvent(new Event(SITE_MAINTENANCE_EVENT));
       setMigrationPreview(null);
+      onDone?.();
     } catch (error) {
       reportSaveError(error);
     } finally {
@@ -194,7 +200,7 @@ export function LibraryLayoutEditor({
         </div>
 
         {draft.mode === "standard" && layout.mode === "standard" && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">{t("librarySetup.dataFolder")}</span>
             {statusBadge("")}
             {reconnectButton("")}
@@ -211,12 +217,12 @@ export function LibraryLayoutEditor({
               {folders.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("librarySetup.noFolders")}</p>
               ) : (
-                <ul className="divide-y rounded-md border">
+                <ul className="divide-y border-y">
                   {folders.map((path) => {
                     const checked = draft.pools.includes(path);
                     const id = `library-pool-${path}`;
                     return (
-                      <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
+                      <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 py-2">
                         <Checkbox
                           id={id}
                           checked={checked}
@@ -258,7 +264,12 @@ export function LibraryLayoutEditor({
             {saveError}
           </p>
         )}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {onCancel && (
+            <Button variant="outline" size="sm" disabled={saving} onClick={onCancel}>
+              {t("maintenance.cancel")}
+            </Button>
+          )}
           <Button
             size="sm"
             disabled={readOnly || saving || (!dirty && !onContinue) || poolsInvalid}
@@ -278,6 +289,7 @@ export function LibraryLayoutEditor({
       {migrationPreview && (
         <Dialog
           onClose={() => setMigrationPreview(null)}
+          layer="overlay-nested"
           size="sm"
           ariaLabel={t("librarySetup.migration.confirmTitle")}
         >

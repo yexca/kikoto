@@ -513,6 +513,16 @@ export function previewForFile(file: TreeTrack): FilePreviewState | null {
   return null;
 }
 
+/**
+ * Whether opening a folder's first track plays the folder. A video opens in
+ * the viewer instead, so a folder led by one offers its own way to play its
+ * tracks in order.
+ */
+export function firstTrackPlaysFolder(tracks: TreeTrack[]) {
+  const first = tracks[0];
+  return Boolean(first) && !(first.kind === "video" && previewForFile(first));
+}
+
 /** Previews for the files a viewer can step through, in folder order. */
 export function previewsForFiles(files: TreeTrack[]) {
   return files.map(previewForFile).filter((preview): preview is FilePreviewState => preview !== null);

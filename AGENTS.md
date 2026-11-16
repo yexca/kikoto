@@ -115,6 +115,9 @@ app composition -> domain feature -> shared application code -> primitives
 - Follow `docs/development/design.md`. Preserve the global player across navigation and
   contain page failures so one remote or media error does not discard known
   local state.
+- Avoid unnecessary helper labels and explanatory text; let the layout itself
+  explain the surface. The rule for when a description still belongs is in
+  [Helper Text](docs/development/design.md#helper-text).
 - Use semantic design tokens. Status color communicates availability or intent,
   never source identity.
 - Tests should protect a concrete user-visible behavior, public contract, state

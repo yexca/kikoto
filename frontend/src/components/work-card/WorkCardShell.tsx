@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { FavoriteListPicker, type FavoriteListPickerOption } from "@/components/favorite-list/FavoriteListPicker";
+import { workMemberLists } from "@/components/favorite-list/favoriteListPickerModel";
 import { FavoriteListPickerSurface } from "@/components/favorite-list/FavoriteListPickerSurface";
 import { useWorkFavoriteLists } from "@/components/favorite-list/useWorkFavoriteLists";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -95,8 +96,10 @@ export type WorkCardViewModel = {
   recommendationRevealDelay?: number;
   /** A short label at the cover's top-left, such as a smart list's new work. A recommendation chip takes its place. */
   coverMark?: string;
-  /** Last listening position, shown by the compact layouts. */
+  /** Last listening position, shown by the compact and simple layouts. */
   progress?: WorkCardProgress | null;
+  /** The viewer's quick mark. A simple card states it on the cover, since its action row is not on show. */
+  mark?: ListeningStatus;
 };
 
 export type WorkCardProgress = {
@@ -1181,6 +1184,8 @@ export function WorkCardQuickMarkButton({
         showLabel={showLabel}
         responsiveLabel={responsiveLabel}
         label={currentLabel}
+        popup="menu"
+        expanded={open}
         onClick={(event) => {
           event.stopPropagation();
           if (!open && canOpen && !canOpen()) return;
@@ -1228,7 +1233,6 @@ export function WorkCardListButton({
   active,
   disabled,
   showLabel = false,
-  responsiveLabel = false,
   fitLabel = false,
   memberLists,
   ensureWorkId,
@@ -1237,14 +1241,17 @@ export function WorkCardListButton({
   workId: number | null;
   active: boolean;
   disabled?: boolean;
+  /** Names the lists beside the icon whenever the work is in one, where the row has room to spare. */
   showLabel?: boolean;
-  responsiveLabel?: boolean;
   /**
    * In a card footer: names the lists beside the icon while the footer has
    * room for the name, and shows the lit icon alone otherwise.
    */
   fitLabel?: boolean;
-  /** The user lists holding the work, in list order, once the caller has loaded them; they name the button. */
+  /**
+   * The lists holding the work, the most recent addition first, once the
+   * caller has loaded them; the first names the button.
+   */
   memberLists?: readonly WorkMemberList[];
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
@@ -1278,9 +1285,7 @@ export function WorkCardListButton({
 
   // Once the picker has loaded the work's lists, they name the button, so a
   // change shows before the caller reloads its own copy.
-  const members: readonly WorkMemberList[] = membership.lists
-    ? membership.lists.filter((list) => list.selected)
-    : (memberLists ?? []);
+  const members: readonly WorkMemberList[] = membership.lists ? workMemberLists(membership.lists) : (memberLists ?? []);
   const firstMemberList: WorkMemberList | undefined = members[0];
   const otherMemberListCount = members.length - 1;
   const memberLabel = firstMemberList && (
@@ -1327,14 +1332,14 @@ export function WorkCardListButton({
               : t("workCard.addToList")
         }
         disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
-        showLabel={showLabel || labelFits}
-        responsiveLabel={responsiveLabel}
-        quiet={!showLabel && labelFits}
+        showLabel={(showLabel && Boolean(firstMemberList)) || labelFits}
+        // Named or not, the button stays a borderless control like the mark and rating beside it.
+        quiet
+        popup="dialog"
+        expanded={open}
         label={memberLabel || (active ? t("workCard.lists") : t("workCard.addToListShort"))}
         labelClassName={
-          firstMemberList
-            ? cn("min-w-0 max-w-24 items-baseline gap-1", responsiveLabel && showLabel ? "sm:flex" : "flex")
-            : undefined
+          firstMemberList ? cn("flex min-w-0 max-w-24 items-baseline gap-1", showLabel && "sm:max-w-40") : undefined
         }
         onClick={(event) => {
           event.stopPropagation();

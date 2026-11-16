@@ -11,6 +11,7 @@ import {
   type ApiResponse,
 } from "./fixtures/api";
 import { mockApplication, work } from "./fixtures/player-library";
+import { runManageAction } from "./fixtures/work-detail";
 
 const provider: LLMProvider = {
   id: "synthetic-provider",
@@ -94,7 +95,7 @@ test("LLM settings save connection drafts before discovery and edit structured c
     policy = route.request().postDataJSON() as LLMPolicy;
     return route.fulfill({ json: policy });
   });
-  await page.goto("/settings?tab=llm");
+  await page.goto("/system?tab=llm");
   await page.getByRole("button", { name: "Edit Example LLM", exact: true }).click();
   const connection = page.getByRole("dialog", { name: "Edit LLM provider", exact: true });
   await connection.getByLabel("Endpoint", { exact: true }).fill("https://second.example.invalid");
@@ -197,7 +198,7 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
     return route.fulfill({ json: providers[0] });
   });
 
-  await page.goto("/settings?tab=llm");
+  await page.goto("/system?tab=llm");
   const list = page.getByRole("region", { name: "LLM providers", exact: true });
   await expect(list.getByText("No LLM providers configured.", { exact: true })).toBeVisible();
   await list.getByRole("button", { name: "Add provider", exact: true }).click();
@@ -295,7 +296,7 @@ test("ASR & LLM settings stay locked until the external service notice is accept
     return route.fulfill({ json: { noticeAccepted: true } });
   });
 
-  await page.goto("/settings?tab=llm");
+  await page.goto("/system?tab=llm");
   const notice = page.getByRole("region", { name: "Before you connect external services", exact: true });
   await expect(notice).toBeVisible();
   // The settings behind the notice are out of reach until it is accepted.
@@ -422,10 +423,7 @@ test("Translate with AI sends only what each language lacks and shows what it wr
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page
-    .getByRole("complementary", { name: "Source info", exact: true })
-    .getByRole("button", { name: "Translate with AI", exact: true })
-    .click();
+  await runManageAction(page, "Translate with AI");
   const dialog = page.getByRole("dialog", { name: "Translate with AI" });
 
   // Each category counts what the chosen language lacks; the shared tag names name the works they affect.
@@ -546,10 +544,7 @@ test("Translate with AI keeps the plan of the chosen languages when an earlier p
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page
-    .getByRole("complementary", { name: "Source info", exact: true })
-    .getByRole("button", { name: "Translate with AI", exact: true })
-    .click();
+  await runManageAction(page, "Translate with AI");
   const dialog = page.getByRole("dialog", { name: "Translate with AI" });
   const start = dialog.getByRole("button", { name: "Translate 1 item", exact: true });
   await expect(start).toBeEnabled();
@@ -756,10 +751,7 @@ test("Manage lyrics transcribes from the audio language with a model that decide
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page
-    .getByRole("complementary", { name: "Source info", exact: true })
-    .getByRole("button", { name: "Manage lyrics", exact: true })
-    .click();
+  await runManageAction(page, "Manage lyrics");
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
   await lyrics.getByRole("tab", { name: "Transcribe" }).click();
 
@@ -856,19 +848,17 @@ test("Demo shows sample transcriptions in Manage lyrics with every action off @d
       }),
     }),
   );
-  // Demo contacts no speech recognition or LLM endpoint.
+  // Demo contacts no speech recognition or LLM endpoint. Only API paths count:
+  // the idle-preloaded settings pages load modules with asr/llm in their paths.
   const serviceRequests: string[] = [];
   page.on("request", (request) => {
     const { pathname } = new URL(request.url());
-    if (/\/(asr|llm)\/|\/(asr|llm)-/.test(pathname)) serviceRequests.push(pathname);
+    if (/^\/api\/(.*\/)?(asr|llm)[/-]/.test(pathname)) serviceRequests.push(pathname);
   });
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page
-    .getByRole("complementary", { name: "Source info", exact: true })
-    .getByRole("button", { name: "Manage lyrics", exact: true })
-    .click();
+  await runManageAction(page, "Manage lyrics");
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
 
   await lyrics.getByRole("tab", { name: "Transcribe" }).click();

@@ -1,12 +1,28 @@
 import type { ReactNode } from "react";
+import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
-import { FloatingSelect } from "@/components/ui/floating-select";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 
-/** Mode, style, and color; UI and metadata languages live in the account panel. */
+const modeOptions: ReadonlyArray<{ value: ThemeMode; icon: LucideIcon }> = [
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
+];
+
+export type AppearanceControl = {
+  mode: ThemeMode;
+  preset: ThemePreset;
+  palette: ThemePalette;
+  onModeChange: (mode: ThemeMode) => void;
+  onPresetChange: (preset: ThemePreset) => void;
+  onPaletteChange: (palette: ThemePalette) => void;
+};
+
+/** Mode, style, and color; the account panel shows them in its Appearance view. */
 export function AppearanceControls({
   mode,
   preset,
@@ -14,28 +30,29 @@ export function AppearanceControls({
   onModeChange,
   onPresetChange,
   onPaletteChange,
-}: {
-  mode: ThemeMode;
-  preset: ThemePreset;
-  palette: ThemePalette;
-  onModeChange: (mode: ThemeMode) => void;
-  onPresetChange: (preset: ThemePreset) => void;
-  onPaletteChange: (palette: ThemePalette) => void;
-}) {
+}: AppearanceControl) {
   const { t } = useTranslation();
   return (
     <>
       <AppearanceGroup label={t("appearance.mode")}>
-        <FloatingSelect
-          value={mode}
-          ariaLabel={t("appearance.mode")}
-          onValueChange={(value) => onModeChange(value as ThemeMode)}
-          options={[
-            { value: "light", label: t("appearance.light") },
-            { value: "dark", label: t("appearance.dark") },
-            { value: "system", label: t("appearance.system") },
-          ]}
-        />
+        <div role="radiogroup" aria-label={t("appearance.mode")} className={segmentedListClassName("w-full")}>
+          {modeOptions.map(({ value, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={mode === value}
+              className={segmentedItemClassName(
+                mode === value,
+                "min-w-0 flex-auto justify-center gap-1 px-1.5 text-xs",
+              )}
+              onClick={() => onModeChange(value)}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{t(`appearance.${value}`)}</span>
+            </button>
+          ))}
+        </div>
       </AppearanceGroup>
       <AppearanceGroup label={t("appearance.style")}>
         <ThemePresetPicker value={preset} onChange={onPresetChange} compact />

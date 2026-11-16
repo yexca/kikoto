@@ -42,7 +42,7 @@ export function FetchComposeDialog({
         }),
         actionLabel: t("remoteFetch.activity"),
         onAction: () => {
-          window.history.pushState({}, "", `/workflows?activity=1&run=${result.runId}`);
+          window.history.pushState({}, "", `/workflows?run=${result.runId}`);
           window.dispatchEvent(new Event("kikoto:navigation"));
         },
       });

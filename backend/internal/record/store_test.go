@@ -33,11 +33,11 @@ func TestScanIndexesTreeAndArtwork(t *testing.T) {
 	if result.State != "complete" || !result.MissingMarked {
 		t.Fatalf("scan result = %+v", result)
 	}
-	folders, assets, err := store.ListTree(context.Background(), 0, 200)
+	folders, assets, err := store.ListTree(context.Background(), 0, 200, 0)
 	if err != nil || len(folders) != 1 || len(assets) != 0 {
 		t.Fatalf("root tree = folders %d assets %d err %v", len(folders), len(assets), err)
 	}
-	childFolders, _, err := store.ListTree(context.Background(), folders[0].ID, 200)
+	childFolders, _, err := store.ListTree(context.Background(), folders[0].ID, 200, 0)
 	if err != nil || len(childFolders) != 1 {
 		t.Fatalf("artist tree = folders %d err %v", len(childFolders), err)
 	}
@@ -45,7 +45,7 @@ func TestScanIndexesTreeAndArtwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("poster artwork = %v", err)
 	}
-	_, assets, err = store.ListTree(context.Background(), childFolders[0].ID, 200)
+	_, assets, err = store.ListTree(context.Background(), childFolders[0].ID, 200, 0)
 	if err != nil || len(assets) != 2 {
 		t.Fatalf("folder assets = %d err %v", len(assets), err)
 	}

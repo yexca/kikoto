@@ -417,6 +417,10 @@ test("@desktop personal metadata language refreshes the current list and preserv
   const audio = await page.locator("audio").first().elementHandle();
   expect(audio).not.toBeNull();
   await page.getByRole("button", { name: "User menu" }).click();
+  await page
+    .getByRole("dialog", { name: "Account" })
+    .getByRole("button", { name: /^Language/ })
+    .click();
   const language = page.getByRole("combobox", { name: "Preferred metadata language" });
   // Without a preference each work shows its original language.
   await expect(language).toHaveText("Origin");
@@ -675,7 +679,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(tabs.getByRole("tab", { name: "DLsite works", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
     await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
-    // The view rail sits beside the header, so wide layouts keep search inline; the narrowest
+    // The view tabs sit above the header, so wide layouts keep search inline; the narrowest
     // phones start behind its icon.
     if (viewport === "mobile") {
       await page.setViewportSize({ width: 320, height: 760 });
@@ -685,21 +689,16 @@ for (const viewport of ["mobile", "@desktop"]) {
       await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toBeFocused();
     } else {
       await expect(page.getByRole("button", { name: "Search metadata", exact: true })).toHaveCount(0);
-      // Wide layouts start with the views in a row that names the open one; the column
-      // rail leaves it unnamed, so the header names it beside the search field.
-      const heading = page.getByRole("heading", { level: 2, name: "DLsite works", exact: true });
-      await expect(heading).toBeHidden();
-      await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
-      await expect(heading).toBeVisible();
-      await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
-      await expect(heading).toBeHidden();
+      // The tabs name the open view, so the header has no title and no tab placement toggle.
+      await expect(page.getByRole("heading", { level: 2, name: "DLsite works", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Show tabs (beside|above)/ })).toHaveCount(0);
     }
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
     await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
     const bounds = (await dialog.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);

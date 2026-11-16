@@ -32,7 +32,6 @@ import { TagTemplateField } from "@/features/workflows/run-forms/TagTemplateFiel
 import {
   OptionField,
   RunBlockerNote,
-  RunPrefillNote,
   SegmentedControl,
   SwitchControl,
   WorkflowRunButton,
@@ -44,7 +43,6 @@ import {
   workflowTagTemplatePreview,
   workflowTagTemplateTokenValues,
 } from "@/features/workflows/tagTemplateModel";
-import { clearWorkflowRunPrefill, readWorkflowRunPrefill } from "@/features/workflows/workflowLinks";
 import { workflowCopy, type CurrentTriggerRunOptions } from "@/features/workflows/workflowPageModel";
 import i18n from "@/i18n";
 import type { WorkflowPreset, WorkflowPresetParameter } from "@/lib/api";
@@ -388,6 +386,7 @@ export function PresetRunPanel({
   running,
   allowed,
   canTag,
+  initialInputs,
   onRun,
   onTriggerRunOptionsChange,
 }: {
@@ -396,22 +395,14 @@ export function PresetRunPanel({
   running: boolean;
   allowed: boolean;
   canTag: boolean;
+  /** The target the form starts with, such as the circle of the page that opened it. */
+  initialInputs?: Record<string, string>;
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
-  // A detail page's Follow shortcut prefills this preset's target; the note
-  // keeps saying so after the link's query is cleared.
-  const [prefilledTargets] = useState(() =>
-    Object.entries(readWorkflowRunPrefill(preset.code)).filter(([key]) =>
-      preset.parameters.some((parameter) => parameter.key === key),
-    ),
-  );
   const [values, setValues] = useState<PresetFormValues>(() =>
-    prefilledTargets.length > 0
-      ? presetValuesFromInputs(preset, Object.fromEntries(prefilledTargets))
-      : presetDefaultValues(preset),
+    initialInputs ? presetValuesFromInputs(preset, initialInputs) : presetDefaultValues(preset),
   );
-  useEffect(() => clearWorkflowRunPrefill(), []);
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
   }, [preset.code, values, onTriggerRunOptionsChange]);
@@ -433,23 +424,7 @@ export function PresetRunPanel({
         onClick={() => void onRun(presetInputsPayload(preset, values))}
       />
     ),
-    options: (
-      <div className="grid gap-5">
-        {prefilledTargets.length > 0 && (
-          <RunPrefillNote>
-            {workflowCopy("prefillNotice", {
-              // The voice picker names its target; a circle id is shown as typed.
-              fields: prefilledTargets
-                .map(([key, value]) =>
-                  key === "personId" ? presetParameterLabel(key) : `${presetParameterLabel(key)} ${value}`,
-                )
-                .join(", "),
-            })}
-          </RunPrefillNote>
-        )}
-        <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />
-      </div>
-    ),
+    options: <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />,
     blocker: blockers.length > 0 ? <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote> : null,
   });
 }

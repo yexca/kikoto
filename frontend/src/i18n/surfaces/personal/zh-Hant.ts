@@ -113,7 +113,6 @@ export const personalHant = {
       timeZoneAuto: "一天從 {{zone}}（此裝置的時區）的午夜開始。",
       changeTimeZone: "變更時區",
       yearLabel: "年份",
-      yearValue: "年份：{{year}}",
       hours: {
         title: "時段分布",
         peak: "最常在 {{hours}}",
@@ -121,8 +120,6 @@ export const personalHant = {
       },
       profile: {
         heading: "口味畫像",
-        basis:
-          "你聽的內容與資料庫的對比。標籤是收聽時間占比高於資料庫作品占比的那些；每個圓點表示你聽的作品在資料庫中所處的位置，依收聽時長加權。",
         failed: "無法載入口味畫像。",
         tags: "偏好標籤",
         excess: "收聽時長占比高出資料庫占比的幅度",
@@ -217,11 +214,6 @@ export const personalHant = {
         failed: "無法載入收聽日曆。",
       },
       breakdown: {
-        basis: {
-          preference:
-            "依收聽時間占比高出資料庫作品占比的幅度排名；長條是前者，直線是後者。一部作品會完整計入它的每個標籤和聲優。",
-          time: "依其作品的收聽時長排名。一部作品會完整計入它的每個標籤和聲優。",
-        },
         rankLabel: "排名方式",
         ranks: {
           preference: "偏好度",
@@ -257,15 +249,12 @@ export const personalHant = {
     userData: {
       exportTitle: "匯出",
       exportDescription:
-        "以 JSON 下載你的收聽標記、個人評分和備註、續播位置、累計收聽時長、作品標籤、自訂標籤定義和收藏清單。",
-      exportExcludes: "不包含媒體、來源、伺服器資訊、憑證、提供者中繼資料、原始收聽工作階段和每日統計。",
+        "將你的個人資料匯出為 JSON 檔案，包含收聽標記、評分、備註、續播進度、累計收聽時長、個人標籤與收藏清單。不包含媒體檔案、來源設定、憑證與每日統計。",
       exportAction: "下載匯出檔案",
       exporting: "正在準備匯出...",
       exported: "匯出檔案已儲存。",
       exportFailed: "無法準備匯出。",
       importTitle: "匯入",
-      importDescription:
-        "依作品編號將作品與資料庫中已有的作品和已知別名比對。匯入不會取得中繼資料，也不會新增資料庫中尚不存在的作品。",
       source: "來源",
       sources: {
         kikoto: "Kikoto 匯出檔案",
@@ -390,7 +379,6 @@ export const personalHant = {
       },
       preview: "預覽",
       previewing: "正在檢查檔案...",
-      previewStale: "變更檔案、格式或衝突處理方式後，預覽會更新。",
       previewCounts: {
         works: "檔案中的作品",
         matchedWorks: "與資料庫相符",
@@ -419,8 +407,6 @@ export const personalHant = {
   },
   timeZone: {
     title: "時區",
-    description:
-      "收聽報表裡的一天從這個時區的午夜開始。「自動」跟隨你正在使用的裝置。已經記錄的收聽保留當時計入的日期。",
     auto: "自動（{{zone}}）",
     saveFailed: "無法儲存時區。",
     loadFailed: "無法載入時區。",

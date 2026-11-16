@@ -23,6 +23,7 @@ import { buildRemoteTree, buildTree, emptyTree, type TreeStats } from "@/feature
 import i18n from "@/i18n";
 import { type ActiveSourceInfoModel, trackedPresenceForRemoteSource } from "@/features/work-detail/workDetailHelpers";
 import type { DetailActionMode } from "@/features/work-detail/WorkDetailActionBars";
+import type { HeroPlaybackBlock } from "@/features/work-detail/heroPlaybackModel";
 import type { detailHeroModel, UnifiedWorkDetailPresentation } from "@/features/work-detail/WorkDetailLayout";
 import { mergeRemoteWorkVersions } from "@/features/work-detail/workVersionModel";
 import type { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
@@ -219,6 +220,31 @@ export function persistedDirectoryLoadState({
   };
 }
 
+/** Why the shown source of a persisted work has nothing to play, matching what its Directory shows. */
+export function persistedHeroPlaybackBlock({
+  mediaLoadError,
+  showNoSourceDirectory,
+  selectedSource,
+  selectedRemoteSource,
+  selectedRemoteDetail,
+}: {
+  mediaLoadError: string;
+  showNoSourceDirectory: boolean;
+  selectedSource: SourceTabInfo | null | undefined;
+  selectedRemoteSource: RemoteSourceAvailability | null | undefined;
+  selectedRemoteDetail: RemoteWorkDetail | null;
+}): HeroPlaybackBlock | null {
+  if (mediaLoadError) return "unavailable";
+  if (selectedSource?.kind === "local" && selectedSource.status !== "available") {
+    return selectedSource.offline ? "offline" : "unavailable";
+  }
+  if (selectedRemoteSource && (!remoteSourceCanBrowse(selectedRemoteSource.summary) || !selectedRemoteDetail)) {
+    return "unavailable";
+  }
+  if (showNoSourceDirectory) return "no_source";
+  return null;
+}
+
 export function persistedActiveSourceLabel(
   selectedTrackedPresence: SourcePresenceItem | null,
   selectedSource: SourceTabInfo | null | undefined,
@@ -348,7 +374,8 @@ export function persistedWorkDetailPresentation({
   canSyncMetadata: boolean;
   metadataSyncBusy: boolean;
   onSyncMetadata: () => void;
-  onLinkMetadata: () => void;
+  /** Absent for a viewer who may not edit the work's metadata. */
+  onLinkMetadata?: () => void;
   onMetadataVariantSelect: (key: string) => void;
   onVersionSelect: (translation: WorkDetail["translations"][number]) => void;
 }): UnifiedWorkDetailPresentation {

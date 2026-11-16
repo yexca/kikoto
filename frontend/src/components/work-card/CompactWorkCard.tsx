@@ -1,7 +1,8 @@
-import { AudioLines, Headphones, MicVocal, Star } from "lucide-react";
-import type { ReactNode } from "react";
+import { AudioLines, ChevronDown, Headphones, MicVocal, Star } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { assetURL } from "@/lib/api";
@@ -18,6 +19,7 @@ import {
   formatDiscount,
   formatPrice,
   formatRating,
+  quickMarkMeta,
   useWorkCardEntityActions,
   WorkCardShell,
   type WorkCardBadge,
@@ -26,20 +28,185 @@ import {
 } from "./WorkCardShell";
 
 /**
- * Reduced layouts for a work card. `row` puts a small cover beside the facts so
- * a single phone column scans like a track list; `tile` keeps the cover
- * dominant and drops tags and credits to stay short; `cover` is the cover and
- * the title alone, without the action row, for scanning a collection by its
- * artwork.
+ * Reduced layouts for a work card. `simple` rests on the cover, the title, and
+ * one credit line, and shows the remaining facts and the action row on demand;
+ * `row` puts a small cover beside the facts so a single phone column scans
+ * like a track list; `tile` keeps the cover dominant and drops tags and
+ * credits to stay short; `cover` is the cover and the title alone, without the
+ * action row, for scanning a collection by its artwork.
  */
-export type CompactWorkCardLayout = "row" | "tile" | "cover";
+export type CompactWorkCardLayout = "simple" | "row" | "tile" | "cover";
+
+type ReducedWorkCardLayout = Exclude<CompactWorkCardLayout, "simple">;
 
 /** The card for a collection's layout: a reduced layout, or the regular card for null. */
 export function LayoutWorkCard({ layout, ...props }: WorkCardShellProps & { layout: CompactWorkCardLayout | null }) {
   return layout ? <CompactWorkCardShell layout={layout} {...props} /> : <WorkCardShell {...props} />;
 }
 
-export function CompactWorkCardShell({
+export function CompactWorkCardShell({ layout, ...props }: WorkCardShellProps & { layout: CompactWorkCardLayout }) {
+  return layout === "simple" ? <SimpleWorkCardShell {...props} /> : <ReducedWorkCardShell layout={layout} {...props} />;
+}
+
+/**
+ * The simple card. At rest it is the cover with its quiet status (source
+ * marks, listening progress, and the quick mark), the title, and one credit
+ * line. The details hold the code, age rating, series, tags, metrics, price,
+ * and the action row. On a fine pointer they open over the cards below while
+ * the card is hovered, holds keyboard focus, or has a menu open, so the grid
+ * never moves; on a touch screen a toggle at the end of the credit line opens
+ * them in place. They mount on first use, so a page of resting cards measures
+ * no tags. Keyboard focus is card state rather than a `:focus-visible` rule:
+ * a control that a style rule hides while focus moves cannot take the focus,
+ * so Tab would never reach the details.
+ */
+function SimpleWorkCardShell({
+  work,
+  selection,
+  footer,
+  canOpen = true,
+  onOpen,
+  onCircleOpen,
+  onVoiceOpen,
+  onSeriesOpen,
+  onTagOpen,
+  onRecommendationOpen,
+}: WorkCardShellProps) {
+  const { t } = useTranslation();
+  const { circleOpen, seriesOpen, voiceOpen } = useWorkCardEntityActions(work, {
+    onCircleOpen,
+    onVoiceOpen,
+    onSeriesOpen,
+  });
+  const interactive = Boolean(onOpen) && canOpen;
+  const [detailsMounted, setDetailsMounted] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const detailsId = useId();
+  const hasTags = work.dlsiteTags.length > 0 || (work.userTags?.length ?? 0) > 0;
+  const mountDetails = () => setDetailsMounted(true);
+  const toggleLabel = detailsOpen ? t("workCard.hideDetails") : t("workCard.showDetails");
+  return (
+    <Card
+      className="work-card-simple @container/work-card relative flex h-full flex-col"
+      data-testid="work-card"
+      data-card-layout="simple"
+      data-details-open={detailsOpen || keyboardFocused ? "true" : undefined}
+      onPointerEnter={mountDetails}
+      onFocus={(event) => {
+        mountDetails();
+        if (event.target.matches(":focus-visible")) setKeyboardFocused(true);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setKeyboardFocused(false);
+      }}
+    >
+      <div className="relative flex shrink-0 flex-col">
+        <div
+          className={cn(
+            "flex flex-col rounded-[inherit] text-left transition-transform duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+            interactive
+              ? "cursor-pointer active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
+              : "cursor-default",
+          )}
+          role={interactive ? "button" : undefined}
+          tabIndex={interactive ? 0 : undefined}
+          onClick={interactive ? onOpen : undefined}
+          onKeyDown={
+            interactive
+              ? (event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen?.();
+                  }
+                }
+              : undefined
+          }
+        >
+          <div className="p-1.5 pb-0">
+            <CompactCover
+              work={work}
+              layout="simple"
+              selection={selection}
+              onRecommendationOpen={onRecommendationOpen}
+            />
+          </div>
+          <div className="flex flex-col gap-1 px-2.5 pb-2.5 pt-2">
+            <h3
+              className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5 @max-[12.5rem]/work-card:text-sm"
+              title={work.title}
+            >
+              {work.title}
+              {work.titleSource === "llm" && (
+                <span
+                  className="ml-1 rounded border px-1 text-[10px] font-normal text-muted-foreground"
+                  title={t("workTitles.llm")}
+                  aria-label={t("workTitles.llm")}
+                >
+                  {t("workTitles.llmBadge")}
+                </span>
+              )}
+            </h3>
+            <div className="work-card-simple-credit min-w-0">
+              <CreditLine work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} />
+            </div>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="work-card-details-toggle absolute bottom-1 right-1 text-muted-foreground"
+          aria-expanded={detailsOpen}
+          aria-controls={detailsMounted ? detailsId : undefined}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={() => {
+            setDetailsMounted(true);
+            setDetailsOpen((open) => !open);
+          }}
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 transition-transform motion-reduce:transition-none", detailsOpen && "rotate-180")}
+            aria-hidden="true"
+          />
+        </Button>
+      </div>
+      {detailsMounted && (
+        <div id={detailsId} className="work-card-details">
+          <div className="flex flex-col gap-2 px-2.5 pb-2.5 pt-0.5">
+            <CodeLine work={work} />
+            {work.series && (
+              <div className="min-w-0 truncate text-[0.8125rem] leading-[1.125rem]" title={work.series}>
+                {seriesOpen ? (
+                  <button type="button" className="text-foreground/80 hover:text-primary" onClick={seriesOpen}>
+                    {work.series}
+                  </button>
+                ) : (
+                  <span className="text-foreground/80">{work.series}</span>
+                )}
+              </div>
+            )}
+            {hasTags && (
+              <WorkCardTags
+                dlsiteTags={work.dlsiteTags}
+                userTags={work.userTags ?? []}
+                emptyLabel={t("workCard.noDlsiteTags")}
+                onTagOpen={onTagOpen}
+              />
+            )}
+            <MetricLine work={work} />
+            <ProgressLine work={work} className="px-0 pb-0" />
+          </div>
+          {footer}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ReducedWorkCardShell({
   layout,
   work,
   selection,
@@ -51,7 +218,7 @@ export function CompactWorkCardShell({
   onSeriesOpen,
   onTagOpen,
   onRecommendationOpen,
-}: WorkCardShellProps & { layout: CompactWorkCardLayout }) {
+}: WorkCardShellProps & { layout: ReducedWorkCardLayout }) {
   const { t } = useTranslation();
   const { circleOpen, voiceOpen } = useWorkCardEntityActions(work, { onCircleOpen, onVoiceOpen, onSeriesOpen });
   const interactive = Boolean(onOpen) && canOpen;
@@ -171,6 +338,20 @@ export function CompactWorkCardShell({
 /** Loading placeholder with the same footprint as the matching card layout. */
 export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLayout }) {
   const bar = "animate-pulse rounded bg-muted";
+  if (layout === "simple") {
+    return (
+      <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
+        <div className="p-1.5 pb-0">
+          <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+        </div>
+        <div className="flex flex-col gap-2 px-2.5 pb-2.5 pt-2.5">
+          <div className={cn(bar, "h-4 w-full")} />
+          <div className={cn(bar, "h-4 w-2/3")} />
+          <div className={cn(bar, "h-3 w-1/2")} />
+        </div>
+      </div>
+    );
+  }
   if (layout === "cover") {
     return (
       <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
@@ -241,11 +422,16 @@ function CompactCover({
   const price = work.price ?? null;
   const progress = coverOnly ? null : (work.progress ?? null);
   const highlighted = work.recommendationHighlighted ?? true;
+  // A simple card keeps the score with its details; the order already ranks the works.
   const recommendationClassName = cn(
     coverChipClassName,
     "absolute left-1 top-1 h-5 gap-0.5 px-1.5 text-2xs tabular-nums",
     !highlighted && "font-medium text-muted-foreground",
+    layout === "simple" && "work-card-details-only",
   );
+  const mark = layout === "simple" && work.mark && work.mark !== "none" ? work.mark : null;
+  const markMeta = mark ? quickMarkMeta(mark) : null;
+  const markLabel = mark ? t("workCard.mark", { status: t(`workCard.status.${mark}`) }) : "";
   const recommendationContent = (
     <>
       <Star
@@ -311,6 +497,16 @@ function CompactCover({
         {layout === "tile" && price !== null && (
           <span className={cn(coverChipClassName, "ml-auto h-5 shrink-0 px-1.5 text-2xs tabular-nums")}>
             {price === 0 ? t("workCard.free") : formatPrice(price, work.priceCurrency, resolvedLocale)}
+          </span>
+        )}
+        {markMeta && (
+          <span
+            role="img"
+            aria-label={markLabel}
+            title={markLabel}
+            className={cn(coverChipClassName, "ml-auto h-5 w-5 shrink-0 justify-center px-0")}
+          >
+            <markMeta.icon className={cn("h-3 w-3", markMeta.className)} aria-hidden="true" />
           </span>
         )}
       </div>
@@ -527,11 +723,11 @@ function MetricLine({
   );
 }
 
-function ProgressLine({ work }: { work: WorkCardViewModel }) {
+function ProgressLine({ work, className }: { work: WorkCardViewModel; className?: string }) {
   const progress = work.progress;
   if (!progress) return null;
   return (
-    <div className="flex min-w-0 items-center gap-2 px-2.5 pb-2.5 text-2xs text-muted-foreground">
+    <div className={cn("flex min-w-0 items-center gap-2 px-2.5 pb-2.5 text-2xs text-muted-foreground", className)}>
       <Headphones className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate tabular-nums" title={progress.label}>
         {progress.label}

@@ -35,7 +35,10 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
-  /** The viewer's user and smart lists that show the work, in list order; absent when none do. */
+  /**
+   * The viewer's user and smart lists that show the work, the list it was
+   * added to most recently first; absent when none do.
+   */
   memberLists?: WorkMemberList[];
   /** The viewer's own one-to-five-star rating; null or absent when unrated. */
   userRating?: number | null;
@@ -233,6 +236,11 @@ export type FavoriteList = {
   selected?: boolean;
   /** A smart list that shows the work through its rule rather than a hand add. */
   matchedByRule?: boolean;
+  /**
+   * In a work's lists: the list's one-based place among the user and smart
+   * lists holding the work, the most recent addition first.
+   */
+  memberOrder?: number;
   /** Set on smart lists. */
   rule?: SmartListRuleView;
 };

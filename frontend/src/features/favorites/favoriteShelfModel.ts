@@ -1,4 +1,5 @@
 import type { FavoriteList, ListeningStatus, Work } from "@/lib/api";
+import type { FavoriteStatusFilter } from "./favoritesBrowseState";
 
 /** Status filters in shelf order; Unmarked only appears while it holds works or is selected. */
 export const favoriteStatusOrder: ListeningStatus[] = [
@@ -11,57 +12,30 @@ export const favoriteStatusOrder: ListeningStatus[] = [
 ];
 
 export type FavoriteStatusFilterOption = {
-  value: ListeningStatus | "all";
+  value: FavoriteStatusFilter;
   count: number;
 };
 
+/** Every work, any Quick mark, then each mark in shelf order. */
 export function favoriteStatusFilterOptions(
   statusCounts: Record<string, number>,
   shelfTotal: number,
-  selected: ListeningStatus | "all",
+  selected: FavoriteStatusFilter,
 ): FavoriteStatusFilterOption[] {
-  const options: FavoriteStatusFilterOption[] = [{ value: "all", count: shelfTotal }];
+  const marked = favoriteStatusOrder.reduce(
+    (sum, status) => (status === "none" ? sum : sum + Math.max(0, statusCounts[status] ?? 0)),
+    0,
+  );
+  const options: FavoriteStatusFilterOption[] = [
+    { value: "all", count: shelfTotal },
+    { value: "marked", count: marked },
+  ];
   for (const status of favoriteStatusOrder) {
     const count = statusCounts[status] ?? 0;
     if (status === "none" && count === 0 && selected !== "none") continue;
     options.push({ value: status, count });
   }
   return options;
-}
-
-export type FavoriteShelfProgress = {
-  total: number;
-  /** Finished or queued for a relisten. */
-  listened: number;
-  listening: number;
-  queued: number;
-  /** Whole percent of the shelf already listened to. */
-  percent: number;
-};
-
-export function favoriteShelfProgress(statusCounts: Record<string, number>): FavoriteShelfProgress {
-  const count = (status: ListeningStatus) => Math.max(0, statusCounts[status] ?? 0);
-  const total = favoriteStatusOrder.reduce((sum, status) => sum + count(status), 0);
-  const listened = count("finished") + count("relisten");
-  return {
-    total,
-    listened,
-    listening: count("listening"),
-    queued: count("want_to_listen"),
-    percent: total > 0 ? Math.round((listened / total) * 100) : 0,
-  };
-}
-
-/** Distinct covers for the shelf artwork, in result order. */
-export function favoriteShelfCovers(works: Pick<Work, "coverUrl">[], limit = 4) {
-  const covers: string[] = [];
-  for (const work of works) {
-    const cover = work.coverUrl.trim();
-    if (!cover || covers.includes(cover)) continue;
-    covers.push(cover);
-    if (covers.length === limit) break;
-  }
-  return covers;
 }
 
 export type FavoriteShelfKind = "all" | "marked" | "list";

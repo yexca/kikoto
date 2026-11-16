@@ -150,7 +150,12 @@ func (s *Server) favoriteWorksCounts(ctx context.Context, userID int64, where st
 func favoriteWorksWhere(status string, availability string, queryText string, userID int64, scope favoriteListScope, sourceIDs []int64) (string, []any) {
 	clauses := []string{scope.Where}
 	args := append([]any{}, scope.Args...)
-	if status != "" && status != "all" {
+	switch status {
+	case "", "all":
+	case "marked":
+		// Any Quick mark: the works the Marked system list holds.
+		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') <> 'none'")
+	default:
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
 		args = append(args, status)
 	}

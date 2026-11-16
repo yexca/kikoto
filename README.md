@@ -84,7 +84,7 @@ in any browser and in the Android and iOS apps.
 </table>
 
 Scans, syncs, file edits, and AI tasks run as workflows you can follow in
-Activity, roles decide who may browse, fetch, edit, and administer, and all
+Workflows, roles decide who may browse, fetch, edit, and administer, and all
 state lives in one SQLite database. The APK and IPA for the apps are attached
 to each [release](https://github.com/yexca/kikoto/releases).
 

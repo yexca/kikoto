@@ -10,7 +10,7 @@ unified work model.
 - Enrich local works with DLsite metadata and cover images.
 - Treat local folders, cache entries, and remote sources as file availability,
   not separate work databases.
-- Make background work visible through workflow runs and Activity history.
+- Make background work visible through workflow runs and their history.
 - Support mobile-friendly playback while keeping desktop library management
   efficient.
 
@@ -23,7 +23,7 @@ Kikoto includes:
 - Local folder scanning by product code.
 - DLsite metadata sync and cover caching.
 - Library, work detail, favorites, circle, voice actor, subscription, metadata,
-  insights, settings, and workflow pages, with Activity inside Workflows.
+  insights, settings, and workflow pages, with every run inside Workflows.
 - Kikoeru-compatible remote source browsing, availability checks, sync, cache,
   and fetch flows.
 - User authentication, roles, a default-on sign-in boundary with optional
@@ -32,7 +32,7 @@ Kikoto includes:
   media-session integration.
 - SQLite-backed priority jobs with a single durable executor, retry state,
   notifications, and restart recovery for the supported workflow families.
-- Fetch Activity with byte-level remote-transfer progress that distinguishes
+- Fetch runs with byte-level remote-transfer progress that distinguishes
   known totals from files whose size is not declared.
 - Bounded remote media and cover downloads plus retention cleanup for
   unpublished staging left by failed or cancelled Fetch runs.

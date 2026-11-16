@@ -16,7 +16,7 @@ import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlayb
 import { buildTree, emptyTree, treeStats } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { openActivityRun, openDetailTagSearch, workHasNoSource } from "@/features/work-detail/workDetailHelpers";
-import type { MetadataActionPlacement, SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import { heroPlayback as heroPlaybackFor } from "@/features/work-detail/heroPlaybackModel";
 import {
   detailHeroModel,
   UnifiedWorkDetailPage,
@@ -68,15 +68,15 @@ import {
   persistedDirectoryLoadState,
   persistedDisplayTranslations,
   persistedFetchTarget,
+  persistedHeroPlaybackBlock,
   persistedMediaTreeInput,
   persistedSourceInfo,
   persistedWorkDetailPresentation,
 } from "@/features/work-detail/persistedWorkDetailModel";
 import {
   type PersistedDetailActionsProps,
-  PersistedIdentityActions,
+  PersistedHeroActions,
   PersistedMediaActions,
-  PersistedMetadataAction,
 } from "@/features/work-detail/PersistedDetailActions";
 import { PersistedDirectoryPanel } from "@/features/work-detail/PersistedDirectoryPanel";
 import {
@@ -258,6 +258,13 @@ export function PersistedWorkDetailController({
   // Translate with AI asks for a translation permission.
   const canTranslate = auth.demoMode || auth.hasPermission("library:write");
   const [translateOpen, setTranslateOpen] = useState(false);
+  // A listener sees no management entry: each appears only for a viewer allowed
+  // to use it, and Demo sees them all for inspection.
+  const canEditMetadata = auth.demoMode || auth.hasPermission("library:write") || canSyncMetadata;
+  const canManageLyrics =
+    auth.demoMode || auth.hasPermission("library:write") || auth.hasPermission("downloads:manage");
+  const canTrack = auth.demoMode || auth.hasPermission("remote:track");
+  const canFetch = auth.demoMode || (auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync"));
   const files = usePersistedFileManagement({
     localDirectoryWork,
     selectedSource,
@@ -588,12 +595,29 @@ export function PersistedWorkDetailController({
     selectedRemoteDetail,
     fallbackDurationSeconds: hero.durationSeconds,
   });
+  const heroPlayback = heroPlaybackFor({
+    root: tree,
+    routingRules: directoryRoutingRules,
+    loading: playbackCursorLoading || showDirectorySkeleton,
+    resumable: hasResumableCursor,
+    blocked: persistedHeroPlaybackBlock({
+      mediaLoadError: directoryMediaError,
+      showNoSourceDirectory,
+      selectedSource,
+      selectedRemoteSource,
+      selectedRemoteDetail,
+    }),
+  });
+  const hasLocalFiles = Boolean(
+    localDirectoryWork?.mediaItems.some((item) =>
+      item.locations.some((location) => location.locationType === "local" && location.availability === "available"),
+    ),
+  );
   const detailActionProps: PersistedDetailActionsProps = {
     work,
     favoriteLists: workFavoriteLists.favoriteLists,
     favoriteSelected: workFavoriteLists.favoriteSelected,
-    playbackCursorLoading,
-    hasResumableCursor,
+    heroPlayback,
     isSyncingDetail,
     fetchBusy: fetchWorkspace.isBusy,
     cleanupBusy: mediaCleanup.isBusy,
@@ -610,41 +634,36 @@ export function PersistedWorkDetailController({
     fetchRemote,
     selectedRemoteDetail,
     activeSourceLabel,
-    sourceStatus: sourceInfo.statusLabel,
     selectedTrackedPresence,
     trackedCacheAvailable,
-    selectedSource,
+    canTrack,
+    canFetch,
+    canManageCache: canOpenFolderWorkspace,
     onEnsureListWork: ensureDetailListWork,
     onListSaved: favoriteSaved,
     onResume: () => void playback.resumePlayback(),
+    // The Hero plays the folder the Directory opens on: the selected remote's preview or the shown edition.
+    onPlay: ({ tracks, locationId }) =>
+      selectedRemoteDetail ? playback.playRemoteTracks(tracks, locationId) : playback.playTracks(tracks, locationId),
     onMark: (status) => void markDetailWork(status),
     onRate: (rating) => void rateDetailWork(rating),
-    onEditMetadata: () => setMetadataEditorSection("title"),
     onTrack: () => void tracking.track(),
     onUntrack: () => void tracking.untrack(),
     canUntrack: tracking.requireTrack,
     onFork: tracking.requestFork,
     onFetch: openFetchWorkspace,
     onManage: files.openManager,
-    onManageLyrics: localDirectoryWork?.mediaItems.some((item) => item.kind === "audio")
-      ? () => files.openLyricsManager({ tab: "assign" })
-      : undefined,
-    onEditFileNames:
-      canEditFileNames &&
-      localDirectoryWork?.mediaItems.some((item) =>
-        item.locations.some((location) => location.locationType === "local" && location.availability === "available"),
-      )
-        ? () => setFileNamesOpen(true)
+    onEditMetadata: canEditMetadata ? () => setMetadataEditorSection("title") : undefined,
+    onManageFiles: canOpenFolderWorkspace && actionMode === "local" ? files.openManager : undefined,
+    onManageLyrics:
+      canManageLyrics && localDirectoryWork?.mediaItems.some((item) => item.kind === "audio")
+        ? () => files.openLyricsManager({ tab: "assign" })
         : undefined,
+    onEditFileNames: canEditFileNames && hasLocalFiles ? () => setFileNamesOpen(true) : undefined,
     onTranslateWithAI: canTranslate ? () => setTranslateOpen(true) : undefined,
   };
-  const heroActions = <PersistedIdentityActions {...detailActionProps} />;
-  const renderSourceActions = (layout: SourceActionLayout) => (
-    <PersistedMediaActions {...detailActionProps} layout={layout} />
-  );
-  const renderMetadataAction = (placement: MetadataActionPlacement) => (
-    <PersistedMetadataAction {...detailActionProps} placement={placement} />
-  );
+  const heroActions = <PersistedHeroActions {...detailActionProps} />;
+  const sourceActions = <PersistedMediaActions {...detailActionProps} />;
   const directoryPanel = (
     <PersistedDirectoryPanel
       activeEdition={activeEdition}
@@ -656,7 +675,6 @@ export function PersistedWorkDetailController({
       checkingSources={isCheckingSources}
       checkedAt={sourceCheckedAt}
       root={tree}
-      directoryStats={directoryStats}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
@@ -688,7 +706,7 @@ export function PersistedWorkDetailController({
       onActiveKeyChange={changeSourceKey}
       onTrackedPresenceChange={changeTrackedPresence}
       customWork={customWork}
-      onCheckSources={customWork ? undefined : () => void tracking.checkSources()}
+      onCheckSources={customWork || !canTrack ? undefined : () => void tracking.checkSources()}
       onRetry={retryDirectory}
       onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
       onOpenCleanupRun={() => {
@@ -715,7 +733,7 @@ export function PersistedWorkDetailController({
     canSyncMetadata: canSyncMetadata && !customWork,
     metadataSyncBusy,
     onSyncMetadata: () => void metadataSync.sync(),
-    onLinkMetadata: () => setMetadataEditorSection("source"),
+    onLinkMetadata: canEditMetadata ? () => setMetadataEditorSection("source") : undefined,
     onMetadataVariantSelect: setSelectedMetadataVariantKey,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
   });
@@ -727,8 +745,7 @@ export function PersistedWorkDetailController({
       mobileTab={mobileDetailTab}
       onMobileTabChange={setMobileDetailTab}
       actions={heroActions}
-      renderSourceActions={renderSourceActions}
-      renderMetadataAction={renderMetadataAction}
+      sourceActions={sourceActions}
       directory={directoryPanel}
       onBack={onBack}
     >
