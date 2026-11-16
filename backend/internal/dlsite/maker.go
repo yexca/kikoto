@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 type MakerProfile struct {
@@ -161,16 +163,11 @@ func makerCatalogPageLimit(profile MakerProfile, currentLimit int) int {
 }
 
 func (state *makerCatalogPageState) appendPageCodes(codes []string, knownCodes map[string]bool, mode string) int {
-	pageCodes := codes
-	if mode != "full" {
-		if beforeKnown, foundKnown := codesBeforeFirstKnown(pageCodes, knownCodes); foundKnown {
-			pageCodes = beforeKnown
-			state.reachedEnd = true
-		}
-	}
 	pageNew := 0
-	for _, code := range pageCodes {
-		if state.seenCodes[code] {
+	for _, code := range codes {
+		// Read the whole page: a known work can precede a new one even when
+		// the requested order is newest release first.
+		if state.seenCodes[code] || (mode != "full" && knownCodes[code]) {
 			continue
 		}
 		state.seenCodes[code] = true
@@ -239,28 +236,44 @@ func candidateMakerSites(makerID string) []string {
 }
 
 func makerWorkListSearchSpace(rawHTML string) string {
-	start := strings.Index(rawHTML, `id="search_result_list"`)
-	if start < 0 {
-		start = strings.Index(rawHTML, `class="n_worklist"`)
+	document, err := html.Parse(strings.NewReader(rawHTML))
+	if err != nil {
+		return ""
 	}
-	if start < 0 {
-		return rawHTML
-	}
-	searchSpace := rawHTML[start:]
-	end := len(searchSpace)
-	for _, marker := range []string{
-		`id="work_related"`,
-		`class="work_related"`,
-		`class="recommend"`,
-		`id="ranking"`,
-		`class="page_navi"`,
-		`id="footer"`,
-	} {
-		if index := strings.Index(searchSpace, marker); index > 0 && index < end {
-			end = index
+	var resultList, workList *html.Node
+	var visit func(*html.Node)
+	visit = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			for _, attribute := range node.Attr {
+				if attribute.Key == "id" && attribute.Val == "search_result_list" && resultList == nil {
+					resultList = node
+				}
+				if attribute.Key == "class" && workList == nil {
+					for _, class := range strings.Fields(attribute.Val) {
+						if class == "n_worklist" {
+							workList = node
+							break
+						}
+					}
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
 		}
 	}
-	return searchSpace[:end]
+	visit(document)
+	if resultList == nil {
+		resultList = workList
+	}
+	if resultList == nil {
+		return ""
+	}
+	var result strings.Builder
+	if err := html.Render(&result, resultList); err != nil {
+		return ""
+	}
+	return result.String()
 }
 
 func (c *Client) fetchMakerSeriesCatalogs(ctx context.Context, series []MakerSeries, languages []string) []MakerSeries {
@@ -301,7 +314,7 @@ func (c *Client) fetchMakerSeriesCatalog(ctx context.Context, series MakerSeries
 }
 
 func makerProfileURLs(baseURL string, site string, makerID string, page int, languages []string) []string {
-	optionsPath := makerLanguageOptionsPath(languages)
+	optionsPath := makerLanguageOptionsPath(languages) + "/order/release_d"
 	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html%s", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID), optionsPath)
 	if page <= 1 {
 		return []string{endpoint}
@@ -369,18 +382,6 @@ func pageListsCodeBelow(codes []string, limit string) bool {
 		}
 	}
 	return false
-}
-
-func codesBeforeFirstKnown(codes []string, known map[string]bool) ([]string, bool) {
-	if len(known) == 0 {
-		return codes, false
-	}
-	for index, code := range codes {
-		if known[strings.ToUpper(strings.TrimSpace(code))] {
-			return codes[:index], true
-		}
-	}
-	return codes, false
 }
 
 func pagesFromTotal(total int, perPage int) int {

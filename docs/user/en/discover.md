@@ -99,8 +99,10 @@ The three views show works the same way, as [For you](for-you.md) does.
 - Cards added since you last opened the feed are marked with a dot. The
   navigation shows how many there are, and opening the feed clears the count.
   A refresh that adds entries to your feed also sends one notification.
-- A work released more than 30 days before your subscription started is not
-  shown, so pulling an old part of a catalog later adds nothing to the feed.
+- Newly discovered works enter the release feed only when their release date
+  is known and no more than 30 days before the refresh. Older or undated
+  catalog discoveries add no release entry. A discount does not make an old
+  work a new release.
 
 ## Rankings
 

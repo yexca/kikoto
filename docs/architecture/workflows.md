@@ -1419,6 +1419,11 @@ catalogs expose Never, Attention, or Synced from their last successful pull and
 the configured freshness window. An authorized user can start an explicit First
 pull or manual refresh through the same catalog sync workflow.
 
+DLsite circle catalogs request newest-release order explicitly. The HTML
+parser isolates the result-list element from surrounding recommendations.
+Incremental pulls collect every unknown code on a page and stop at a page
+that adds no codes, within the catalog page limit.
+
 Reading a circle, changing its per-user state, and a detail refresh never
 create one. An unknown maker id returns `404` with `circle_not_in_database`;
 the page offers a user with `metadata:sync` and `workflows:run` the
@@ -1498,9 +1503,11 @@ most 60 per run; the rest wait for the next run. A code DLsite does not list
 enters the seen set without a feed entry, and a code whose metadata fails stays
 unseen for a retry. Synchronizing creates the code's edition works, because a
 subscription is an explicit request for its new works; catalog codes in the
-baseline are never materialized. A work released more than 30 days before a
-subscription took effect counts as seen for that subscriber, so a full catalog
-refresh that surfaces old works adds no entries. A non-original edition whose
+baseline are never materialized. A release entry requires a known release date
+no more than 30 days before the refresh, using UTC calendar days. Older works
+and works without a valid release date count as seen without a release entry;
+a missing catalog date is checked through metadata sync first. A discount does
+not qualify an old work as a new release. A non-original edition whose
 original was released more than 30 days earlier is a new edition rather than a
 new release. A series subscription receives the codes its series lists.
 

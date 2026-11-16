@@ -27,10 +27,8 @@ const (
 	// creatorSubscriptionRecentPull skips a catalog pull when a detail refresh
 	// or another run pulled the catalog this recently.
 	creatorSubscriptionRecentPull = 6 * time.Hour
-	// creatorSubscriptionReleaseGrace is how far before a subscription took
-	// effect a work may have been released and still count as new. Older works
-	// that surface later, such as through a full catalog refresh, are recorded
-	// as seen without a feed entry.
+	// creatorSubscriptionReleaseGrace bounds the age of a release at refresh
+	// time. Older works discovered later count as seen without a feed entry.
 	creatorSubscriptionReleaseGrace = 30 * 24 * time.Hour
 )
 
@@ -425,7 +423,6 @@ type creatorReleaseSubscriber struct {
 	partyID           int64
 	seriesID          string
 	personID          int64
-	activatedAt       time.Time
 	watchAvailability bool
 }
 
@@ -457,7 +454,7 @@ func (s *Server) creatorReleaseSubscribers(ctx context.Context, candidate creato
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT sub.id, sub.user_id, sub.subject_kind, COALESCE(sub.party_id, 0), sub.series_title_id,
-			COALESCE(sub.person_id, 0), sub.activated_at, sub.watch_availability
+			COALESCE(sub.person_id, 0), sub.watch_availability
 		FROM creator_subscription AS sub
 		INNER JOIN user_account AS account ON account.id = sub.user_id AND account.enabled = 1
 		WHERE sub.activated_at IS NOT NULL AND (`+strings.Join(where, " OR ")+`)
@@ -470,12 +467,8 @@ func (s *Server) creatorReleaseSubscribers(ctx context.Context, candidate creato
 	subscribers := []creatorReleaseSubscriber{}
 	for rows.Next() {
 		var item creatorReleaseSubscriber
-		var activatedAt string
-		if err := rows.Scan(&item.subscriptionID, &item.userID, &item.kind, &item.partyID, &item.seriesID, &item.personID, &activatedAt, &item.watchAvailability); err != nil {
+		if err := rows.Scan(&item.subscriptionID, &item.userID, &item.kind, &item.partyID, &item.seriesID, &item.personID, &item.watchAvailability); err != nil {
 			return nil, err
-		}
-		if parsed, err := parseSQLiteTime(activatedAt); err == nil {
-			item.activatedAt = parsed
 		}
 		subscribers = append(subscribers, item)
 	}
@@ -533,17 +526,14 @@ func creatorReleaseEventType(work creatorReleaseWork, now time.Time) string {
 	return "released"
 }
 
-// creatorReleaseIsRecent applies the grace window to one subscriber. A work
-// without a release date counts as new.
-func creatorReleaseIsRecent(releaseDate string, activatedAt time.Time) bool {
-	if releaseDate == "" || activatedAt.IsZero() {
-		return true
-	}
+// creatorReleaseIsRecent requires a confirmed release date within the refresh's
+// grace window; catalog discovery alone is not evidence of a new release.
+func creatorReleaseIsRecent(releaseDate string, now time.Time) bool {
 	released, err := time.Parse("2006-01-02", releaseDate)
 	if err != nil {
-		return true
+		return false
 	}
-	return !released.Before(activatedAt.Add(-creatorSubscriptionReleaseGrace).Truncate(24 * time.Hour))
+	return !released.Before(now.UTC().Add(-creatorSubscriptionReleaseGrace).Truncate(24 * time.Hour))
 }
 
 func (s *Server) processCreatorReleaseCandidates(ctx context.Context, runID int64, syncer dlsiteFamilyMetadataSyncer, execution *creatorSubscriptionExecution) error {
@@ -569,9 +559,9 @@ func (s *Server) processCreatorReleaseCandidates(ctx context.Context, runID int6
 		if err != nil {
 			return err
 		}
-		// A catalog date older than every subscriber's grace window settles the
-		// code without a metadata request.
-		if candidate.releaseDate != "" && !anyCreatorSubscriberRecent(subscribers, candidate.releaseDate) {
+		// A known old catalog date settles the code without a metadata request.
+		// An undated catalog row still needs metadata to establish its date.
+		if len(subscribers) == 0 || (candidate.releaseDate != "" && !creatorReleaseIsRecent(candidate.releaseDate, now)) {
 			if err := s.markCreatorReleaseSeen(ctx, candidate); err != nil {
 				return err
 			}
@@ -603,8 +593,14 @@ func (s *Server) processCreatorReleaseCandidates(ctx context.Context, runID int6
 			return err
 		}
 		releaseDate := firstNonEmpty(work.releaseDate, candidate.releaseDate)
+		if !creatorReleaseIsRecent(releaseDate, now) {
+			if err := s.markCreatorReleaseSeen(ctx, candidate); err != nil {
+				return err
+			}
+			continue
+		}
 		eventType := creatorReleaseEventType(work, now)
-		added, err := s.addCreatorReleaseFeedItems(ctx, runID, candidate, subscribers, eventType, releaseDate)
+		added, err := s.addCreatorReleaseFeedItems(ctx, runID, candidate, subscribers, eventType)
 		if err != nil {
 			return err
 		}
@@ -628,18 +624,9 @@ func (s *Server) processCreatorReleaseCandidates(ctx context.Context, runID int6
 	return nil
 }
 
-func anyCreatorSubscriberRecent(subscribers []creatorReleaseSubscriber, releaseDate string) bool {
-	for _, subscriber := range subscribers {
-		if creatorReleaseIsRecent(releaseDate, subscriber.activatedAt) {
-			return true
-		}
-	}
-	return false
-}
-
-// addCreatorReleaseFeedItems adds one feed entry per subscriber whose grace
-// window includes the release, and reports which subscriptions received one.
-func (s *Server) addCreatorReleaseFeedItems(ctx context.Context, runID int64, candidate creatorReleaseCandidate, subscribers []creatorReleaseSubscriber, eventType string, releaseDate string) (map[int64]bool, error) {
+// addCreatorReleaseFeedItems adds one feed entry per subscriber for a confirmed
+// recent release, and reports which subscriptions received one.
+func (s *Server) addCreatorReleaseFeedItems(ctx context.Context, runID int64, candidate creatorReleaseCandidate, subscribers []creatorReleaseSubscriber, eventType string) (map[int64]bool, error) {
 	added := map[int64]bool{}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -647,9 +634,6 @@ func (s *Server) addCreatorReleaseFeedItems(ctx context.Context, runID int64, ca
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, subscriber := range subscribers {
-		if !creatorReleaseIsRecent(releaseDate, subscriber.activatedAt) {
-			continue
-		}
 		var partyID, personID any
 		if subscriber.partyID > 0 {
 			partyID = subscriber.partyID

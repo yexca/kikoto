@@ -101,6 +101,10 @@
 <details>
 <summary><strong>Discover</strong></summary>
 
+- New releases uses a rolling 30-day release window and requires a valid
+  release date, so late catalog discoveries do not promote old discounted
+  works as new. DLsite catalog pulls select release order, read past known
+  works on the same page, and exclude recommendations outside the result list.
 - Discover offers **Simple** cards and starts with them: the cover, title,
   and credits, with the other facts and the actions on demand, as in the
   Library. A choice made before in **Display options** is kept.
