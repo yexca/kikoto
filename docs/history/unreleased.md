@@ -132,8 +132,10 @@
   the runs it is not showing. A run started by a schedule, at startup, or in
   another browser shows on its card the same way. A failure stays on the card
   and opens its run.
-- **Add trigger** makes Scan, Metadata, or Index run at startup or every 1, 6,
-  or 12 hours, 1 day, or 7 days, in full or not. The per-operation Options
+- The calendar button on each card, lit while a trigger is on, lists that
+  operation's triggers and adds one, so Scan, Metadata, or Index runs at
+  startup or every 1, 6, or 12 hours, 1 day, or 7 days, in full or not. The
+  per-operation Options
   panel, its run forms, and the trigger editor's free interval in minutes are
   removed; a manual metadata sync runs every work from DLsite, and a trigger
   keeps the scope, source, and fallback it already stores.

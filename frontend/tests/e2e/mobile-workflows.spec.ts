@@ -956,10 +956,11 @@ test("Metadata options set the remote fallback and bonus linking for its runs an
       },
     ]);
 
-  // A new Metadata trigger starts from the same options.
-  await page.getByRole("button", { name: "Add trigger", exact: true }).click();
+  // A new Metadata trigger starts from the same options; without a trigger, the card opens straight to adding one.
+  await metadata.getByRole("button", { name: "Metadata triggers", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add trigger", exact: true });
-  await add.getByRole("group", { name: "Workflow", exact: true }).getByRole("button", { name: "Metadata" }).click();
+  await expect(add.getByRole("group", { name: "When", exact: true })).toHaveCount(0);
+  await expect(add).toContainText("On a schedule");
   const created = page.waitForRequest(
     (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
   );
@@ -976,7 +977,7 @@ test("Metadata options set the remote fallback and bonus linking for its runs an
   await expect(operation(page, "Metadata")).toContainText("Remote fallback: Example Remote B → Example Remote A");
 });
 
-test("Add trigger schedules an operation, and Next edits it", async ({ page }) => {
+test("a card lists and adds its triggers, and Next edits them", async ({ page }) => {
   await mockWorkflows(page);
   const updates: Array<Record<string, unknown>> = [];
   await page.route(/\/api\/workflow-triggers\/\d+$/, async (route) => {
@@ -987,17 +988,29 @@ test("Add trigger schedules an operation, and Next edits it", async ({ page }) =
   });
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: "Add trigger", exact: true }).click();
+  // A card with triggers lists them, and the scan already runs at startup.
+  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
+  const list = page.getByRole("dialog", { name: "Scan triggers", exact: true });
+  await expect(list.getByRole("listitem")).toHaveText([/^At startup/, /^When local library folders change/]);
+  await list.getByRole("button", { name: "Add trigger", exact: true }).click();
+  const addScan = page.getByRole("dialog", { name: "Add trigger", exact: true });
+  const scanWhen = addScan.getByRole("group", { name: "When", exact: true });
+  await expect(scanWhen.getByRole("button", { name: "At startup", exact: true })).toBeDisabled();
+  await expect(addScan).toContainText("This already runs at startup.");
+  // Cancel returns to the list it was opened from.
+  await addScan.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await list.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expect(list).toHaveCount(0);
+
+  // A card without triggers opens straight to adding one.
+  await operation(page, "Index").getByRole("button", { name: "Index triggers", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add trigger", exact: true });
-  const operations = dialog.getByRole("group", { name: "Workflow", exact: true });
-  const when = dialog.getByRole("group", { name: "When", exact: true });
-  // The scan already runs at startup, and metadata sync runs only on a schedule.
-  await expect(when.getByRole("button", { name: "At startup", exact: true })).toBeDisabled();
-  await expect(dialog).toContainText("This already runs at startup.");
-  await operations.getByRole("button", { name: "Metadata", exact: true }).click();
-  await expect(when.getByRole("button")).toHaveText(["On a schedule"]);
-  await operations.getByRole("button", { name: "Index", exact: true }).click();
-  await when.getByRole("button", { name: "On a schedule", exact: true }).click();
+  await expect(dialog).toContainText("Index");
+  await dialog
+    .getByRole("group", { name: "When", exact: true })
+    .getByRole("button", { name: "On a schedule", exact: true })
+    .click();
   await dialog.getByRole("combobox", { name: "Interval", exact: true }).selectOption({ label: "Every 6 hours" });
   await dialog.getByRole("switch", { name: "Full", exact: true }).click();
   const created = page.waitForRequest(
@@ -1013,6 +1026,7 @@ test("Add trigger schedules an operation, and Next edits it", async ({ page }) =
   });
   expect(JSON.parse(payload.configJson)).toEqual({ mode: "full" });
   await expect(dialog).toHaveCount(0);
+  await expect(operation(page, "Index")).toContainText("Every 6 hours");
   await expect(nextTriggers(page).getByRole("listitem").first()).toContainText("Every 6 hours·Full");
 
   // The folder trigger is fixed: it changes only Full and cannot be deleted.
@@ -1030,6 +1044,15 @@ test("Add trigger schedules an operation, and Next edits it", async ({ page }) =
   await nextTriggers(page).getByRole("switch", { name: "Pause Scan" }).first().click();
   await expect.poll(() => updates).toHaveLength(2);
   expect(updates[1]).toMatchObject({ id: 71, enabled: false });
+
+  // So does pausing one in its card's list.
+  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Scan triggers", exact: true })
+    .getByRole("switch", { name: "Pause When local library folders change", exact: true })
+    .click();
+  await expect.poll(() => updates).toHaveLength(3);
+  expect(updates[2]).toMatchObject({ id: 72, enabled: false });
 });
 
 test("availability watch keeps only its source in settings and acts on works from the Watch view on mobile", async ({
@@ -2117,7 +2140,11 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await page.goto("/workflows");
   await expect(page.getByText(demoNotice, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add trigger", exact: true })).toBeDisabled();
+  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
+  const triggerList = page.getByRole("dialog", { name: "Scan triggers", exact: true });
+  await expect(triggerList.getByRole("button", { name: "Add trigger", exact: true })).toBeDisabled();
+  await expect(triggerList.getByRole("switch").first()).toBeDisabled();
+  await triggerList.getByRole("button", { name: "Close", exact: true }).last().click();
   await expect(operation(page, "Metadata").getByRole("button", { name: "Run", exact: true })).toBeDisabled();
   await nextTriggers(page).getByRole("button", { name: "View Scan", exact: true }).first().click();
   const triggerDialog = page.getByRole("dialog", { name: "Edit trigger", exact: true });

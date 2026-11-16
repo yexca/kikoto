@@ -482,7 +482,13 @@ another browser shows on its card and, for an exclusive operation, holds its
 run control the same way. Demo reads both once. A hidden tab skips the poll
 and catches up when shown again.
 
-**Add trigger** beside the cards creates a trigger for one operation: Startup
+Each card's trigger button, at the end of its name row, opens that
+operation's triggers; the icon uses the primary color while any of them is
+enabled. The dialog lists the triggers with their switch and edit action and
+offers **Add trigger**; an operation without triggers opens straight to the
+add form, and a trigger edited from Next opens straight to its form. A form
+returns to where it was opened from. A viewer without `metadata:sync` sees the
+icon's state without opening it. A trigger takes Startup
 or an interval of 1, 6, or 12 hours, 1 day, or 7 days, and Full. Metadata
 sync offers only an interval, and an operation that already has a Startup
 trigger cannot add another, as the backend enforces. A new trigger stores the

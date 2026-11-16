@@ -1,4 +1,4 @@
-import { CalendarPlus, ChevronDown, Clapperboard, Compass } from "lucide-react";
+import { ChevronDown, Clapperboard, Compass } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -30,7 +30,7 @@ import { RunDetail } from "@/features/workflows/RunDetail";
 import { AttentionRuns, RunningRuns } from "@/features/workflows/runs/NowRuns";
 import { WorkflowRuns } from "@/features/workflows/runs/WorkflowRuns";
 import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/triggers/NextTriggers";
-import { TriggerDialog } from "@/features/workflows/triggers/TriggerDialog";
+import { OperationTriggersDialog } from "@/features/workflows/triggers/OperationTriggersDialog";
 import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation";
 import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
@@ -50,7 +50,8 @@ type PendingRun = { runId: number | null };
 /** How long a requested run may stay unlisted before its operation stops waiting for it. */
 const pendingRunTimeoutMs = 20_000;
 
-type TriggerDialogState = { trigger: WorkflowTrigger | null } | null;
+/** Whose triggers the dialog shows, and a trigger to open straight to. */
+type TriggerDialogState = { definitionId: number; editing: WorkflowTrigger | null } | null;
 
 /**
  * Workflows: the library maintenance an administrator starts by hand, as
@@ -250,9 +251,9 @@ export function WorkflowsPage({
             : null,
     };
   };
-  const operationTriggers = triggers.filter((trigger) =>
-    operations.some((operation) => operation.definition.id === trigger.workflowDefinitionId),
-  );
+  const dialogOperation = triggerDialog
+    ? operations.find((operation) => operation.definition.id === triggerDialog.definitionId)
+    : undefined;
 
   const workflowOptions = definitions
     .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
@@ -294,6 +295,11 @@ export function WorkflowsPage({
                 onChange: (checked) => setFullChoices((current) => ({ ...current, [code]: checked })),
               }
         }
+        triggers={{
+          label: t("workflowPage.triggers.title", { name: cardName(operation) }),
+          onOpen:
+            permitted || readOnly ? () => setTriggerDialog({ definitionId: definition.id, editing: null }) : undefined,
+        }}
         options={
           operation.kind === "metadata_sync"
             ? {
@@ -368,12 +374,6 @@ export function WorkflowsPage({
               />
             </button>
           </h2>
-          {(permitted || readOnly) && operations.length > 0 && (
-            <Button size="sm" variant="outline" disabled={readOnly} onClick={() => setTriggerDialog({ trigger: null })}>
-              <CalendarPlus className="h-4 w-4" aria-hidden />
-              {t("workflowPage.triggers.add")}
-            </Button>
-          )}
         </div>
         <div id={`${operationsHeadingId}-cards`} hidden={!libraryOpen}>
           {!libraryOpen ? null : !hasSnapshot && isLoading ? (
@@ -416,7 +416,7 @@ export function WorkflowsPage({
               readOnly={readOnly}
               loading={!hasSnapshot && isLoading}
               onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
-              onEdit={(trigger) => setTriggerDialog({ trigger })}
+              onEdit={(trigger) => setTriggerDialog({ definitionId: trigger.workflowDefinitionId, editing: trigger })}
               onOpenPath={openWorkflowPath}
             />
           </div>
@@ -487,19 +487,17 @@ export function WorkflowsPage({
           onClose={() => setMetadataOptionsOpen(false)}
         />
       )}
-      {triggerDialog && (
-        <TriggerDialog
-          key={triggerDialog.trigger?.id ?? "add"}
-          operations={operations.map((operation) => ({ definition: operation.definition, name: cardName(operation) }))}
-          triggers={operationTriggers}
-          trigger={triggerDialog.trigger}
+      {dialogOperation && (
+        <OperationTriggersDialog
+          operation={{ definition: dialogOperation.definition, name: cardName(dialogOperation) }}
+          triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === dialogOperation.definition.id)}
+          editing={triggerDialog?.editing}
+          canManage={permitted}
           readOnly={readOnly}
           metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
+          onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
+          onChanged={refresh}
           onClose={() => setTriggerDialog(null)}
-          onSaved={() => {
-            setTriggerDialog(null);
-            refresh();
-          }}
         />
       )}
     </div>

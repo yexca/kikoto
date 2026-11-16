@@ -1,4 +1,4 @@
-import { Loader2, Play, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { CalendarClock, Loader2, Play, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { TriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import type { WorkflowRun } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 import type { OperationState } from "./operationModel";
 import { OperationSchedule } from "./OperationSchedule";
@@ -13,7 +14,8 @@ import { OperationStatus } from "./OperationStatus";
 
 /**
  * One operation as a card: its name, what starts it on its own, its state,
- * and Run. An operation that runs incrementally offers Full beside Run,
+ * and Run. The trigger button at the end of its name row opens what starts it
+ * on its own and is lit while any of that is on. An operation that runs incrementally offers Full beside Run,
  * which applies to the next run only. An operation with options of its own
  * opens them from the button beside its name and names them while they differ
  * from the defaults.
@@ -31,6 +33,7 @@ export function OperationCard({
   runBlockedReason,
   full,
   options,
+  triggers,
   onRun,
   onOpenRun,
 }: {
@@ -51,12 +54,16 @@ export function OperationCard({
   full: { checked: boolean; hint: string; onChange: (checked: boolean) => void } | null;
   /** The operation's own options: the button's name, what they change from the defaults, and how to open them. */
   options?: { label: string; summary: string | null; onOpen: () => void };
+  /** The trigger button; without onOpen it only shows whether a trigger is on. */
+  triggers: { label: string; onOpen?: () => void };
   onRun: () => void;
   onOpenRun: (run: WorkflowRun) => void;
 }) {
   const { t } = useTranslation();
   const nameId = useId();
   const fullId = useId();
+  // Lit while any trigger is on; the schedule line says which, or that they are paused.
+  const triggerTone = schedule && !schedule.paused ? "text-primary" : "text-muted-foreground";
   const busyLabel =
     state.phase === "queued"
       ? t("workflowActivity.status.queued")
@@ -76,18 +83,41 @@ export function OperationCard({
         <h3 id={nameId} className="min-w-0 flex-1 text-sm font-semibold leading-5">
           {name}
         </h3>
-        {options && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="-mr-1.5 -mt-1 shrink-0 text-muted-foreground"
-            title={options.label}
-            aria-label={options.label}
-            onClick={options.onOpen}
-          >
-            <SlidersHorizontal className="h-4 w-4" aria-hidden />
-          </Button>
-        )}
+        <div className="-mr-1.5 -mt-1 flex shrink-0 items-center gap-0.5">
+          {options && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="text-muted-foreground"
+              title={options.label}
+              aria-label={options.label}
+              onClick={options.onOpen}
+            >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden />
+            </Button>
+          )}
+          {triggers.onOpen ? (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className={triggerTone}
+              title={triggers.label}
+              aria-label={triggers.label}
+              onClick={triggers.onOpen}
+            >
+              <CalendarClock className="h-4 w-4" aria-hidden />
+            </Button>
+          ) : (
+            <span
+              role="img"
+              className={cn("inline-flex h-8 w-8 items-center justify-center", triggerTone)}
+              title={triggers.label}
+              aria-label={triggers.label}
+            >
+              <CalendarClock className="h-4 w-4" aria-hidden />
+            </span>
+          )}
+        </div>
       </div>
       <div className="min-w-0 pl-8">
         <OperationStatus state={state} moreActive={moreActive} stageCount={stageCount} onOpenRun={onOpenRun} />

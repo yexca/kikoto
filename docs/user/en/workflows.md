@@ -43,10 +43,13 @@ Workflows make backend actions inspectable.
   Remote B → Example Remote A**. They are saved in this browser; a source
   that is switched off or no longer provides metadata drops out of the
   fallback.
-- **Add trigger** beside the cards makes an operation run on its own: choose
-  the operation, **At startup** or **On a schedule** with an interval of 1, 6,
-  or 12 hours, 1 day, or 7 days, and Full. An operation runs at startup once
-  at most, and Metadata runs only on a schedule.
+- The calendar button at the end of a card's name row opens what makes that
+  operation run on its own, and is lit while any of it is on. It lists the
+  operation's triggers, each with a switch and an edit button, and **Add
+  trigger** adds one: **At startup** or **On a schedule** with an interval of
+  1, 6, or 12 hours, 1 day, or 7 days, and Full. An operation without
+  triggers opens straight to adding one. An operation runs at startup once at
+  most, and Metadata runs only on a schedule.
 - Below the cards, the runs are in two lists. **Now**, the default, shows
   three parts from top to bottom: **Running**, the queued and running runs;
   **Needs attention**, the runs that wait for a decision; and **Next**, what
