@@ -32,14 +32,15 @@ type NavItem = {
   permission?: string;
   /**
    * Where the shell offers the destination: `browse` pages are the sidebar's
-   * listening destinations, `personal` and `manage` pages sit in its
-   * collapsible groups, and `app` pages close the sidebar after a divider.
+   * collections, `explore` pages its listening destinations beyond them after
+   * a divider, `personal` and `manage` pages sit in its collapsible groups, and
+   * `app` pages close the sidebar after a divider.
    */
   group: NavigationGroup;
 };
 
-export type NavigationGroup = "browse" | "personal" | "manage" | "app";
-export type CollapsibleNavigationGroup = Exclude<NavigationGroup, "browse" | "app">;
+export type NavigationGroup = "browse" | "explore" | "personal" | "manage" | "app";
+export type CollapsibleNavigationGroup = Exclude<NavigationGroup, "browse" | "explore" | "app">;
 
 /**
  * The sidebar's collapsible groups, in the order it shows them. A layout
@@ -83,16 +84,6 @@ export const navItems = [
     group: "browse",
   },
   {
-    id: "records",
-    label: "Record",
-    labelKey: "nav.record",
-    path: "/records",
-    icon: Clapperboard,
-    audience: "authenticated",
-    permission: "library:read",
-    group: "browse",
-  },
-  {
     id: "circles",
     label: "Circles",
     labelKey: "nav.circles",
@@ -113,6 +104,16 @@ export const navItems = [
     group: "browse",
   },
   {
+    id: "records",
+    label: "Record",
+    labelKey: "nav.record",
+    path: "/records",
+    icon: Clapperboard,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "explore",
+  },
+  {
     id: "for-you",
     label: "For you",
     labelKey: "nav.forYou",
@@ -120,7 +121,7 @@ export const navItems = [
     icon: Sparkles,
     audience: "authenticated",
     permission: "library:read",
-    group: "browse",
+    group: "explore",
   },
   {
     id: "subscriptions",
@@ -130,7 +131,7 @@ export const navItems = [
     icon: Compass,
     audience: "authenticated",
     permission: "library:read",
-    group: "browse",
+    group: "explore",
   },
   {
     id: "insights",

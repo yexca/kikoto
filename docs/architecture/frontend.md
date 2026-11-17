@@ -1,11 +1,13 @@
 # Frontend
 
 The shell separates listening from managing. Each navigation destination
-declares a group in `app/navigation`: `browse` pages are listening
-destinations, `personal` pages belong to the signed-in account, `manage`
-pages are administration, and `app` pages (About) describe Kikoto itself. The
-desktop sidebar (`app/AppSidebar`) lists the browse destinations; below a
-hairline, the collapsible groups that `navigationGroups` declares:
+declares a group in `app/navigation`: `browse` pages (Library, Favorites,
+Circles, Voice Actors) are the listening collections, `explore` pages (Record,
+For you, Discover) are the listening destinations beyond them, `personal`
+pages belong to the signed-in account, `manage` pages are administration, and
+`app` pages (About) describe Kikoto itself. The desktop sidebar
+(`app/AppSidebar`) lists the browse pages, then below a hairline the explore
+pages; below another hairline, the collapsible groups that `navigationGroups` declares:
 **Personal**, holding Insights, Tags, and Settings, and **Manage**, holding
 Workflows, Metadata, Translation, Cleanup, and System; and below another
 hairline the `app` pages. The sidebar renders a group from its declaration and the pages that
@@ -35,7 +37,7 @@ Tags (`accountShortcutIds` in `app/navigation`); the sidebar keeps these
 pages in their own groups, so the tiles repeat them. The sidebar itself offers
 every page, About last below a divider, so the panel lists pages only below
 the sidebar breakpoint. There one list under the profile holds, in order:
-Quick actions on phones; the browse pages the bottom navigation does not
+Quick actions on phones; the browse and explore pages the bottom navigation does not
 carry, such as Discover and Record; the Personal pages; one **Manage** entry
 that opens the Manage pages as a view of the panel and names the current page
 while it is one of them; and About. The tiles do not appear below the

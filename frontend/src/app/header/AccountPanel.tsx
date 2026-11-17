@@ -174,6 +174,7 @@ export function AccountPanel({
           />
         )}
         {groupDestinations("browse").map(destinationItem)}
+        {groupDestinations("explore").map(destinationItem)}
         {navigationGroups.map((group) => {
           const entries = groupDestinations(group.id);
           if (entries.length === 0) return null;

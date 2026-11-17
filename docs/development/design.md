@@ -348,7 +348,9 @@ structural APIs. Add markers selectively instead of annotating every wrapper.
 The shell keeps listening and managing apart. At rest it shows listening
 destinations and no administration controls:
 
-- The desktop sidebar emphasizes the browse destinations. The account's own
+- The desktop sidebar emphasizes the browse destinations: the collections
+  (Library, Favorites, Circles, Voice Actors), then below a divider Record, For
+  you, and Discover. The account's own
   pages (Insights, Tags, Settings) sit in a collapsible Personal group and
   administration pages (Workflows, Metadata, Translation, Cleanup, System) in a
   collapsible Manage group. Both groups behave alike: closed by default, the

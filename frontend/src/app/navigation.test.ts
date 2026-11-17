@@ -45,8 +45,14 @@ describe("navigation access and labels", () => {
     expect(canAccessPage("workflows", "authenticated", (permission) => permission !== "workflows:run")).toBe(false);
   });
 
+  it("separates the collections from Record, For you, and Discover", () => {
+    const grouped = (group: string) => navItems.filter((item) => item.group === group).map((item) => item.id);
+    expect(grouped("browse")).toEqual(["library", "favorites", "circles", "voice-actors"]);
+    expect(grouped("explore")).toEqual(["records", "for-you", "subscriptions"]);
+  });
+
   it("places Insights, Tags, and Settings in Personal and closes the sidebar with About", () => {
-    const groups = new Set<string>(["browse", "app", ...navigationGroups.map((group) => group.id)]);
+    const groups = new Set<string>(["browse", "explore", "app", ...navigationGroups.map((group) => group.id)]);
     expect(navItems.every((item) => groups.has(item.group))).toBe(true);
     const grouped = (group: string) => navItems.filter((item) => item.group === group).map((item) => item.id);
     expect(grouped("personal")).toEqual(["insights", "tags", "settings"]);
