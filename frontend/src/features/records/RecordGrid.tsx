@@ -1,9 +1,8 @@
-import { Check, Download, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Video } from "lucide-react";
+import { Check, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Video } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { assetURL, type RecordAsset, type RecordFolder, type RecordProgress } from "@/lib/api";
 
 import { watchedFraction } from "./recordProgress";
@@ -185,8 +184,7 @@ function fileIcon(kind: RecordAsset["kind"]) {
 
 /**
  * A folder's files that are not tiles, one row each with its type and size.
- * Audio rows open the player and show how much was heard; every row offers
- * the file as a download.
+ * Audio rows open the player and show how much was heard.
  */
 export const RecordFileList = memo(function RecordFileList({
   files,
@@ -258,18 +256,6 @@ export const RecordFileList = memo(function RecordFileList({
               </button>
             ) : (
               <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2">{body}</div>
-            )}
-            {file.downloadUrl && (
-              <Button asChild variant="ghost" size="icon" className="h-9 w-9 shrink-0">
-                <a
-                  href={assetURL(file.downloadUrl)}
-                  download={file.name}
-                  aria-label={t("records.files.download", { name: file.name })}
-                  title={t("records.files.download", { name: file.name })}
-                >
-                  <Download className="h-4 w-4" />
-                </a>
-              </Button>
             )}
           </li>
         );

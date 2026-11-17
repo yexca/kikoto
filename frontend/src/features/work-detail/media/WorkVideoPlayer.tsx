@@ -1,14 +1,16 @@
-import { Loader2, RefreshCw, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { Button } from "@/components/ui/button";
+import { MediaOverlay } from "@/components/media-overlay";
 import { NativeSelect } from "@/components/ui/input";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type VideoAudioTrack, type VideoPlaybackInfo } from "@/lib/api";
 import { playbackURL, videoPlaybackCapabilities } from "@/player/mediaPlayback";
-import { formatVideoDuration } from "@/player/video/videoControlsModel";
+import { usePlayer } from "@/player/PlayerProvider";
+import { VideoPlayerHeader } from "@/player/video/VideoPlayerHeader";
+import { VideoPlayerStatus } from "@/player/video/VideoPlayerStatus";
 import {
   VideoStage,
   type VideoStageFailure,
@@ -31,15 +33,19 @@ import {
   videoAudioTrackLabel,
 } from "@/features/work-detail/media/videoAudioTracks";
 
-type VideoPreviewProps = {
+/** A work video the file viewer plays. */
+export type WorkVideo = {
   locationId: number;
-  fallbackUrl: string;
+  title: string;
+  /** The file itself, played as it is when the server cannot convert it. */
+  url: string;
   durationSeconds: number | null;
   canTranscode: boolean;
+  /** Same-name subtitle files beside the video. */
   subtitles?: VideoSubtitle[];
-  pauseRequested: boolean;
-  onPlay: () => void;
 };
+
+type Phase = { kind: "prompt"; position: number } | { kind: "playing"; startAt: number };
 
 const noSubtitles: VideoSubtitle[] = [];
 // While playing, the stored resume position follows the video in steps of this many seconds.
@@ -53,10 +59,6 @@ const failureMessages: Record<Exclude<VideoStageFailure, "direct" | "transcode">
   restoreFailed: "videoPlayback.restoreFailed",
 };
 
-export function VideoPreview(props: VideoPreviewProps) {
-  return <VideoPlayback key={`${props.locationId}:${props.fallbackUrl}`} {...props} />;
-}
-
 function browserStorage() {
   try {
     return window.localStorage;
@@ -66,22 +68,36 @@ function browserStorage() {
 }
 
 /**
- * A work video in the file preview: the shared video stage with this
- * browser's resume position, the choice of audio track, and the preparation
- * and failure states below it.
+ * The full-screen player for a work's videos, laid out like the Record player:
+ * the shared video stage under a header with the video's place among the
+ * folder's videos, previous and next, and the audio track choice. It asks
+ * whether to continue from the position this browser stored, plays what the
+ * server's playback info chooses, and prepares a file the browser cannot play
+ * again as a conversion. On a phone a video enters fullscreen when it starts.
+ * Remount it per video (`key`) so each starts with its own position.
  */
-function VideoPlayback({
-  locationId,
-  fallbackUrl,
-  durationSeconds,
-  canTranscode,
-  subtitles = noSubtitles,
-  pauseRequested,
-  onPlay,
-}: VideoPreviewProps) {
+export function WorkVideoPlayer({
+  video,
+  index,
+  total,
+  onPrevious,
+  onNext,
+  onClose,
+}: {
+  video: WorkVideo;
+  index: number;
+  total: number;
+  onPrevious: (() => void) | null;
+  onNext: (() => void) | null;
+  onClose: () => void;
+}) {
   const { t, i18n } = useTranslation();
+  const { locationId, title, url: fallbackUrl, durationSeconds, canTranscode } = video;
+  const subtitles = video.subtitles ?? noSubtitles;
   const principalID = useAuth().user?.id ?? null;
   const resumeStorageKey = videoResumeStorageKey(principalID);
+  const phone = useMobileNavigationLayout();
+  const player = usePlayer();
   const stage = useRef<VideoStageHandle | null>(null);
   const [playback, setPlayback] = useState<VideoPlaybackInfo | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
@@ -89,14 +105,15 @@ function VideoPlayback({
   // The audio track chosen in this page session; null plays the default track.
   const [audioStream, setAudioStream] = useState(() => chosenVideoAudioStream(principalID, locationId));
   const [audioTracks, setAudioTracks] = useState<VideoAudioTrack[]>([]);
-  const [error, setError] = useState("");
-  const [resumedFrom, setResumedFrom] = useState(() => {
+  const [error, setError] = useState<string | null>(null);
+  const [stored] = useState(() => {
     const storage = browserStorage();
     return storage ? readVideoResumePosition(storage, resumeStorageKey, locationId) : null;
   });
-  // The first source starts at the stored resume position, paused.
-  const [start] = useState(() => (resumedFrom === null ? null : { position: resumedFrom, playing: false }));
-  const writtenRef = useRef<number | null>(resumedFrom);
+  const [phase, setPhase] = useState<Phase>(() =>
+    stored === null ? { kind: "playing", startAt: 0 } : { kind: "prompt", position: stored },
+  );
+  const writtenRef = useRef<number | null>(stored);
 
   const displayedDuration = playback?.durationSeconds || durationSeconds || 0;
 
@@ -109,15 +126,14 @@ function VideoPlayback({
 
   // The position follows the video every few seconds while it plays, and at once on any other report.
   const notePosition = ({ position, duration, moment }: VideoStagePosition) => {
-    if (moment === "ended") setResumedFrom(null);
     const written = writtenRef.current;
     if (moment === "time" && written !== null && Math.abs(position - written) < resumeWriteIntervalSeconds) return;
     writeResumePosition(position, duration);
   };
 
+  // Ask how the video plays while the start position is being chosen.
   useEffect(() => {
     const controller = new AbortController();
-    setError("");
     if (!canTranscode || locationId <= 0) {
       setPlayback({
         delivery: "direct",
@@ -156,9 +172,10 @@ function VideoPlayback({
     return () => controller.abort();
   }, [audioStream, canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, principalID, retryToken]);
 
+  // The video takes over from the global audio player, and pauses when that player starts again.
   useEffect(() => {
-    if (pauseRequested) stage.current?.pause();
-  }, [pauseRequested]);
+    if (player.isPlaying) stage.current?.pause();
+  }, [player.isPlaying]);
 
   // A file the browser cannot play, or a remux it cannot decode, is prepared again as a conversion.
   const fail = (failure: VideoStageFailure) => {
@@ -175,41 +192,35 @@ function VideoPlayback({
     if (streamIndex === (playback?.audioStream ?? audioStream)) return;
     stage.current?.holdForNewSource();
     chooseVideoAudioStream(principalID, locationId, streamIndex);
-    setError("");
+    setError(null);
     setAudioStream(streamIndex);
   };
 
-  const startOver = () => {
-    setResumedFrom(null);
-    stage.current?.seekTo(0);
-    writeResumePosition(0);
-  };
+  const playing = phase.kind === "playing";
+  const startAt = playing ? phase.startAt : null;
+  const source = playing && !error ? playback : null;
+  const controls = source !== null;
+  // The stage's shortcuts work while focus is on the player rather than on a button.
+  const handleKeyDown = controls
+    ? (event: ReactKeyboardEvent<HTMLDivElement>) => stage.current?.handleKeyDown(event)
+    : undefined;
 
   return (
-    <VideoStage
-      ref={stage}
-      playback={playback}
-      start={start}
-      subtitles={subtitles}
-      fallbackDuration={durationSeconds ?? 0}
-      layout="inline"
-      onFailure={fail}
-      onPlay={onPlay}
-      onPlaying={() => setError("")}
-      onPosition={notePosition}
-    >
-      {!playback && !error && (
-        <div className="flex min-h-11 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t("videoPlayback.preparing")}
-        </div>
-      )}
-      {audioTracks.length > 0 && (
-        <div className="mt-3 flex min-h-11 items-center gap-3 px-3 text-sm text-muted-foreground sm:px-0">
-          <label htmlFor={`video-audio-track-${locationId}`}>{t("videoPlayback.audioTrack")}</label>
+    <MediaOverlay label={t("videoPlayback.playerLabel", { name: title })} onClose={onClose} onKeyDown={handleKeyDown}>
+      <VideoPlayerHeader
+        title={title}
+        index={index}
+        total={total}
+        shortcuts={!phone}
+        previous={{ label: t("videoPlayback.previousVideo"), onStep: onPrevious }}
+        next={{ label: t("videoPlayback.nextVideo"), onStep: onNext }}
+        onClose={onClose}
+      >
+        {audioTracks.length > 0 && (
           <NativeSelect
-            id={`video-audio-track-${locationId}`}
-            className="w-auto min-w-0 max-w-full flex-1 sm:flex-none"
+            aria-label={t("videoPlayback.audioTrack")}
+            title={t("videoPlayback.audioTrack")}
+            className="w-auto min-w-0 max-w-28 sm:max-w-48"
             value={playback?.audioStream ?? audioStream ?? ""}
             disabled={!playback}
             onChange={(event) => changeAudioTrack(Number(event.target.value))}
@@ -220,40 +231,37 @@ function VideoPlayback({
               </option>
             ))}
           </NativeSelect>
-        </div>
-      )}
-      {resumedFrom !== null && !error && (
-        <div
-          role="status"
-          className="mt-3 flex min-h-11 items-center justify-between gap-3 px-3 text-sm text-muted-foreground sm:px-0"
-        >
-          <span>{t("videoPlayback.resumedAt", { time: formatVideoDuration(resumedFrom) })}</span>
-          <Button variant="outline" size="sm" onClick={startOver}>
-            <RotateCcw className="h-4 w-4" />
-            {t("videoPlayback.startOver")}
-          </Button>
-        </div>
-      )}
-      {error && (
-        <div
-          role="alert"
-          className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
-        >
-          <span>{t(error)}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              stage.current?.holdForNewSource();
-              setError("");
-              setRetryToken((value) => value + 1);
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {t("videoPlayback.retry")}
-          </Button>
-        </div>
-      )}
-    </VideoStage>
+        )}
+      </VideoPlayerHeader>
+      {/* The stage fits both the width and the height, so the controls stay on screen. */}
+      <VideoStage
+        ref={stage}
+        playback={source}
+        start={startAt === null ? null : { position: startAt, playing: true }}
+        subtitles={subtitles}
+        fallbackDuration={durationSeconds ?? 0}
+        controls={controls}
+        enterFullscreen={phone && playing}
+        onFailure={fail}
+        onPlay={player.pause}
+        onPosition={notePosition}
+      >
+        <VideoPlayerStatus
+          error={error ? t(error) : null}
+          loading={!error && playing && playback === null}
+          resumePosition={phase.kind === "prompt" ? phase.position : null}
+          onRetry={() => {
+            stage.current?.holdForNewSource();
+            setError(null);
+            setRetryToken((value) => value + 1);
+          }}
+          onResume={() => phase.kind === "prompt" && setPhase({ kind: "playing", startAt: phase.position })}
+          onStartOver={() => {
+            setPhase({ kind: "playing", startAt: 0 });
+            writeResumePosition(0);
+          }}
+        />
+      </VideoStage>
+    </MediaOverlay>
   );
 }

@@ -88,8 +88,8 @@ Playback is handled by a global browser audio player.
   natively, which keeps native fullscreen and AirPlay; other browsers, the
   Android app included, use hls.js, and a browser without it plays the
   playlist natively when it can.
-- A video with two or more audio tracks shows an **Audio track** menu below
-  the video, which names each track by number and by the title, language, and
+- A video with two or more audio tracks shows an **Audio track** menu at the
+  top of the player, which names each track by number and by the title, language, and
   channel layout the file gives. Without a choice the viewer plays the track
   the file flags as default, or the first track when none is flagged. Only
   the first track plays directly, because a browser playing a file itself
@@ -200,7 +200,7 @@ Playback is handled by a global browser audio player.
   whole-second values from 1 through 300 and stores them per server and user in
   the browser. The same values drive player buttons, keyboard shortcuts,
   browser Media Session actions, Android media controls, and the back and
-  forward buttons and double taps of the file viewer's video.
+  forward buttons and double taps of the video players.
 - Compact playback reserves page space on mobile and desktop so final actions
   are not covered. PWA update notices stack above the Compact dock.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom

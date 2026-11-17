@@ -52,8 +52,7 @@ folder's artwork images stay hidden.
 
 **Files** lists everything else in the folder, one row each with its type and
 size: audio files with their length and a bar for how much you have heard,
-subtitles, metadata, and any other file. Selecting an audio file plays it, and
-the download button beside each row saves the file.
+subtitles, metadata, and any other file. Selecting an audio file plays it.
 
 From any folder, **Continue watching** opens a list of the videos and audio files
 you stopped part way through, most recent first, with the folder each one is in. Selecting
@@ -84,7 +83,7 @@ extensions include `.jpg`, `.jpeg`, `.png`, `.webp`, and `.avif`.
 Select a video to open it in a full-screen player that fits the picture and
 its controls to the screen. It has the on-screen controls, touch gestures,
 Subtitles menu, and keyboard shortcuts of
-[video in a work's file viewer](work-detail.md#current-behavior); on a
+[a work's video player](work-detail.md#current-behavior); on a
 computer, the keyboard button at the top lists the shortcuts. On a phone,
 the video switches to fullscreen when it starts, and a video wider than it is
 tall turns the screen to landscape until fullscreen ends; on iPhone and iPad,

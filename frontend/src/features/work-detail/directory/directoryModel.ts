@@ -469,20 +469,11 @@ export function fileKindLabel(kind: string) {
 }
 
 /** Whether the download endpoint can serve this file: a local or cached copy that is available. */
-export function fileDownloadable(file: TreeTrack) {
-  return (
-    file.locationId > 0 &&
-    file.availability === "available" &&
-    (file.locationType === "local" || file.locationType === "cache")
-  );
-}
-
 export function previewForFile(file: TreeTrack): FilePreviewState | null {
   const base = {
     title: file.title,
     locationId: file.locationId,
     sizeBytes: file.sizeBytes,
-    downloadable: fileDownloadable(file),
   };
   if (file.kind === "image" && file.assetUrl) {
     return {

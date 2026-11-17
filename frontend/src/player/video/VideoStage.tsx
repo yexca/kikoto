@@ -76,12 +76,11 @@ function settledPosition(video: HTMLVideoElement, changingSource: boolean, pendi
 }
 
 /**
- * The video stage of both the work file preview and the Record player: the
- * element, its controls, shortcuts, subtitle menu, playback rate, and
- * fullscreen, and the source that playback info chose. A failed or changed
- * source starts the next one where the last stopped, in the same play state.
- * `inline` sizes the video to the page width; `fill` fits it to the space the
- * stage is given. Remount it per file (`key`).
+ * The video stage of the work and Record video players: the element, its
+ * controls, shortcuts, subtitle menu, playback rate, and fullscreen, and the
+ * source that playback info chose. A failed or changed source starts the next
+ * one where the last stopped, in the same play state. The video fits both
+ * dimensions of the space the stage is given. Remount it per file (`key`).
  */
 export function VideoStage({
   ref,
@@ -90,7 +89,6 @@ export function VideoStage({
   subtitles,
   fallbackDuration,
   poster,
-  layout,
   controls = true,
   enterFullscreen = false,
   onFailure,
@@ -108,7 +106,6 @@ export function VideoStage({
   subtitles: VideoSubtitle[];
   fallbackDuration: number;
   poster?: string;
-  layout: "inline" | "fill";
   /** Whether the on-screen controls show. */
   controls?: boolean;
   /** Enters fullscreen once when this turns true; the tap that caused it allows the request. */
@@ -117,7 +114,7 @@ export function VideoStage({
   onPlay?: () => void;
   onPlaying?: () => void;
   onPosition?: (report: VideoStagePosition) => void;
-  /** Shown below the video, or over it in the `fill` layout; it stays inside the stage in fullscreen. */
+  /** Shown over the video; it stays inside the stage in fullscreen. */
   children?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -293,14 +290,12 @@ export function VideoStage({
     },
   }));
 
-  const fill = layout === "fill";
   return (
     <div
       ref={stageRef}
       className={cn(
-        "relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        fill ? "flex min-h-0 flex-1 items-center justify-center" : "w-full",
-        fullscreen && (fill ? "h-full bg-black" : "flex h-full flex-col bg-black"),
+        "relative flex min-h-0 flex-1 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        fullscreen && "h-full bg-black",
       )}
       role="group"
       aria-label={t("videoPlayback.player")}
@@ -308,23 +303,13 @@ export function VideoStage({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
-      <div
-        className={cn(
-          "@container/video",
-          fill ? "absolute inset-0" : "relative",
-          fullscreen && !fill && "min-h-0 flex-1",
-        )}
-      >
+      <div className="@container/video absolute inset-0">
         <video
           ref={videoRef}
           playsInline
           preload="metadata"
           poster={poster ? assetURL(poster) : undefined}
-          className={cn(
-            fill
-              ? "absolute inset-0 h-full w-full object-contain"
-              : cn("block w-full bg-black object-contain", fullscreen ? "h-full" : "max-h-[72vh]"),
-          )}
+          className="absolute inset-0 h-full w-full object-contain"
           aria-label={
             displayedDuration > 0
               ? t("videoPlayback.previewDuration", { duration: formatVideoDuration(displayedDuration) })

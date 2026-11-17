@@ -552,21 +552,27 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Keeps available non-playable files such as images and text in Directory while
   counting audio and audio-bearing video together under the Playable source
   metric.
-- Opens previews in a file viewer that steps through the folder's files of the
-  same kind with header controls, arrow keys, swipes on phones, or an image
-  filmstrip. Images sit on a dark stage that fits the window and report their
+- Opens image and text previews in a file viewer that steps through the
+  folder's files of the same kind with header controls, arrow keys, swipes on
+  phones, or an image filmstrip. Images sit on a dark stage that fits the window and report their
   dimensions. A click shows actual size around the clicked point and a second
   click fits again; the mouse wheel, a trackpad or two-finger pinch, and the
   `+`, `-`, and `0` keys zoom to any size up to eight times actual size around
-  the pointer or fingers, and dragging pans. Video uses the same stage. Text
+  the pointer or fingers, and dragging pans. Text
   opens in a reading view, and LRC,
   WebVTT, and SRT files show time-stamped lines, with LRC header tags and a Raw
   text toggle, parsed the same way as the player's lyrics. The viewer offers
-  Copy for text, Download for local and cached files, and Set cover for local
-  images, which takes a second click to confirm and resets after a few seconds
+  Copy for text and Set cover for local images, which takes a second click to confirm and resets after a few seconds
   or on another image. It fills the screen on phones and opens above the
   floating desktop player.
-- Plays video in the file viewer with on-screen controls:
+- Opens a video in a full-screen player laid out like the
+  [Record player](record-library.md#watching-videos-and-photos). Its header
+  shows the file name and its place among the folder's videos, the
+  **Audio track** menu when the video has several tracks, previous and next
+  buttons that step through the folder's videos, and on a computer a keyboard
+  button that lists the shortcuts. The video starts playing when it opens, on
+  a phone it switches to fullscreen as it starts, and Back or Esc closes the
+  player. It has these on-screen controls:
   - Back, play or pause, and forward sit in the middle of the picture, and the
     seek bar with the buffered part, the time, Subtitles, Playback speed (0.5×
     to 2×), Mute, and Full screen run along the bottom. Picture in picture and
@@ -597,15 +603,14 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
     one or turns them off, marks an embedded subtitle that is still loading,
     and loads one again when it is chosen after a failed load. Subtitles move
     up above the bottom controls while those show.
-  - A local or cached video reopens where it stopped, paused, with a
-    **Start over** button. The browser keeps the position per file and account
+  - When a local or cached video stopped part way through, opening it again
+    asks whether to continue from that time or start over. The browser keeps the position per file and account
     on this device, from 10 seconds in until the last 15 seconds or the last 5
     percent of the video, whichever is longer.
-  - While the video has focus, Space or K plays and pauses, J and L go back
+  - In the player, Space or K plays and pauses, J and L go back
     and forward 10 seconds, the left and right arrows go back and forward 5
     seconds, F switches fullscreen, M mutes, and Shift+, and Shift+. lower and
-    raise the speed between 0.5× and 2×. Elsewhere in the viewer the left and
-    right arrows step through the folder's videos.
+    raise the speed between 0.5× and 2×.
   - On a phone or tablet, a video wider than it is tall turns the screen to
     landscape while it is fullscreen, where the browser or app lets a page
     lock the screen, and the screen turns back when fullscreen ends. The

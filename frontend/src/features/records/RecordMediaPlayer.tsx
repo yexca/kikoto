@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Headphones, Loader2, Music, X } from "lucide-react";
+import { Headphones, Music } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type SyntheticEvent,
@@ -9,12 +9,15 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { MediaOverlay } from "@/components/media-overlay";
 import { Button } from "@/components/ui/button";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, assetURL, type RecordAsset, type RecordProgress, type VideoPlaybackInfo } from "@/lib/api";
 import { attachPlaybackSource, type PlaybackSourceFailure } from "@/player/attachPlaybackSource";
 import { playbackCapabilities, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import { usePlayer } from "@/player/PlayerProvider";
+import { VideoPlayerHeader } from "@/player/video/VideoPlayerHeader";
+import { VideoPlayerStatus } from "@/player/video/VideoPlayerStatus";
 import {
   VideoStage,
   type VideoStageFailure,
@@ -24,10 +27,8 @@ import {
 import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 import { prepareVideoPlayback } from "@/player/videoPlaybackModel";
 
-import { RecordOverlay } from "./RecordOverlay";
 import { RecordProgressTracker, resumePosition } from "./recordProgress";
-import { RecordShortcutsButton } from "./RecordShortcutsButton";
-import { baseName, formatPlaybackTime } from "./recordsModel";
+import { baseName } from "./recordsModel";
 
 type Phase = { kind: "checking" } | { kind: "prompt"; position: number } | { kind: "playing"; startAt: number };
 
@@ -277,69 +278,37 @@ export function RecordMediaPlayer({
   };
 
   const overlays = (
-    <>
-      {error && (
-        <div
-          role="alert"
-          className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center"
-        >
-          <p className="text-sm text-muted-foreground">
-            {t(error.busy ? "records.player.busy" : "records.player.unavailable")}
-          </p>
-          <Button variant="outline" onClick={retry}>
-            {t("records.retry")}
-          </Button>
-        </div>
-      )}
-      {loading && <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />}
-      {phase.kind === "prompt" && !error && (
-        <div className="absolute inset-x-0 bottom-6 flex justify-center px-4">
-          <div
-            role="group"
-            aria-label={t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
-            className="flex flex-wrap items-center justify-center gap-3 rounded-lg border bg-background/90 px-4 py-3 shadow-xl backdrop-blur"
-          >
-            <span className="text-sm font-medium">
-              {t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
-            </span>
-            <div className="flex gap-2">
-              <Button autoFocus onClick={() => setPhase({ kind: "playing", startAt: phase.position })}>
-                {t("records.player.resume")}
-              </Button>
-              <Button variant="outline" onClick={() => setPhase({ kind: "playing", startAt: 0 })}>
-                {t("records.player.startOver")}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <VideoPlayerStatus
+      error={error ? t(error.busy ? "records.player.busy" : "records.player.unavailable") : null}
+      loading={loading}
+      resumePosition={phase.kind === "prompt" ? phase.position : null}
+      onRetry={retry}
+      onResume={() => phase.kind === "prompt" && setPhase({ kind: "playing", startAt: phase.position })}
+      onStartOver={() => setPhase({ kind: "playing", startAt: 0 })}
+    />
   );
 
   return (
-    <RecordOverlay
-      label={t(isVideo ? "records.player.label" : "records.player.audioLabel", { name: title })}
+    <MediaOverlay
+      label={t(isVideo ? "videoPlayback.playerLabel" : "records.player.audioLabel", { name: title })}
       onClose={onClose}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex shrink-0 items-center gap-1 px-2 py-2 sm:gap-2 sm:px-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11"
-          aria-label={t("records.player.close")}
-          onClick={onClose}
-        >
-          <X className="h-5 w-5" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-medium sm:text-base">{title}</h2>
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {t("records.player.position", { current: index + 1, total })}
-          </p>
-        </div>
-        {/* Shortcuts need a keyboard, so phones leave the guide out. */}
-        {!phone && !listening && <RecordShortcutsButton />}
+      <VideoPlayerHeader
+        title={title}
+        index={index}
+        total={total}
+        shortcuts={!phone && !listening}
+        previous={{
+          label: t(isVideo ? "videoPlayback.previousVideo" : "records.player.previousTrack"),
+          onStep: previousId === null ? null : () => onStep(previousId),
+        }}
+        next={{
+          label: t(isVideo ? "videoPlayback.nextVideo" : "records.player.nextTrack"),
+          onStep: nextId === null ? null : () => onStep(nextId),
+        }}
+        onClose={onClose}
+      >
         {isVideo && (
           <Button
             variant="ghost"
@@ -353,29 +322,7 @@ export function RecordMediaPlayer({
             <Headphones className="h-5 w-5" />
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11"
-          aria-label={t(isVideo ? "records.player.previous" : "records.player.previousTrack")}
-          title={t(isVideo ? "records.player.previous" : "records.player.previousTrack")}
-          disabled={previousId === null}
-          onClick={() => previousId !== null && onStep(previousId)}
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11"
-          aria-label={t(isVideo ? "records.player.next" : "records.player.nextTrack")}
-          title={t(isVideo ? "records.player.next" : "records.player.nextTrack")}
-          disabled={nextId === null}
-          onClick={() => nextId !== null && onStep(nextId)}
-        >
-          <ChevronRight className="h-6 w-6" />
-        </Button>
-      </div>
+      </VideoPlayerHeader>
       {listening ? (
         <div className="relative flex min-h-0 flex-1 items-center justify-center">
           <div className="flex h-full w-full min-h-0 flex-col items-center justify-center gap-6 px-4 pb-6">
@@ -405,7 +352,6 @@ export function RecordMediaPlayer({
           subtitles={sidecars}
           fallbackDuration={asset.durationSeconds ?? 0}
           poster={asset.thumbnailUrl}
-          layout="fill"
           controls={controls}
           enterFullscreen={phone && playing}
           onFailure={failVideo}
@@ -415,6 +361,6 @@ export function RecordMediaPlayer({
           {overlays}
         </VideoStage>
       )}
-    </RecordOverlay>
+    </MediaOverlay>
   );
 }

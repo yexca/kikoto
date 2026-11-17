@@ -4,14 +4,14 @@ import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { VideoShortcutList } from "@/player/video/VideoShortcutList";
+import { VideoShortcutList } from "./VideoShortcutList";
 
 /**
  * The player header's keyboard button, which lists the video shortcuts and
  * Esc. The list renders inside the player dialog, so it takes the dialog's
  * dark theme and stays above it.
  */
-export function RecordShortcutsButton() {
+export function VideoShortcutsButton() {
   const { t } = useTranslation();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -40,7 +40,7 @@ export function RecordShortcutsButton() {
         className="w-[min(22rem,calc(100vw-1.5rem))] p-4"
       >
         <p className="mb-3 text-sm font-semibold">{title}</p>
-        <VideoShortcutList extra={[{ keys: ["Esc"], label: t("records.player.close") }]} />
+        <VideoShortcutList extra={[{ keys: ["Esc"], label: t("videoPlayback.closePlayer") }]} />
       </AnchoredPopover>
     </>
   );

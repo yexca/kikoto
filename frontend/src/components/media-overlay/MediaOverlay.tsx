@@ -3,12 +3,12 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type React
 import { lockPageScroll } from "@/components/ui/pageScrollLock";
 
 /**
- * A full-screen dark layer for the Record video player and photo viewer. It is
- * a modal dialog, so Escape and the native back gesture close it, the page
+ * A full-screen dark layer for a video player or photo viewer. It is a modal
+ * dialog, so Escape and the native back gesture close it, the page
  * behind it does not scroll, and focus returns to the tile that opened it.
  * The stage stays dark in every theme, so its controls use the dark tokens.
  */
-export function RecordOverlay({
+export function MediaOverlay({
   label,
   onClose,
   onKeyDown,

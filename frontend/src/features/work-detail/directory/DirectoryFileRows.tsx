@@ -4,7 +4,6 @@ import {
   Captions,
   Check,
   CircleCheck,
-  ExternalLink,
   FileText,
   Film,
   Folder,
@@ -23,7 +22,6 @@ import {
 import { fileIcon } from "@/features/work-detail/dialogs/mediaFilePresentation";
 import { useDirectoryNameClamp, useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import {
-  fileDownloadable,
   fileKindLabel,
   fileLabel,
   imageThumbnailURL,
@@ -41,7 +39,7 @@ import {
 } from "@/features/work-detail/media/mediaTreeModel";
 import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 import i18n from "@/i18n";
-import { assetURL, mediaDownloadURL } from "@/lib/api";
+import { assetURL } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import { type LyricsChoice, lyricsChoiceDisplayLabel } from "@/player/lyricsMatching";
 import { lyricsLanguageLabelKey } from "@/lib/lyricsLanguage";
@@ -61,7 +59,6 @@ export type DirectoryFileHandlers = {
 type FileActionState = {
   preview: FilePreviewState | null;
   canPlay: boolean;
-  canDownload: boolean;
   canOpen: boolean;
   lyricsChoices: LyricsChoice[];
   hasQueueActions: boolean;
@@ -94,15 +91,13 @@ function fileActionState(
 ): FileActionState {
   const preview = previewForFile(file);
   const canPlay = Boolean(handlers.onPlayFolder && playableFiles([file]).length > 0);
-  const canDownload = fileDownloadable(file);
   const lyrics = fileLyricsState(file, lyricsPreferenceOverrides);
   const hasQueueActions =
     canPlay && (file.kind === "video" || Boolean(handlers.onPlayNext) || Boolean(handlers.onAppendQueue));
   return {
     preview,
     canPlay,
-    canDownload,
-    canOpen: canPlay || Boolean(preview && handlers.onPreview) || canDownload,
+    canOpen: canPlay || Boolean(preview && handlers.onPreview),
     lyricsChoices: lyrics.lyricsChoices,
     hasQueueActions,
     hasMoreActions: lyrics.lyricsChoices.length > 0 || hasQueueActions,
@@ -127,11 +122,7 @@ function openFile(
     handlers.onPlayFolder?.(tracks, file.locationId);
     return;
   }
-  if (state.preview) {
-    handlers.onPreview?.(filePreviewRequest(state.preview, previewSiblings));
-    return;
-  }
-  if (state.canDownload) window.open(mediaDownloadURL(file.locationId), "_blank", "noopener,noreferrer");
+  if (state.preview) handlers.onPreview?.(filePreviewRequest(state.preview, previewSiblings));
 }
 
 function fileSizeLabel(file: TreeTrack) {
@@ -327,12 +318,6 @@ export function DirectoryFileRow({
         </span>
       )}
       <span ref={actionAreaRef} className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        {file.kind === "file" && state.canDownload && (
-          <ExternalLink
-            className="mx-1 h-3.5 w-3.5 text-primary"
-            aria-label={i18n.t("libraryDetail.downloadsNewTab")}
-          />
-        )}
         {state.lyricsChoices.length > 0 && (
           <LyricsActions
             file={file}

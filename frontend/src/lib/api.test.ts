@@ -16,7 +16,7 @@ vi.mock("@/lib/serverConfig", () => ({
 }));
 vi.mock("@/lib/mobileDiagnostics", () => ({ recordApiError }));
 
-import { api, ApiError, assetURL, mediaDownloadURL } from "./api";
+import { api, ApiError, assetURL } from "./api";
 import { apiSessionVersion, changeApiSession, observeApiPrincipal } from "./apiSession";
 import { getText } from "./apiTransport";
 import { setDemoMetadataLanguageUser, writeDemoMetadataLanguages } from "./demoMetadataLanguages";
@@ -68,7 +68,6 @@ describe("API client transport", () => {
     expect(init.redirect).toBe("error");
     expect(new Headers(init.headers).get("Authorization")).toBeNull();
     expect(assetURL("/assets/example-cover.jpg")).toBe("/assets/example-cover.jpg");
-    expect(mediaDownloadURL(7)).toBe("/api/media/7/download");
   });
 
   it("sends a Demo visitor's browser-local metadata language with authenticated requests", async () => {

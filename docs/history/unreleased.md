@@ -16,13 +16,13 @@
   parent, with **Continue watching** and **Scan** on the right, and the address
   keeps the open folder for Back, Forward, and reload. Items are ordered
   naturally by name, the folder's other files are listed under **Files** with
-  their type and size and a download button, and **Continue watching** opens
+  their type and size, and **Continue watching** opens
   from any folder to resume videos and audio files you stopped part way
   through.
-- Videos play in a full-screen player that fits the screen, has the controls,
-  gestures, and shortcuts of the work video player, lists those shortcuts
-  behind a keyboard button on a computer, switches to landscape fullscreen
-  when a video starts on a phone, steps through the folder, offers to continue
+- Videos play in the full-screen player that work videos use, which fits
+  the screen, lists its shortcuts behind a keyboard button on a computer,
+  switches to landscape fullscreen when a video starts on a phone, steps
+  through the folder, offers to continue
   where you stopped, saves the position per account, and pauses the global
   audio player. A video the browser cannot play as it is, such as an MPEG-TS
   recording, is repackaged or converted like the Library's videos. A `.vtt` or
@@ -285,6 +285,14 @@
   and **Select works**; on a phone the search field stays on show and **View**
   opens as a sheet. A caption before the order states the matching works and
   the page; only the bottom page bar turns pages.
+- A work video opens in the full-screen player that Record uses: its header
+  shows the video's place among the folder's videos, the **Audio track** menu,
+  and previous and next; the video starts playing at once, asks whether to
+  continue when you stopped part way through, and switches to fullscreen when
+  it starts on a phone. The arrow keys seek instead of stepping to another
+  video.
+- The file viewer and the Directory no longer offer files as downloads, and a
+  file Kikoto cannot preview no longer opens a download.
 - The image viewer zooms to any size up to eight times actual size with the
   mouse wheel, a trackpad or two-finger pinch, and the `+`, `-`, and `0`
   keys, keeping the point under the pointer or fingers in place. A click

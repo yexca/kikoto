@@ -2,11 +2,11 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { MediaOverlay } from "@/components/media-overlay";
 import { Button } from "@/components/ui/button";
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { assetURL, type RecordAsset } from "@/lib/api";
 
-import { RecordOverlay } from "./RecordOverlay";
 import { baseName } from "./recordsModel";
 
 /**
@@ -46,7 +46,7 @@ export function RecordPhotoViewer({
   }, [previous, next]);
 
   return (
-    <RecordOverlay
+    <MediaOverlay
       label={t("records.photo.label", { name: title })}
       onClose={onClose}
       onKeyDown={(event) => {
@@ -113,6 +113,6 @@ export function RecordPhotoViewer({
           <ChevronRight className="h-6 w-6" />
         </Button>
       </div>
-    </RecordOverlay>
+    </MediaOverlay>
   );
 }

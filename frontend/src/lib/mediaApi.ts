@@ -1,13 +1,4 @@
-import {
-  assetURL,
-  deleteJSON,
-  getJSON,
-  getText,
-  postJSON,
-  postJSONBody,
-  putJSONBody,
-  sendJSONBody,
-} from "@/lib/apiTransport";
+import { deleteJSON, getJSON, getText, postJSON, postJSONBody, putJSONBody, sendJSONBody } from "@/lib/apiTransport";
 
 export type MediaProgressUpdate = {
   workId: number;
@@ -272,10 +263,6 @@ export type MediaCleanupResult = {
   status: "queued" | "running" | "succeeded" | "partial" | "failed";
   queued: number;
 };
-
-export function mediaDownloadURL(locationId: number) {
-  return assetURL(`/api/media/${locationId}/download`);
-}
 
 export const mediaApi = {
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),

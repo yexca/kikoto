@@ -4,9 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  Download,
   FileText,
-  FileVideo,
   ImageIcon,
   Loader2,
   Maximize2,
@@ -19,21 +17,18 @@ import { Dialog } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { countTextLines, formatLyricsTime, parseLyrics } from "@/features/work-detail/dialogs/textPreviewModel";
-import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
+import { WorkVideoPlayer } from "@/features/work-detail/media/WorkVideoPlayer";
 import type { VideoSubtitle } from "@/player/video/videoSubtitles";
-import { formatBytes, formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
+import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
-import { api, assetURL, mediaDownloadURL } from "@/lib/api";
+import { api, assetURL } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/tailwindClassNames";
-import { usePlayer } from "@/player/PlayerProvider";
 
 type FilePreviewBase = {
   title: string;
   locationId: number;
   sizeBytes?: number | null;
-  /** A local or cached copy that the download endpoint can serve. */
-  downloadable?: boolean;
 };
 
 export type FilePreviewState =
@@ -67,10 +62,9 @@ export function filePreviewRequest(preview: FilePreviewState, siblings: FilePrev
   return index >= 0 ? { items: siblings, index } : { items: [preview], index: 0 };
 }
 
-const kindIcons = { image: ImageIcon, video: FileVideo, text: FileText } as const;
+const kindIcons = { image: ImageIcon, text: FileText } as const;
 const kindLabelKeys = {
   image: "libraryDetail.image",
-  video: "libraryDetail.video",
   text: "libraryDetail.text",
 } as const;
 
@@ -104,9 +98,10 @@ function HeaderButton({
 }
 
 /**
- * File viewer for directory previews: a media stage for images and video, a
- * reading view for text and timed lyrics, and stepping through sibling files
- * with the header controls, arrow keys, swipes, or the image filmstrip.
+ * File viewer for directory previews: a media stage for images, a reading view
+ * for text and timed lyrics, and stepping through sibling files with the header
+ * controls, arrow keys, swipes, or the image filmstrip. A video opens the
+ * full-screen work video player, which steps through the sibling videos.
  */
 export function FilePreviewDialog({
   request,
@@ -117,7 +112,6 @@ export function FilePreviewDialog({
   onClose: () => void;
   onSetCover?: (locationId: number) => void | Promise<void>;
 }) {
-  const player = usePlayer();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [index, setIndex] = useState(request.index);
   const [zoom, setZoom] = useState<ImageZoom>("fit");
@@ -146,7 +140,10 @@ export function FilePreviewDialog({
     [items.length],
   );
 
+  const videoOpen = preview?.kind === "video";
   useEffect(() => {
+    // The video player's arrow keys seek instead.
+    if (videoOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -160,7 +157,7 @@ export function FilePreviewDialog({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [step]);
+  }, [step, videoOpen]);
 
   // Neighboring local images load ahead so stepping through a gallery feels immediate.
   useEffect(() => {
@@ -170,10 +167,29 @@ export function FilePreviewDialog({
   }, [current, items]);
 
   if (!preview) return null;
+  if (preview.kind === "video") {
+    const videos = items.filter((item) => item.kind === "video");
+    const position = Math.max(
+      videos.findIndex((item) => samePreview(item, preview)),
+      0,
+    );
+    const stepTo = (target: FilePreviewState | undefined) =>
+      target ? () => setIndex(items.findIndex((item) => samePreview(item, target))) : null;
+    return (
+      <WorkVideoPlayer
+        key={`${preview.locationId}:${preview.url}`}
+        video={preview}
+        index={position}
+        total={Math.max(videos.length, 1)}
+        onPrevious={stepTo(videos[position - 1])}
+        onNext={stepTo(videos[position + 1])}
+        onClose={onClose}
+      />
+    );
+  }
   const KindIcon = kindIcons[preview.kind];
   const meta = [
     i18n.t(kindLabelKeys[preview.kind]),
-    preview.kind === "video" ? formatTrackDuration(preview.durationSeconds) : "",
     details,
     typeof preview.sizeBytes === "number" ? formatBytes(preview.sizeBytes) : "",
   ]
@@ -253,18 +269,6 @@ export function FilePreviewDialog({
               {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
             </HeaderButton>
           )}
-          {preview.downloadable && preview.locationId > 0 && (
-            <a
-              href={mediaDownloadURL(preview.locationId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={i18n.t("libraryDetail.downloadFile")}
-              title={i18n.t("libraryDetail.downloadFile")}
-            >
-              <Download className="h-4 w-4" />
-            </a>
-          )}
           {preview.kind === "image" && onSetCover && preview.canSetCover && (
             <SetCoverButton key={preview.locationId} locationId={preview.locationId} onSetCover={onSetCover} />
           )}
@@ -284,18 +288,6 @@ export function FilePreviewDialog({
             onStep={step}
             onDetails={setDetails}
           />
-        ) : preview.kind === "video" ? (
-          <div className="dark app-scroll flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black p-0 text-foreground sm:p-4">
-            <VideoPreview
-              locationId={preview.locationId}
-              fallbackUrl={preview.url}
-              durationSeconds={preview.durationSeconds}
-              canTranscode={preview.canTranscode}
-              subtitles={preview.subtitles}
-              pauseRequested={player.isPlaying}
-              onPlay={player.pause}
-            />
-          </div>
         ) : (
           <TextReader
             key={`${preview.locationId}:${preview.title}`}

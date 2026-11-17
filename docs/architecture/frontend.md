@@ -234,8 +234,7 @@ initializes the independent record root. The navigation offers Record only
 while the runtime settings report it on. `RecordsBrowser` browses the root one
 folder at a time through `recordsApi`, ordering subfolders, videos, and photos
 by natural name, and lists the folder's audio, subtitle, metadata, and other
-files below them in `RecordFileList`, where audio rows open the player and
-every row offers its download.
+files below them in `RecordFileList`, where audio rows open the player.
 `recordsLocation` keeps the open folder and an open video (`?play=`) or photo
 (`?photo=`) in the `/records` URL. Opening a folder or an overlay pushes a
 history entry; previous or next inside an overlay replaces it; closing an
@@ -259,15 +258,9 @@ plays videos and audio files: it asks whether to continue from a saved
 position, reads Record playback info while it asks, plays the chosen source,
 and asks for a transcode after a direct file or a remux fails to decode. It
 saves progress through `RecordProgressTracker` every ten seconds, on pause, at
-the end, and when it closes. A video plays on the shared `VideoStage` in its
-`fill` layout, filling both dimensions of the overlay; the overlay passes key
-presses to the stage, so its shortcuts work while focus rests on the player.
-An audio file attaches its source through `attachPlaybackSource` itself.
-Outside the phone layout the header's
-`RecordShortcutsButton` lists the shortcuts through `VideoShortcutList`, which
-reads `VIDEO_SHORTCUT_GUIDE` beside the key mapping. On the phone layout it requests stage fullscreen
-once it starts, within the tap that opened or started it, and
-`watchVideoFullscreenOrientation` turns a wide video to landscape. Audio only, which the browser
+the end, and when it closes. A video plays in the shared full-screen video
+player layout described with the work video player below. An audio file
+attaches its source through `attachPlaybackSource` itself. Audio only, which the browser
 keeps per device, plays a video's sound through an `<audio>` element under the
 video's frame or the folder's poster, continuing from the same moment. A
 same-name subtitle sidecar the server serves as WebVTT is the video's sidecar
@@ -528,10 +521,23 @@ viewer read LRC, WebVTT, SRT, and ASS files the same way. `usePlayerLyrics`
 moves parsed lines by the listener's lyrics offset, so the active line, line
 seeking, and screen lyrics share one timeline.
 
-The work detail file viewer plays video in `VideoPreview`
-(`features/work-detail/media`), and Record plays video in `RecordMediaPlayer`,
-both outside the global player and on the same `VideoStage`
-(`player/video`). The stage owns the `<video>` element, its controls,
+The work detail file viewer (`FilePreviewDialog`) shows images and text, and
+opens a video in `WorkVideoPlayer` (`features/work-detail/media`), which
+steps through the folder's videos. It and Record's `RecordMediaPlayer` play
+outside the global player with one layout: `MediaOverlay`
+(`components/media-overlay`), the full-screen dark modal that Record's photo
+viewer also uses; `VideoPlayerHeader` with close, the title and the item's
+place in its list, previous and next, the caller's own actions (Record's audio
+only, the work's audio track menu), and outside the phone layout
+`VideoShortcutsButton`, which lists the shortcuts through
+`VideoShortcutList` and `VIDEO_SHORTCUT_GUIDE`; `VideoPlayerStatus` for the
+failure with Retry, the preparing spinner, and the question whether to
+continue from a saved position; and `VideoStage` (`player/video`). The
+overlay passes key presses to the stage, so its shortcuts work while focus
+rests on the player. A video starts playing once its start is chosen, and on
+the phone layout the stage requests fullscreen then, within the tap that
+opened or started it, while `watchVideoFullscreenOrientation` turns a wide
+video to landscape. The stage owns the `<video>` element, its controls,
 shortcuts, subtitle tracks, playback rate, and fullscreen, and the source that
 playback info chose, which it attaches through `attachPlaybackSource`: an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
@@ -540,10 +546,10 @@ start position and play state, and a failed, recovered, or changed source
 starts the next one where the last stopped, in the same play state. It reports
 why a source failed, so the caller can prepare a direct file or a remux again
 as a transcode, and reports the positions the viewer reaches, so each caller
-keeps its own resume store: `VideoPreview` in browser storage, `RecordMediaPlayer`
-on the server. The `inline` layout sizes the video to the page width and lists
-the caller's rows below it; the `fill` layout fits the video to the space it is
-given with the caller's overlays over it. The `<video>` element has no native controls;
+keeps its own resume store: `WorkVideoPlayer` in browser storage,
+`RecordMediaPlayer` on the server. The video fits both dimensions of the space
+the stage is given, with the caller's overlays over it. The `<video>` element
+has no native controls;
 `VideoControls` lays its own over it, reading the element through
 `useVideoElementState` and keeping tap zones, double-tap streaks, the hide
 rule, and seeking in the pure `videoControlsModel`. It reuses the player's
