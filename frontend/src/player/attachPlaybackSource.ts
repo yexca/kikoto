@@ -18,11 +18,25 @@ export type PlaybackSourceFailure = "transcode" | "busy" | "playFailed" | "hlsUn
  * hls.js starts loading at `startPosition`; a direct file starts wherever the
  * caller seeks once its metadata loads. Returns the cleanup that detaches the
  * source.
+ *
+ * `onHlsJs` reports that hls.js took over the element, whose own error events
+ * then belong to hls.js. `onRecover` runs before hls.js reloads the media after
+ * a decode error, which pauses the element and loads its metadata again.
  */
 export function attachPlaybackSource(
   media: HTMLMediaElement,
   playback: Pick<VideoPlaybackInfo, "delivery" | "conversion" | "url">,
-  { startPosition, onFailure }: { startPosition?: number; onFailure: (failure: PlaybackSourceFailure) => void },
+  {
+    startPosition,
+    onFailure,
+    onHlsJs,
+    onRecover,
+  }: {
+    startPosition?: number;
+    onFailure: (failure: PlaybackSourceFailure) => void;
+    onHlsJs?: () => void;
+    onRecover?: () => void;
+  },
 ): () => void {
   let active = true;
   let instance: Hls | null = null;
@@ -50,10 +64,12 @@ export function attachPlaybackSource(
       let mediaRecoveryAttempts = 0;
       const hls = new HlsConstructor({ ...CONSERVATIVE_HLS_CONFIG, startPosition: startPosition ?? -1 });
       instance = hls;
+      onHlsJs?.();
       hls.on(HlsConstructor.Events.ERROR, (_event: string, data: ErrorData) => {
         if (!data.fatal || !active) return;
         if (data.type === HlsConstructor.ErrorTypes.MEDIA_ERROR && mediaRecoveryAttempts < 1) {
           mediaRecoveryAttempts++;
+          onRecover?.();
           hls.recoverMediaError();
           return;
         }

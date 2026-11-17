@@ -9,27 +9,18 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import {
-  api,
-  assetURL,
-  type RecordAsset,
-  type RecordProgress,
-  type VideoEmbeddedSubtitle,
-  type VideoPlaybackInfo,
-} from "@/lib/api";
-import { cn } from "@/lib/tailwindClassNames";
+import { api, assetURL, type RecordAsset, type RecordProgress, type VideoPlaybackInfo } from "@/lib/api";
 import { attachPlaybackSource, type PlaybackSourceFailure } from "@/player/attachPlaybackSource";
-import { usePlaybackSeekPreferences } from "@/player/mediaControls";
 import { playbackCapabilities, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import { usePlayer } from "@/player/PlayerProvider";
-import { useVideoSubtitleTracks } from "@/player/video/useVideoSubtitleTracks";
-import { VideoControls } from "@/player/video/VideoControls";
-import { toggleVideoFullscreen, useStageFullscreen, videoFullscreenMode } from "@/player/video/videoFullscreen";
-import { videoLandscapeLock, watchVideoFullscreenOrientation } from "@/player/video/videoFullscreenOrientation";
-import { handleVideoStageKeyDown } from "@/player/video/videoShortcuts";
+import {
+  VideoStage,
+  type VideoStageFailure,
+  type VideoStageHandle,
+  type VideoStagePosition,
+} from "@/player/video/VideoStage";
 import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 import { prepareVideoPlayback } from "@/player/videoPlaybackModel";
 
@@ -38,14 +29,7 @@ import { RecordProgressTracker, resumePosition } from "./recordProgress";
 import { RecordShortcutsButton } from "./RecordShortcutsButton";
 import { baseName, formatPlaybackTime } from "./recordsModel";
 
-type Phase =
-  | { kind: "checking" }
-  | { kind: "prompt"; position: number }
-  | { kind: "playing"; startAt: number }
-  | { kind: "error"; busy: boolean };
-
-// A stable empty list, so the subtitle tracks do not treat each render as new playback info.
-const noEmbeddedSubtitles: VideoEmbeddedSubtitle[] = [];
+type Phase = { kind: "checking" } | { kind: "prompt"; position: number } | { kind: "playing"; startAt: number };
 
 type Source = { listening: boolean; forceTranscode: boolean; playback: VideoPlaybackInfo | null };
 
@@ -54,11 +38,9 @@ type Source = { listening: boolean; forceTranscode: boolean; playback: VideoPlay
  * continue from a saved position, plays what the server's playback info
  * chooses (the file itself, a remux, or a transcode), saves progress while the
  * media plays, and steps through the folder's items of the same kind. Videos
- * use the work video player's controls, shortcuts, and subtitle menu; on a
- * phone a video enters fullscreen when it starts, turning the screen to
- * landscape when it is wider than tall. A video can play as audio only, which
- * loads only its sound. Remount it per item (`key`) so each starts with its
- * own progress.
+ * play on the shared video stage; on a phone a video enters fullscreen when it
+ * starts. A video can play as audio only, which loads only its sound. Remount
+ * it per item (`key`) so each starts with its own progress.
  */
 export function RecordMediaPlayer({
   asset,
@@ -103,21 +85,20 @@ export function RecordMediaPlayer({
   const { t } = useTranslation();
   const isVideo = asset.kind === "video";
   const listening = !isVideo || audioOnly;
-  const element = useRef<HTMLMediaElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const fullscreen = useStageFullscreen(stageRef);
-  const seekPreferences = usePlaybackSeekPreferences(useAuth().user?.id ?? null);
-  const [rateNotice, setRateNotice] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stage = useRef<VideoStageHandle | null>(null);
   const tracker = useRef<RecordProgressTracker | null>(null);
-  // Where playback stood when it failed, so Retry continues from there.
+  // Where audio stood when it failed, so Retry continues from there; the video stage keeps its own.
   const failedAt = useRef(0);
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
+  const [error, setError] = useState<{ busy: boolean } | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [source, setSource] = useState<Source>({ listening, forceTranscode: false, playback: null });
   const title = baseName(asset.name);
-  const playback = source.listening === listening && source.forceTranscode === forceTranscode ? source.playback : null;
+  const prepared = source.listening === listening && source.forceTranscode === forceTranscode ? source.playback : null;
+  // A failed source is detached until Retry prepares it again.
+  const playback = error ? null : prepared;
 
   // Decide where playback starts: the saved position, after asking unless the
   // Continue watching list opened the player, or the beginning.
@@ -165,7 +146,7 @@ export function RecordMediaPlayer({
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
         const status = reason && typeof reason === "object" && "status" in reason ? reason.status : null;
-        setPhase({ kind: "error", busy: status === 503 || status === 429 });
+        setError({ busy: status === 503 || status === 429 });
       });
     return () => controller.abort();
   }, [asset.id, forceTranscode, isVideo, listening, retryToken]);
@@ -185,9 +166,33 @@ export function RecordMediaPlayer({
         // Progress is best effort; playback continues without it.
       });
   });
-  // A failed direct file is prepared again as a conversion, from where it stopped.
-  const fail = useStableCallback((failure: PlaybackSourceFailure | "direct") => {
-    const media = element.current;
+
+  // Progress saves from where playback starts; switching between picture and sound starts again.
+  const startAt = phase.kind === "playing" ? phase.startAt : null;
+  useEffect(() => {
+    if (startAt !== null) tracker.current = new RecordProgressTracker(save, startAt);
+  }, [save, startAt]);
+
+  // A file the browser cannot play, or a remux it cannot decode, is prepared again as a conversion.
+  const failVideo = (failure: VideoStageFailure) => {
+    if ((failure === "transcode" || failure === "direct") && !forceTranscode) {
+      setForceTranscode(true);
+      return;
+    }
+    setError({ busy: failure === "busy" });
+  };
+  const trackVideo = ({ position, duration, moment }: VideoStagePosition) => {
+    const current = tracker.current;
+    if (!current) return;
+    if (moment === "time") current.timeUpdate(position, duration);
+    else if (moment === "pause") current.pause(position, duration);
+    else if (moment === "ended") current.ended(duration);
+    else if (moment === "leave") current.close(position, duration);
+  };
+
+  // A failed direct audio file is prepared again as a conversion, from where it stopped.
+  const failAudio = useStableCallback((failure: PlaybackSourceFailure | "direct") => {
+    const media = audioRef.current;
     const position = media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
     failedAt.current = Math.max(failedAt.current, position);
     if ((failure === "transcode" || failure === "direct") && !forceTranscode) {
@@ -197,17 +202,14 @@ export function RecordMediaPlayer({
       );
       return;
     }
-    setPhase({ kind: "error", busy: failure === "busy" });
+    setError({ busy: failure === "busy" });
   });
 
-  // Play once the start position and the source are known, and save progress from then on.
-  const startAt = phase.kind === "playing" ? phase.startAt : null;
+  // Audio plays once the start position and the source are known.
   useEffect(() => {
-    const media = element.current;
-    if (startAt === null || !media || !playback) return;
-    const current = new RecordProgressTracker(save, startAt);
-    tracker.current = current;
-    const detach = attachPlaybackSource(media, playback, { startPosition: startAt, onFailure: fail });
+    const media = audioRef.current;
+    if (!listening || startAt === null || !media || !playback) return;
+    const detach = attachPlaybackSource(media, playback, { startPosition: startAt, onFailure: failAudio });
     const begin = () => {
       if (startAt > 0 && startAt < (media.duration || Infinity) && Math.abs(media.currentTime - startAt) > 1) {
         media.currentTime = startAt;
@@ -218,79 +220,33 @@ export function RecordMediaPlayer({
     };
     media.addEventListener("loadedmetadata", begin, { once: true });
     const saveWhenHidden = () => {
-      if (document.visibilityState === "hidden") current.pause(media.currentTime, media.duration);
+      if (document.visibilityState === "hidden") tracker.current?.pause(media.currentTime, media.duration);
     };
     document.addEventListener("visibilitychange", saveWhenHidden);
     return () => {
       media.removeEventListener("loadedmetadata", begin);
       document.removeEventListener("visibilitychange", saveWhenHidden);
-      current.close(media.currentTime, media.duration);
-      if (tracker.current === current) tracker.current = null;
+      tracker.current?.close(media.currentTime, media.duration);
       detach();
     };
-  }, [fail, playback, save, startAt]);
+  }, [failAudio, listening, playback, startAt]);
 
   const sidecars = useMemo<VideoSubtitle[]>(
     () =>
       subtitle?.streamUrl ? [{ locationId: subtitle.id, title: baseName(subtitle.name), url: subtitle.streamUrl }] : [],
     [subtitle],
   );
-  const subtitleTracks = useVideoSubtitleTracks(
-    videoRef,
-    sidecars,
-    playback ? (playback.subtitles ?? noEmbeddedSubtitles) : null,
-  );
-
-  // The screen turns to landscape while a wide video is fullscreen.
-  const videoShown = !listening && phase.kind !== "error";
-  useEffect(() => {
-    const video = videoRef.current;
-    const landscape = videoLandscapeLock();
-    if (!videoShown || !video || !landscape) return;
-    return watchVideoFullscreenOrientation(video, document, landscape);
-  }, [videoShown]);
-
-  // On a phone a video goes fullscreen once it starts, in the stage that keeps
-  // these controls; the tap that opened or started it allows the request.
-  const enteredFullscreen = useRef(false);
-  const playing = phase.kind === "playing";
-  useEffect(() => {
-    if (listening) enteredFullscreen.current = false;
-    const stage = stageRef.current;
-    const video = videoRef.current;
-    if (!phone || listening || !playing || enteredFullscreen.current || !stage || !video) return;
-    if (videoFullscreenMode(stage, video) !== "stage" || document.fullscreenElement) return;
-    enteredFullscreen.current = true;
-    toggleVideoFullscreen(stage, video);
-  }, [listening, phone, playing]);
-
-  useEffect(() => {
-    if (rateNotice === null) return;
-    const timer = window.setTimeout(() => setRateNotice(null), 1500);
-    return () => window.clearTimeout(timer);
-  }, [rateNotice]);
-  const toggleFullscreen = () => {
-    const stage = stageRef.current;
-    const video = videoRef.current;
-    if (stage && video) toggleVideoFullscreen(stage, video);
-  };
-  const changeRate = (rate: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.playbackRate = rate;
-    setRateNotice(video.playbackRate);
-  };
 
   // Switching between picture and sound continues from the same moment.
   const toggleAudioOnly = () => {
-    const media = element.current;
-    if (phase.kind === "playing" && media && Number.isFinite(media.currentTime)) {
-      setPhase({ kind: "playing", startAt: media.currentTime });
+    const position = listening ? audioRef.current?.currentTime : stage.current?.currentTime();
+    if (phase.kind === "playing" && position !== undefined && Number.isFinite(position)) {
+      setPhase({ kind: "playing", startAt: position });
     }
     onAudioOnlyChange(!audioOnly);
   };
 
-  const mediaEvents = {
+  const audioEvents = {
     onTimeUpdate: (event: SyntheticEvent<HTMLMediaElement>) =>
       tracker.current?.timeUpdate(event.currentTarget.currentTime, event.currentTarget.duration),
     onPause: (event: SyntheticEvent<HTMLMediaElement>) => {
@@ -300,19 +256,65 @@ export function RecordMediaPlayer({
     onPlay: pauseAudio,
     onEnded: (event: SyntheticEvent<HTMLMediaElement>) => tracker.current?.ended(event.currentTarget.duration),
     onError: () => {
-      if (playback?.delivery === "direct") fail("direct");
+      if (playback?.delivery === "direct") failAudio("direct");
     },
   };
-  const controls = phase.kind === "playing" && playback !== null;
-  const loading = phase.kind === "checking" || (phase.kind === "playing" && playback === null);
+  const playing = phase.kind === "playing";
+  const controls = playing && playback !== null;
+  const loading = !error && (phase.kind === "checking" || (playing && playback === null));
   const picture = asset.thumbnailUrl ?? artworkUrl;
-  const duration = playback?.durationSeconds || asset.durationSeconds || 0;
   // The stage's shortcuts work while focus is on the player rather than on a button.
   const handleKeyDown =
     !listening && controls
-      ? (event: ReactKeyboardEvent<HTMLDivElement>) =>
-          handleVideoStageKeyDown(event, videoRef.current, { duration, toggleFullscreen, changeRate })
+      ? (event: ReactKeyboardEvent<HTMLDivElement>) => stage.current?.handleKeyDown(event)
       : undefined;
+
+  const retry = () => {
+    setError(null);
+    setSource({ listening, forceTranscode, playback: null });
+    if (listening && phase.kind === "playing") setPhase({ kind: "playing", startAt: failedAt.current });
+    setRetryToken((value) => value + 1);
+  };
+
+  const overlays = (
+    <>
+      {error && (
+        <div
+          role="alert"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center"
+        >
+          <p className="text-sm text-muted-foreground">
+            {t(error.busy ? "records.player.busy" : "records.player.unavailable")}
+          </p>
+          <Button variant="outline" onClick={retry}>
+            {t("records.retry")}
+          </Button>
+        </div>
+      )}
+      {loading && <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />}
+      {phase.kind === "prompt" && !error && (
+        <div className="absolute inset-x-0 bottom-6 flex justify-center px-4">
+          <div
+            role="group"
+            aria-label={t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
+            className="flex flex-wrap items-center justify-center gap-3 rounded-lg border bg-background/90 px-4 py-3 shadow-xl backdrop-blur"
+          >
+            <span className="text-sm font-medium">
+              {t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
+            </span>
+            <div className="flex gap-2">
+              <Button autoFocus onClick={() => setPhase({ kind: "playing", startAt: phase.position })}>
+                {t("records.player.resume")}
+              </Button>
+              <Button variant="outline" onClick={() => setPhase({ kind: "playing", startAt: 0 })}>
+                {t("records.player.startOver")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <RecordOverlay
@@ -374,28 +376,8 @@ export function RecordMediaPlayer({
           <ChevronRight className="h-6 w-6" />
         </Button>
       </div>
-      {/* The stage fits both the width and the height, so the controls stay on screen. */}
-      <div
-        ref={stageRef}
-        className={cn("relative flex min-h-0 flex-1 items-center justify-center", fullscreen && "h-full bg-black")}
-      >
-        {phase.kind === "error" ? (
-          <div role="alert" className="flex flex-col items-center gap-3 px-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              {t(phase.busy ? "records.player.busy" : "records.player.unavailable")}
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSource({ listening, forceTranscode, playback: null });
-                setPhase({ kind: "playing", startAt: failedAt.current });
-                setRetryToken((value) => value + 1);
-              }}
-            >
-              {t("records.retry")}
-            </Button>
-          </div>
-        ) : listening ? (
+      {listening ? (
+        <div className="relative flex min-h-0 flex-1 items-center justify-center">
           <div className="flex h-full w-full min-h-0 flex-col items-center justify-center gap-6 px-4 pb-6">
             <div className="grid aspect-square min-h-0 w-full max-w-[min(20rem,45vh)] shrink place-items-center overflow-hidden rounded-xl border bg-muted">
               {picture ? (
@@ -405,90 +387,34 @@ export function RecordMediaPlayer({
               )}
             </div>
             <audio
-              key="audio"
-              ref={(node) => {
-                element.current = node;
-              }}
+              ref={audioRef}
               className="w-full max-w-xl shrink-0"
               controls={controls}
               preload="metadata"
-              {...mediaEvents}
+              {...audioEvents}
             />
           </div>
-        ) : (
-          <div className="@container/video absolute inset-0">
-            <video
-              key="video"
-              ref={(node) => {
-                element.current = node;
-                videoRef.current = node;
-              }}
-              className="absolute inset-0 h-full w-full object-contain"
-              playsInline
-              preload="metadata"
-              poster={asset.thumbnailUrl ? assetURL(asset.thumbnailUrl) : undefined}
-              {...mediaEvents}
-            >
-              {subtitleTracks.map((track) => (
-                <track
-                  key={track.key}
-                  data-subtitle-key={track.key}
-                  kind="subtitles"
-                  src={track.src}
-                  srcLang={track.language}
-                  label={track.label}
-                />
-              ))}
-            </video>
-            {controls && (
-              <VideoControls
-                videoRef={videoRef}
-                stageRef={stageRef}
-                fullscreen={fullscreen}
-                fallbackDuration={duration}
-                hasSource
-                subtitles={subtitleTracks}
-                seekSteps={{
-                  backward: seekPreferences.seekBackwardSeconds,
-                  forward: seekPreferences.seekForwardSeconds,
-                }}
-                onToggleFullscreen={toggleFullscreen}
-                onRateChange={changeRate}
-              />
-            )}
-            {rateNotice !== null && (
-              <div
-                className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2.5 py-1 text-sm tabular-nums text-foreground backdrop-blur"
-                role="status"
-              >
-                {t("videoPlayback.playbackRate", { rate: rateNotice })}
-              </div>
-            )}
-          </div>
-        )}
-        {loading && <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />}
-        {phase.kind === "prompt" && (
-          <div className="absolute inset-x-0 bottom-6 flex justify-center px-4">
-            <div
-              role="group"
-              aria-label={t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
-              className="flex flex-wrap items-center justify-center gap-3 rounded-lg border bg-background/90 px-4 py-3 shadow-xl backdrop-blur"
-            >
-              <span className="text-sm font-medium">
-                {t("records.player.resumePrompt", { time: formatPlaybackTime(phase.position) })}
-              </span>
-              <div className="flex gap-2">
-                <Button autoFocus onClick={() => setPhase({ kind: "playing", startAt: phase.position })}>
-                  {t("records.player.resume")}
-                </Button>
-                <Button variant="outline" onClick={() => setPhase({ kind: "playing", startAt: 0 })}>
-                  {t("records.player.startOver")}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+          {overlays}
+        </div>
+      ) : (
+        // The stage fits both the width and the height, so the controls stay on screen.
+        <VideoStage
+          ref={stage}
+          playback={playing ? playback : null}
+          start={startAt === null ? null : { position: startAt, playing: true }}
+          subtitles={sidecars}
+          fallbackDuration={asset.durationSeconds ?? 0}
+          poster={asset.thumbnailUrl}
+          layout="fill"
+          controls={controls}
+          enterFullscreen={phone && playing}
+          onFailure={failVideo}
+          onPlay={pauseAudio}
+          onPosition={trackVideo}
+        >
+          {overlays}
+        </VideoStage>
+      )}
     </RecordOverlay>
   );
 }

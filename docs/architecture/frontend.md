@@ -256,13 +256,14 @@ wide screens or a sheet on phones and opens one over its own folder in a new
 entry (`openFolderVideoNavigation`), resuming without asking, so closing it
 returns to the folder where it was opened. The full-screen `RecordMediaPlayer`
 plays videos and audio files: it asks whether to continue from a saved
-position, reads Record playback info while it asks, attaches the chosen source
-through the shared `attachPlaybackSource` (a direct file, native HLS on iOS,
-or hls.js), and asks for a transcode after a direct file or a remux fails to
-decode. It saves progress through `RecordProgressTracker` every ten seconds,
-on pause, at the end, and when it closes. A video plays on the work video
-stage with `VideoControls`, its shortcuts, and its subtitle menu, filling both
-dimensions of the overlay, and outside the phone layout the header's
+position, reads Record playback info while it asks, plays the chosen source,
+and asks for a transcode after a direct file or a remux fails to decode. It
+saves progress through `RecordProgressTracker` every ten seconds, on pause, at
+the end, and when it closes. A video plays on the shared `VideoStage` in its
+`fill` layout, filling both dimensions of the overlay; the overlay passes key
+presses to the stage, so its shortcuts work while focus rests on the player.
+An audio file attaches its source through `attachPlaybackSource` itself.
+Outside the phone layout the header's
 `RecordShortcutsButton` lists the shortcuts through `VideoShortcutList`, which
 reads `VIDEO_SHORTCUT_GUIDE` beside the key mapping. On the phone layout it requests stage fullscreen
 once it starts, within the tap that opened or started it, and
@@ -529,10 +530,20 @@ seeking, and screen lyrics share one timeline.
 
 The work detail file viewer plays video in `VideoPreview`
 (`features/work-detail/media`), and Record plays video in `RecordMediaPlayer`,
-both outside the global player and on the same video stage, whose parts live in
-`player/video`. `VideoPreview` attaches an HLS
+both outside the global player and on the same `VideoStage`
+(`player/video`). The stage owns the `<video>` element, its controls,
+shortcuts, subtitle tracks, playback rate, and fullscreen, and the source that
+playback info chose, which it attaches through `attachPlaybackSource`: an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
-lazily loaded hls.js elsewhere. The `<video>` element has no native controls;
+lazily loaded hls.js elsewhere. It starts the first source at the caller's
+start position and play state, and a failed, recovered, or changed source
+starts the next one where the last stopped, in the same play state. It reports
+why a source failed, so the caller can prepare a direct file or a remux again
+as a transcode, and reports the positions the viewer reaches, so each caller
+keeps its own resume store: `VideoPreview` in browser storage, `RecordMediaPlayer`
+on the server. The `inline` layout sizes the video to the page width and lists
+the caller's rows below it; the `fill` layout fits the video to the space it is
+given with the caller's overlays over it. The `<video>` element has no native controls;
 `VideoControls` lays its own over it, reading the element through
 `useVideoElementState` and keeping tap zones, double-tap streaks, the hide
 rule, and seeking in the pure `videoControlsModel`. It reuses the player's
@@ -553,8 +564,8 @@ through the API transport as an object URL, so native shells need no subtitle
 asset route. `videoSubtitles` labels the tracks and picks the one that shows
 first. `videoResume` keeps resume
 positions in account-scoped browser storage, keyed by location id and holding
-only positions; the stage writes one only after its start position applies,
-so a still-loading element never replaces it.
+only positions; the stage reports a position only after its start position
+applies, so a still-loading element never replaces it.
 
 ## Major Surfaces
 
