@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { audioHlsPlayback } from "./mediaPlayback";
-import { playerTrackAudioSource } from "./playerTrackMedia";
+import { playerTrackAudioSource, RECORD_LOCATION_TYPE, supportsCompatibilityPlayback } from "./playerTrackMedia";
 import type { PlayerTrack } from "./playerTypes";
 
 const track: PlayerTrack = {
@@ -110,5 +110,38 @@ describe("player audio sources", () => {
       remotePath: "a.wma",
     };
     expect(playerTrackAudioSource(remote, true).delivery).toBe("direct");
+  });
+});
+
+describe("Record audio sources", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const recordTrack: PlayerTrack = {
+    ...track,
+    mediaItemId: 0,
+    locationId: -21,
+    title: "Episode 1.mp3",
+    locationType: RECORD_LOCATION_TYPE,
+    streamUrl: "/api/records/assets/21/stream",
+    workId: 0,
+    workCode: "",
+    progressRecordable: false,
+    record: { assetId: 21, folderId: 4 },
+  };
+
+  it("streams the file itself when the browser plays it", () => {
+    stubBrowser({ mse: true });
+    expect(playerTrackAudioSource(recordTrack)).toEqual({ delivery: "direct", url: "/api/records/assets/21/stream" });
+  });
+
+  it("converts compatibility playback, unplayable formats, and a video's sound through the Record audio playlist", () => {
+    stubBrowser({ mse: true });
+    const playlist = { delivery: "hls", url: "/api/records/assets/21/hls/index.m3u8?profile=audio" };
+    expect(playerTrackAudioSource(recordTrack, true)).toEqual(playlist);
+    expect(playerTrackAudioSource({ ...recordTrack, title: "Episode 1.wma" })).toEqual(playlist);
+    expect(playerTrackAudioSource({ ...recordTrack, kind: "video", title: "Day 1.mkv" })).toEqual(playlist);
+    expect(supportsCompatibilityPlayback(recordTrack)).toBe(true);
   });
 });

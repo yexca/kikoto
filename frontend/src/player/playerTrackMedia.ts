@@ -14,6 +14,7 @@ export type PlayerAudioSource = {
 };
 
 export function playerTrackAudioSource(track: PlayerTrack, compatibilityMode = false): PlayerAudioSource {
+  if (track.record) return recordAudioSource(track, track.record.assetId, compatibilityMode);
   if (track.locationType === "remote_stream" && track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
     return {
       delivery: "direct",
@@ -31,6 +32,22 @@ export function playerTrackAudioSource(track: PlayerTrack, compatibilityMode = f
     };
   }
   return { delivery: "prepared", url: playbackURL(track.streamUrl, "audio", true, false) };
+}
+
+/**
+ * A Record file plays as it is when the browser decodes it, and otherwise
+ * through its own audio HLS encode, the sound alone for a video. A browser
+ * without HLS playback gets the file itself.
+ */
+function recordAudioSource(track: PlayerTrack, assetId: number, compatibilityMode: boolean): PlayerAudioSource {
+  if (!audioNeedsConversion(track.title, compatibilityMode) || !audioHlsPlayback()) {
+    return { delivery: "direct", url: track.streamUrl };
+  }
+  return { delivery: "hls", url: recordAudioHlsPlaylistURL(assetId) };
+}
+
+export function recordAudioHlsPlaylistURL(assetId: number) {
+  return `/api/records/assets/${encodeURIComponent(String(assetId))}/hls/index.m3u8?profile=audio`;
 }
 
 export function trackPlaybackKey(track: PlayerTrack | null) {
@@ -54,5 +71,10 @@ export function playbackInstanceKey(track: PlayerTrack | null, reloadToken: numb
 
 /** Compatibility (transcoded) playback only applies to files the server reads itself. */
 export function supportsCompatibilityPlayback(track: Pick<PlayerTrack, "locationType"> | null | undefined) {
-  return track?.locationType === "local" || track?.locationType === "cache";
+  return (
+    track?.locationType === "local" || track?.locationType === "cache" || track?.locationType === RECORD_LOCATION_TYPE
+  );
 }
+
+/** The location type of a Record file in the player. */
+export const RECORD_LOCATION_TYPE = "record";

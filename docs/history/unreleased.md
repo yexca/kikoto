@@ -27,12 +27,18 @@
   audio player. A video the browser cannot play as it is, such as an MPEG-TS
   recording, is repackaged or converted like the Library's videos. A `.vtt` or
   UTF-8 `.srt` file named like a video, or a text subtitle inside it, plays as
-  its subtitles. The headphones button plays a video as audio only, and audio
-  files play in the same player. Photos open full screen with arrow keys and
-  swipes, and zoom like the work image viewer.
-- A scan reads each video's and audio file's length and size. Video tiles show
-  a frame from the video and photos show small thumbnails, both made the first time a folder
-  shows them; folder artwork images stay out of the photos.
+  its subtitles. **Play as audio** continues a video's sound in the global
+  audio player. Photos open full screen with arrow keys and swipes, and zoom
+  like the work image viewer.
+- Audio files play in the global audio player with the folder's other audio
+  files queued, continue where you stopped, and save their position like
+  videos. The player shows a file's own cover art, or no picture without one,
+  and its cover leads back to the Record folder. Record audio has no lyrics and
+  stays out of listening history and the restored queue.
+- A scan reads each video's and audio file's length and size, and whether an
+  audio file carries cover art. Video tiles show a frame from the video, audio
+  rows their cover art, and photos small thumbnails, all made the first time a
+  folder shows them; folder artwork images stay out of the photos.
 - Record thumbnails are kept in the transcode cache and count against its
   limit in **System → Cache & Fetch**. The least recently viewed are removed
   first when the cache is full, **Clear transcode cache** in **Cleanup →

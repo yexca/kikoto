@@ -68,10 +68,7 @@ export const recordsHans = {
     played: "已播放",
     heardShare: "已播放 {{percent}}%",
     player: {
-      audioLabel: "音频播放器：{{name}}",
-      audioOnly: "仅音频",
-      previousTrack: "上一首",
-      nextTrack: "下一首",
+      listen: "作为音频播放",
       unavailable: "无法播放此文件。",
       busy: "服务器正忙于准备播放，请稍后重试。",
     },

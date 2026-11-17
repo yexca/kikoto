@@ -116,7 +116,8 @@ func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord
 }
 
 // runRecordScan scans the record root and, when the walk was complete, removes
-// the cached thumbnails of assets it no longer finds as videos or images. A
+// the cached thumbnails of assets it no longer finds as videos, images, or
+// audio files with cover art. A
 // partial walk leaves thumbnails alone, as it leaves the rows it could not see.
 func (s *Server) runRecordScan(ctx context.Context) (record.ScanResult, error) {
 	result, err := s.recordStore.Scan(ctx)

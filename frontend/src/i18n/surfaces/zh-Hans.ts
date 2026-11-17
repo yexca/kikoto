@@ -2403,6 +2403,8 @@ export const surfaceHans = {
     collapse: "收起播放器",
     openWork: "打开作品详情",
     openWorkTitle: "双击打开作品详情",
+    openRecordFolder: "打开记录文件夹",
+    openRecordFolderTitle: "双击打开记录文件夹",
     chooseSource: "选择播放来源",
     playbackSource: "播放来源",
     previous: "上一首",
@@ -2448,7 +2450,7 @@ export const surfaceHans = {
     remove: "移除",
     back: "返回",
     modes: { order: "顺序播放", loop: "循环播放", single: "单曲循环" },
-    locationTypes: { local: "本地", cache: "缓存", remote_stream: "远程串流", remote: "远程" },
+    locationTypes: { local: "本地", cache: "缓存", remote_stream: "远程串流", remote: "远程", record: "记录" },
     availability: {
       available: "可用",
       remote: "远程",

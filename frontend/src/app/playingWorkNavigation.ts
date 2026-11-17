@@ -81,6 +81,17 @@ export function openPlayingWorkDetail({
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
+/** Opens the Record folder that holds the playing Record file, unless it already shows. */
+export function openPlayingRecordFolder({ folderId, returnLabel }: { folderId: number; returnLabel: string }) {
+  const path = navItems.find((item) => item.id === "records")?.path;
+  if (!path) return;
+  const route = folderId > 0 ? `${path}?folder=${folderId}` : path;
+  const here = currentInternalLocation();
+  if (here === route) return;
+  window.history.pushState(historyStateWithReturn(here, returnLabel), "", route);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
+}
+
 function ownedState(state: Record<string, unknown>, owner: PageID | undefined) {
   return owner ? historyStateWithWorkDetailOwner(state, owner, true) : state;
 }

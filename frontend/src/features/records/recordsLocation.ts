@@ -161,6 +161,14 @@ export function openFolderVideoNavigation(
   };
 }
 
+/**
+ * Opens the folder of an audio file the Continue list plays, as a new entry;
+ * the folder trail is recovered from its listing.
+ */
+export function openContinueFolderNavigation(current: RecordsLocation, folderId: number): RecordsNavigation {
+  return { mode: "push", href: recordsHref({ ...current, folderId, overlay: null }), state: {} };
+}
+
 /** Moves the open overlay to a sibling without adding a Back step. */
 export function stepOverlayNavigation(current: RecordsLocation, state: unknown, assetId: number): RecordsNavigation {
   if (!current.overlay) return { mode: "replace", href: recordsHref(current), state: stateRecord(state) };

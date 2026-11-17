@@ -90,8 +90,9 @@ func WithThumbnailGuard(guard ThumbnailGuard) ThumbnailOption {
 	}
 }
 
-// Thumbnailer makes and caches JPEG thumbnails of record videos and images on
-// first request. A video's frame is taken a tenth of the way in. Generation
+// Thumbnailer makes and caches JPEG thumbnails of record videos, images, and
+// the cover art embedded in audio files on first request. A video's frame is
+// taken a tenth of the way in. Generation
 // is bounded to a few ffmpeg processes and a bounded number of waiters, and
 // concurrent requests for one revision share a single run. ffmpeg writes
 // outside the cache directory; only a finished thumbnail is stored there,
@@ -152,10 +153,10 @@ func thumbnailAssetID(name string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// Thumbnail opens the cached thumbnail of one revision of a record video or
-// image at input, making it first when needed.
+// Thumbnail opens the cached thumbnail of one revision of a record video,
+// image, or audio file at input, making it first when needed.
 func (t *Thumbnailer) Thumbnail(ctx context.Context, input string, source ThumbnailSource) (*os.File, error) {
-	if source.Kind != "video" && source.Kind != "image" {
+	if source.Kind != "video" && source.Kind != "image" && source.Kind != "audio" {
 		return nil, ErrThumbnailUnavailable
 	}
 	_, _, final, failed := t.paths(source)
@@ -357,8 +358,14 @@ func thumbnailArgs(input, output, kind string, seek float64) []string {
 	if kind == "video" && seek > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(seek, 'f', 3, 64))
 	}
+	if kind == "audio" {
+		// An audio file's picture is its attached cover art.
+		args = append(args, "-i", "file:"+input, "-map", "0:v:0")
+	} else {
+		args = append(args, "-i", "file:"+input)
+	}
 	scale := "scale=" + thumbnailBox + ":" + thumbnailBox + ":force_original_aspect_ratio=decrease"
-	return append(args, "-i", "file:"+input, "-frames:v", "1", "-vf", scale, "-c:v", "mjpeg", "-q:v", "4", "-f", "image2", "-update", "1", "-y", "file:"+output)
+	return append(args, "-frames:v", "1", "-vf", scale, "-c:v", "mjpeg", "-q:v", "4", "-f", "image2", "-update", "1", "-y", "file:"+output)
 }
 
 func validThumbnail(path string) bool {

@@ -68,6 +68,12 @@ func (s *Server) pruneRecordThumbnails(ctx context.Context) (int, error) {
 	})
 }
 
+// hasRecordThumbnail reports the assets a thumbnail is made of: videos,
+// images, and audio files with embedded cover art.
+func hasRecordThumbnail(a record.Asset) bool {
+	return a.Kind == "video" || a.Kind == "image" || (a.Kind == "audio" && a.HasCover)
+}
+
 func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
 	source := record.ThumbnailSource{AssetID: a.ID, Kind: a.Kind}
 	if a.SizeBytes != nil {
@@ -84,8 +90,8 @@ func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
 
 // decorateRecordAsset sets the authenticated URLs an asset is read through:
 // the download of any file, the stream and a revision-keyed thumbnail for
-// videos and images, the stream of audio files, and the WebVTT route for
-// WebVTT and SubRip sidecars.
+// videos and images, the stream of audio files and the thumbnail of their
+// embedded cover art, and the WebVTT route for WebVTT and SubRip sidecars.
 func decorateRecordAsset(a *record.Asset) {
 	if a.Availability != "available" {
 		return
@@ -98,6 +104,9 @@ func decorateRecordAsset(a *record.Asset) {
 		a.ThumbnailURL = "/api/records/assets/" + id + "/thumbnail?v=" + recordThumbnailSource(*a).Revision()
 	case "audio":
 		a.StreamURL = "/api/records/assets/" + id + "/stream"
+		if a.HasCover {
+			a.ThumbnailURL = "/api/records/assets/" + id + "/thumbnail?v=" + recordThumbnailSource(*a).Revision()
+		}
 	case "subtitle":
 		if record.ServesSubtitle(a.Name) {
 			a.StreamURL = "/api/records/assets/" + id + "/subtitle"
@@ -105,8 +114,8 @@ func decorateRecordAsset(a *record.Asset) {
 	}
 }
 
-// serveRecordThumbnail serves a JPEG thumbnail of a record video or image,
-// made on first request. Thumbnails are made on demand rather than during the
+// serveRecordThumbnail serves a JPEG thumbnail of a record video, image, or
+// audio file with cover art, made on first request. Thumbnails are made on demand rather than during the
 // scan, so a scan stays a quick walk and probe, and only the folders someone
 // opens pay for ffmpeg; the revision in the URL lets browsers keep them.
 func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +136,7 @@ func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "record_asset_not_found", "Record asset not found.", false)
 		return
 	}
-	if err != nil || (asset.Kind != "video" && asset.Kind != "image") || asset.Availability != "available" {
+	if err != nil || !hasRecordThumbnail(asset) || asset.Availability != "available" {
 		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
 		return
 	}

@@ -2406,6 +2406,8 @@ export const surfaceHant = {
     collapse: "收合播放器",
     openWork: "開啟作品詳細資料",
     openWorkTitle: "按兩下開啟作品詳細資料",
+    openRecordFolder: "開啟記錄資料夾",
+    openRecordFolderTitle: "按兩下開啟記錄資料夾",
     chooseSource: "選擇播放來源",
     playbackSource: "播放來源",
     previous: "上一首",
@@ -2451,7 +2453,7 @@ export const surfaceHant = {
     remove: "移除",
     back: "返回",
     modes: { order: "依序播放", loop: "循環播放", single: "單曲循環" },
-    locationTypes: { local: "本機", cache: "快取", remote_stream: "遠端串流", remote: "遠端" },
+    locationTypes: { local: "本機", cache: "快取", remote_stream: "遠端串流", remote: "遠端", record: "記錄" },
     availability: {
       available: "可用",
       remote: "遠端",

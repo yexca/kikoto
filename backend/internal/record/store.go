@@ -90,6 +90,9 @@ type Asset struct {
 	Progress *Progress `json:"progress,omitempty"`
 	// MtimeNs and the size identify the file revision a thumbnail belongs to.
 	MtimeNs *int64 `json:"-"`
+	// HasCover reports cover art embedded in an audio file, which becomes its
+	// thumbnail.
+	HasCover bool `json:"-"`
 }
 
 type Artwork struct {
@@ -391,8 +394,9 @@ func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind
 		duration_seconds=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN duration_seconds ELSE NULL END,
 		width=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN width ELSE NULL END,
 		height=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN height ELSE NULL END,
+		has_cover=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN has_cover ELSE NULL END,
 		folder_id=?, name=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind,
+		size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind,
 		folderID, name, rel, kind, strings.ToLower(filepath.Ext(name)), mime, size, mtime, generation, id)
 	return id, err
 }
@@ -426,14 +430,17 @@ func mimeFor(name string) string {
 }
 
 // assetColumns are the record_asset columns scanAsset reads, aliased as a.
-const assetColumns = `a.id, a.folder_id, a.name, a.relative_path, a.kind, a.mime_type, a.size_bytes, a.mtime_ns, a.duration_seconds, a.width, a.height, a.availability`
+const assetColumns = `a.id, a.folder_id, a.name, a.relative_path, a.kind, a.mime_type, a.size_bytes, a.mtime_ns, a.duration_seconds, a.width, a.height, a.availability, a.has_cover`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanAsset(row rowScanner, extra ...any) (Asset, error) {
 	var a Asset
-	dest := append([]any{&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.MtimeNs, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability}, extra...)
-	return a, row.Scan(dest...)
+	var hasCover sql.NullInt64
+	dest := append([]any{&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.MtimeNs, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability, &hasCover}, extra...)
+	err := row.Scan(dest...)
+	a.HasCover = hasCover.Valid && hasCover.Int64 == 1
+	return a, err
 }
 
 // progressColumns are the record_asset_progress columns, aliased as p, that
@@ -697,10 +704,10 @@ func ServeContent(w http.ResponseWriter, r *http.Request, path string, modTime t
 	return nil
 }
 
-// ThumbnailAssetIDs returns the available videos and images, the assets that
-// may keep cached thumbnails.
+// ThumbnailAssetIDs returns the available videos, images, and audio files with
+// cover art: the assets that may keep cached thumbnails.
 func (s *Store) ThumbnailAssetIDs(ctx context.Context) (map[int64]struct{}, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','image')`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND availability='available' AND (kind IN ('video','image') OR (kind='audio' AND has_cover=1))`)
 	if err != nil {
 		return nil, err
 	}

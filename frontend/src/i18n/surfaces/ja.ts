@@ -2528,6 +2528,8 @@ export const surfaceJapanese = {
     collapse: "プレイヤーを折りたたむ",
     openWork: "作品詳細を開く",
     openWorkTitle: "ダブルクリックで作品詳細を開く",
+    openRecordFolder: "記録のフォルダを開く",
+    openRecordFolderTitle: "ダブルクリックで記録のフォルダを開く",
     chooseSource: "再生ソースを選択",
     playbackSource: "再生ソース",
     previous: "前へ",
@@ -2573,7 +2575,13 @@ export const surfaceJapanese = {
     remove: "削除",
     back: "戻る",
     modes: { order: "順番に再生", loop: "リピート", single: "1 曲リピート" },
-    locationTypes: { local: "ローカル", cache: "キャッシュ", remote_stream: "リモートストリーム", remote: "リモート" },
+    locationTypes: {
+      local: "ローカル",
+      cache: "キャッシュ",
+      remote_stream: "リモートストリーム",
+      remote: "リモート",
+      record: "記録",
+    },
     availability: {
       available: "利用可能",
       remote: "リモート",

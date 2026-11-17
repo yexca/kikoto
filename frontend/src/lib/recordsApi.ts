@@ -39,7 +39,7 @@ export type RecordAsset = {
   availability: "available" | "missing" | "unreadable";
   /** The media stream for videos, audio, and images; WebVTT for a WebVTT or SubRip sidecar. */
   streamUrl?: string;
-  /** A JPEG thumbnail of a video or image, made on first request. */
+  /** A JPEG thumbnail of a video, an image, or an audio file's embedded cover art, made on first request. */
   thumbnailUrl?: string;
   /** The file as a download, for any available file. */
   downloadUrl?: string;

@@ -43,6 +43,14 @@ export type PlayerTrack = {
   originPage?: string;
   /** The work detail location the track was queued from, when it was queued from one. */
   originWorkLocation?: string;
+  /** A Record file rather than a work file; its progress is saved to the Record library. */
+  record?: PlayerTrackRecord;
+};
+
+/** The Record file a track plays and the folder that holds it. */
+export type PlayerTrackRecord = {
+  assetId: number;
+  folderId: number;
 };
 
 export type LyricsPreferenceTarget = {

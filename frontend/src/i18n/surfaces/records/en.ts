@@ -70,10 +70,7 @@ export const recordsEnglish = {
     played: "Played",
     heardShare: "{{percent}}% played",
     player: {
-      audioLabel: "Audio player: {{name}}",
-      audioOnly: "Audio only",
-      previousTrack: "Previous track",
-      nextTrack: "Next track",
+      listen: "Play as audio",
       unavailable: "This file could not be played.",
       busy: "The server is busy preparing playback. Try again in a moment.",
     },

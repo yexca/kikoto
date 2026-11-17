@@ -71,10 +71,7 @@ export const recordsJapanese = {
     played: "再生済み",
     heardShare: "{{percent}}% 再生済み",
     player: {
-      audioLabel: "オーディオプレーヤー: {{name}}",
-      audioOnly: "音声のみ",
-      previousTrack: "前のトラック",
-      nextTrack: "次のトラック",
+      listen: "音声として再生",
       unavailable: "このファイルを再生できませんでした。",
       busy: "サーバーが再生の準備で混み合っています。しばらくしてから再試行してください。",
     },

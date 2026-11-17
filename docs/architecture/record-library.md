@@ -42,8 +42,9 @@ with `ffprobe`:
 at most 2,000 per scan, two at a time, each with a 20-second timeout, one
 thread, the file protocol only, and a bounded output. A video records its
 duration, dimensions, codecs, and whether it has audio; an audio file records
-its duration and audio codec, and embedded cover art does not make it a video;
-an image records its dimensions. A file the probe cannot read is marked failed without failing the
+its duration, its audio codec, and whether it embeds cover art (a video stream
+marked as an attached picture), which does not make it a video; an image
+records its dimensions. A file the probe cannot read is marked failed without failing the
 scan, and it is probed again only after it changes. Files past the per-scan
 bound, and every pending file when `ffprobe` is missing, stay pending for the
 next scan. Cancelling the scan stops the probe and leaves the rest pending. The
@@ -55,7 +56,8 @@ Thumbnails are made on first request rather than during the scan: a scan stays
 a walk and a probe, and only folders someone opens pay for `ffmpeg`. A video's
 thumbnail is the frame a tenth of the way in (one second in when the duration
 is unknown, and the first frame when that seek finds nothing); an image's is
-the image itself. Both fit a 640-pixel box as JPEG. At most two `ffmpeg`
+the image itself; an audio file's is its embedded cover art, and an audio file
+without cover art has no thumbnail. Each fits a 640-pixel box as JPEG. At most two `ffmpeg`
 processes run, concurrent requests for one revision share one run, and at most
 64 requests wait before the server answers busy. `ffmpeg` writes into the
 [temporary directory](../operations/configuration.md#temporary-files); each
@@ -72,7 +74,8 @@ changed file gets a new thumbnail and the asset's earlier one is removed when
 it is written. A file `ffmpeg` cannot read leaves an empty failure marker for
 that revision, so it is not tried again until it changes or the cache is
 cleared. After a complete scan, the thumbnails and failure markers of assets
-that are no longer available videos or images are removed, and the run summary
+that are no longer available videos, images, or audio files with cover art are
+removed, and the run summary
 counts them; a partial scan leaves them in place. An evicted or cleared
 thumbnail is made again on its next request.
 
@@ -110,8 +113,8 @@ The HTTP surface is under `/api/records`:
   an embedded text subtitle stream as WebVTT.
 - `GET /api/records/assets/{id}/download` sends any available record file as
   an attachment with the untrusted-file headers.
-- `GET /api/records/assets/{id}/thumbnail?v=<revision>` serves a video or
-  image thumbnail. The tree names the file revision in `v`; a matching
+- `GET /api/records/assets/{id}/thumbnail?v=<revision>` serves a video,
+  image, or audio cover-art thumbnail. The tree names the file revision in `v`; a matching
   revision is cached by the browser as immutable, any other is revalidated.
 - `GET /api/records/assets/{id}/subtitle` serves a WebVTT or SubRip sidecar
   as WebVTT. SubRip cues gain the WebVTT header and dotted milliseconds. A

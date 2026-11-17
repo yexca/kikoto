@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { openPlayingWorkDetail } from "@/app/playingWorkNavigation";
+import { openPlayingRecordFolder, openPlayingWorkDetail } from "@/app/playingWorkNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 import { useToast } from "@/components/ui/toast";
@@ -145,6 +145,12 @@ export function FullPlayer({
   };
 
   const openWorkDetail = () => {
+    // A Record file leads back to its folder.
+    if (track.record) {
+      if (isMobile) onDockModeChange("compact", { persist: false });
+      openPlayingRecordFolder({ folderId: track.record.folderId, returnLabel: t("common.back") });
+      return;
+    }
     if (!track.workCode) return;
     if (isMobile) onDockModeChange("compact", { persist: false });
     openPlayingWorkDetail({
@@ -355,8 +361,8 @@ export function FullPlayer({
                   className="player-art touch-manipulation rounded-[var(--player-radius-cover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={handleCoverClick}
                   onDoubleClick={isMobile ? undefined : openWorkDetail}
-                  title={t("player.openWorkTitle")}
-                  aria-label={t("player.openWork")}
+                  title={t(track.record ? "player.openRecordFolderTitle" : "player.openWorkTitle")}
+                  aria-label={t(track.record ? "player.openRecordFolder" : "player.openWork")}
                 >
                   <CoverImage
                     track={track}

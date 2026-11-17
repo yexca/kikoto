@@ -324,3 +324,17 @@ func TestRecordCompleteScanRemovesThumbnailsOfMissingAssets(t *testing.T) {
 		t.Fatalf("after scan = %q, %q", server.thumbnailPath(t, "Day 1.mp4"), server.thumbnailPath(t, "Day 2.mp4"))
 	}
 }
+
+func TestRecordAudioLinksAThumbnailOnlyForEmbeddedCoverArt(t *testing.T) {
+	size, mtime := int64(10), int64(20)
+	withCover := record.Asset{ID: 7, Kind: "audio", Availability: "available", SizeBytes: &size, MtimeNs: &mtime, HasCover: true}
+	decorateRecordAsset(&withCover)
+	if withCover.StreamURL != "/api/records/assets/7/stream" || !strings.HasPrefix(withCover.ThumbnailURL, "/api/records/assets/7/thumbnail?v=") {
+		t.Fatalf("audio with cover = %+v", withCover)
+	}
+	plain := record.Asset{ID: 8, Kind: "audio", Availability: "available"}
+	decorateRecordAsset(&plain)
+	if plain.StreamURL == "" || plain.ThumbnailURL != "" || hasRecordThumbnail(plain) {
+		t.Fatalf("audio without cover = %+v", plain)
+	}
+}

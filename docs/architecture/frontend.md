@@ -248,30 +248,40 @@ last-scanned time with bounded polling. Tiles show the server's thumbnails,
 falling back to an icon for a video and to the full image for a photo, and the
 folder's artwork images stay out of the photos. Group headings appear only when
 a folder contains more than one kind of item. Saved progress arrives with the
-folder listing; `useRecordProgress` overlays the positions the player saves
-during the visit, so tiles update without reading the folder again.
-`RecordContinuePicker` lists the viewer's unfinished videos in a popover on
-wide screens or a sheet on phones and opens one over its own folder in a new
-entry (`openFolderVideoNavigation`), resuming without asking, so closing it
-returns to the folder where it was opened. The full-screen `RecordMediaPlayer`
-plays videos and audio files: it asks whether to continue from a saved
-position, reads Record playback info while it asks, plays the chosen source,
-and asks for a transcode after a direct file or a remux fails to decode. It
-saves progress through `RecordProgressTracker` every ten seconds, on pause, at
-the end, and when it closes. A video plays in the shared full-screen video
-player layout described with the work video player below. An audio file
-attaches its source through `attachPlaybackSource` itself. Audio only, which the browser
-keeps per device, plays a video's sound through an `<audio>` element under the
-video's frame or the folder's poster, continuing from the same moment. A
-same-name subtitle sidecar the server serves as WebVTT is the video's sidecar
+folder listing; `useRecordProgress` overlays the positions the video player
+and the global player save during the visit, the latter announced by
+`RECORD_PROGRESS_SAVED_EVENT`, so tiles update without reading the folder again.
+`RecordContinuePicker` lists the viewer's unfinished videos and audio files in
+a popover on wide screens or a sheet on phones. It opens a video over its own
+folder in a new entry (`openFolderVideoNavigation`), resuming without asking,
+so closing it returns to the folder where it was opened; an audio file opens
+its folder (`openContinueFolderNavigation`) and plays once that listing
+arrives. The full-screen `RecordMediaPlayer` plays videos in the shared
+full-screen video player layout described with the work video player below:
+it asks whether to continue from a saved position, reads Record playback info
+while it asks, plays the chosen source, and asks for a transcode after a direct
+file or a remux fails to decode. It saves progress through
+`RecordProgressTracker` every ten seconds, on pause, at the end, and when it
+closes. A same-name subtitle sidecar the server serves as WebVTT is the video's sidecar
 track for `useVideoSubtitleTracks`, a WebVTT file before a SubRip one, and
 embedded text subtitles from playback info follow it. `RecordPhotoViewer`
 steps through photos by button, arrow key, or touch swipe and shows each photo
 in the shared `ZoomableImage`, the same zoomable stage as the work file viewer.
-Both overlays are
-modal dialogs over authenticated asset routes and never play through the
-global audio player; a record video or audio file that starts playing pauses
-it through `usePlayer`.
+Both overlays are modal dialogs over authenticated asset routes; a record video
+that starts playing pauses the global audio player through `usePlayer`, and
+pauses when that player starts again.
+
+Record audio plays in the global audio player. `recordPlayerTrack` turns a
+Record asset into a `PlayerTrack` that carries `record` (the asset and its
+folder), a negative location id apart from library locations, the `record`
+location type, the folder's name as its subtitle, and the asset's thumbnail,
+which for an audio file is its embedded cover art and otherwise absent, as its
+cover. Selecting an audio row queues the folder's audio files; **Play as
+audio** in the video player queues the folder's videos as sound from the
+position the video reached and closes the overlay. Such a track has no work, so
+listening history, lyrics, queue restoration, and display-name refresh skip it,
+and the cover leads to its Record folder (`openPlayingRecordFolder`) instead of
+a work.
 
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search
@@ -489,7 +499,11 @@ controls (Media Session and the Android notification) stay registered and read
 the latest actions through a ref, so they never act on a stale queue or mode.
 `playerTrackAudioSource` picks each track's delivery: the original file, an
 HLS playlist when the server converts the track and the browser plays HLS
-(`audioHlsPlayback`), or a complete MP3 conversion otherwise. Source loading
+(`audioHlsPlayback`), or a complete MP3 conversion otherwise. A Record track
+uses its own stream or the audio profile of its Record HLS playlist, and the
+file itself without HLS playback; its progress goes to the Record progress
+route through `RecordTrackProgressSaver` instead of the playback report
+scheduler, when the listener has `library:write`. Source loading
 attaches an HLS playlist natively on iOS and iPadOS and through a lazily
 loaded hls.js elsewhere (`audioHlsSource`); hls.js starts loading at the
 pending start position, asks the element to play again once it has attached

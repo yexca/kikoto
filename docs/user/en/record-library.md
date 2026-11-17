@@ -52,12 +52,15 @@ folder's artwork images stay hidden.
 
 **Files** lists everything else in the folder, one row each with its type and
 size: audio files with their length and a bar for how much you have heard,
-subtitles, metadata, and any other file. Selecting an audio file plays it.
+subtitles, metadata, and any other file. An audio file that carries cover art
+shows it in its row. Selecting an audio file plays it, as described in
+[Listening to audio](#listening-to-audio).
 
 From any folder, **Continue watching** opens a list of the videos and audio files
 you stopped part way through, most recent first, with the folder each one is in. Selecting
-one plays it from where you stopped, and closing the player returns to the
-folder where you opened it.
+one plays it from where you stopped. A video opens over its folder, and closing
+the player returns to the folder where you opened it; an audio file opens its
+folder and plays in the global audio player.
 
 ## Scanning and artwork
 
@@ -68,7 +71,8 @@ workflow and coalesces with an existing scan. It indexes regular files by
 extension, skips links and Kikoto transaction directories, and keeps previous
 rows when the root is offline or a scan is partial. Only a complete walk marks
 removed folders and files as missing. The scan also reads each new or changed
-video's length and size and each new or changed photo's size; a file that
+video's length and size, each new or changed audio file's length and whether
+it carries cover art, and each new or changed photo's size; a file that
 cannot be read keeps no length and is read again once it changes.
 
 Folder artwork uses these image names: `folder`, `poster`, or `cover` for a
@@ -97,16 +101,15 @@ its subtitles; `.srt` files must be UTF-8. Text subtitles inside the video
 are offered too. The previous and next buttons step through the folder's
 videos, and Back or Esc closes the player.
 
-The headphones button plays a video as audio only: the player loads only its
-sound and shows the video's frame or the folder's poster. Switching continues from the same moment, and this device remembers the
-choice for the next video. An audio file opens in the same player, steps
-through the folder's audio files, and plays directly or converted like a
-video's sound.
+The headphones button, **Play as audio**, closes the video player and
+continues the video's sound in the global audio player from the same moment,
+with the folder's other videos queued after it as sound.
 
 The position is saved per account about every ten seconds, on pause, at the
 end, and when the player closes; saving it needs library write access. A video
-or audio file that starts playing pauses the global audio player, which stays
-paused after the player closes.
+that starts playing pauses the global audio player, which stays paused after
+the video player closes, and the video pauses when the global audio player
+starts again.
 
 Select a photo to view it full screen. Step through the folder's photos with
 the arrow buttons, the arrow keys, or a sideways swipe, and close it with Back
@@ -114,3 +117,15 @@ or Esc. A photo opens fitted to the screen; a click shows actual size and a
 second click fits again, and the mouse wheel, a trackpad or two-finger pinch,
 and the `+`, `-`, and `0` keys zoom to any size up to eight times actual size.
 Drag to pan a zoomed photo.
+
+## Listening to audio
+
+Selecting an audio file plays it in the global audio player from where you
+stopped, with the folder's other audio files queued in order. The player shows
+the file's own cover art, or no picture when the file has none, and names the
+folder under the title; double-clicking the cover, or double-tapping it on a
+phone, opens that folder. A file your browser cannot play as it is, such as
+`.wma`, is converted, and [compatibility playback](playback.md#current-behavior)
+works as it does for Library audio. The position is saved as it is for videos.
+Record audio has no lyrics, does not count toward listening history, and stays
+out of the queue the player restores after a reload.

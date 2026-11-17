@@ -2519,6 +2519,8 @@ export const surfaceKorean = {
     collapse: "플레이어 접기",
     openWork: "작품 상세 열기",
     openWorkTitle: "두 번 클릭하여 작품 상세 열기",
+    openRecordFolder: "기록 폴더 열기",
+    openRecordFolderTitle: "두 번 클릭하여 기록 폴더 열기",
     chooseSource: "재생 소스 선택",
     playbackSource: "재생 소스",
     previous: "이전",
@@ -2564,7 +2566,7 @@ export const surfaceKorean = {
     remove: "삭제",
     back: "뒤로",
     modes: { order: "순서대로 재생", loop: "반복", single: "한 곡 반복" },
-    locationTypes: { local: "로컬", cache: "캐시", remote_stream: "원격 스트림", remote: "원격" },
+    locationTypes: { local: "로컬", cache: "캐시", remote_stream: "원격 스트림", remote: "원격", record: "기록" },
     availability: {
       available: "사용 가능",
       remote: "원격",

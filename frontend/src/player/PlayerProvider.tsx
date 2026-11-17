@@ -167,6 +167,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const { saveProgress, flushProgress, checkpointProgress } = usePlaybackProgress(
     engine,
     Boolean(auth.user) && !auth.demoMode && auth.hasPermission("playback:use"),
+    Boolean(auth.user) && !auth.demoMode && auth.hasPermission("library:write"),
     principalID,
   );
   const { sleepRewindMinutes, setSleepRewindMinutes } = useSleepRewindPreference(principalID);

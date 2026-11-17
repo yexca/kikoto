@@ -49,6 +49,8 @@ type MediaInfo struct {
 	VideoCodec      string
 	AudioCodec      string
 	HasAudio        *bool
+	// HasCover reports cover art embedded in an audio file; it is set for audio only.
+	HasCover *bool
 }
 
 type limitedBuffer struct {
@@ -80,7 +82,7 @@ func FFprobe(ctx context.Context, path string) ([]byte, error) {
 		"-protocol_whitelist", "file",
 		"-probesize", "32M",
 		"-analyzeduration", "10M",
-		"-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
+		"-show_entries", "format=duration:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic",
 		"-of", "json",
 		"file:"+path,
 	)
@@ -101,10 +103,13 @@ func FFprobe(ctx context.Context, path string) ([]byte, error) {
 
 type ffprobeOutput struct {
 	Streams []struct {
-		CodecType string `json:"codec_type"`
-		CodecName string `json:"codec_name"`
-		Width     int    `json:"width"`
-		Height    int    `json:"height"`
+		CodecType   string `json:"codec_type"`
+		CodecName   string `json:"codec_name"`
+		Width       int    `json:"width"`
+		Height      int    `json:"height"`
+		Disposition struct {
+			AttachedPic int `json:"attached_pic"`
+		} `json:"disposition"`
 	} `json:"streams"`
 	Format struct {
 		Duration string `json:"duration"`
@@ -121,10 +126,13 @@ func ParseMediaInfo(data []byte, kind string) (MediaInfo, error) {
 		return MediaInfo{}, fmt.Errorf("decode probe output: %w", err)
 	}
 	var info MediaInfo
-	hasAudio := false
+	hasAudio, hasCover := false, false
 	for _, stream := range probe.Streams {
 		switch strings.ToLower(stream.CodecType) {
 		case "video":
+			if stream.Disposition.AttachedPic == 1 {
+				hasCover = true
+			}
 			if info.Width == nil && stream.Width > 0 && stream.Height > 0 {
 				width, height := stream.Width, stream.Height
 				info.Width, info.Height = &width, &height
@@ -138,11 +146,12 @@ func ParseMediaInfo(data []byte, kind string) (MediaInfo, error) {
 		}
 	}
 	if kind == "audio" {
-		// Cover art reads as a video stream; an audio file keeps only its sound.
+		// Cover art reads as a video stream marked as an attached picture; an
+		// audio file keeps only its sound and whether it carries a cover.
 		if !hasAudio {
 			return MediaInfo{}, errors.New("probe found no audio")
 		}
-		info = MediaInfo{AudioCodec: info.AudioCodec, HasAudio: &hasAudio}
+		info = MediaInfo{AudioCodec: info.AudioCodec, HasAudio: &hasAudio, HasCover: &hasCover}
 		if duration, err := strconv.ParseFloat(strings.TrimSpace(probe.Format.Duration), 64); err == nil && duration > 0 && !math.IsInf(duration, 0) && !math.IsNaN(duration) {
 			info.DurationSeconds = &duration
 		}
@@ -297,14 +306,18 @@ func (s *Store) probeOne(ctx context.Context, probe ProbeFunc, candidate probeCa
 }
 
 func (s *Store) saveProbe(ctx context.Context, id int64, info MediaInfo) error {
-	var hasAudio sql.NullInt64
-	if info.HasAudio != nil {
-		hasAudio.Valid = true
-		if *info.HasAudio {
-			hasAudio.Int64 = 1
+	_, err := s.db.ExecContext(ctx, `UPDATE record_asset SET probe_state='ready', duration_seconds=?, width=?, height=?, video_codec=?, audio_codec=?, has_audio=?, has_cover=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND probe_state='pending'`,
+		info.DurationSeconds, info.Width, info.Height, info.VideoCodec, info.AudioCodec, nullableFlag(info.HasAudio), nullableFlag(info.HasCover), id)
+	return err
+}
+
+func nullableFlag(value *bool) sql.NullInt64 {
+	var flag sql.NullInt64
+	if value != nil {
+		flag.Valid = true
+		if *value {
+			flag.Int64 = 1
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE record_asset SET probe_state='ready', duration_seconds=?, width=?, height=?, video_codec=?, audio_codec=?, has_audio=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND probe_state='pending'`,
-		info.DurationSeconds, info.Width, info.Height, info.VideoCodec, info.AudioCodec, hasAudio, id)
-	return err
+	return flag
 }

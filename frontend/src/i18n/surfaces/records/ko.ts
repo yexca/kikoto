@@ -70,10 +70,7 @@ export const recordsKorean = {
     played: "재생함",
     heardShare: "{{percent}}% 재생",
     player: {
-      audioLabel: "오디오 플레이어: {{name}}",
-      audioOnly: "오디오만",
-      previousTrack: "이전 트랙",
-      nextTrack: "다음 트랙",
+      listen: "오디오로 재생",
       unavailable: "이 파일을 재생할 수 없습니다.",
       busy: "서버가 재생을 준비하느라 바쁩니다. 잠시 후 다시 시도하세요.",
     },

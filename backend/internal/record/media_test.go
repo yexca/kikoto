@@ -326,12 +326,37 @@ func TestThumbnailerFallsBackToFirstFrameAndRejectsOtherKinds(t *testing.T) {
 	}
 }
 
-func TestAudioFilesAreIndexedAndProbedForTheirLength(t *testing.T) {
-	probe := func(_ context.Context, path string) ([]byte, error) {
-		// Cover art reads as a video stream; the file stays audio.
-		return []byte(`{"streams":[{"codec_type":"audio","codec_name":"mp3"},{"codec_type":"video","codec_name":"mjpeg","width":500,"height":500}],"format":{"duration":"7167.168"}}`), nil
+func TestThumbnailerTakesAnAudioFilesCoverArt(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "talk.mp3")
+	if err := os.WriteFile(input, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	_, db, _ := scannedStore(t, map[string]string{"talk/Episode 1.mp3": "audio", "talk/notes.txt": "text"}, WithProber(probe))
+	var seen []string
+	run := func(_ context.Context, args []string) error {
+		seen = args
+		return os.WriteFile(strings.TrimPrefix(args[len(args)-1], "file:"), tinyJPEG, 0o600)
+	}
+	thumbs := NewThumbnailer(t.TempDir(), run, 1)
+	file, err := thumbs.Thumbnail(context.Background(), input, ThumbnailSource{AssetID: 3, Kind: "audio", SizeBytes: 5, MtimeNs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = file.Close()
+	joined := strings.Join(seen, " ")
+	if !strings.Contains(joined, "-map 0:v:0") || strings.Contains(joined, "-ss") {
+		t.Fatalf("audio cover args = %v", seen)
+	}
+}
+
+func TestAudioFilesAreIndexedAndProbedForTheirLengthAndCover(t *testing.T) {
+	probe := func(_ context.Context, path string) ([]byte, error) {
+		if strings.HasSuffix(path, "Episode 2.flac") {
+			return []byte(`{"streams":[{"codec_type":"audio","codec_name":"flac"}],"format":{"duration":"60"}}`), nil
+		}
+		// Cover art reads as a video stream marked as an attached picture; the file stays audio.
+		return []byte(`{"streams":[{"codec_type":"audio","codec_name":"mp3"},{"codec_type":"video","codec_name":"mjpeg","width":500,"height":500,"disposition":{"attached_pic":1}}],"format":{"duration":"7167.168"}}`), nil
+	}
+	store, db, _ := scannedStore(t, map[string]string{"talk/Episode 1.mp3": "audio", "talk/Episode 2.flac": "audio", "talk/notes.txt": "text"}, WithProber(probe))
 	var kind, mime string
 	if err := db.QueryRow(`SELECT kind, mime_type FROM record_asset WHERE name='Episode 1.mp3'`).Scan(&kind, &mime); err != nil || kind != "audio" || mime != "audio/mpeg" {
 		t.Fatalf("mp3 = %s %s, %v", kind, mime, err)
@@ -342,6 +367,25 @@ func TestAudioFilesAreIndexedAndProbedForTheirLength(t *testing.T) {
 	}
 	if state, _, _ := probeState(t, db, "notes.txt"); state != "pending" {
 		t.Fatalf("text probe state = %s", state)
+	}
+	covers := map[string]bool{}
+	for _, name := range []string{"Episode 1.mp3", "Episode 2.flac"} {
+		var id int64
+		if err := db.QueryRow(`SELECT id FROM record_asset WHERE name=?`, name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		asset, err := store.Asset(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		covers[name] = asset.HasCover
+	}
+	if !covers["Episode 1.mp3"] || covers["Episode 2.flac"] {
+		t.Fatalf("covers = %v", covers)
+	}
+	video, err := ParseMediaInfo([]byte(videoProbeJSON), "video")
+	if err != nil || video.HasCover != nil {
+		t.Fatalf("video cover flag = %v, %v", video.HasCover, err)
 	}
 	if _, err := ParseMediaInfo([]byte(`{"streams":[{"codec_type":"video","width":1,"height":1}],"format":{"duration":"3"}}`), "audio"); err == nil {
 		t.Fatal("an audio file without sound was accepted")

@@ -182,9 +182,28 @@ function fileIcon(kind: RecordAsset["kind"]) {
   }
 }
 
+/** A file row's picture: an audio file's embedded cover art, or the icon of its kind. */
+function FileThumbnail({ file }: { file: RecordAsset }) {
+  const [failed, setFailed] = useState(false);
+  if (file.thumbnailUrl && !failed) {
+    return (
+      <img
+        src={assetURL(file.thumbnailUrl)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="h-full w-full rounded-md object-cover"
+      />
+    );
+  }
+  const Icon = fileIcon(file.kind);
+  return <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />;
+}
+
 /**
  * A folder's files that are not tiles, one row each with its type and size.
- * Audio rows open the player and show how much was heard.
+ * Audio rows play in the global player and show how much was heard.
  */
 export const RecordFileList = memo(function RecordFileList({
   files,
@@ -199,7 +218,6 @@ export const RecordFileList = memo(function RecordFileList({
   return (
     <ul className="divide-y overflow-hidden rounded-lg border">
       {files.map((file) => {
-        const Icon = fileIcon(file.kind);
         const playable = file.kind === "audio" && Boolean(file.streamUrl);
         const heard = playable ? progress.get(file.id) : undefined;
         const fraction = watchedFraction(heard);
@@ -211,7 +229,7 @@ export const RecordFileList = memo(function RecordFileList({
         const body = (
           <>
             <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted">
-              <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <FileThumbnail file={file} />
               {playable && (
                 <span className="absolute inset-0 grid place-items-center rounded-md bg-primary text-primary-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden="true" />

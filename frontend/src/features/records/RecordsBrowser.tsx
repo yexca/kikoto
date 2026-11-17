@@ -5,6 +5,8 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/lib/api";
+import { useLibraryPlayer } from "@/player/PlayerProvider";
+import { RECORD_PROGRESS_SAVED_EVENT, type RecordProgressSavedDetail } from "@/player/recordTrackProgress";
 
 import { RecordFileList, RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
 import { RecordMediaPlayer } from "./RecordMediaPlayer";
@@ -19,12 +21,15 @@ import {
 import { RecordsToolbar } from "./RecordsToolbar";
 import {
   closeOverlayNavigation,
+  openContinueFolderNavigation,
   openCrumbNavigation,
   openFolderNavigation,
   openFolderVideoNavigation,
   openOverlayNavigation,
   stepOverlayNavigation,
 } from "./recordsLocation";
+import { recordPlayerTrack, recordTrackLocationId } from "./recordPlayerTrack";
+import { resumePosition } from "./recordProgress";
 import { crumbFromFolder, recordFolderView, siblingIds } from "./recordsModel";
 import { useRecordRoot, useRecordTree } from "./useRecordLibrary";
 import { useRecordContinue, useRecordProgress } from "./useRecordProgress";
@@ -32,24 +37,6 @@ import { useRecordScan } from "./useRecordScan";
 import { useRecordsLocation } from "./useRecordsLocation";
 
 const noMedia: readonly RecordAsset[] = [];
-const audioOnlyStorageKey = "kikoto.records.audioOnly";
-
-function readAudioOnly() {
-  try {
-    return window.localStorage.getItem(audioOnlyStorageKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeAudioOnly(value: boolean) {
-  try {
-    if (value) window.localStorage.setItem(audioOnlyStorageKey, "1");
-    else window.localStorage.removeItem(audioOnlyStorageKey);
-  } catch {
-    // The choice then lasts for this visit only.
-  }
-}
 
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -60,8 +47,10 @@ function isEditableElement(target: EventTarget | null) {
 
 /**
  * The Record surface: a folder browser over the independent record root with
- * its own full-screen video player and photo viewer. The folder and any open
- * overlay live in the URL, so Back, Forward, and reload keep the place.
+ * its own full-screen video player and photo viewer. Audio files, and a
+ * video's sound on request, play in the global player with the folder's other
+ * files of the same kind as the queue. The folder and any open overlay live in
+ * the URL, so Back, Forward, and reload keep the place.
  */
 export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: string }) {
   const auth = useAuth();
@@ -81,12 +70,9 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   } = useRecordTree(location.folderId, historyState, enabled && online);
   const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
-  // Whether videos play as audio only; remembered on this device.
-  const [audioOnly, setAudioOnly] = useState(readAudioOnly);
-  const changeAudioOnly = (value: boolean) => {
-    setAudioOnly(value);
-    writeAudioOnly(value);
-  };
+  // An audio file the Continue list asked for, played once its folder's listing arrives.
+  const [pendingAudio, setPendingAudio] = useState<RecordAsset | null>(null);
+  const player = useLibraryPlayer();
 
   const listing = tree.status === "ready" && tree.folderId === location.folderId ? tree : null;
   const view = useMemo(() => (listing ? recordFolderView(listing.folders, listing.assets) : null), [listing]);
@@ -120,10 +106,50 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     remember(id, value);
     setSavedToken((token) => token + 1);
   });
-  const openContinue = (video: RecordAsset) => {
-    setAutoResumeId(video.id);
-    navigate((at) => openFolderVideoNavigation(at, video.folderId, video.id));
+  // The global player saves the position of the Record file it plays.
+  useEffect(() => {
+    const saved = (event: Event) => {
+      const detail = (event as CustomEvent<RecordProgressSavedDetail>).detail;
+      if (detail) rememberProgress(detail.assetId, detail.progress);
+    };
+    window.addEventListener(RECORD_PROGRESS_SAVED_EVENT, saved);
+    return () => window.removeEventListener(RECORD_PROGRESS_SAVED_EVENT, saved);
+  }, [rememberProgress]);
+
+  const openFolderCrumb = trail.length > 0 ? trail[trail.length - 1] : undefined;
+  const folderName = openFolderCrumb?.name ?? t("nav.record");
+  // Plays `items` in the global player from `id`, at `position` or where it was left.
+  const playInPlayer = useStableCallback((items: readonly RecordAsset[], id: number, position?: number) => {
+    if (!items.some((item) => item.id === id)) return;
+    const tracks = items.map((item) => recordPlayerTrack(item, folderName, progress.get(item.id)));
+    player.playQueue(tracks, recordTrackLocationId(id), position ?? resumePosition(progress.get(id)) ?? 0);
+  });
+  const playAudio = useStableCallback((id: number) => playInPlayer(view?.audio ?? noMedia, id));
+  const listenToVideo = (id: number, position: number) => {
+    closeOverlay();
+    playInPlayer(view?.videos ?? noMedia, id, position);
   };
+
+  const openContinue = (asset: RecordAsset) => {
+    if (asset.kind === "audio") {
+      setPendingAudio(asset);
+      if (asset.folderId !== location.folderId) navigate((at) => openContinueFolderNavigation(at, asset.folderId));
+      return;
+    }
+    setAutoResumeId(asset.id);
+    navigate((at) => openFolderVideoNavigation(at, asset.folderId, asset.id));
+  };
+  useEffect(() => {
+    if (!pendingAudio || !view || listing?.folderId !== pendingAudio.folderId) return;
+    setPendingAudio(null);
+    if (view.audio.some((item) => item.id === pendingAudio.id)) playAudio(pendingAudio.id);
+    else
+      player.playQueue(
+        [recordPlayerTrack(pendingAudio, folderName, pendingAudio.progress)],
+        recordTrackLocationId(pendingAudio.id),
+        resumePosition(pendingAudio.progress) ?? 0,
+      );
+  }, [folderName, listing?.folderId, pendingAudio, playAudio, player, view]);
 
   const startScan = () => {
     if (root) void scan.start(root);
@@ -173,13 +199,8 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   }
 
   const overlay = location.overlay;
-  // A video and an audio file both open in the player, which steps through items of their own kind.
   const overlayVideo =
-    overlay?.kind === "video" && view ? (playableItems.find((item) => item.id === overlay.assetId) ?? null) : null;
-  const openFolderCrumb = trail.length > 0 ? trail[trail.length - 1] : undefined;
-  // Listening shows the item's own frame, or the open folder's artwork.
-  const folderPoster = openFolderCrumb?.posterUrl ?? openFolderCrumb?.backdropUrl;
-  const overlayList = overlayVideo?.kind === "audio" ? (view?.audio ?? noMedia) : (view?.videos ?? noMedia);
+    overlay?.kind === "video" && view ? (view.videos.find((video) => video.id === overlay.assetId) ?? null) : null;
   const overlayPhoto =
     overlay?.kind === "photo" && view ? (view.photos.find((photo) => photo.id === overlay.assetId) ?? null) : null;
   const isEmpty =
@@ -219,7 +240,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   );
 
   const filesList = view && view.files.length > 0 && (
-    <RecordFileList files={view.files} progress={progress} onPlay={openVideo} />
+    <RecordFileList files={view.files} progress={progress} onPlay={playAudio} />
   );
 
   return (
@@ -295,17 +316,15 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           key={overlayVideo.id}
           asset={overlayVideo}
           subtitle={view.subtitles.get(overlayVideo.id)}
-          artworkUrl={folderPoster}
-          index={overlayList.indexOf(overlayVideo)}
-          total={overlayList.length}
-          {...siblingProps(overlayList, overlayVideo.id)}
+          index={view.videos.indexOf(overlayVideo)}
+          total={view.videos.length}
+          {...siblingProps(view.videos, overlayVideo.id)}
           knownProgress={progress.get(overlayVideo.id)}
           autoResume={autoResumeId === overlayVideo.id}
-          audioOnly={audioOnly}
-          onAudioOnlyChange={changeAudioOnly}
           canSaveProgress={canScan}
           phone={phone}
           onStep={stepOverlay}
+          onListen={(position) => listenToVideo(overlayVideo.id, position)}
           onClose={closeOverlay}
           onProgressSaved={rememberProgress}
         />

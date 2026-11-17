@@ -2522,6 +2522,8 @@ export const surfaceEnglish = {
     collapse: "Collapse player",
     openWork: "Open work detail",
     openWorkTitle: "Double-click to open work detail",
+    openRecordFolder: "Open Record folder",
+    openRecordFolderTitle: "Double-click to open the Record folder",
     chooseSource: "Choose playback source",
     playbackSource: "Playback source",
     previous: "Previous",
@@ -2567,7 +2569,13 @@ export const surfaceEnglish = {
     remove: "Remove",
     back: "Back",
     modes: { order: "Order", loop: "Loop", single: "Repeat one" },
-    locationTypes: { local: "Local", cache: "Cache", remote_stream: "Remote stream", remote: "Remote" },
+    locationTypes: {
+      local: "Local",
+      cache: "Cache",
+      remote_stream: "Remote stream",
+      remote: "Remote",
+      record: "Record",
+    },
     availability: {
       available: "Available",
       remote: "Remote",

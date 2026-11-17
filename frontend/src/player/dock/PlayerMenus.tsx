@@ -11,6 +11,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/tailwindClassNames";
 import { isPlaybackCompatibilityScope } from "@/player/playerPersistence";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
+import { supportsCompatibilityPlayback } from "@/player/playerTrackMedia";
 import type { PlayerTrack, PlayerTrackLocation } from "@/player/playerTypes";
 import { parseSleepRewindDraft, SLEEP_REWIND_MINUTES_MAX, SLEEP_REWIND_MINUTES_MIN } from "@/player/sleepRewind";
 
@@ -248,7 +249,7 @@ export function MoreOptionsMenu({
             if (isPlaybackCompatibilityScope(value)) player.setPlaybackCompatibility(value);
           }}
           ariaLabel={t("player.compatibilityScope")}
-          disabled={track.locationType !== "local" && track.locationType !== "cache"}
+          disabled={!supportsCompatibilityPlayback(track)}
           className="h-10 rounded-xl"
         />
       </div>
