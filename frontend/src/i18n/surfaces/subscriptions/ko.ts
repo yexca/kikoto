@@ -23,6 +23,7 @@ export const subscriptionsKorean = {
       },
       temperature: {
         label: "모험도",
+        current: "모험도: {{value}}",
         safe: "안전",
         balanced: "균형",
         adventurous: "모험",

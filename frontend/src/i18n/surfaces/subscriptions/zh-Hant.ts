@@ -23,6 +23,7 @@ export const subscriptionsHant = {
       },
       temperature: {
         label: "探索程度",
+        current: "探索程度：{{value}}",
         safe: "穩妥",
         balanced: "均衡",
         adventurous: "大膽",

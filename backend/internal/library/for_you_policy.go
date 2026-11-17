@@ -16,7 +16,7 @@ import (
 const ForYouAlgorithmVersion = "for-you-v1"
 
 // ForYouDrawSize is how many works one column draw holds.
-const ForYouDrawSize = 10
+const ForYouDrawSize = 6
 
 type ForYouColumn string
 

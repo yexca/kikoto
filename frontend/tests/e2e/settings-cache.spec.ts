@@ -1254,7 +1254,11 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect(page).toHaveURL(/\/for-you\?panel=tuning$/);
   await expect.poll(() => forYouDraws).toBe(1);
 
-  await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
+  // The For you temperature button behind the dialog also names Balanced.
+  await expect(page.getByRole("dialog").getByRole("button", { name: /Balanced/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByLabel("Highlight threshold")).toBeVisible();
   await expect(page.getByLabel("Result variation")).toBeVisible();
   await expect(page.getByLabel("Positive tag weight")).toBeHidden();

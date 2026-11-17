@@ -23,6 +23,7 @@ export const subscriptionsHans = {
       },
       temperature: {
         label: "探索程度",
+        current: "探索程度：{{value}}",
         safe: "稳妥",
         balanced: "均衡",
         adventurous: "大胆",

@@ -11,7 +11,7 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
 
 ## Draws
 
-- Three columns hold about ten works each: **Maybe like**, works you have not
+- Three columns hold about six works each: **Maybe like**, works you have not
   played yet that are close to what you like; **Try new**, works you have not
   played whose circles, voices, and tags you rarely hear, leaving out works
   like the ones you rated low or shelved; and **Listen again**, works you have
@@ -29,7 +29,8 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
   than once. **Adventurous** draws from every candidate, **Try new** goes as
   far from your usual listening as the library allows, and **Listen again**
   adds works you heard once or left half-finished. **Balanced**, the default,
-  sits between them. The choice is saved for your account.
+  sits between them. The choice is saved for your account. The temperature
+  button at the top of the page names the current choice and opens the three.
 - The columns stay as drawn while you use Kikoto in the same browser tab,
   including when you open another page or a work, or reload the page. A new
   tab, a fresh start of the app, or saving your own preferences, such as the

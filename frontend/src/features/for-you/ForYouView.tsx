@@ -28,12 +28,13 @@ import {
 import { WorkSectionHeading } from "@/components/work-collection/WorkSectionHeading";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type Work } from "@/lib/api";
-import { FOR_YOU_COLUMNS, FOR_YOU_TEMPERATURES, type ForYouColumn, type ForYouItem } from "@/lib/forYouApi";
+import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouItem } from "@/lib/forYouApi";
 import { openCircleRoute } from "@/lib/circleNavigationState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { forYouReasonText, type ForYouColumnState } from "./forYouModel";
+import { ForYouTemperaturePicker } from "./ForYouTemperaturePicker";
 import { useForYou } from "./useForYou";
 
 const COLUMN_ICONS: Record<ForYouColumn, LucideIcon> = {
@@ -115,26 +116,7 @@ function ForYouDraws({
     <section className="@container min-w-0 space-y-4" aria-label={t("subscriptions.forYou.label")}>
       {demoMode && <DemoPreviewNotice surface="forYou" />}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-toast-avoid>
-        <div
-          role="radiogroup"
-          aria-label={t("subscriptions.forYou.temperature.label")}
-          className={segmentedListClassName()}
-        >
-          {FOR_YOU_TEMPERATURES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="radio"
-              aria-checked={forYou.temperature === item}
-              className={segmentedItemClassName(forYou.temperature === item)}
-              title={t(`subscriptions.forYou.temperature.hints.${item}`)}
-              disabled={forYou.temperature === null}
-              onClick={() => forYou.temperature !== item && void forYou.changeTemperature(item)}
-            >
-              {t(`subscriptions.forYou.temperature.${item}`)}
-            </button>
-          ))}
-        </div>
+        <ForYouTemperaturePicker value={forYou.temperature} onChange={(item) => void forYou.changeTemperature(item)} />
         {toolbar && <div className="ml-auto flex shrink-0 items-center gap-1">{toolbar}</div>}
       </div>
       {forYou.status === "failed" || forYou.status === "preparing" ? (

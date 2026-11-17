@@ -23,6 +23,7 @@ export const subscriptionsEnglish = {
       },
       temperature: {
         label: "Temperature",
+        current: "Temperature: {{value}}",
         safe: "Safe",
         balanced: "Balanced",
         adventurous: "Adventurous",

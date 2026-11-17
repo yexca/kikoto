@@ -1364,6 +1364,12 @@ test("@desktop For you keeps its draw across pages and reloads until a column is
   await sidebar.getByRole("button", { name: "For you", exact: true }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
   expect(server.forYouDraws).toHaveLength(2);
+
+  // The temperature button names the choice; a new choice draws every column with it.
+  await page.getByRole("button", { name: "Temperature: Balanced" }).click();
+  await page.getByRole("button", { name: /^Adventurous/ }).click();
+  await expect(maybeLike.getByText("Example Work 1 from draw 3")).toBeVisible();
+  expect(server.forYouDraws?.[2]).toMatchObject({ temperature: "adventurous" });
 });
 
 test("Demo shows a sample feed without actions", async ({ page }) => {

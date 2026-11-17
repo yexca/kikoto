@@ -23,6 +23,7 @@ export const subscriptionsJapanese = {
       },
       temperature: {
         label: "冒険度",
+        current: "冒険度：{{value}}",
         safe: "控えめ",
         balanced: "バランス",
         adventurous: "冒険",
