@@ -17,10 +17,6 @@ export const subscriptionsKorean = {
     forYou: {
       label: "맞춤 추천",
       settings: "맞춤 추천 설정",
-      panels: {
-        tuning: "조정",
-        activity: "활동",
-      },
       temperature: {
         label: "모험도",
         current: "모험도: {{value}}",

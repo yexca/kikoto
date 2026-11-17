@@ -17,10 +17,6 @@ export const subscriptionsHant = {
     forYou: {
       label: "為你推薦",
       settings: "為你推薦設定",
-      panels: {
-        tuning: "調整",
-        activity: "活動",
-      },
       temperature: {
         label: "探索程度",
         current: "探索程度：{{value}}",

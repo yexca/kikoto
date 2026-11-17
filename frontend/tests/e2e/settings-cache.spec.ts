@@ -1260,6 +1260,8 @@ test("recommendation keeps common controls visible and advanced scoring collapse
     "true",
   );
   await expect(page.getByLabel("Highlight threshold")).toBeVisible();
+  // The activity report follows the tuning in the same panel.
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Your recommendation activity" })).toBeAttached();
   await expect(page.getByLabel("Result variation")).toBeVisible();
   await expect(page.getByLabel("Positive tag weight")).toBeHidden();
   await page.getByRole("button", { name: /Exploratory/ }).click();

@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody } from "@/components/ui/dialog";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
   discoverCardLayout,
   DISCOVER_LAYOUT_STORE,
@@ -13,12 +12,14 @@ import {
   WorkCollectionDisplayPicker,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { ForYouView } from "@/features/for-you/ForYouView";
-import { FOR_YOU_PANELS, forYouPanelFromSearch, type ForYouPanel } from "@/features/for-you/forYouPanels";
+import { forYouPanelFromSearch, type ForYouPanel } from "@/features/for-you/forYouPanels";
 import { RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
+
+const ACTIVITY_SECTION_ID = "for-you-settings-activity";
 
 function replacePanel(panel: ForYouPanel | null) {
   const params = new URLSearchParams(window.location.search);
@@ -33,9 +34,9 @@ function replacePanel(panel: ForYouPanel | null) {
 
 /**
  * For you (`/for-you`): small draws from the local library under one
- * temperature, with Discover's display choice. Recommendation tuning and the
- * account's recommendation activity open in a settings dialog, a sheet on
- * phones; saving the tuning draws again.
+ * temperature, with Discover's display choice. The settings, a dialog or a
+ * sheet on phones, hold the recommendation tuning followed by the account's
+ * recommendation activity; saving the tuning draws again.
  */
 export function ForYouPage({ userId, readOnly, canMark }: { userId: number; readOnly: boolean; canMark: boolean }) {
   const { t } = useTranslation();
@@ -63,26 +64,19 @@ export function ForYouPage({ userId, readOnly, canMark }: { userId: number; read
     replacePanel(next);
   };
 
+  // `?panel=activity` opens the same settings at the activity report below the tuning.
+  useEffect(() => {
+    if (panel !== "activity") return;
+    const frame = window.requestAnimationFrame(() =>
+      document.getElementById(ACTIVITY_SECTION_ID)?.scrollIntoView({ block: "start" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [panel]);
+
   const settings = panel && (
     <div className="flex min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between gap-1">
-        <div role="tablist" aria-label={t("subscriptions.forYou.settings")} className={segmentedListClassName()}>
-          {FOR_YOU_PANELS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              id={`for-you-settings-tab-${item}`}
-              aria-selected={panel === item}
-              aria-controls="for-you-settings-panel"
-              className={segmentedItemClassName(panel === item)}
-              onClick={() => showPanel(item)}
-            >
-              {t(`subscriptions.forYou.panels.${item}`)}
-            </button>
-          ))}
-        </div>
-        {/* The tabs name the panel, so it has no title bar; Close sits beside them. */}
+        <h2 className="min-w-0 truncate text-base font-semibold">{t("subscriptions.forYou.settings")}</h2>
         <Button
           variant="ghost"
           size={mobile ? "icon" : "icon-sm"}
@@ -94,17 +88,10 @@ export function ForYouPage({ userId, readOnly, canMark }: { userId: number; read
           <X className="h-4 w-4" />
         </Button>
       </div>
-      <div
-        role="tabpanel"
-        id="for-you-settings-panel"
-        aria-labelledby={`for-you-settings-tab-${panel}`}
-        className="min-w-0"
-      >
-        {panel === "tuning" ? (
-          <UserPreferencePanels userId={userId} section="recommendation" readOnly={readOnly} />
-        ) : (
-          <RecommendationActivity userId={userId} />
-        )}
+      <UserPreferencePanels userId={userId} section="recommendation" readOnly={readOnly} />
+      {/* The report is context for the tuning above it. */}
+      <div id={ACTIVITY_SECTION_ID} className="min-w-0 scroll-mt-4 pt-4">
+        <RecommendationActivity userId={userId} />
       </div>
     </div>
   );
@@ -146,13 +133,7 @@ export function ForYouPage({ userId, readOnly, canMark }: { userId: number; read
         }
       />
       {settings && !mobile && (
-        // One fixed height for both tabs, so switching tabs never resizes the dialog.
-        <Dialog
-          onClose={() => showPanel(null)}
-          ariaLabel={t("subscriptions.forYou.settings")}
-          size="2xl"
-          className="h-[min(85dvh,var(--dialog-max-height))]"
-        >
+        <Dialog onClose={() => showPanel(null)} ariaLabel={t("subscriptions.forYou.settings")} size="2xl">
           <DialogBody className="px-4">{settings}</DialogBody>
         </Dialog>
       )}

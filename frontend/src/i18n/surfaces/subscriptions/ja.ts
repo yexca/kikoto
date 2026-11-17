@@ -17,10 +17,6 @@ export const subscriptionsJapanese = {
     forYou: {
       label: "あなた向け",
       settings: "あなた向けの設定",
-      panels: {
-        tuning: "調整",
-        activity: "アクティビティ",
-      },
       temperature: {
         label: "冒険度",
         current: "冒険度：{{value}}",

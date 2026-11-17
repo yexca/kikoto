@@ -17,10 +17,6 @@ export const subscriptionsEnglish = {
     forYou: {
       label: "For you",
       settings: "For you settings",
-      panels: {
-        tuning: "Tuning",
-        activity: "Activity",
-      },
       temperature: {
         label: "Temperature",
         current: "Temperature: {{value}}",

@@ -59,11 +59,12 @@ page, so the columns follow one another, each in the card grid.
 ## Settings
 
 The settings icon beside **Display options** opens the For you settings, a
-dialog on a wide screen and a sheet on a phone, with two tabs.
-`/for-you?panel=tuning` and `/for-you?panel=activity` open them, and
-`/settings?tab=recommendation` opens **Tuning**.
+dialog on a wide screen and a sheet on a phone: the tuning, followed by your
+recommendation activity. `/for-you?panel=tuning` and
+`/settings?tab=recommendation` open them, and `/for-you?panel=activity` opens
+them at the activity.
 
-- **Tuning** holds recommendation presets, a live preview, ordering variety,
+- The tuning holds recommendation presets, a live preview, ordering variety,
   and advanced scoring. The live preview scores an adjustable example work on
   a gauge beside the highlight threshold and shows its composition; ordering
   variety shows how variation and discovery boost can move that example's
@@ -75,9 +76,9 @@ dialog on a wide screen and a sheet on a phone, with two tabs.
   a new recommendation session for the current tab; other open tabs keep their
   snapshots until a new session is created. Tuning is stored for your account
   on the server and shared across devices.
-- **Activity** is the **Your recommendation activity** report of your own last
-  30 days of Library recommendations: how impressions turned into opens and
-  plays, the marks and reshuffles given, and the affinity score distribution.
-  For you draws are not counted.
+- **Your recommendation activity** reports your own last 30 days of Library
+  recommendations: how impressions turned into opens and plays, the marks and
+  reshuffles given, and the affinity score distribution. For you draws are not
+  counted.
 
 In the demo, the settings are shown read-only.

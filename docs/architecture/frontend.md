@@ -454,10 +454,10 @@ three columns side by side on a wide screen with row cards, and one after
 another with full, simple, or mini cards, and a labelled random sample in the
 demo. Below the three-column width, tabs choose the one column shown and
 replace its heading, with that column's shuffle button beside them. Its
-settings are a dialog of one fixed height, a sheet on phones, with
-two tabs: Tuning (`?panel=tuning`), the recommendation tuning of
-`features/preferences`, and Activity (`?panel=activity`),
-`RecommendationActivity`. `/settings?tab=recommendation` and
+settings are a dialog, a sheet on phones, of one scrolling panel: the
+recommendation tuning of `features/preferences` (`?panel=tuning`) followed
+by `RecommendationActivity`, which `?panel=activity` scrolls to.
+`/settings?tab=recommendation` and
 `/maintenance?tab=recommendation` redirect to `/for-you?panel=tuning`. The
 page draws every column on the first open, after a temperature change, and
 after saved user preferences, and one column, without the other columns'

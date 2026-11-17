@@ -146,6 +146,8 @@
   heading. On a narrow window or a phone, the column tabs take the place of
   the column heading, with the shown column's shuffle button beside them.
 - Each For you column draws about six works instead of ten.
+- For you's settings are one panel without tabs: the tuning, followed by your
+  recommendation activity.
 - **Watch** on a card is an eye icon like the lists and Quick mark beside it,
   lit on a work already in the watch pool.
 - **Subscription settings** open in a dialog, or a sheet on a phone, instead

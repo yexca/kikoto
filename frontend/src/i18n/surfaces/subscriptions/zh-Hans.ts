@@ -17,10 +17,6 @@ export const subscriptionsHans = {
     forYou: {
       label: "为你推荐",
       settings: "为你推荐设置",
-      panels: {
-        tuning: "调整",
-        activity: "活动",
-      },
       temperature: {
         label: "探索程度",
         current: "探索程度：{{value}}",
