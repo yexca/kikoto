@@ -84,6 +84,7 @@ export const recordsKorean = {
     actions: {
       more: "추가 작업",
       moreFor: "{{name}} 추가 작업",
+      listenTo: "{{name}} 오디오로 재생",
     },
     delete: {
       action: "삭제",

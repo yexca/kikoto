@@ -85,6 +85,7 @@ export const recordsJapanese = {
     actions: {
       more: "その他の操作",
       moreFor: "{{name}} のその他の操作",
+      listenTo: "{{name}} を音声として再生",
     },
     delete: {
       action: "削除",

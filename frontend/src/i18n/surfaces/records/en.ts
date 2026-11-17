@@ -84,6 +84,7 @@ export const recordsEnglish = {
     actions: {
       more: "More actions",
       moreFor: "More actions for {{name}}",
+      listenTo: "Play {{name}} as audio",
     },
     delete: {
       action: "Delete",

@@ -1,9 +1,21 @@
-import { Check, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Trash2, Video } from "lucide-react";
+import {
+  Check,
+  File as FileIcon,
+  FileText,
+  Folder,
+  Headphones,
+  Music,
+  Play,
+  Subtitles,
+  Trash2,
+  Video,
+} from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { assetURL, type RecordAsset, type RecordFolder, type RecordProgress } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -82,8 +94,20 @@ export const RecordFolderTile = memo(function RecordFolderTile({
   );
 });
 
-/** The More menu of a Record file row or folder tile, which holds Delete. */
-function RecordItemMenu({ name, onDelete }: { name: string; onDelete: () => void }) {
+// A bare icon beside a video tile's name: only its color answers hover and an open menu.
+const plainTileAction =
+  "h-6 w-6 bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent aria-expanded:text-foreground";
+
+/** The More menu of a Record file row, video tile, or folder tile, which holds Delete. */
+function RecordItemMenu({
+  name,
+  onDelete,
+  triggerClassName = "h-9 w-9 text-muted-foreground",
+}: {
+  name: string;
+  onDelete: () => void;
+  triggerClassName?: string;
+}) {
   const { t } = useTranslation();
   return (
     <ActionMenu
@@ -91,12 +115,14 @@ function RecordItemMenu({ name, onDelete }: { name: string; onDelete: () => void
       label={t("records.actions.moreFor", { name })}
       buttonLabel={t("records.actions.more")}
       buttonLabelClassName="hidden"
-      triggerClassName="h-9 w-9 text-muted-foreground"
+      triggerClassName={triggerClassName}
+      compact
       items={[
         {
           key: "delete",
           label: t("records.delete.action"),
           icon: <Trash2 className="h-4 w-4" />,
+          destructive: true,
           onSelect: onDelete,
         },
       ]}
@@ -109,12 +135,18 @@ export const RecordVideoTile = memo(function RecordVideoTile({
   progress,
   caption,
   onOpen,
+  onListen,
+  onDelete,
 }: {
   video: RecordAsset;
   progress?: RecordProgress;
   /** A muted line under the name, such as the folder a Continue watching tile comes from. */
   caption?: string;
   onOpen: (id: number) => void;
+  /** Plays the video's sound in the global player from where it was left. */
+  onListen?: (id: number) => void;
+  /** Reviews deleting the video; absent for a viewer who may not delete files. */
+  onDelete?: (video: RecordAsset) => void;
 }) {
   const { t } = useTranslation();
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
@@ -122,8 +154,13 @@ export const RecordVideoTile = memo(function RecordVideoTile({
   const fraction = watchedFraction(progress);
   const title = baseName(video.name);
   const duration = video.durationSeconds ?? progress?.durationSeconds;
-  return (
-    <button type="button" className={`group flex min-w-0 flex-col gap-2 ${tileFocus}`} onClick={() => onOpen(id)}>
+  const actions = (onListen ? 1 : 0) + (onDelete ? 1 : 0);
+  const tile = (
+    <button
+      type="button"
+      className={`group flex w-full min-w-0 flex-col gap-2 ${tileFocus}`}
+      onClick={() => onOpen(id)}
+    >
       <span className="relative block aspect-video w-full overflow-hidden rounded-lg border bg-muted">
         {video.thumbnailUrl && !thumbnailFailed ? (
           <img
@@ -171,11 +208,38 @@ export const RecordVideoTile = memo(function RecordVideoTile({
           </span>
         )}
       </span>
-      <span className="min-w-0 px-0.5">
+      <span className={cn("min-w-0 px-0.5", actions === 1 && "pr-7", actions === 2 && "pr-14")}>
         <span className="line-clamp-2 text-sm font-medium group-hover:text-primary">{title}</span>
         {caption && <span className="block truncate text-xs text-muted-foreground">{caption}</span>}
       </span>
     </button>
+  );
+  if (actions === 0) return tile;
+  // The actions sit outside the tile's button, level with the name's first
+  // line: a box shaped like the thumbnail places them just under it.
+  return (
+    <div className="relative min-w-0">
+      {tile}
+      <div className="pointer-events-none absolute inset-x-0 top-0 aspect-video">
+        <div className="pointer-events-auto absolute right-0 top-full mt-1.5 flex items-center gap-1">
+          {onListen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={plainTileAction}
+              aria-label={t("records.actions.listenTo", { name: title })}
+              title={t("records.player.listen")}
+              onClick={() => onListen(id)}
+            >
+              <Headphones className="h-4 w-4" />
+            </Button>
+          )}
+          {onDelete && (
+            <RecordItemMenu name={video.name} onDelete={() => onDelete(video)} triggerClassName={plainTileAction} />
+          )}
+        </div>
+      </div>
+    </div>
   );
 });
 

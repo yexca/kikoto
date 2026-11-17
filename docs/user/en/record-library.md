@@ -46,7 +46,9 @@ holds more than one kind of item.
 Subfolders appear as square tiles that show their poster, their backdrop when
 they have no poster, or a folder icon when they have neither; videos as wide
 tiles with a frame from the video, their length, and a bar for how much you
-have watched; photos as square thumbnails. Thumbnails are made the first time a
+have watched; photos as square thumbnails. Beside a video's name, **Play as
+audio** plays its sound in the global audio player from where you stopped, with
+the folder's other videos queued after it as sound. Thumbnails are made the first time a
 folder shows them, so a large folder can take a moment the first time. The
 folder's artwork images stay hidden.
 
@@ -101,9 +103,9 @@ its subtitles; `.srt` files must be UTF-8. Text subtitles inside the video
 are offered too. The previous and next buttons step through the folder's
 videos, and Back or Esc closes the player.
 
-Under the video, **Play as audio** closes the video player and continues the
-video's sound in the global audio player from the same moment, with the
-folder's other videos queued after it as sound. **More actions** beside it
+At the top right of the video player, **Play as audio** closes the player and
+continues the video's sound in the global audio player from the same moment,
+with the folder's other videos queued after it as sound. **More actions** beside it
 holds **Delete**.
 
 The position is saved per account about every ten seconds, on pause, at the
@@ -134,9 +136,9 @@ out of the queue the player restores after a reload.
 ## Deleting files and folders
 
 An account with file management access (`downloads:manage`) can delete Record
-files and folders. **Delete** is in a **More actions** menu: under the video in
-the video player, at the top of the photo viewer, at the end of each row under
-**Files**, and beside the name of each folder tile. A review names the file or
+files and folders. **Delete** is in a **More actions** menu: at the top right
+of the video player, at the top of the photo viewer, at the end of each row under
+**Files**, and beside the name of each video and folder tile. A review names the file or
 folder by its path inside the record root and lists what goes and what stays;
 **Continue**, then **Move to trash**, deletes it. After a file is deleted, the
 viewer moves on to the next video or photo, or closes when there is none.

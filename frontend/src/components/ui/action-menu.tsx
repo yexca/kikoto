@@ -13,6 +13,8 @@ export type ActionMenuItem = {
   disabled?: boolean;
   /** A second line, such as why the item is unavailable. */
   hint?: string;
+  /** An item that deletes, shown in the error color. */
+  destructive?: boolean;
   onSelect: () => void;
 };
 
@@ -27,6 +29,7 @@ export function ActionMenu({
   keepWhenEmpty = false,
   toolbar = false,
   quiet = false,
+  compact = false,
 }: {
   label: string;
   /** Visible on wide layouts; phones show the icon only. */
@@ -42,6 +45,8 @@ export function ActionMenu({
   toolbar?: boolean;
   /** A borderless trigger for a row or tile that carries its own actions. */
   quiet?: boolean;
+  /** Fits the menu to its items, for a menu of a few short ones. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -121,7 +126,10 @@ export function ActionMenu({
         onOpenChange={setOpen}
         align={align}
         floatingLayer
-        className="w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className={cn(
+          "p-1 text-sm",
+          compact ? "w-max min-w-32 max-w-[min(16rem,calc(100vw-1.5rem))]" : "w-[min(16rem,calc(100vw-1.5rem))]",
+        )}
         bottomCollisionPadding={96}
         zIndex={70}
       >
@@ -137,6 +145,9 @@ export function ActionMenu({
                 // The first item takes focus on open; only keyboard focus highlights it, so a click does not.
                 "flex min-h-11 w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:outline-none focus-visible:bg-muted disabled:cursor-not-allowed disabled:hover:bg-transparent sm:min-h-9",
                 item.disabled && "text-muted-foreground",
+                item.destructive &&
+                  !item.disabled &&
+                  "text-error-foreground hover:bg-error-surface focus-visible:bg-error-surface",
               )}
               onClick={() => {
                 // Items often navigate or open a dialog, which defers this
@@ -145,7 +156,11 @@ export function ActionMenu({
                 item.onSelect();
               }}
             >
-              <span className="mt-0.5 shrink-0 text-muted-foreground">{item.icon}</span>
+              <span
+                className={cn("mt-0.5 shrink-0", item.destructive && !item.disabled ? "" : "text-muted-foreground")}
+              >
+                {item.icon}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{item.label}</span>
                 {item.hint && <span className="block text-xs text-muted-foreground">{item.hint}</span>}

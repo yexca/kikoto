@@ -128,6 +128,8 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     player.playQueue(tracks, recordTrackLocationId(id), position ?? resumePosition(progress.get(id)) ?? 0);
   });
   const playAudio = useStableCallback((id: number) => playInPlayer(view?.audio ?? noMedia, id));
+  // A video tile plays its sound from where the video was left.
+  const listenToVideoTile = useStableCallback((id: number) => playInPlayer(view?.videos ?? noMedia, id));
   const listenToVideo = (id: number, position: number) => {
     closeOverlay();
     playInPlayer(view?.videos ?? noMedia, id, position);
@@ -254,7 +256,14 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const videosGrid = view && view.videos.length > 0 && (
     <div className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-3 xl:grid-cols-4">
       {view.videos.map((video) => (
-        <RecordVideoTile key={video.id} video={video} progress={progress.get(video.id)} onOpen={openVideo} />
+        <RecordVideoTile
+          key={video.id}
+          video={video}
+          progress={progress.get(video.id)}
+          onOpen={openVideo}
+          onListen={listenToVideoTile}
+          onDelete={canDelete ? reviewDelete : undefined}
+        />
       ))}
     </div>
   );

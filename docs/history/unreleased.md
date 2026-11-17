@@ -27,9 +27,10 @@
   audio player. A video the browser cannot play as it is, such as an MPEG-TS
   recording, is repackaged or converted like the Library's videos. A `.vtt` or
   UTF-8 `.srt` file named like a video, or a text subtitle inside it, plays as
-  its subtitles. **Play as audio** under the video continues its sound in the
-  global audio player. Photos open full screen with arrow keys and swipes, and zoom
-  like the work image viewer.
+  its subtitles. **Play as audio** at the top right of the video player
+  continues its sound in the global audio player, and beside a video tile's
+  name plays it from where you stopped. Photos open full screen with arrow keys
+  and swipes, and zoom like the work image viewer.
 - Audio files play in the global audio player with the folder's other audio
   files queued, continue where you stopped, and save their position like
   videos. The player shows a file's own cover art, or no picture without one,
@@ -48,9 +49,9 @@
 - Record scans are listed in Workflows as **Scan Record**, and History narrowed
   to them links to the Record page, where **Scan** starts them.
 - An account with file management access deletes a Record file or folder
-  from a **More actions** menu, under the video in the video player, in the
-  photo viewer, on a row under **Files**, or beside a folder's name, after a
-  two-step review that names its path in the record root. It moves to
+  from a **More actions** menu, at the top right of the video player, in the
+  photo viewer, on a row under **Files**, or beside a video's or folder's
+  name, after a two-step review that names its path in the record root. It moves to
   `.kikoto-trash/records` in the record root, which Kikoto never empties, a
   folder with everything in it, and the progress, thumbnails, and playback
   cache of the files removed go with it.

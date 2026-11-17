@@ -86,11 +86,13 @@ export function RecordPhotoViewer({
             buttonLabel={t("records.actions.more")}
             buttonLabelClassName="hidden"
             triggerClassName="h-11 w-11"
+            compact
             items={[
               {
                 key: "delete",
                 label: t("records.delete.action"),
                 icon: <Trash2 className="h-4 w-4" />,
+                destructive: true,
                 onSelect: onDelete,
               },
             ]}

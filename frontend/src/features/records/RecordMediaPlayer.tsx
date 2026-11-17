@@ -32,10 +32,10 @@ type Source = { forceTranscode: boolean; playback: VideoPlaybackInfo | null };
  * saved position, plays what the server's playback info chooses (the file
  * itself, a remux, or a transcode) on the shared video stage, saves progress
  * while the video plays, and steps through the folder's videos. On a phone a
- * video enters fullscreen when it starts. The row under the video plays its
- * sound as audio, which hands it to the global player from the moment it
- * reached, and keeps Delete behind More. Remount it per video (`key`)
- * so each starts with its own progress.
+ * video enters fullscreen when it starts. The header plays the video's sound
+ * as audio, which hands it to the global player from the moment it reached,
+ * and keeps Delete behind More. Remount it per video (`key`) so each starts
+ * with its own progress.
  */
 export function RecordMediaPlayer({
   asset,
@@ -221,7 +221,40 @@ export function RecordMediaPlayer({
           onStep: nextId === null ? null : () => onStep(nextId),
         }}
         onClose={onClose}
-      />
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11"
+          aria-label={t("records.player.listen")}
+          title={t("records.player.listen")}
+          onClick={listen}
+        >
+          <Headphones className="h-5 w-5" />
+        </Button>
+        {onDelete && (
+          <ActionMenu
+            quiet
+            label={t("records.actions.more")}
+            buttonLabel={t("records.actions.more")}
+            buttonLabelClassName="hidden"
+            triggerClassName="h-11 w-11"
+            compact
+            items={[
+              {
+                key: "delete",
+                label: t("records.delete.action"),
+                icon: <Trash2 className="h-4 w-4" />,
+                destructive: true,
+                onSelect: () => {
+                  stage.current?.pause();
+                  onDelete();
+                },
+              },
+            ]}
+          />
+        )}
+      </VideoPlayerHeader>
       {/* The stage fits both the width and the height, so the controls stay on screen. */}
       <VideoStage
         ref={stage}
@@ -245,34 +278,6 @@ export function RecordMediaPlayer({
           onStartOver={() => setPhase({ kind: "playing", startAt: 0 })}
         />
       </VideoStage>
-      {/* The video's actions sit under it; deletion waits behind More, then a two-step review. */}
-      <div className="flex shrink-0 items-center gap-2 px-2 py-2 sm:px-4">
-        <Button variant="secondary" size="sm" onClick={listen}>
-          <Headphones className="h-4 w-4" />
-          {t("records.player.listen")}
-        </Button>
-        {onDelete && (
-          <ActionMenu
-            quiet
-            label={t("records.actions.more")}
-            buttonLabel={t("records.actions.more")}
-            buttonLabelClassName="hidden"
-            triggerClassName="h-[var(--control-height-sm)] w-[var(--control-height-sm)]"
-            align="start"
-            items={[
-              {
-                key: "delete",
-                label: t("records.delete.action"),
-                icon: <Trash2 className="h-4 w-4" />,
-                onSelect: () => {
-                  stage.current?.pause();
-                  onDelete();
-                },
-              },
-            ]}
-          />
-        )}
-      </div>
     </MediaOverlay>
   );
 }

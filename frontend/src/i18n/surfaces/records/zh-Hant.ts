@@ -82,6 +82,7 @@ export const recordsHant = {
     actions: {
       more: "更多操作",
       moreFor: "{{name}} 的更多操作",
+      listenTo: "將 {{name}} 以音訊播放",
     },
     delete: {
       action: "刪除",

@@ -141,7 +141,7 @@ test("a Record audio file plays in the global player from where it was left, wit
 test("a Record video hands its sound to the global player from the moment it reached @desktop", async ({ page }) => {
   await mockRecordLibrary(page);
   await page.goto("/records");
-  await page.getByRole("button", { name: /Example clip/ }).click();
+  await page.getByRole("button", { name: /Example clip$/ }).click();
 
   const player = page.getByRole("dialog", { name: "Video player: Example clip" });
   await player.getByRole("button", { name: "Continue", exact: true }).click();
@@ -154,12 +154,25 @@ test("a Record video hands its sound to the global player from the moment it rea
   await expect.poll(() => audioTime(page)).toBeGreaterThan(61);
 });
 
+test("a Record video tile plays its sound in the global player from where the video was left @desktop", async ({
+  page,
+}) => {
+  await mockRecordLibrary(page);
+  await page.goto("/records");
+  await page.getByRole("button", { name: "Play Example clip as audio", exact: true }).click();
+
+  // The video player stays closed.
+  await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(() => audioTime(page)).toBeGreaterThan(60);
+});
+
 test("a Record video continues from its saved position, retries as a conversion, and saves where it stopped @desktop", async ({
   page,
 }) => {
   const { playbackRequests, savedPositions } = await mockRecordLibrary(page);
   await page.goto("/records");
-  await page.getByRole("button", { name: /Example clip/ }).click();
+  await page.getByRole("button", { name: /Example clip$/ }).click();
 
   const player = page.getByRole("dialog", { name: "Video player: Example clip" });
   await player.getByRole("button", { name: "Continue", exact: true }).click();
