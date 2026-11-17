@@ -39,7 +39,17 @@ const storagePrefix = "kikoto:library-browse:";
 const lastLocationStoragePrefix = "kikoto:library-last-location:";
 const sortPreferenceStoragePrefix = "kikoto:library-sort:";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
-const sorts = ["recent", "release", "code", "title", "rating", "sales", "random", "recommend"] satisfies LibrarySort[];
+const sorts = [
+  "recent",
+  "release",
+  "code",
+  "title",
+  "rating",
+  "user_rating",
+  "sales",
+  "random",
+  "recommend",
+] satisfies LibrarySort[];
 
 export function readLibraryBrowseState(key: string): LibraryBrowseState | null {
   try {

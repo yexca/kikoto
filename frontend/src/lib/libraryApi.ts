@@ -219,9 +219,11 @@ export type FavoriteWorksPage = WorksPage & {
   newWorkIds?: number[];
 };
 
-export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random" | "recommend";
+export type LibrarySort =
+  "recent" | "release" | "code" | "title" | "rating" | "user_rating" | "sales" | "random" | "recommend";
 
-export type FavoriteSort = "activity" | "added" | "release" | "code" | "title" | "rating" | "sales" | "random";
+export type FavoriteSort =
+  "activity" | "added" | "release" | "code" | "title" | "rating" | "user_rating" | "sales" | "random";
 
 export type SortDirection = "asc" | "desc";
 

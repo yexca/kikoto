@@ -124,6 +124,9 @@ The Library is the main browsing surface for works.
   button, the **Mark filter** button, **Recently played**, and **View**. The
   sort button names the current order and opens the orders and direction in a
   popover; the Recommended and Random orders add a refresh button beside it.
+  **Your rating**, also offered in Favorites, orders works by the stars you
+  gave them, equal ratings by the public rating, with unrated works last;
+  remote sources do not offer it.
   **Mark filter** opens the Quick marks; while one is set, the button turns
   primary and shows that mark, and **All** clears it. Remote sources have no
   Mark filter.

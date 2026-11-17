@@ -293,6 +293,7 @@ const favoriteSortOptions: FavoriteSort[] = [
   "code",
   "title",
   "rating",
+  "user_rating",
   "sales",
   "random",
 ];

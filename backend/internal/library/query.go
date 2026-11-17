@@ -277,7 +277,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		}
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
 		return query, prefixArgs
-	case "release", "code", "title", "rating", "sales", "random", "recent":
+	case "release", "code", "title", "rating", "user_rating", "sales", "random", "recent":
 		titleSort := ""
 		if len(options.TitleLanguages) > 0 {
 			titleSort = TitleSortExpression(options.TitleLanguages)
@@ -359,9 +359,16 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	return works, nil
 }
 
-// listOrderBy builds the ORDER BY clause. titleSort is the title sort key,
-// normally TitleSortExpression for the viewer; empty sorts by work.title.
+// listOrderBy builds the ORDER BY clause over the work row joined with the
+// viewer's user_work_state. titleSort is the title sort key, normally
+// TitleSortExpression for the viewer; empty sorts by work.title.
 func listOrderBy(sortKey string, direction string, randomSeed int64, config RecommendationConfig, titleSort string) string {
+	return listOrderByWithUserRating(sortKey, direction, randomSeed, config, titleSort, "user_work_state.rating")
+}
+
+// listOrderByWithUserRating builds the ORDER BY clause with userRating as the
+// viewer's personal rating, for a projection that carries it as a column.
+func listOrderByWithUserRating(sortKey string, direction string, randomSeed int64, config RecommendationConfig, titleSort string, userRating string) string {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
@@ -379,6 +386,9 @@ func listOrderBy(sortKey string, direction string, randomSeed int64, config Reco
 		return titleSort + " COLLATE NOCASE " + direction + ", work.id " + direction
 	case "rating":
 		return nullsLastOrderBy("work.rating_average", direction) + ", work.created_at " + direction + ", work.id " + direction
+	case "user_rating":
+		// Unrated works come last; equal ratings follow the public rating.
+		return nullsLastOrderBy(userRating, direction) + ", " + nullsLastOrderBy("work.rating_average", direction) + ", work.created_at " + direction + ", work.id " + direction
 	case "sales":
 		return nullsLastOrderBy("work.sales_count", direction) + ", work.created_at " + direction + ", work.id " + direction
 	default:
@@ -432,7 +442,7 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 		sortKey, direction = "sales", "DESC"
 	}
 	switch sortKey {
-	case "recent", "release", "code", "title", "rating", "sales", "random", "recommend":
+	case "recent", "release", "code", "title", "rating", "user_rating", "sales", "random", "recommend":
 	default:
 		sortKey = "recent"
 	}

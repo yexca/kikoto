@@ -99,6 +99,7 @@ export const libraryEnglish = {
     release: "Release date",
     random: "Random",
     rating: "Rating",
+    user_rating: "Your rating",
     code: "Code",
     sales: "Sales",
     title: "Title",

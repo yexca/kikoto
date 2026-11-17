@@ -103,6 +103,7 @@ const libraryHant = {
     release: "發行日期",
     random: "隨機",
     rating: "評分",
+    user_rating: "我的評分",
     code: "代碼",
     sales: "銷量",
     title: "標題",

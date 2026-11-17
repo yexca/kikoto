@@ -44,7 +44,17 @@ const statuses: FavoriteStatusFilter[] = [
   "paused",
 ];
 const availabilities: FavoriteAvailability[] = ["all", "available", "local", "remote", "missing"];
-const sorts: FavoriteSort[] = ["activity", "added", "release", "code", "title", "rating", "sales", "random"];
+const sorts: FavoriteSort[] = [
+  "activity",
+  "added",
+  "release",
+  "code",
+  "title",
+  "rating",
+  "user_rating",
+  "sales",
+  "random",
+];
 
 export function favoritesBrowseStateFromSearch(
   search: string,

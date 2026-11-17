@@ -102,6 +102,7 @@ const libraryKorean = {
     release: "출시일",
     random: "무작위",
     rating: "평점",
+    user_rating: "내 평점",
     code: "코드",
     sales: "판매량",
     title: "제목",

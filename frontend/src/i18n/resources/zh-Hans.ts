@@ -102,6 +102,7 @@ export const libraryHans = {
     release: "发行日期",
     random: "随机",
     rating: "评分",
+    user_rating: "我的评分",
     code: "代码",
     sales: "销量",
     title: "标题",

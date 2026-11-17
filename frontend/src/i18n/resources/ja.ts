@@ -102,6 +102,7 @@ const libraryJapanese = {
     release: "発売日",
     random: "ランダム",
     rating: "評価",
+    user_rating: "あなたの評価",
     code: "コード",
     sales: "売上",
     title: "タイトル",

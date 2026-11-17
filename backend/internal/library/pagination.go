@@ -31,11 +31,14 @@ func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSee
 	}
 	candidates := `SELECT ` + listWorkColumnsSQL + `, work.release_date,
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + score + extra + `
+		COALESCE(user_work_state.favorite, 0) AS favorite,
+		user_work_state.rating AS user_rating` + score + extra + `
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + join + `
 		WHERE ` + where
-	orderBy := listOrderBy(sortKey, direction, randomSeed, config, titleSort)
+	// The page reorders the materialized candidates, which carry the personal
+	// rating as a column rather than the joined user_work_state.
+	orderBy := listOrderByWithUserRating(sortKey, direction, randomSeed, config, titleSort, "work.user_rating")
 	if normalizedSort == "recommend" {
 		candidates = recommendationOrderedSelectSQL(candidates, direction, randomSeed, config, "*")
 		orderBy = "work.recommendation_suppressed ASC, work.recommendation_position ASC, work.id ASC"
@@ -43,7 +46,7 @@ func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSee
 			candidates = `SELECT * FROM (` + candidates + `) ORDER BY ` + rankPrefix + `recommendation_suppressed ASC, recommendation_position ASC, id ASC`
 		}
 	} else {
-		candidates += " ORDER BY " + rankPrefix + orderBy
+		candidates += " ORDER BY " + rankPrefix + listOrderBy(sortKey, direction, randomSeed, config, titleSort)
 	}
 	if rankPrefix != "" {
 		orderBy = "work." + rankPrefix + orderBy

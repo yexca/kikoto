@@ -21,6 +21,7 @@ export const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "release", label: "Release date" },
   { value: "random", label: "Random" },
   { value: "rating", label: "Rating" },
+  { value: "user_rating", label: "Your rating" },
   { value: "code", label: "Code" },
   { value: "sales", label: "Sales" },
   { value: "title", label: "Title" },

@@ -257,6 +257,8 @@
   place of the Continue listening strip, and the Mark filter opens its list
   in place of a row of chips.
 - Library results that fit one page show their count without a page bar.
+- The Library and Favorites sort by **Your rating**: works you rated by
+  their stars, equal ratings by the public rating, and unrated works last.
 - A Favorites shelf opens with a one-line header, its name with the result
   count and page, in place of the cover mosaic, the listened share, and the
   top page bar. Search and the work controls sit beside it on a wide screen.

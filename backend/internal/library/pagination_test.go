@@ -25,7 +25,7 @@ func TestListPagePreservesOrderedProjection(t *testing.T) {
 	}{
 		{"anonymous", 0, ""}, {"live", userID, ""}, {"snapshot", userID, "synthetic-session"},
 	} {
-		for sortIndex, sortKey := range []string{"recent", "release", "title", "code", "rating", "sales", "random"} {
+		for sortIndex, sortKey := range []string{"recent", "release", "title", "code", "rating", "user_rating", "sales", "random"} {
 			for directionIndex, direction := range []string{"asc", "desc"} {
 				// The race detector slows this matrix many times over. Under it
 				// each mode and sort keeps one direction, alternating so every
@@ -152,7 +152,7 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 		VALUES (?, ?, ?, ?, ?, '2026-01-01 00:00:00')`)
 	insertSnapshot := prepare("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, ?, ?)")
 	insertPresence := prepare("INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (?, ?, 'local', 'available')")
-	insertState := prepare("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (?, ?, ?, ?)")
+	insertState := prepare("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite, rating) VALUES (?, ?, ?, ?, ?)")
 	insertMedia := prepare("INSERT INTO media_item (work_id, kind, title, track_no) VALUES (?, 'audio', 'Example Track', ?)")
 	insertLocation := prepare("INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (?, ?, 'local', ?, 'available')")
 	execPrepared := func(stmt *sql.Stmt, args ...any) int64 {
@@ -181,7 +181,11 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 		workID := execPrepared(insertWork, code, fmt.Sprintf("Example Work %d", index%20), rating, sales, release)
 		execPrepared(insertSnapshot, workID, providerID, code, `{"description":"`+strings.Repeat("x", snapshotBytes)+`"}`)
 		execPrepared(insertPresence, workID, sourceID)
-		execPrepared(insertState, userID, workID, statuses[index%len(statuses)], index%2)
+		var userRating any
+		if index%4 != 0 {
+			userRating = index%5 + 1
+		}
+		execPrepared(insertState, userID, workID, statuses[index%len(statuses)], index%2, userRating)
 		for track := 0; track < tracks; track++ {
 			mediaID := execPrepared(insertMedia, workID, track)
 			execPrepared(insertLocation, mediaID, sourceID, fmt.Sprintf("Library/%s/track-%d.mp3", code, track))
@@ -252,6 +256,70 @@ func TestListPagePlacesMissingSortValuesLast(t *testing.T) {
 			if !reflect.DeepEqual(got, codes) {
 				t.Fatalf("%s %s order = %v, want %v", sortKey, direction, got, codes)
 			}
+		}
+	}
+}
+
+// The personal rating order reads only the viewer's ratings, keeps unrated
+// works last in both directions, and breaks ties by the public rating. Library
+// pages and Favorites shelves share it.
+func TestUserRatingSortOrdersByViewerRating(t *testing.T) {
+	db := storagetest.Open(t)
+	exec := func(query string, args ...any) int64 {
+		result, err := db.Exec(query, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	viewer := exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-viewer', 'Example Viewer', 'user')")
+	other := exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-other', 'Example Other', 'user')")
+	for ordinal, row := range []struct {
+		public      any
+		viewer      any
+		otherRating any
+	}{
+		{4.0, 3, 5},
+		{3.0, 5, nil},
+		{nil, nil, 5},
+		{2.0, 3, 1},
+		{4.5, 3, nil},
+	} {
+		workID := exec(`INSERT INTO work (primary_code, title, rating_average, created_at) VALUES (?, 'Example Work', ?, '2026-01-01 00:00:00')`,
+			testfixture.WorkCode(testfixture.PrefixRJ, ordinal), row.public)
+		exec("INSERT INTO user_work_state (user_id, work_id, rating) VALUES (?, ?, ?)", viewer, workID, row.viewer)
+		exec("INSERT INTO user_work_state (user_id, work_id, rating) VALUES (?, ?, ?)", other, workID, row.otherRating)
+	}
+	store := NewStore(db)
+	want := map[string][]string{
+		"desc": {"RJ00000001", "RJ00000004", "RJ00000000", "RJ00000003", "RJ00000002"},
+		"asc":  {"RJ00000003", "RJ00000000", "RJ00000004", "RJ00000001", "RJ00000002"},
+	}
+	codes := func(works []RawWork) []string {
+		got := []string{}
+		for _, work := range works {
+			got = append(got, work.PrimaryCode)
+		}
+		return got
+	}
+	for direction, expected := range want {
+		page, err := store.ListPage(context.Background(), ListOptions{UserID: viewer, PageSize: 10, Sort: "user_rating", Direction: direction})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := codes(page.Works); !reflect.DeepEqual(got, expected) {
+			t.Fatalf("library %s order = %v, want %v", direction, got, expected)
+		}
+		shelf, err := store.ListMatchingSorted(context.Background(), "1 = 1", nil, MatchingListOptions{UserID: viewer, PageSize: 10, Sort: "user_rating", Direction: direction})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := codes(shelf); !reflect.DeepEqual(got, expected) {
+			t.Fatalf("shelf %s order = %v, want %v", direction, got, expected)
 		}
 	}
 }
