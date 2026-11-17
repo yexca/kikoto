@@ -38,10 +38,7 @@ export const subscriptionsEnglish = {
         try_new: "Try new",
         listen_again: "Listen again",
       },
-      drawAgain: "Draw again",
       drawAgainColumn: "Draw {{column}} again",
-      coldStart:
-        "Rate, favorite, or mark works and these picks learn what you like. Until then, Maybe like follows DLsite ratings and sales.",
       preparing: "Recommendations are still being prepared.",
       failed: "For you could not be drawn.",
       columnFailed: "This column could not be drawn.",

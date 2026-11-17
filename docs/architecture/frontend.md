@@ -452,14 +452,16 @@ their reason sentences, with Discover's display choice; the display options
 and the settings icon sit at the end of the temperature row. It shows its
 three columns side by side on a wide screen with row cards, and one after
 another with full, simple, or mini cards, and a labelled random sample in the
-demo. Its settings are a dialog of one fixed height, a sheet on phones, with
+demo. Below the three-column width, tabs choose the one column shown and
+replace its heading, with that column's shuffle button beside them. Its
+settings are a dialog of one fixed height, a sheet on phones, with
 two tabs: Tuning (`?panel=tuning`), the recommendation tuning of
 `features/preferences`, and Activity (`?panel=activity`),
 `RecommendationActivity`. `/settings?tab=recommendation` and
 `/maintenance?tab=recommendation` redirect to `/for-you?panel=tuning`. The
 page draws every column on the first open, after a temperature change, and
 after saved user preferences, and one column, without the other columns'
-works, on **Draw again**. Every draw records its works as shown, so the
+works, on its shuffle button. Every draw records its works as shown, so the
 settled draw is kept in server-and-user-scoped session storage, with memory
 as the fallback, and opening For you again in the same tab shows it without
 drawing; saved user preferences clear it.

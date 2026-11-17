@@ -38,10 +38,7 @@ export const subscriptionsJapanese = {
         try_new: "新しく試す",
         listen_again: "もう一度聴く",
       },
-      drawAgain: "引き直す",
       drawAgainColumn: "「{{column}}」を引き直す",
-      coldStart:
-        "作品を評価したり、お気に入りやマークを付けたりすると、好みを学習します。それまでは「気に入りそう」は DLsite の評価と販売数に従います。",
       preparing: "おすすめを準備しています。",
       failed: "あなた向けの作品を選べませんでした。",
       columnFailed: "この列を選べませんでした。",

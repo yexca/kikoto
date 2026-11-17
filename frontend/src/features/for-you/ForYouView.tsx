@@ -87,7 +87,6 @@ function ForYouDraws({
   const { demoMode } = useAuth();
   const forYou = useForYou(storageScope);
   const [shown, setShown] = useState<ForYouColumn>("maybe_like");
-  const coldStart = FOR_YOU_COLUMNS.some((column) => forYou.columns[column].coldStart);
   const sideBySide = cardLayout === "row";
 
   const open = (column: ForYouColumn, item: ForYouItem, rank: number) => {
@@ -149,34 +148,38 @@ function ForYouDraws({
         </div>
       ) : (
         <>
-          {coldStart && (
-            <p className="rounded-lg border border-info-border bg-info-surface px-3 py-2 text-xs text-info-foreground">
-              {t("subscriptions.forYou.coldStart")}
-            </p>
-          )}
-          {/* Below the three-column width one column shows at a time. */}
-          <div
-            role="tablist"
-            aria-label={t("subscriptions.forYou.columnsLabel")}
-            className={segmentedListClassName("@5xl:hidden")}
-          >
-            {FOR_YOU_COLUMNS.map((column) => {
-              const Icon = COLUMN_ICONS[column];
-              return (
-                <button
-                  key={column}
-                  type="button"
-                  role="tab"
-                  aria-selected={shown === column}
-                  aria-controls={`for-you-${column}`}
-                  className={segmentedItemClassName(shown === column)}
-                  onClick={() => setShown(column)}
-                >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                  {t(`subscriptions.forYou.columns.${column}`)}
-                </button>
-              );
-            })}
+          {/* Below the three-column width one column shows at a time; its tab
+              names it, so the column heading gives way to this row. */}
+          <div className="flex min-w-0 items-center gap-2 @5xl:hidden">
+            <div
+              role="tablist"
+              aria-label={t("subscriptions.forYou.columnsLabel")}
+              className={segmentedListClassName()}
+            >
+              {FOR_YOU_COLUMNS.map((column) => {
+                const Icon = COLUMN_ICONS[column];
+                return (
+                  <button
+                    key={column}
+                    type="button"
+                    role="tab"
+                    aria-selected={shown === column}
+                    aria-controls={`for-you-${column}`}
+                    className={segmentedItemClassName(shown === column)}
+                    onClick={() => setShown(column)}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {t(`subscriptions.forYou.columns.${column}`)}
+                  </button>
+                );
+              })}
+            </div>
+            <DrawAgainButton
+              className="ml-auto"
+              column={shown}
+              drawing={forYou.columns[shown].drawing}
+              onClick={() => void forYou.drawColumn(shown)}
+            />
           </div>
           <div
             className={sideBySide ? "grid items-start gap-4 @5xl:grid-cols-3 @5xl:gap-5" : "flex flex-col gap-6"}
@@ -231,26 +234,13 @@ function ForYouColumnSection({
   const loading = state.drawing && state.items.length === 0;
   return (
     <section id={`for-you-${column}`} aria-labelledby={headingId} className={cn("min-w-0", className)}>
+      {/* Hidden while the tabs name the column; it still names the section. */}
       <WorkSectionHeading
         id={headingId}
+        className="hidden @5xl:block"
         icon={<Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
         title={title}
-        count={loading ? undefined : state.items.length}
-        countLabel={t("subscriptions.feed.dayCount", { count: state.items.length })}
-        action={
-          <Button
-            variant="toolbar"
-            size="sm"
-            className="gap-1.5"
-            disabled={state.drawing}
-            aria-label={t("subscriptions.forYou.drawAgainColumn", { column: title })}
-            title={t("subscriptions.forYou.drawAgainColumn", { column: title })}
-            onClick={onDrawAgain}
-          >
-            <Shuffle className={cn("h-3.5 w-3.5", state.drawing && "animate-pulse")} aria-hidden="true" />
-            {t("subscriptions.forYou.drawAgain")}
-          </Button>
-        }
+        action={<DrawAgainButton column={column} drawing={state.drawing} onClick={onDrawAgain} />}
       />
       {loading ? (
         <div className={cn(workCollectionClassName(), listClassName)} aria-hidden="true">
@@ -292,6 +282,35 @@ function ForYouColumnSection({
         </ol>
       )}
     </section>
+  );
+}
+
+/** Draws one column anew; an icon, since every column offers it. */
+function DrawAgainButton({
+  column,
+  drawing,
+  className,
+  onClick,
+}: {
+  column: ForYouColumn;
+  drawing: boolean;
+  className?: string;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  const label = t("subscriptions.forYou.drawAgainColumn", { column: t(`subscriptions.forYou.columns.${column}`) });
+  return (
+    <Button
+      variant="toolbar"
+      size="icon-sm"
+      className={cn("shrink-0", className)}
+      disabled={drawing}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <Shuffle className={cn("h-4 w-4", drawing && "animate-pulse")} aria-hidden="true" />
+    </Button>
   );
 }
 

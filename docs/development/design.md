@@ -243,8 +243,9 @@ does not repeat a subscribed name from the credit line. It uses one status
 vocabulary: a success badge for
 available or in the library, a primary badge for new or back, a neutral badge
 for an event, a warning badge for a failed check, and a dot only for unread.
-Groups of cards share one section heading (title, count badge, hairline, and
-an optional action at the end), and the page toolbar keeps the same controls
+Groups of cards share one section heading (title, a count badge where the
+count tells something, hairline, and an optional action at the end), and the
+page toolbar keeps the same controls
 in place on every view, disabling one a view does not offer. A work without
 metadata shows its code on a placeholder cover and no metric line; every card
 leaves out a rating or sales figure it does not know.

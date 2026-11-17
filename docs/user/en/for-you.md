@@ -34,14 +34,14 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
   including when you open another page or a work, or reload the page. A new
   tab, a fresh start of the app, or saving your own preferences, such as the
   tuning in [Settings](#settings), draws all three anew.
-- **Draw again** draws its column anew from your current ratings and marks,
-  leaving out what the other columns show. Each draw is random, and works
-  shown recently that you neither opened nor played are drawn less often for
-  three days, so the columns rotate.
+- The shuffle button beside a column's heading draws that column anew from
+  your current ratings and marks, leaving out what the other columns show.
+  Each draw is random, and works shown recently that you neither opened nor
+  played are drawn less often for three days, so the columns rotate.
 - Before you have rated, favorited, or marked anything, **Maybe like** follows
   the DLsite rating and sales, and **Listen again** waits for works you play.
 - On a narrow window or a phone, the switch under the temperature chooses the
-  column to show.
+  column to show, with that column's shuffle button beside it.
 - In the demo, For you is a random sample of the demo works, labelled as
   sample data, with example reasons taken from a work's DLsite rating or
   circle. Nothing learns from what you open, and the temperature applies only
@@ -53,8 +53,7 @@ For you shows works as [Discover](discover.md#cards-and-display-options)
 does, and the two share one **Display options** choice. With **Compact**
 cards on a wide screen, the three columns stand side by side. **Simple**,
 **Full**, and **Mini** cards are too wide or too small for a third of the
-page, so the columns follow one another, each in the card grid. Each column
-starts with a heading that counts its works.
+page, so the columns follow one another, each in the card grid.
 
 ## Settings
 

@@ -1356,7 +1356,8 @@ test("@desktop For you keeps its draw across pages and reloads until a column is
   await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
   expect(server.forYouDraws).toHaveLength(1);
 
-  await maybeLike.getByRole("button", { name: "Draw Maybe like again" }).click();
+  // Beside the column heading on a wide page, beside the column tabs on a narrower one.
+  await page.getByRole("button", { name: "Draw Maybe like again" }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
   expect(server.forYouDraws?.[1]?.columns).toEqual(["maybe_like"]);
   await sidebar.getByRole("button", { name: "Discover", exact: true }).click();

@@ -140,6 +140,10 @@
   anew.
 - For you's column headings and Watch's summary drop their descriptions; the
   temperature choices explain themselves in their tooltips.
+- For you drops the note shown before you have rated anything and the counts
+  in its column headings, and **Draw again** is a shuffle button beside each
+  heading. On a narrow window or a phone, the column tabs take the place of
+  the column heading, with the shown column's shuffle button beside them.
 - **Watch** on a card is an eye icon like the lists and Quick mark beside it,
   lit on a work already in the watch pool.
 - **Subscription settings** open in a dialog, or a sheet on a phone, instead

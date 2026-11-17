@@ -38,10 +38,7 @@ export const subscriptionsKorean = {
         try_new: "새로 들어 보기",
         listen_again: "다시 듣기",
       },
-      drawAgain: "다시 뽑기",
       drawAgainColumn: "{{column}} 다시 뽑기",
-      coldStart:
-        "작품을 평가하거나 즐겨찾기 또는 마크를 하면 취향을 학습합니다. 그 전까지 좋아할 만한 작품은 DLsite 평점과 판매량을 따릅니다.",
       preparing: "추천을 준비하고 있습니다.",
       failed: "맞춤 추천을 뽑지 못했습니다.",
       columnFailed: "이 열을 뽑지 못했습니다.",
