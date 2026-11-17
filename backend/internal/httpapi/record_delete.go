@@ -60,6 +60,53 @@ func (s *Server) deleteRecordAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"trashPath": trashed.TrashPath})
 }
 
+// deleteRecordFolder moves one record folder, other than the root, into the
+// record root's trash with everything in it. Its files' encodes stop first,
+// and their playback caches and thumbnails go with them, as do every
+// viewer's progress and state. The answer names the files it held, so a
+// client can let go of them.
+func (s *Server) deleteRecordFolder(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "downloads:manage")
+	if !ok {
+		return
+	}
+	id, ok := parseRecordID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid_folder_id", "Invalid record folder.", false)
+		return
+	}
+	// Encoders hold files open, which keeps the folder from moving on some
+	// systems; one that starts during the move is stopped afterwards.
+	trashed, err := s.recordStore.TrashFolder(r.Context(), id, time.Now(), s.stopRecordSessions)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		writeAPIError(w, http.StatusNotFound, "record_folder_not_found", "Record folder not found.", false)
+		return
+	case errors.Is(err, record.ErrRootOffline):
+		writeAPIError(w, http.StatusConflict, "record_root_unavailable", "The record library is unavailable.", true)
+		return
+	case errors.Is(err, record.ErrFolderNotDeletable):
+		writeAPIError(w, http.StatusConflict, "record_folder_not_deletable", "This record folder cannot be deleted.", false)
+		return
+	case err != nil:
+		slog.Error("record folder deletion failed", "folder_id", id, "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "record_delete_failed", "The record folder could not be deleted.", true)
+		return
+	}
+	slog.Info("record folder moved to trash", "folder_id", id, "user_id", user.ID, "files", len(trashed.AssetIDs), "trash_path", trashed.TrashPath)
+	s.stopRecordSessions(trashed.AssetIDs)
+	for _, assetID := range trashed.AssetIDs {
+		s.removeRecordCaches(r.Context(), assetID)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"trashPath": trashed.TrashPath, "assetIds": trashed.AssetIDs})
+}
+
+func (s *Server) stopRecordSessions(assetIDs []int64) {
+	for _, assetID := range assetIDs {
+		s.hlsSessions.stopSource(recordPlaybackCacheKey(assetID))
+	}
+}
+
 // removeRecordCaches removes a record asset's playback cache and thumbnails.
 // What stays behind is evicted with the rest of the transcode cache.
 func (s *Server) removeRecordCaches(ctx context.Context, id int64) {

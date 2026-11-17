@@ -52,7 +52,7 @@ export const recordsEnglish = {
       queued: "Scan queued",
       running: "Scanning…",
       finished: "Scan finished",
-      failed: "The scan could not be queued.",
+      failed: "{{name}} could not be deleted.",
       unconfirmed: "The scan is still running. Refresh later to see its result.",
     },
     sections: {
@@ -81,9 +81,12 @@ export const recordsEnglish = {
       next: "Next photo",
       position: "{{current}} of {{total}}",
     },
+    actions: {
+      more: "More actions",
+      moreFor: "More actions for {{name}}",
+    },
     delete: {
       action: "Delete",
-      actionFor: "Delete {{name}}",
       reviewTitle: "Review deletion",
       reviewDescription: "The file moves to the trash in the record root.",
       confirmDescription: "Kikoto does not empty the trash. Move the file back and scan to list it again.",
@@ -97,6 +100,13 @@ export const recordsEnglish = {
       failed: "The file could not be deleted.",
       notDeletable: "This file cannot be deleted. It may be missing or reached through a link.",
       rootUnavailable: "The record root is offline, so nothing was deleted.",
+      folderReviewDescription: "The folder moves to the trash in the record root with everything in it.",
+      folderSummary: "Delete the folder {{name}} with everything in it.",
+      removedFolder: "The folder with its subfolders and files, moved to .kikoto-trash/records in the record root.",
+      removedFolderState: "Everyone's progress on its files, their thumbnails, and their playback cache.",
+      keptOtherFolders: "The other folders and files beside it.",
+      keptFolderTrash: "The folder itself, until someone empties the trash.",
+      folderNotDeletable: "This folder cannot be deleted. It may be missing or reached through a link.",
     },
   },
 } as const;

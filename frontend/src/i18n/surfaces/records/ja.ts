@@ -53,7 +53,7 @@ export const recordsJapanese = {
       queued: "スキャンをキューに追加しました",
       running: "スキャン中…",
       finished: "スキャンが完了しました",
-      failed: "スキャンをキューに追加できませんでした。",
+      failed: "{{name}} を削除できませんでした。",
       unconfirmed: "スキャンはまだ実行中です。後で更新して結果を確認してください。",
     },
     sections: {
@@ -82,9 +82,12 @@ export const recordsJapanese = {
       next: "次の写真",
       position: "{{total}} 枚中 {{current}} 枚目",
     },
+    actions: {
+      more: "その他の操作",
+      moreFor: "{{name}} のその他の操作",
+    },
     delete: {
       action: "削除",
-      actionFor: "{{name}} を削除",
       reviewTitle: "削除を確認",
       reviewDescription: "ファイルは記録ルートのゴミ箱に移動します。",
       confirmDescription: "Kikoto はゴミ箱を空にしません。ファイルを元に戻してスキャンすると、再び一覧に表示されます。",
@@ -98,6 +101,13 @@ export const recordsJapanese = {
       failed: "ファイルを削除できませんでした。",
       notDeletable: "このファイルは削除できません。存在しないか、リンク経由の可能性があります。",
       rootUnavailable: "記録ルートがオフラインのため、何も削除していません。",
+      folderReviewDescription: "フォルダーは中身ごと記録ルートのゴミ箱に移動します。",
+      folderSummary: "フォルダー {{name}} を中身ごと削除します。",
+      removedFolder: "フォルダーとそのサブフォルダー、ファイル。記録ルートの .kikoto-trash/records に移動します。",
+      removedFolderState: "全員のその中のファイルの再生位置、サムネイル、再生用キャッシュ。",
+      keptOtherFolders: "隣にある他のフォルダーとファイル。",
+      keptFolderTrash: "ゴミ箱が空にされるまでのフォルダー本体。",
+      folderNotDeletable: "このフォルダーは削除できません。存在しないか、リンク経由の可能性があります。",
     },
   },
 } as const;

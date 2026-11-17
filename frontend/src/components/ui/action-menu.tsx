@@ -26,6 +26,7 @@ export function ActionMenu({
   align = "end",
   keepWhenEmpty = false,
   toolbar = false,
+  quiet = false,
 }: {
   label: string;
   /** Visible on wide layouts; phones show the icon only. */
@@ -39,6 +40,8 @@ export function ActionMenu({
   keepWhenEmpty?: boolean;
   /** Matches the page toolbar's icon buttons instead of the outlined action button. */
   toolbar?: boolean;
+  /** A borderless trigger for a row or tile that carries its own actions. */
+  quiet?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -93,7 +96,7 @@ export function ActionMenu({
     <div className="relative shrink-0" ref={anchorRef}>
       <Button
         ref={buttonRef}
-        variant={toolbar ? "toolbar" : open ? "secondary" : "outline"}
+        variant={toolbar ? "toolbar" : open ? "secondary" : quiet ? "ghost" : "outline"}
         size={toolbar ? "icon-sm" : "icon"}
         className={
           toolbar

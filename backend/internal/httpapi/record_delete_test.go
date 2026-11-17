@@ -120,3 +120,79 @@ func TestRecordDeleteRequiresDownloadsManage(t *testing.T) {
 		t.Fatalf("file moved without permission: %v", err)
 	}
 }
+
+func (s recordTestServer) deleteFolder(t *testing.T, relativePath string) *httptest.ResponseRecorder {
+	t.Helper()
+	var id int64
+	if err := s.server.db.QueryRow(`SELECT id FROM record_folder WHERE relative_path=?`, relativePath).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodDelete, "/api/records/folders/"+strconv.FormatInt(id, 10), nil)
+	request.AddCookie(s.cookie)
+	response := httptest.NewRecorder()
+	s.handler.ServeHTTP(response, request)
+	return response
+}
+
+func TestRecordFolderDeleteMovesTheFolderWithEverythingInItToTheTrash(t *testing.T) {
+	server := newRecordTestServer(t)
+	video := server.ids["Day 1.mp4"]
+	if err := server.server.recordStore.SaveProgress(context.Background(), 1, video, record.Progress{PositionSeconds: 30}); err != nil {
+		t.Fatal(err)
+	}
+	server.getThumbnail(t, "Day 1.mp4")
+	segment := filepath.Join(server.server.cfg.CacheRoot, transcodeCacheRootRelative, "hls", recordPlaybackCacheKey(video), "rev", "segment-000000.ts")
+	if err := os.MkdirAll(filepath.Dir(segment), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(segment, []byte("segment"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A file the library does not list moves with the folder too.
+	if err := os.WriteFile(filepath.Join(server.root, "trip", "Thumbs.db"), []byte("cache"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := server.deleteFolder(t, "trip")
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete folder = %d %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		TrashPath string  `json:"trashPath"`
+		AssetIDs  []int64 `json:"assetIds"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body.TrashPath, record.TrashDir+"/") || !strings.HasSuffix(body.TrashPath, "/trip") || len(body.AssetIDs) != 4 {
+		t.Fatalf("folder delete = %+v", body)
+	}
+	for _, name := range []string{"Day 1.mp4", "Day 2.mp4", "Day 1.srt", "notes.ass", "Thumbs.db"} {
+		if _, err := os.Stat(filepath.Join(server.root, filepath.FromSlash(body.TrashPath), name)); err != nil {
+			t.Fatalf("%s in the trash: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(server.root, "trip")); !os.IsNotExist(err) {
+		t.Fatalf("folder still exists: %v", err)
+	}
+	var folders, assets, progress int
+	if err := server.server.db.QueryRow(`SELECT (SELECT COUNT(*) FROM record_folder WHERE relative_path='trip'), (SELECT COUNT(*) FROM record_asset), (SELECT COUNT(*) FROM record_asset_progress)`).Scan(&folders, &assets, &progress); err != nil || folders+assets+progress != 0 {
+		t.Fatalf("rows left = folders %d assets %d progress %d, %v", folders, assets, progress, err)
+	}
+	if _, err := os.Stat(filepath.Dir(filepath.Dir(segment))); !os.IsNotExist(err) {
+		t.Fatalf("playback cache of a file in the folder remains: %v", err)
+	}
+	if server.thumbnailPath(t, "Day 1.mp4") != "" {
+		t.Fatal("thumbnail of a file in the folder remains")
+	}
+}
+
+func TestRecordFolderDeleteRefusesTheRootFolder(t *testing.T) {
+	server := newRecordTestServer(t)
+	if response := server.deleteFolder(t, "."); response.Code != http.StatusConflict {
+		t.Fatalf("delete root folder = %d %s", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(server.root, "trip", "Day 1.mp4")); err != nil {
+		t.Fatalf("root contents moved: %v", err)
+	}
+}

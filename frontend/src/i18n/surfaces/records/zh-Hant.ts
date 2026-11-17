@@ -50,7 +50,7 @@ export const recordsHant = {
       queued: "掃描已排入佇列",
       running: "正在掃描…",
       finished: "掃描完成",
-      failed: "無法將掃描加入佇列。",
+      failed: "無法刪除 {{name}}。",
       unconfirmed: "掃描仍在進行。請稍後重新整理查看結果。",
     },
     sections: {
@@ -79,9 +79,12 @@ export const recordsHant = {
       next: "下一張照片",
       position: "第 {{current}} 張，共 {{total}} 張",
     },
+    actions: {
+      more: "更多操作",
+      moreFor: "{{name}} 的更多操作",
+    },
     delete: {
       action: "刪除",
-      actionFor: "刪除 {{name}}",
       reviewTitle: "確認刪除",
       reviewDescription: "檔案會移到記錄根目錄的回收區。",
       confirmDescription: "Kikoto 不會清空回收區。把檔案移回原處並掃描後，它會重新出現在列表中。",
@@ -95,6 +98,13 @@ export const recordsHant = {
       failed: "無法刪除此檔案。",
       notDeletable: "無法刪除此檔案。它可能已不存在，或經由連結存取。",
       rootUnavailable: "記錄根目錄處於離線狀態，沒有刪除任何內容。",
+      folderReviewDescription: "資料夾會連同其中所有內容移到記錄根目錄的回收區。",
+      folderSummary: "刪除資料夾 {{name}} 及其中所有內容。",
+      removedFolder: "資料夾及其子資料夾和檔案，移到記錄根目錄的 .kikoto-trash/records。",
+      removedFolderState: "所有人在其中檔案上的播放進度、它們的縮圖和播放快取。",
+      keptOtherFolders: "旁邊的其他資料夾和檔案。",
+      keptFolderTrash: "在有人清空回收區之前，資料夾本身仍會保留。",
+      folderNotDeletable: "無法刪除此資料夾。它可能已不存在，或經由連結存取。",
     },
   },
 } as const;

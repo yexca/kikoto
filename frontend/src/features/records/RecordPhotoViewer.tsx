@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MediaOverlay } from "@/components/media-overlay";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { assetURL, type RecordAsset } from "@/lib/api";
@@ -79,16 +80,21 @@ export function RecordPhotoViewer({
           </p>
         </div>
         {onDelete && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11"
-            aria-label={t("records.delete.action")}
-            title={t("records.delete.action")}
-            onClick={onDelete}
-          >
-            <Trash2 className="h-5 w-5" />
-          </Button>
+          <ActionMenu
+            quiet
+            label={t("records.actions.more")}
+            buttonLabel={t("records.actions.more")}
+            buttonLabelClassName="hidden"
+            triggerClassName="h-11 w-11"
+            items={[
+              {
+                key: "delete",
+                label: t("records.delete.action"),
+                icon: <Trash2 className="h-4 w-4" />,
+                onSelect: onDelete,
+              },
+            ]}
+          />
         )}
       </div>
       <div className="relative flex min-h-0 flex-1 select-none">

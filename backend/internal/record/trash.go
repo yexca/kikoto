@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-// TrashDir is where deleted record files go, relative to the record root. It
-// stays on the root's filesystem so a deletion is a rename, and the scanner
-// skips it. Kikoto never empties it.
+// TrashDir is where deleted record files and folders go, relative to the
+// record root. It stays on the root's filesystem so a deletion is a rename,
+// and the scanner skips it. Kikoto never empties it.
 const TrashDir = ".kikoto-trash/records"
 
 var (
@@ -24,6 +24,9 @@ var (
 	// ErrAssetNotDeletable refuses a file that is missing, is not a regular
 	// file, or is reached through a link.
 	ErrAssetNotDeletable = errors.New("record file cannot be deleted")
+	// ErrFolderNotDeletable refuses the root folder, a missing folder, and a
+	// folder that is reached through a link or is not a plain directory.
+	ErrFolderNotDeletable = errors.New("record folder cannot be deleted")
 )
 
 // TrashedAsset is a record file moved to the trash.
@@ -33,18 +36,23 @@ type TrashedAsset struct {
 	TrashPath string
 }
 
+// TrashedFolder is a record folder moved to the trash with everything in it.
+type TrashedFolder struct {
+	FolderID int64
+	// AssetIDs are the indexed files the folder held, at any depth.
+	AssetIDs []int64
+	// TrashPath is where the folder now is, relative to the record root.
+	TrashPath string
+}
+
 // TrashAsset moves one available record file into the record root's trash,
-// keeping its relative path under a folder named for the time and the asset,
+// keeping its relative path under a folder named for the time and the file,
 // and forgets the asset with every viewer's progress and state. It never
 // follows a link: every component of the file's path and of the trash must be
 // a plain directory, and the file a regular file.
 func (s *Store) TrashAsset(ctx context.Context, id int64, now time.Time) (TrashedAsset, error) {
-	root, err := s.EnsureRoot(ctx)
-	if err != nil {
+	if err := s.requireOnline(ctx); err != nil {
 		return TrashedAsset{}, err
-	}
-	if root.State != "online" {
-		return TrashedAsset{}, ErrRootOffline
 	}
 	asset, err := s.Asset(ctx, id)
 	if err != nil {
@@ -53,79 +61,181 @@ func (s *Store) TrashAsset(ctx context.Context, id int64, now time.Time) (Trashe
 	if asset.Availability != "available" {
 		return TrashedAsset{}, ErrAssetNotDeletable
 	}
-	base := filepath.Clean(s.root)
-	source, err := plainFilePath(base, asset.RelativePath)
+	trashRel, err := s.moveToTrash(asset.RelativePath, fmt.Sprintf("file-%d", asset.ID), false, now, func() error {
+		return s.forget(ctx, []string{
+			`DELETE FROM record_asset_progress WHERE asset_id=?`,
+			`DELETE FROM record_asset_state WHERE asset_id=?`,
+			`DELETE FROM record_asset WHERE id=?`,
+		}, asset.ID)
+	})
 	if err != nil {
-		return TrashedAsset{}, err
-	}
-	trashRel := path.Join(TrashDir, fmt.Sprintf("%s-%d", now.UTC().Format("20060102T150405Z"), asset.ID), filepath.ToSlash(asset.RelativePath))
-	target, err := prepareTrashTarget(base, trashRel)
-	if err != nil {
-		return TrashedAsset{}, err
-	}
-	// The source is checked again right before the rename, closing most of the
-	// window in which a component could be swapped for a link.
-	if _, err := plainFilePath(base, asset.RelativePath); err != nil {
-		return TrashedAsset{}, err
-	}
-	if err := os.Rename(source, target); err != nil {
-		return TrashedAsset{}, fmt.Errorf("move record file to trash: %w", err)
-	}
-	if err := s.forgetAsset(ctx, asset.ID); err != nil {
-		// The file goes back so the index still describes it.
-		if restoreErr := os.Rename(target, source); restoreErr != nil {
-			return TrashedAsset{}, errors.Join(err, fmt.Errorf("restore record file from trash: %w", restoreErr))
-		}
 		return TrashedAsset{}, err
 	}
 	return TrashedAsset{Asset: asset, TrashPath: trashRel}, nil
 }
 
-func (s *Store) forgetAsset(ctx context.Context, id int64) error {
+// FolderAssetIDs lists the indexed files a folder holds at any depth.
+func (s *Store) FolderAssetIDs(ctx context.Context, folderID int64) ([]int64, error) {
+	var key string
+	if err := s.db.QueryRowContext(ctx, `SELECT path_key FROM record_folder WHERE id=? AND root_id=1`, folderID).Scan(&key); err != nil {
+		return nil, err
+	}
+	low, high := subtreeBounds(key)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND path_key>=? AND path_key<?`, low, high)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// TrashFolder moves one active record folder, other than the root, into the
+// record root's trash with everything in it, under a folder named for the
+// time and the folder, and forgets its subfolders and files with every
+// viewer's progress and state. Every component of the folder's path must be
+// a plain directory; what the folder holds moves with it and is never
+// followed. beforeMove runs with the files the folder holds once the folder
+// may be deleted, before it moves.
+func (s *Store) TrashFolder(ctx context.Context, id int64, now time.Time, beforeMove func(assetIDs []int64)) (TrashedFolder, error) {
+	if err := s.requireOnline(ctx); err != nil {
+		return TrashedFolder{}, err
+	}
+	var rel, key, state string
+	if err := s.db.QueryRowContext(ctx, `SELECT relative_path, path_key, state FROM record_folder WHERE id=? AND root_id=1`, id).Scan(&rel, &key, &state); err != nil {
+		return TrashedFolder{}, err
+	}
+	if key == "." || state != "active" {
+		return TrashedFolder{}, ErrFolderNotDeletable
+	}
+	if _, err := plainPath(filepath.Clean(s.root), rel, true); err != nil {
+		return TrashedFolder{}, ErrFolderNotDeletable
+	}
+	assetIDs, err := s.FolderAssetIDs(ctx, id)
+	if err != nil {
+		return TrashedFolder{}, err
+	}
+	if beforeMove != nil {
+		beforeMove(assetIDs)
+	}
+	low, high := subtreeBounds(key)
+	trashRel, err := s.moveToTrash(rel, fmt.Sprintf("folder-%d", id), true, now, func() error {
+		return s.forget(ctx, []string{
+			`DELETE FROM record_asset_progress WHERE asset_id IN (SELECT id FROM record_asset WHERE root_id=1 AND path_key>=?2 AND path_key<?3)`,
+			`DELETE FROM record_asset_state WHERE asset_id IN (SELECT id FROM record_asset WHERE root_id=1 AND path_key>=?2 AND path_key<?3)`,
+			`DELETE FROM record_asset WHERE root_id=1 AND path_key>=?2 AND path_key<?3`,
+			`DELETE FROM record_folder WHERE root_id=1 AND (id=?1 OR (path_key>=?2 AND path_key<?3))`,
+		}, id, low, high)
+	})
+	if err != nil {
+		return TrashedFolder{}, err
+	}
+	return TrashedFolder{FolderID: id, AssetIDs: assetIDs, TrashPath: trashRel}, nil
+}
+
+// subtreeBounds are the path keys below a folder's key: every key that starts
+// with the key and a slash sorts between them, since "0" follows "/".
+func subtreeBounds(key string) (string, string) {
+	return key + "/", key + "0"
+}
+
+func (s *Store) requireOnline(ctx context.Context) error {
+	root, err := s.EnsureRoot(ctx)
+	if err != nil {
+		return err
+	}
+	if root.State != "online" {
+		return ErrRootOffline
+	}
+	return nil
+}
+
+// moveToTrash renames rel, a regular file or a plain directory below the
+// record root, into the trash under a folder named for the time and name,
+// keeping rel below it, then runs forget. When forget fails, the item moves
+// back so the index still describes it.
+func (s *Store) moveToTrash(rel, name string, directory bool, now time.Time, forget func() error) (string, error) {
+	refused := ErrAssetNotDeletable
+	if directory {
+		refused = ErrFolderNotDeletable
+	}
+	base := filepath.Clean(s.root)
+	source, err := plainPath(base, rel, directory)
+	if err != nil {
+		return "", refused
+	}
+	trashRel := path.Join(TrashDir, now.UTC().Format("20060102T150405Z")+"-"+name, filepath.ToSlash(rel))
+	target, err := prepareTrashTarget(base, trashRel)
+	if err != nil {
+		return "", err
+	}
+	// The source is checked again right before the rename, closing most of the
+	// window in which a component could be swapped for a link.
+	if _, err := plainPath(base, rel, directory); err != nil {
+		return "", refused
+	}
+	if err := os.Rename(source, target); err != nil {
+		return "", fmt.Errorf("move record item to trash: %w", err)
+	}
+	if err := forget(); err != nil {
+		if restoreErr := os.Rename(target, source); restoreErr != nil {
+			return "", errors.Join(err, fmt.Errorf("restore record item from trash: %w", restoreErr))
+		}
+		return "", err
+	}
+	return trashRel, nil
+}
+
+// forget runs statements in one transaction with the same arguments.
+func (s *Store) forget(ctx context.Context, statements []string, args ...any) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, statement := range []string{
-		`DELETE FROM record_asset_progress WHERE asset_id=?`,
-		`DELETE FROM record_asset_state WHERE asset_id=?`,
-		`DELETE FROM record_asset WHERE id=?`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement, args...); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-// plainFilePath resolves rel under base when every directory on the way is a
-// plain directory and rel itself a regular file.
-func plainFilePath(base, rel string) (string, error) {
+// plainPath resolves rel under base when every directory on the way is a
+// plain directory and rel itself a plain directory or a regular file.
+func plainPath(base, rel string, directory bool) (string, error) {
 	target, parts, err := containedPath(base, rel)
 	if err != nil || len(parts) == 0 {
-		return "", ErrAssetNotDeletable
+		return "", errors.New("record path escapes root")
 	}
 	current := base
 	for index, part := range parts {
 		current = filepath.Join(current, part)
 		info, err := os.Lstat(current)
 		if err != nil {
-			return "", ErrAssetNotDeletable
+			return "", err
 		}
 		last := index == len(parts)-1
-		if (last && !info.Mode().IsRegular()) || (!last && info.Mode().Type() != fs.ModeDir) {
-			return "", ErrAssetNotDeletable
+		plainDir := info.Mode().Type() == fs.ModeDir
+		if (last && !directory && !info.Mode().IsRegular()) || ((!last || directory) && !plainDir) {
+			return "", errors.New("record path is not plain")
 		}
 	}
 	if err := resolvesInside(base, target); err != nil {
-		return "", ErrAssetNotDeletable
+		return "", err
 	}
 	return target, nil
 }
 
 // prepareTrashTarget creates the trash folders of rel under base, refusing
-// any component that is not a plain directory, and returns the path the file
+// any component that is not a plain directory, and returns the path the item
 // moves to, which must not exist yet.
 func prepareTrashTarget(base, rel string) (string, error) {
 	target, parts, err := containedPath(base, rel)

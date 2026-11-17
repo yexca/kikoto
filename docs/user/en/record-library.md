@@ -101,9 +101,10 @@ its subtitles; `.srt` files must be UTF-8. Text subtitles inside the video
 are offered too. The previous and next buttons step through the folder's
 videos, and Back or Esc closes the player.
 
-The headphones button, **Play as audio**, closes the video player and
-continues the video's sound in the global audio player from the same moment,
-with the folder's other videos queued after it as sound.
+Under the video, **Play as audio** closes the video player and continues the
+video's sound in the global audio player from the same moment, with the
+folder's other videos queued after it as sound. **More actions** beside it
+holds **Delete**.
 
 The position is saved per account about every ten seconds, on pause, at the
 end, and when the player closes; saving it needs library write access. A video
@@ -130,20 +131,23 @@ works as it does for Library audio. The position is saved as it is for videos.
 Record audio has no lyrics, does not count toward listening history, and stays
 out of the queue the player restores after a reload.
 
-## Deleting files
+## Deleting files and folders
 
 An account with file management access (`downloads:manage`) can delete Record
-files: the trash button in the video player or photo viewer deletes the open
-file, and the one at the end of a row under **Files** deletes that file. A
-review names the file by its path inside the record root and lists what goes
-and what stays; **Continue**, then **Move to trash**, deletes it. The viewer
-moves on to the next video or photo, or closes when there is none.
+files and folders. **Delete** is in a **More actions** menu: under the video in
+the video player, at the top of the photo viewer, at the end of each row under
+**Files**, and beside the name of each folder tile. A review names the file or
+folder by its path inside the record root and lists what goes and what stays;
+**Continue**, then **Move to trash**, deletes it. After a file is deleted, the
+viewer moves on to the next video or photo, or closes when there is none.
 
-Deleting moves the file into `.kikoto-trash/records` in the record root, under
-a folder named for the time and the file, with its folders inside the root
-kept. The file's progress for every account, its thumbnail, and its playback
-cache are removed, and the file leaves the global audio player's queue. Files
-beside it, such as its subtitles, stay. Kikoto never empties the trash: to
-restore a file, move it back to its folder and scan, or delete it from disk to
-free the space. Nothing is deleted while the record root is offline, and a
-file reached through a link is refused.
+Deleting moves the file or folder into `.kikoto-trash/records` in the record
+root, under a folder named for the time and the item, with its folders inside
+the root kept. A folder goes with everything in it, including files Record
+does not list. The progress of every account, the thumbnails, and the playback
+cache of the files removed go too, and those files leave the global audio
+player's queue. Files beside a deleted file, such as its subtitles, stay.
+Kikoto never empties the trash: to restore a file or folder, move it back and
+scan, or delete it from disk to free the space. Nothing is deleted while the
+record root is offline, the root folder itself cannot be deleted, and an item
+reached through a link is refused.

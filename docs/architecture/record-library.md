@@ -88,18 +88,21 @@ cache directories are keyed `record-<asset id>` beside the numeric keys of
 library locations, and its revision covers the asset id, relative path, size,
 and modification time, so it never shares segments with a library file.
 
-Deleting a record file moves it into `.kikoto-trash/records` in the record
-root, which the scanner skips, under a folder named for the UTC time and the
-asset id that keeps the file's relative path. It is a rename on the root's own
-filesystem; Kikoto never copies the file elsewhere and never empties the
-trash. The deletion is refused while the root is not online, for an asset that
-is not available, and when any component of the file's path, or of the trash
-folders, is a link or anything other than a plain directory or regular file;
-the path is checked again right before the rename. The
-file's running HLS encodes stop before the move and again after it, the asset
-row goes with every viewer's progress and state, and the playback cache
-directories under its `record-<asset id>` key and its thumbnails are removed.
-When the row cannot be removed, the file moves back.
+Deleting a record file or folder moves it into `.kikoto-trash/records` in
+the record root, which the scanner skips, under a folder named for the UTC
+time and `file-<asset id>` or `folder-<folder id>` that keeps the item's
+relative path. It is a rename on the root's own filesystem; Kikoto never
+copies the item elsewhere and never empties the trash. A folder moves with
+everything in it, listed or not, and nothing inside it is followed. The
+deletion is refused while the root is not online, for an asset that is not
+available, for the root folder and a missing folder, and when any component
+of the item's path, or of the trash folders, is a link or anything other than
+a plain directory or, for a file, a regular file; the path is checked again
+right before the rename. The running HLS encodes of every file removed stop
+before the move and again after it; the asset rows, and a folder's subfolder
+rows, go with every viewer's progress and state; and the playback cache
+directories under each file's `record-<asset id>` key and its thumbnails are
+removed. When the rows cannot be removed, the item moves back.
 
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop
@@ -144,7 +147,8 @@ The HTTP surface is under `/api/records`:
   video and audio progress.
 - `DELETE /api/records/assets/{id}` moves an available record file to the
   trash for `downloads:manage` users and answers its `trashPath` relative to
-  the record root.
+  the record root; `DELETE /api/records/folders/{id}` moves a folder with
+  everything in it and also answers `assetIds`, the files it held.
 
 The **Record** navigation entry opens a folder browser over this tree with a
 full-screen video player and photo viewer, described in

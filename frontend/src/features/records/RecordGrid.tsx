@@ -2,9 +2,10 @@ import { Check, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Tras
 import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { assetURL, type RecordAsset, type RecordFolder, type RecordProgress } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 import { watchedFraction } from "./recordProgress";
 import { baseName, fileTypeLabel, formatFileSize, formatPlaybackTime } from "./recordsModel";
@@ -30,17 +31,24 @@ export function RecordSection({ title, count, children }: { title: string; count
 export const RecordFolderTile = memo(function RecordFolderTile({
   folder,
   onOpen,
+  onDelete,
 }: {
   folder: RecordFolder;
   onOpen: (folder: RecordFolder) => void;
+  /** Reviews deleting the folder; absent for a viewer who may not delete files. */
+  onDelete?: (folder: RecordFolder) => void;
 }) {
   const { t } = useTranslation();
   const items = folder.childCount + folder.assetCount;
   // A poster is the folder's cover; a folder with only a backdrop shows that
   // instead. The square crop suits both portrait posters and wide backdrops.
   const cover = folder.artwork.posterUrl ?? folder.artwork.backdropUrl;
-  return (
-    <button type="button" className={`group flex min-w-0 flex-col gap-2 ${tileFocus}`} onClick={() => onOpen(folder)}>
+  const tile = (
+    <button
+      type="button"
+      className={`group flex w-full min-w-0 flex-col gap-2 ${tileFocus}`}
+      onClick={() => onOpen(folder)}
+    >
       <span className="relative block aspect-square w-full overflow-hidden rounded-lg border bg-muted">
         {cover ? (
           <img
@@ -56,13 +64,45 @@ export const RecordFolderTile = memo(function RecordFolderTile({
           </span>
         )}
       </span>
-      <span className="min-w-0 px-0.5">
+      <span className={cn("min-w-0 px-0.5", onDelete && "pr-9")}>
         <span className="line-clamp-2 break-words text-sm font-medium group-hover:text-primary">{folder.name}</span>
         <span className="block text-xs text-muted-foreground">{t("records.itemCount", { count: items })}</span>
       </span>
     </button>
   );
+  if (!onDelete) return tile;
+  // The menu sits beside the name, outside the tile's button.
+  return (
+    <div className="relative min-w-0">
+      {tile}
+      <div className="absolute bottom-0 right-0">
+        <RecordItemMenu name={folder.name} onDelete={() => onDelete(folder)} />
+      </div>
+    </div>
+  );
 });
+
+/** The More menu of a Record file row or folder tile, which holds Delete. */
+function RecordItemMenu({ name, onDelete }: { name: string; onDelete: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <ActionMenu
+      quiet
+      label={t("records.actions.moreFor", { name })}
+      buttonLabel={t("records.actions.more")}
+      buttonLabelClassName="hidden"
+      triggerClassName="h-9 w-9 text-muted-foreground"
+      items={[
+        {
+          key: "delete",
+          label: t("records.delete.action"),
+          icon: <Trash2 className="h-4 w-4" />,
+          onSelect: onDelete,
+        },
+      ]}
+    />
+  );
+}
 
 export const RecordVideoTile = memo(function RecordVideoTile({
   video,
@@ -204,8 +244,8 @@ function FileThumbnail({ file }: { file: RecordAsset }) {
 
 /**
  * A folder's files that are not tiles, one row each with its type and size.
- * Audio rows play in the global player and show how much was heard. Each row
- * ends with Delete for a viewer who may delete files.
+ * Audio rows play in the global player and show how much was heard. For a
+ * viewer who may delete files, each row ends with a More menu holding Delete.
  */
 export const RecordFileList = memo(function RecordFileList({
   files,
@@ -221,7 +261,7 @@ export const RecordFileList = memo(function RecordFileList({
 }) {
   const { t } = useTranslation();
   return (
-    <ul className="divide-y overflow-hidden rounded-lg border">
+    <ul className="max-w-3xl divide-y overflow-hidden rounded-lg border">
       {files.map((file) => {
         const playable = file.kind === "audio" && Boolean(file.streamUrl);
         const heard = playable ? progress.get(file.id) : undefined;
@@ -280,18 +320,7 @@ export const RecordFileList = memo(function RecordFileList({
             ) : (
               <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2">{body}</div>
             )}
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 text-muted-foreground"
-                aria-label={t("records.delete.actionFor", { name: file.name })}
-                title={t("records.delete.action")}
-                onClick={() => onDelete(file)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
+            {onDelete && <RecordItemMenu name={file.name} onDelete={() => onDelete(file)} />}
           </li>
         );
       })}

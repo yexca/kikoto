@@ -8,7 +8,7 @@ import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/li
 import { useLibraryPlayer } from "@/player/PlayerProvider";
 import { RECORD_PROGRESS_SAVED_EVENT, type RecordProgressSavedDetail } from "@/player/recordTrackProgress";
 
-import { RecordDeleteDialog } from "./RecordDeleteDialog";
+import { RecordDeleteDialog, type RecordDeleteTarget } from "./RecordDeleteDialog";
 import { RecordFileList, RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
 import { RecordMediaPlayer } from "./RecordMediaPlayer";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
@@ -51,7 +51,7 @@ function isEditableElement(target: EventTarget | null) {
  * its own full-screen video player and photo viewer. Audio files, and a
  * video's sound on request, play in the global player with the folder's other
  * files of the same kind as the queue. An account that may delete files moves
- * one to the record trash after a review. The folder and any open overlay live in
+ * a file or a folder to the record trash after a review. The folder and any open overlay live in
  * the URL, so Back, Forward, and reload keep the place.
  */
 export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: string }) {
@@ -154,14 +154,16 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
       );
   }, [folderName, listing?.folderId, pendingAudio, playAudio, player, view]);
 
-  // The file whose deletion is under review.
-  const [deleting, setDeleting] = useState<RecordAsset | null>(null);
-  const reviewDelete = useStableCallback((asset: RecordAsset) => setDeleting(asset));
+  // The file or folder whose deletion is under review.
+  const [deleting, setDeleting] = useState<RecordDeleteTarget | null>(null);
+  const reviewDelete = useStableCallback((asset: RecordAsset) => setDeleting({ kind: "file", asset }));
+  const reviewFolderDelete = useStableCallback((folder: RecordFolder) => setDeleting({ kind: "folder", folder }));
   // A deleted file open in the viewer gives way to its next sibling, or the previous one.
-  const finishDelete = (asset: RecordAsset) => {
+  const finishDelete = (target: RecordDeleteTarget) => {
     setDeleting(null);
     const open = location.overlay;
-    if (open && open.assetId === asset.id && view) {
+    const asset = target.kind === "file" ? target.asset : null;
+    if (asset && open && open.assetId === asset.id && view) {
       const siblings = open.kind === "video" ? view.videos : view.photos;
       const { previous, next } = siblingIds(siblings, asset.id);
       const target = next ?? previous;
@@ -239,7 +241,12 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const foldersGrid = view && view.folders.length > 0 && (
     <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
       {view.folders.map((folder) => (
-        <RecordFolderTile key={folder.id} folder={folder} onOpen={openFolder} />
+        <RecordFolderTile
+          key={folder.id}
+          folder={folder}
+          onOpen={openFolder}
+          onDelete={canDelete ? reviewFolderDelete : undefined}
+        />
       ))}
     </div>
   );
@@ -368,7 +375,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           onClose={closeOverlay}
         />
       )}
-      {deleting && <RecordDeleteDialog asset={deleting} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />}
+      {deleting && <RecordDeleteDialog target={deleting} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />}
     </div>
   );
 }

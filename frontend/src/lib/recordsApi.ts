@@ -103,4 +103,7 @@ export const recordsApi = {
     putJSONBody<void>(`/api/records/assets/${id}/progress`, progress),
   /** Moves a record file to the trash in the record root; `trashPath` is relative to that root. */
   deleteRecordAsset: (id: number) => deleteJSON<{ trashPath: string }>(`/api/records/assets/${id}`),
+  /** Moves a record folder with everything in it to the trash; `assetIds` are the files it held. */
+  deleteRecordFolder: (id: number) =>
+    deleteJSON<{ trashPath: string; assetIds: number[] }>(`/api/records/folders/${id}`),
 };

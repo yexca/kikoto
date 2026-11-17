@@ -45,3 +45,28 @@ func TestTrashAssetKeepsTheRowOfAFileItCannotMove(t *testing.T) {
 		t.Fatalf("row of an unmoved file = %v", err)
 	}
 }
+
+func TestTrashFolderRefusesAFolderReachedThroughALink(t *testing.T) {
+	store, db, root := scannedStore(t, map[string]string{"trip/day/clip.mp4": "video"})
+	var id int64
+	if err := db.QueryRow(`SELECT id FROM record_folder WHERE relative_path='trip/day'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outside, "day"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "trip")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "trip")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	moved := false
+	if _, err := store.TrashFolder(context.Background(), id, time.Now(), func([]int64) { moved = true }); !errors.Is(err, ErrFolderNotDeletable) || moved {
+		t.Fatalf("trash through a link = %v, before move ran %v", err, moved)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "day")); err != nil {
+		t.Fatalf("folder outside the root moved: %v", err)
+	}
+}

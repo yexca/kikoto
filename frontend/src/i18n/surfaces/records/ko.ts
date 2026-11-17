@@ -52,7 +52,7 @@ export const recordsKorean = {
       queued: "스캔 대기 중",
       running: "스캔 중…",
       finished: "스캔 완료",
-      failed: "스캔을 대기열에 추가할 수 없습니다.",
+      failed: "{{name}}을(를) 삭제할 수 없습니다.",
       unconfirmed: "스캔이 아직 진행 중입니다. 나중에 새로 고침하여 결과를 확인하세요.",
     },
     sections: {
@@ -81,9 +81,12 @@ export const recordsKorean = {
       next: "다음 사진",
       position: "{{total}}장 중 {{current}}번째",
     },
+    actions: {
+      more: "추가 작업",
+      moreFor: "{{name}} 추가 작업",
+    },
     delete: {
       action: "삭제",
-      actionFor: "{{name}} 삭제",
       reviewTitle: "삭제 확인",
       reviewDescription: "파일은 기록 루트의 휴지통으로 이동합니다.",
       confirmDescription: "Kikoto는 휴지통을 비우지 않습니다. 파일을 되돌린 뒤 스캔하면 다시 목록에 표시됩니다.",
@@ -97,6 +100,13 @@ export const recordsKorean = {
       failed: "파일을 삭제할 수 없습니다.",
       notDeletable: "이 파일은 삭제할 수 없습니다. 없거나 링크를 통해 연결된 파일일 수 있습니다.",
       rootUnavailable: "기록 루트가 오프라인이라 아무것도 삭제하지 않았습니다.",
+      folderReviewDescription: "폴더는 안의 모든 항목과 함께 기록 루트의 휴지통으로 이동합니다.",
+      folderSummary: "폴더 {{name}}을(를) 안의 모든 항목과 함께 삭제합니다.",
+      removedFolder: "폴더와 그 하위 폴더, 파일. 기록 루트의 .kikoto-trash/records로 이동합니다.",
+      removedFolderState: "모든 사용자의 그 안 파일 재생 위치, 썸네일, 재생 캐시.",
+      keptOtherFolders: "옆에 있는 다른 폴더와 파일.",
+      keptFolderTrash: "휴지통을 비우기 전까지의 폴더 자체.",
+      folderNotDeletable: "이 폴더는 삭제할 수 없습니다. 없거나 링크를 통해 연결된 폴더일 수 있습니다.",
     },
   },
 } as const;
