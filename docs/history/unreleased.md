@@ -47,6 +47,11 @@
   again the next time a folder shows it.
 - Record scans are listed in Workflows as **Scan Record**, and History narrowed
   to them links to the Record page, where **Scan** starts them.
+- An account with file management access deletes a Record file from the video
+  player, the photo viewer, or its row under **Files** after a two-step review
+  that names its path in the record root. The file moves to
+  `.kikoto-trash/records` in the record root, which Kikoto never empties, and
+  its progress, thumbnail, and playback cache go with it.
 
 </details>
 

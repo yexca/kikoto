@@ -353,6 +353,20 @@ func (t *Thumbnailer) Prune(ctx context.Context, keep func(assetID int64) bool) 
 	return removed, nil
 }
 
+// Remove deletes every cached thumbnail and failure marker of one asset.
+func (t *Thumbnailer) Remove(ctx context.Context, assetID int64) error {
+	release, err := t.guard(ctx, 0)
+	if err != nil {
+		return err
+	}
+	defer release()
+	dir, prefix, _, _ := t.paths(ThumbnailSource{AssetID: assetID})
+	removeStaleThumbnails(dir, prefix, "")
+	// Only an empty bucket is removed.
+	_ = os.Remove(dir)
+	return nil
+}
+
 func thumbnailArgs(input, output, kind string, seek float64) []string {
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-protocol_whitelist", "file"}
 	if kind == "video" && seek > 0 {

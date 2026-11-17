@@ -124,7 +124,7 @@ test("a Record audio file plays in the global player from where it was left, wit
 }) => {
   const { savedAudioPositions } = await mockRecordLibrary(page);
   await page.goto("/records");
-  await page.getByRole("button", { name: /Episode 1\.wav/ }).click();
+  await page.getByRole("button", { name: /^Episode 1\.wav/ }).click();
 
   // The global player plays it; Record opens no player of its own.
   await expect(page.locator("audio")).toHaveJSProperty("paused", false);

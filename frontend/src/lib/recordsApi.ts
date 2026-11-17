@@ -1,4 +1,4 @@
-import { getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import { deleteJSON, getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
 import type { VideoPlaybackInfo } from "@/lib/mediaApi";
 
 export type RecordRoot = {
@@ -101,4 +101,6 @@ export const recordsApi = {
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),
   updateRecordProgress: (id: number, progress: RecordProgress) =>
     putJSONBody<void>(`/api/records/assets/${id}/progress`, progress),
+  /** Moves a record file to the trash in the record root; `trashPath` is relative to that root. */
+  deleteRecordAsset: (id: number) => deleteJSON<{ trashPath: string }>(`/api/records/assets/${id}`),
 };

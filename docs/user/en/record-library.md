@@ -129,3 +129,21 @@ phone, opens that folder. A file your browser cannot play as it is, such as
 works as it does for Library audio. The position is saved as it is for videos.
 Record audio has no lyrics, does not count toward listening history, and stays
 out of the queue the player restores after a reload.
+
+## Deleting files
+
+An account with file management access (`downloads:manage`) can delete Record
+files: the trash button in the video player or photo viewer deletes the open
+file, and the one at the end of a row under **Files** deletes that file. A
+review names the file by its path inside the record root and lists what goes
+and what stays; **Continue**, then **Move to trash**, deletes it. The viewer
+moves on to the next video or photo, or closes when there is none.
+
+Deleting moves the file into `.kikoto-trash/records` in the record root, under
+a folder named for the time and the file, with its folders inside the root
+kept. The file's progress for every account, its thumbnail, and its playback
+cache are removed, and the file leaves the global audio player's queue. Files
+beside it, such as its subtitles, stay. Kikoto never empties the trash: to
+restore a file, move it back to its folder and scan, or delete it from disk to
+free the space. Nothing is deleted while the record root is offline, and a
+file reached through a link is refused.

@@ -192,6 +192,23 @@ func (sessions *hlsSessions) stopAll() {
 	}
 }
 
+// stopSource stops the sessions of every profile and revision of one source,
+// named by its cache key, and waits for their encoders to exit.
+func (sessions *hlsSessions) stopSource(cacheKey string) {
+	sessions.mu.Lock()
+	running := []*hlsSession{}
+	for key, session := range sessions.sessions {
+		// A session key is transcodes/<profile directory>/<cache key>/<revision>.
+		if parts := strings.Split(key, "/"); len(parts) == 4 && parts[2] == cacheKey {
+			running = append(running, session)
+		}
+	}
+	sessions.mu.Unlock()
+	for _, session := range running {
+		session.stop()
+	}
+}
+
 func (session *hlsSession) stop() {
 	session.cancel()
 	<-session.exited

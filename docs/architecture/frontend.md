@@ -283,6 +283,16 @@ listening history, lyrics, queue restoration, and display-name refresh skip it,
 and the cover leads to its Record folder (`openPlayingRecordFolder`) instead of
 a work.
 
+For an account with `downloads:manage`, the video player, the photo viewer,
+and each `RecordFileList` row offer Delete. `RecordsBrowser` renders
+`RecordDeleteDialog` outside the overlay, so its keys never reach the viewer,
+and `MediaOverlay` leaves Escape to a dialog opened over it. The dialog is the
+shared two-step `DeleteReviewDialog` from `components/delete-review`, which work
+detail's `ConfirmMediaBatchDeleteDialog` also words; it shows only the path
+inside the record root. Once the file is in the trash, its tracks leave the
+global player queue, an open viewer steps to the next sibling, or the previous
+one, or closes, and the folder and Continue watching list load again.
+
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search
 clauses. Work detail and the pages depend on those modules instead of on each

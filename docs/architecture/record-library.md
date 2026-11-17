@@ -88,6 +88,19 @@ cache directories are keyed `record-<asset id>` beside the numeric keys of
 library locations, and its revision covers the asset id, relative path, size,
 and modification time, so it never shares segments with a library file.
 
+Deleting a record file moves it into `.kikoto-trash/records` in the record
+root, which the scanner skips, under a folder named for the UTC time and the
+asset id that keeps the file's relative path. It is a rename on the root's own
+filesystem; Kikoto never copies the file elsewhere and never empties the
+trash. The deletion is refused while the root is not online, for an asset that
+is not available, and when any component of the file's path, or of the trash
+folders, is a link or anything other than a plain directory or regular file;
+the path is checked again right before the rename. The
+file's running HLS encodes stop before the move and again after it, the asset
+row goes with every viewer's progress and state, and the playback cache
+directories under its `record-<asset id>` key and its thumbnails are removed.
+When the row cannot be removed, the file moves back.
+
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop
 candidates. The server checks image signatures before serving record artwork or
@@ -129,8 +142,11 @@ The HTTP surface is under `/api/records`:
   `library:write` users after the root is online.
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
   video and audio progress.
+- `DELETE /api/records/assets/{id}` moves an available record file to the
+  trash for `downloads:manage` users and answers its `trashPath` relative to
+  the record root.
 
 The **Record** navigation entry opens a folder browser over this tree with a
-full-screen media player and photo viewer, described in
-[Frontend](frontend.md). Record playback does not go through the global audio
-player; starting a record video or audio file pauses it.
+full-screen video player and photo viewer, described in
+[Frontend](frontend.md). Record audio, and the sound of a video on request,
+plays in the global audio player; starting a record video pauses it.

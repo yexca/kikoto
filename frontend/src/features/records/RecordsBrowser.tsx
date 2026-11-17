@@ -8,6 +8,7 @@ import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/li
 import { useLibraryPlayer } from "@/player/PlayerProvider";
 import { RECORD_PROGRESS_SAVED_EVENT, type RecordProgressSavedDetail } from "@/player/recordTrackProgress";
 
+import { RecordDeleteDialog } from "./RecordDeleteDialog";
 import { RecordFileList, RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
 import { RecordMediaPlayer } from "./RecordMediaPlayer";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
@@ -49,7 +50,8 @@ function isEditableElement(target: EventTarget | null) {
  * The Record surface: a folder browser over the independent record root with
  * its own full-screen video player and photo viewer. Audio files, and a
  * video's sound on request, play in the global player with the folder's other
- * files of the same kind as the queue. The folder and any open overlay live in
+ * files of the same kind as the queue. An account that may delete files moves
+ * one to the record trash after a review. The folder and any open overlay live in
  * the URL, so Back, Forward, and reload keep the place.
  */
 export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: string }) {
@@ -58,6 +60,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const phone = useMobileNavigationLayout();
   const enabled = !auth.demoMode;
   const canScan = auth.hasPermission("library:write");
+  const canDelete = auth.hasPermission("downloads:manage");
   const { location, historyState, navigate } = useRecordsLocation();
   const { state: rootState, reload: reloadRoot } = useRecordRoot(enabled);
   const root: RecordRoot | null = rootState.status === "ready" ? rootState.root : null;
@@ -151,6 +154,24 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
       );
   }, [folderName, listing?.folderId, pendingAudio, playAudio, player, view]);
 
+  // The file whose deletion is under review.
+  const [deleting, setDeleting] = useState<RecordAsset | null>(null);
+  const reviewDelete = useStableCallback((asset: RecordAsset) => setDeleting(asset));
+  // A deleted file open in the viewer gives way to its next sibling, or the previous one.
+  const finishDelete = (asset: RecordAsset) => {
+    setDeleting(null);
+    const open = location.overlay;
+    if (open && open.assetId === asset.id && view) {
+      const siblings = open.kind === "video" ? view.videos : view.photos;
+      const { previous, next } = siblingIds(siblings, asset.id);
+      const target = next ?? previous;
+      if (target === null) closeOverlay();
+      else navigate((at, state) => stepOverlayNavigation(at, state, target));
+    }
+    reloadTree();
+    setSavedToken((token) => token + 1);
+  };
+
   const startScan = () => {
     if (root) void scan.start(root);
   };
@@ -240,7 +261,12 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   );
 
   const filesList = view && view.files.length > 0 && (
-    <RecordFileList files={view.files} progress={progress} onPlay={playAudio} />
+    <RecordFileList
+      files={view.files}
+      progress={progress}
+      onPlay={playAudio}
+      onDelete={canDelete ? reviewDelete : undefined}
+    />
   );
 
   return (
@@ -325,6 +351,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           phone={phone}
           onStep={stepOverlay}
           onListen={(position) => listenToVideo(overlayVideo.id, position)}
+          onDelete={canDelete ? () => reviewDelete(overlayVideo) : undefined}
           onClose={closeOverlay}
           onProgressSaved={rememberProgress}
         />
@@ -337,9 +364,11 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           previous={neighbour(view.photos, overlayPhoto.id, "previous")}
           next={neighbour(view.photos, overlayPhoto.id, "next")}
           onStep={(id) => navigate((at, state) => stepOverlayNavigation(at, state, id))}
+          onDelete={canDelete ? () => reviewDelete(overlayPhoto) : undefined}
           onClose={closeOverlay}
         />
       )}
+      {deleting && <RecordDeleteDialog asset={deleting} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />}
     </div>
   );
 }

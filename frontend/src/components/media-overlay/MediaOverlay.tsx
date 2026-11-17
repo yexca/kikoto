@@ -4,7 +4,7 @@ import { lockPageScroll } from "@/components/ui/pageScrollLock";
 
 /**
  * A full-screen dark layer for a video player or photo viewer. It is a modal
- * dialog, so Escape and the native back gesture close it, the page
+ * dialog, so Escape (once no dialog is open over it) and the native back gesture close it, the page
  * behind it does not scroll, and focus returns to the tile that opened it.
  * The stage stays dark in every theme, so its controls use the dark tokens.
  */
@@ -40,6 +40,9 @@ export function MediaOverlay({
       if (event.key !== "Escape" || event.defaultPrevented) return;
       // A fullscreen video leaves fullscreen first; the browser handles that Escape.
       if (document.fullscreenElement) return;
+      // A dialog opened over the overlay, such as a delete review, closes first.
+      const modals = document.querySelectorAll("[aria-modal='true']");
+      if (modals[modals.length - 1] !== panel.current) return;
       event.preventDefault();
       onCloseRef.current();
     };

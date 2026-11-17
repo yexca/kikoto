@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -20,6 +20,7 @@ export function RecordPhotoViewer({
   previous,
   next,
   onStep,
+  onDelete,
   onClose,
 }: {
   photo: RecordAsset;
@@ -28,6 +29,8 @@ export function RecordPhotoViewer({
   previous: RecordAsset | null;
   next: RecordAsset | null;
   onStep: (id: number) => void;
+  /** Reviews deleting the photo; absent for a viewer who may not delete files. */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -75,6 +78,18 @@ export function RecordPhotoViewer({
             {t("records.photo.position", { current: index + 1, total })}
           </p>
         </div>
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11"
+            aria-label={t("records.delete.action")}
+            title={t("records.delete.action")}
+            onClick={onDelete}
+          >
+            <Trash2 className="h-5 w-5" />
+          </Button>
+        )}
       </div>
       <div className="relative flex min-h-0 flex-1 select-none">
         <ZoomableImage

@@ -1,4 +1,4 @@
-import { Headphones } from "lucide-react";
+import { Headphones, Trash2 } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -48,6 +48,7 @@ export function RecordMediaPlayer({
   phone,
   onStep,
   onListen,
+  onDelete,
   onClose,
   onProgressSaved,
 }: {
@@ -67,6 +68,8 @@ export function RecordMediaPlayer({
   onStep: (id: number) => void;
   /** Plays the video's sound in the global player from `position`; the player closes. */
   onListen: (position: number) => void;
+  /** Reviews deleting the video, which pauses; absent for a viewer who may not delete files. */
+  onDelete?: () => void;
   onClose: () => void;
   onProgressSaved: (id: number, progress: RecordProgress) => void;
 }) {
@@ -227,6 +230,21 @@ export function RecordMediaPlayer({
         >
           <Headphones className="h-5 w-5" />
         </Button>
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11"
+            aria-label={t("records.delete.action")}
+            title={t("records.delete.action")}
+            onClick={() => {
+              stage.current?.pause();
+              onDelete();
+            }}
+          >
+            <Trash2 className="h-5 w-5" />
+          </Button>
+        )}
       </VideoPlayerHeader>
       {/* The stage fits both the width and the height, so the controls stay on screen. */}
       <VideoStage

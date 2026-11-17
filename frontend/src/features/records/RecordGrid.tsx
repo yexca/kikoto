@@ -1,8 +1,9 @@
-import { Check, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Video } from "lucide-react";
+import { Check, File as FileIcon, FileText, Folder, Music, Play, Subtitles, Trash2, Video } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { assetURL, type RecordAsset, type RecordFolder, type RecordProgress } from "@/lib/api";
 
 import { watchedFraction } from "./recordProgress";
@@ -203,16 +204,20 @@ function FileThumbnail({ file }: { file: RecordAsset }) {
 
 /**
  * A folder's files that are not tiles, one row each with its type and size.
- * Audio rows play in the global player and show how much was heard.
+ * Audio rows play in the global player and show how much was heard. Each row
+ * ends with Delete for a viewer who may delete files.
  */
 export const RecordFileList = memo(function RecordFileList({
   files,
   progress,
   onPlay,
+  onDelete,
 }: {
   files: readonly RecordAsset[];
   progress: ReadonlyMap<number, RecordProgress>;
   onPlay: (id: number) => void;
+  /** Reviews deleting a file; absent for a viewer who may not delete files. */
+  onDelete?: (file: RecordAsset) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -274,6 +279,18 @@ export const RecordFileList = memo(function RecordFileList({
               </button>
             ) : (
               <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2">{body}</div>
+            )}
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-muted-foreground"
+                aria-label={t("records.delete.actionFor", { name: file.name })}
+                title={t("records.delete.action")}
+                onClick={() => onDelete(file)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             )}
           </li>
         );
