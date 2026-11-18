@@ -898,11 +898,9 @@ test("work maintenance mounts once and keeps its result region stable while sett
   });
 
   await page.goto("/metadata?reason=no_source");
-  await expect(
-    page
-      .getByRole("group", { name: "Filter DLsite works", exact: true })
-      .getByRole("button", { name: "No available source", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("combobox", { name: "Filter DLsite works", exact: true })).toHaveText(
+    /^No available source/,
+  );
   await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
   const panel = page.getByRole("region", { name: "Metadata records", exact: true });
   const loadingBox = await panel.boundingBox();

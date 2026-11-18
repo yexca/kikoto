@@ -117,6 +117,11 @@
   page arrives, and the Libraries settings tab shows its source cards.
 - Appearance chooses Light, Dark, or System from a row of tabs instead of a
   menu.
+- Metadata's **DLsite works** chooses **All**, **Needs attention**,
+  **Metadata issues**, or **No available source** from a filter in the header
+  beside search instead of a row of buttons above the list. The filter shows
+  each view's count, turns primary while it narrows the list, and on **All**
+  marks works that need attention with a dot.
 
 </details>
 

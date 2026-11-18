@@ -679,8 +679,8 @@ applies, so a still-loading element never replaces it.
   cancellation endpoint described in [Run Lists](workflows.md#run-lists).
 - Metadata: a Works group for DLsite works and Custom works,
   and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
-  the catalog and attention categories behind `WorkReasonFilter`, a segmented
-  row of pressed buttons whose options are the `reason` values `catalog`,
+  the catalog and attention categories behind `WorkReasonFilter`, a
+  `FloatingSelect` in the page header's toolbar whose options are the `reason` values `catalog`,
   `all`, `metadata`, and `no_source`, so `?reason=` links, including the run-scoped
   `?reason=metadata&metadataRun=<id>`, select the tab and the filter together. Each entry view owns a
   searchable table and management dialog. Tag and circle edits require

@@ -97,8 +97,8 @@ function useInlineSearchFits(header: RefObject<HTMLElement | null>, actions: Ref
 /**
  * Metadata page shell: tabs along the top that switch between the saved-work
  * views and the tag, circle, and voice actor views, above a header holding the active
- * view's search, list controls, and selection actions (rendered into slots)
- * and the settings popover. Views own their own tables; this page owns the
+ * view's search, list controls, and selection actions (rendered into slots),
+ * the DLsite works filter, and the settings popover. Views own their own tables; this page owns the
  * URL state, decides whether search fits inline, and composes the metadata
  * editor that the work table opens from its action column.
  */
@@ -302,6 +302,14 @@ export function WorkManagementPage({
           <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
             <div ref={setInlineSearchSlot} className="contents" />
             <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
+              {catalogReason && (
+                <WorkReasonFilter
+                  reasons={filterReasons}
+                  selected={catalogReason}
+                  counts={filterCounts}
+                  onSelect={(next) => showWorks(next)}
+                />
+              )}
               <div ref={setActionsSlot} className="contents" />
               {customView && (
                 <Button
@@ -347,14 +355,6 @@ export function WorkManagementPage({
             </div>
           </div>
           <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
-          {catalogReason && (
-            <WorkReasonFilter
-              reasons={filterReasons}
-              selected={catalogReason}
-              counts={filterCounts}
-              onSelect={(next) => showWorks(next)}
-            />
-          )}
           {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (
