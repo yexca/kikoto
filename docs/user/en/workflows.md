@@ -193,9 +193,8 @@ administrators.
   and has no card. History narrowed to it says so and links to that page.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   are preset workflows that run on demand from their target:
-  **Sync this circle's catalog…** in a circle's **More** menu, **Sync this
-  series' catalog…** there while one of its series is shown, and **Sync this
-  voice actor's catalog…** in a voice actor's **More** menu; see
+  **Sync catalog…** in a circle's or voice actor's **More** menu, and **Sync
+  series catalog…** in a circle's while one of its series is shown; see
   [Circles](circles.md) and [Voice actors](voices.md). Each opens its Run
   options in a dialog with the target filled in, and **Run** queues the sync,
   closes the dialog, and links to the run. The Run options have

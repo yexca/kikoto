@@ -471,7 +471,7 @@ test("creator lists render a label for legacy catalog sync responses", async ({ 
   await expect(page.getByText("Attention", { exact: true }).first()).toBeVisible();
 });
 
-test("creator detail does not auto-refresh and offers the first pull beside the catalog note", async ({ page }) => {
+test("creator detail does not auto-refresh and offers First pull beside More", async ({ page }) => {
   const legacyAutoRefreshRequests: string[] = [];
   const refreshRequests: Array<{ path: string; payload: unknown }> = [];
   await mockCreatorDetails(page, {
@@ -489,21 +489,21 @@ test("creator detail does not auto-refresh and offers the first pull beside the 
   await page.goto("/circles/RG09999");
   await circleLoaded;
   const circleSummary = page.getByRole("region", { name: "Circle summary" });
-  await expect(circleSummary.getByText("Only works this library already knows are listed.")).toBeVisible();
-  await expect(circleSummary.getByRole("button", { name: "Pull the full catalog" })).toBeVisible();
+  await expect(circleSummary.getByRole("button", { name: "First pull" })).toBeVisible();
   expect(legacyAutoRefreshRequests).toEqual([]);
 
   const circlePullRequest = page.waitForRequest(
     (request) => new URL(request.url()).pathname === "/api/circles/RG09999/refresh" && request.method() === "POST",
   );
-  await circleSummary.getByRole("button", { name: "Pull the full catalog" }).click();
+  await circleSummary.getByRole("button", { name: "First pull" }).click();
   await circlePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/circles/RG09999/refresh",
     payload: { catalogRefresh: "full", metadataRefresh: "missing" },
   });
-  await expect(circleSummary.getByRole("status").filter({ hasText: "Refreshing the catalog" })).toBeVisible();
-  await expect(circleSummary.getByRole("button", { name: "Pull the full catalog" })).toHaveCount(0);
+  // While the pull runs, the button follows it and opens the run.
+  await expect(circleSummary.getByRole("button", { name: "View this refresh's run" })).toBeVisible();
+  await expect(circleSummary.getByRole("button", { name: "First pull" })).toHaveCount(0);
 
   const voiceCatalogLoaded = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/voices/7/remote-matches",
@@ -511,15 +511,14 @@ test("creator detail does not auto-refresh and offers the first pull beside the 
   await page.goto("/voices/00000001");
   await voiceCatalogLoaded;
   const voiceSummary = page.getByRole("region", { name: "Voice actor summary" });
-  await expect(voiceSummary.getByText("Only works this library already knows are listed.")).toBeVisible();
-  await expect(voiceSummary.getByRole("button", { name: "Pull the full catalog" })).toBeVisible();
+  await expect(voiceSummary.getByRole("button", { name: "First pull" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(legacyAutoRefreshRequests).toEqual([]);
 
   const voicePullRequest = page.waitForRequest(
     (request) => new URL(request.url()).pathname === "/api/voices/7/catalog/refresh" && request.method() === "POST",
   );
-  await voiceSummary.getByRole("button", { name: "Pull the full catalog" }).click();
+  await voiceSummary.getByRole("button", { name: "First pull" }).click();
   await voicePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/voices/7/catalog/refresh",
@@ -756,35 +755,40 @@ test("voice detail keeps quiet actions, statistics, and the View sheet on mobile
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Add favorite",
     "Subscribe",
+    "Refresh",
     "More voice actor actions",
   ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
-  // The personal tags sit beside the actions rather than on a row of their own.
-  const tagBox = await summary.getByText("Soft", { exact: true }).boundingBox();
-  const moreBox = await moreActions.boundingBox();
-  expect(Math.abs(tagBox!.y + tagBox!.height / 2 - (moreBox!.y + moreBox!.height / 2))).toBeLessThanOrEqual(4);
+  // The counts lead the name and the personal tags follow it.
+  const [statisticsBox, headingBox, tagBox] = await Promise.all([
+    statistics.boundingBox(),
+    summary.getByRole("heading", { name: "Example Voice", exact: true }).boundingBox(),
+    summary.getByText("Soft", { exact: true }).boundingBox(),
+  ]);
+  expect(statisticsBox!.y + statisticsBox!.height).toBeLessThanOrEqual(headingBox!.y);
+  expect(tagBox!.y).toBeGreaterThanOrEqual(headingBox!.y + headingBox!.height);
 
   await moreActions.click();
   const moreMenu = page.getByRole("menu", { name: "More voice actor actions" });
   await expect(moreMenu.getByRole("menuitem")).toHaveText([
     "Change cover…",
-    /^Refresh catalog/,
     /^Retry metadata/,
-    "Sync this voice actor's catalog…",
+    "Sync catalog…",
     "Manage aliases",
   ]);
+  await page.keyboard.press("Escape");
+  await expect(moreMenu).toHaveCount(0);
   const refreshRequest = page.waitForRequest((request) => {
     if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
       return false;
     }
     return (request.postDataJSON() as { catalogRefresh?: string }).catalogRefresh === "incremental";
   });
-  await moreMenu.getByRole("menuitem", { name: /^Refresh catalog/ }).click();
+  await actions.getByRole("button", { name: "Refresh" }).click();
   expect((await refreshRequest).postDataJSON()).toEqual({ catalogRefresh: "incremental", metadataRefresh: "missing" });
-  await expect(moreMenu).toHaveCount(0);
 
   // Search stays on show; the order, the filter, and View share the caption row.
   await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeVisible();
@@ -944,13 +948,12 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
   const summary = page.getByRole("region", { name: "Circle summary" });
   const catalogCounts = summary.getByRole("group", { name: "Catalog availability" });
-  // A count of zero is left out, except the catalog's size.
-  await expect(catalogCounts.getByRole("term")).toHaveText(["Works", "Local", "Unavailable"]);
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
+  // The Works tab states the catalog's size; the summary leaves out zero counts.
+  await expect(catalogCounts.getByRole("term")).toHaveText(["Local", "Unavailable"]);
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1"]);
   await expect(catalogCounts.getByRole("button")).toHaveCount(0);
-  // A synced catalog needs no note; its sync time is a detail of the refresh entry.
+  // The sync time is a detail of the Refresh button.
   await expect(summary.getByText("Catalog synced", { exact: false })).toHaveCount(0);
-  await expect(summary.getByText("Only works this library already knows are listed.")).toHaveCount(0);
   const actions = summary.getByRole("group", { name: "Circle actions" });
   await expect(actions.getByRole("button", { name: "Remove favorite" })).toHaveAttribute("aria-pressed", "true");
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
@@ -971,6 +974,12 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
   expect(codeAndTitle[0]).not.toBeNull();
   expect(codeAndTitle[1]).not.toBeNull();
   expect(codeAndTitle[0]!.y).toBeLessThan(codeAndTitle[1]!.y);
+  // The counts follow the code on its line.
+  const countsBox = await catalogCounts.boundingBox();
+  expect(countsBox!.x).toBeGreaterThan(codeAndTitle[0]!.x + codeAndTitle[0]!.width);
+  expect(
+    Math.abs(countsBox!.y + countsBox!.height / 2 - (codeAndTitle[0]!.y + codeAndTitle[0]!.height / 2)),
+  ).toBeLessThanOrEqual(4);
   await expect(actions.getByRole("button", { name: "More circle actions" })).toHaveAttribute("aria-expanded", "false");
   const actionMetrics = await actions.locator(":scope button[aria-label]").evaluateAll((elements) =>
     elements.map((element) => {
@@ -986,14 +995,20 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
       };
     }),
   );
-  expect(actionMetrics.map((metric) => metric.label)).toEqual(["Remove favorite", "Subscribe", "More circle actions"]);
+  expect(actionMetrics.map((metric) => metric.label)).toEqual([
+    "Remove favorite",
+    "Subscribe",
+    "Refresh",
+    "More circle actions",
+  ]);
+  await expect(actions.getByRole("button", { name: "Refresh" })).toHaveAttribute("title", /^Catalog synced /);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  // Catalog management waits in More; the sync opens its options here with this circle filled in.
+  // The rest of catalog management waits in More; the sync opens its options here with this circle filled in.
   const catalogSyncs: unknown[] = [];
   await page.route("**/api/workflow-presets", (route) => route.fulfill({ json: [circleCatalogSyncPreset] }));
   await page.route("**/api/workflow-presets/circle_catalog_sync/runs", async (route) => {
@@ -1005,13 +1020,8 @@ test("circle detail keeps availability and quiet actions compact on mobile", asy
   });
   await actions.getByRole("button", { name: "More circle actions" }).click();
   const moreMenu = page.getByRole("menu", { name: "More circle actions" });
-  await expect(moreMenu.getByRole("menuitem")).toHaveText([
-    "Change cover…",
-    /^Refresh circle.*Catalog synced/,
-    /^Retry metadata/,
-    "Sync this circle's catalog…",
-  ]);
-  await moreMenu.getByRole("menuitem", { name: "Sync this circle's catalog…" }).click();
+  await expect(moreMenu.getByRole("menuitem")).toHaveText(["Change cover…", /^Retry metadata/, "Sync catalog…"]);
+  await moreMenu.getByRole("menuitem", { name: "Sync catalog…" }).click();
   const dialog = page.getByRole("dialog", { name: "Sync a circle catalog" });
   await expect(dialog.getByLabel("Circle ID")).toHaveValue("RG09999");
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
@@ -1186,7 +1196,7 @@ test("@desktop circle detail keeps a frameless summary, one-line statistics, and
   const summary = page.getByRole("region", { name: "Circle summary" });
   await expect(summary).toBeVisible();
   const catalogCounts = summary.getByRole("group", { name: "Catalog availability" });
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1"]);
   // The summary draws no frame, and its statistics share one line.
   const layout = await summary.evaluate((element) => {
     const counts = element.querySelector('[aria-label="Catalog availability"]');
@@ -1209,7 +1219,8 @@ test("@desktop circle detail keeps a frameless summary, one-line statistics, and
   const actionOrder = await actions
     .locator(":scope button[aria-label]")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
-  expect(actionOrder).toEqual(["Remove favorite", "Subscribe", "More circle actions"]);
+  expect(actionOrder).toEqual(["Remove favorite", "Subscribe", "Refresh", "More circle actions"]);
+  await expect(actions.getByText("Refresh", { exact: true })).toBeVisible();
   // Wide layouts set the actions at the top right, beside the name rather than below it.
   const [headingBox, actionsBox] = await Promise.all([
     summary.getByRole("heading", { name: "Example Circle", exact: true }).boundingBox(),
@@ -1229,7 +1240,7 @@ test("@desktop circle detail keeps a frameless summary, one-line statistics, and
   await page.getByRole("button", { name: "Catalog availability filter" }).click();
   await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();
   // The summary counts describe the whole catalog, whatever the works below are filtered to.
-  await expect(catalogCounts.getByRole("definition")).toHaveText(["2", "1", "1"]);
+  await expect(catalogCounts.getByRole("definition")).toHaveText(["1", "1"]);
   await expect(page.getByRole("button", { name: "More circle actions" })).toBeVisible();
 });
 

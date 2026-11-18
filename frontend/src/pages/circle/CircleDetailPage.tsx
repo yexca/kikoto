@@ -1,4 +1,4 @@
-import { CircleAlert, CloudDownload, ExternalLink, Image, RefreshCw, Rss } from "lucide-react";
+import { CircleAlert, ExternalLink, Image, RefreshCw, Rss } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -16,9 +16,9 @@ import type { ActionMenuItem } from "@/components/ui/action-menu";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
 import {
   CreatorActionRow,
-  CreatorCatalogNote,
   CreatorFavoriteButton,
   CreatorMoreMenu,
+  CreatorRefreshButton,
   creatorQuietActionClassName,
 } from "@/components/creator/CreatorDetailActions";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
@@ -400,7 +400,8 @@ export function CircleDetailPage({
         : { catalogRefresh: "incremental", metadataRefresh: "missing", sourceCheck: true },
     );
   const refreshUnavailable = isLoading || refreshBusy;
-  // Catalog management waits in More, and only for a viewer allowed to run it.
+  // First pull and Refresh stand beside More; the rest of catalog management
+  // waits in More, each entry only for a viewer allowed to run it.
   const moreMenuItems: ActionMenuItem[] = [
     ...(canChangeCover
       ? [
@@ -412,39 +413,23 @@ export function CircleDetailPage({
           },
         ]
       : []),
-    ...(canRefreshCatalog
+    ...(canRefreshCatalog && !firstPull && catalogOnlyCount > 0
       ? [
           {
-            key: "refresh",
-            label: firstPull ? t("detailActions.pullCatalog") : t("detailActions.refreshCircle"),
-            icon: firstPull ? <CloudDownload className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />,
+            key: "retryMetadata",
+            label: t("detailActions.retryMetadata"),
+            icon: <RefreshCw className="h-4 w-4" />,
             disabled: refreshUnavailable,
-            hint: refreshBusy
-              ? t("detailActions.catalogRefreshing")
-              : catalogSyncedTime
-                ? t("detailActions.catalogSyncedAt", { time: catalogSyncedTime })
-                : undefined,
-            onSelect: runPrimaryRefresh,
+            hint: t("detailActions.retryMetadataCount", { count: catalogOnlyCount }),
+            onSelect: () => void queueRefresh({ catalogRefresh: "stored", metadataRefresh: "missing" }),
           },
-          ...(!firstPull && catalogOnlyCount > 0
-            ? [
-                {
-                  key: "retryMetadata",
-                  label: t("detailActions.retryMetadata"),
-                  icon: <RefreshCw className="h-4 w-4" />,
-                  disabled: refreshUnavailable,
-                  hint: t("detailActions.retryMetadataCount", { count: catalogOnlyCount }),
-                  onSelect: () => void queueRefresh({ catalogRefresh: "stored", metadataRefresh: "missing" }),
-                },
-              ]
-            : []),
         ]
       : []),
     ...(canOpenCatalogSync
       ? [
           {
             key: "catalogSync",
-            label: t("detailActions.syncCircleCatalog"),
+            label: t("detailActions.syncCatalog"),
             icon: <Rss className="h-4 w-4" />,
             onSelect: openCatalogSyncCircle,
           },
@@ -661,21 +646,19 @@ export function CircleDetailPage({
             {canRefreshCatalog && circle.syncState === "attention" && (
               <CatalogSyncBadge state={circle.syncState} appearance="dot" />
             )}
+            {/* The Works tab below states the catalog's size. */}
+            <CatalogStatStrip
+              label={t("sheets.catalogAvailability")}
+              stats={[
+                { key: "local", label: t("detailActions.local"), count: circle.localWorks },
+                { key: "remote", label: t("detailActions.remote"), count: circle.remoteWorks },
+                { key: "unavailable", label: t("detailActions.unavailable"), count: circle.missingWorks },
+              ]}
+            />
           </>
         }
         actions={
-          <CreatorActionRow
-            label={t("detailActions.circleActions")}
-            tags={
-              <UserTagRow
-                tags={circle.userTags}
-                scope="circle"
-                onSave={saveCircleTags}
-                variant="chip"
-                className="contents"
-              />
-            }
-          >
+          <CreatorActionRow label={t("detailActions.circleActions")}>
             <CreatorFavoriteButton favorite={circle.favorite} onToggle={() => void toggleCircleFavorite()} />
             <SubscribeButton
               target={{ kind: "circle", circleId: circle.externalId }}
@@ -684,31 +667,25 @@ export function CircleDetailPage({
               canPullNow={canRefreshCatalog}
               onOpenSubscriptions={openSubscriptions}
             />
+            {canRefreshCatalog && (
+              <CreatorRefreshButton
+                firstPull={firstPull}
+                refreshing={refreshBusy}
+                disabled={refreshUnavailable}
+                syncedAt={catalogSyncedTime}
+                onRefresh={runPrimaryRefresh}
+                onOpenRun={
+                  canOpenWorkflows && detail?.refresh
+                    ? () => detail.refresh && openRefreshRun(detail.refresh.runId)
+                    : undefined
+                }
+              />
+            )}
             <CreatorMoreMenu label={t("detailActions.moreCircleActions")} items={moreMenuItems} />
           </CreatorActionRow>
         }
       >
-        <CatalogStatStrip
-          label={t("sheets.catalogAvailability")}
-          stats={[
-            { key: "works", label: t("detailActions.works"), count: circle.catalogWorks },
-            { key: "local", label: t("detailActions.local"), count: circle.localWorks },
-            { key: "remote", label: t("detailActions.remote"), count: circle.remoteWorks },
-            { key: "unavailable", label: t("detailActions.unavailable"), count: circle.missingWorks },
-          ]}
-          note={
-            <CreatorCatalogNote
-              refreshing={refreshBusy}
-              notPulled={firstPull}
-              onOpenRun={
-                canOpenWorkflows && detail?.refresh
-                  ? () => detail.refresh && openRefreshRun(detail.refresh.runId)
-                  : undefined
-              }
-              onPull={canRefreshCatalog && !isLoading ? runPrimaryRefresh : undefined}
-            />
-          }
-        />
+        <UserTagRow tags={circle.userTags} scope="circle" onSave={saveCircleTags} variant="chip" />
       </CreatorDetailHeader>
 
       <section ref={resultsScroll.anchorRef} className="scroll-mt-24 space-y-3">

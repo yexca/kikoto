@@ -41,10 +41,11 @@ Voice pages present persisted person and credit data.
   one.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows the voice detail summary on the cover's tint without a frame: the
-  portrait, the name, and aliases, then one line with the number of known
-  **Works** and their **Local**, **Remote**, and **Missing** counts; a count
-  of zero is left out. Cache remains available to playback and filtering
-  data, but is not presented as Local.
+  portrait; one line with the number of known **Works** and their **Local**,
+  **Remote**, and **Missing** counts, a count of zero left out; the name and
+  aliases; and the personal tags with the button that edits them. Cache
+  remains available to playback and filtering data, but is not presented as
+  Local.
 - Presents known and remote works with the same responsive grid and shared work
   cards as the Library. Selecting a DLsite tag or personal tag on a work card
   opens a local Library search for it.
@@ -63,27 +64,25 @@ Voice pages present persisted person and credit data.
   the remote sources' catalog state load separately.
   Remote source searches use bounded concurrency, while voice counts and user
   tags are aggregated in batches.
-- Keeps the summary's actions quiet: **Favorite**, the subscribe bell, and
-  **More**, with no primary button; a phone shows them as icons named for
-  assistive technology. The personal tags and the button that edits them
-  follow on the same row. The bell subscribes to the voice actor's new works;
-  see [Discover](discover.md#subscribing).
-- **More** holds **Change cover…** and, for users who may refresh catalogs,
-  **Pull the full catalog** for a voice actor that was never pulled, otherwise
-  **Refresh catalog**, which names when the catalog was last synced. Either
+- Keeps the summary's actions quiet: **Favorite**, the subscribe bell, the
+  catalog refresh, and **More**, with no primary button; a phone shows them
+  as icons named for assistive technology. The bell subscribes to the voice
+  actor's new works; see [Discover](discover.md#subscribing).
+- For users who may refresh catalogs, the button before **More** reads
+  **First pull** for a voice actor that was never pulled and **Refresh**
+  after that; its tooltip names when the catalog was last synced. Either
   queues a Sync a voice actor catalog run with only known works' metadata
-  across every compatible remote source. **Retry metadata** appears only
-  while known works still lack metadata. **Sync this voice actor's catalog…**
-  opens the preset in a dialog with this voice actor selected for source,
-  filter, metadata, and tag choices, and **Manage aliases** opens alias review. A user
-  without these permissions sees none of them; Demo offers **Change cover…**,
-  which saves no cover, the preset, and **Manage aliases** read-only.
-- A voice actor that was never pulled states that only works the library
-  already knows are listed and offers **Pull the full catalog** as a link
-  beside it to users who may run it. While a run is going, the note reads
-  **Refreshing the catalog** with a link to the run in Workflows. For the same
-  users, a warning above the name counts remote sources that failed their
-  last pass and opens that run in Workflows.
+  across every compatible remote source. While a run is going, the button
+  reads **Refreshing** and opens the run in Workflows. For the same users, a
+  warning beside the counts names remote sources that failed their last pass
+  and opens that run in Workflows.
+- **More** holds **Change cover…** and, for users who may refresh catalogs,
+  **Retry metadata** only while known works still lack metadata, **Sync
+  catalog…**, which opens the preset in a dialog with this voice actor
+  selected for source, filter, metadata, and tag choices, and **Manage
+  aliases**, which opens alias review. A user without these permissions sees
+  none of them; Demo offers **Change cover…**, which saves no cover, the
+  preset, and **Manage aliases** read-only.
 - Keeps the works toolbar to a search field, the sort button that names the
   current order, the availability filter, and **View**. **View** holds the
   **Cards** choice of **Full**, **Simple**, **Compact**, and **Mini** shared

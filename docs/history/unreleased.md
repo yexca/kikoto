@@ -192,9 +192,9 @@
   in place of an unrecorded background check after every source edit.
 - Fetch is no longer on Workflows; it starts from a work's page, and Quick
   actions opens any work by its code. The catalog syncs open from their
-  circle, series, or voice actor: **Sync this circle's catalog…**, **Sync
-  this series' catalog…**, and **Sync this voice actor's catalog…** in
-  **More** open the run options in a dialog with the target filled in, and
+  circle, series, or voice actor: **Sync catalog…** and **Sync series
+  catalog…** in **More** open the run options in a dialog with the target
+  filled in, and
   an unknown circle's **Try fetching** opens the circle's.
 - The status strip, the workflow list, the run duration chart, and the
   **Latest run** card with its stage list and streaming log are removed. A run's steps and log are in its
@@ -293,17 +293,19 @@
   **Edit rule** share one line under the shelf header. **Convert to regular
   list** moves into the list's editor.
 - Circle and voice actor pages open with a compact summary like the work
-  detail Hero: no frame, the catalog counts on one line (zero counts left
-  out), and quiet **Favorite**, **Subscribe**, and **More** controls followed
-  by the personal tags; wide layouts set those controls at the top right, so
-  the summary stays about as tall as the portrait. Voice actor pages show the
-  same counts as circles and no internal id.
+  detail Hero: no frame, the catalog counts on one line above the name after
+  a circle's code (zero counts left out, and a circle's size left to its
+  **Works** tab), the personal tags under the name, and quiet **Favorite**,
+  **Subscribe**, refresh, and **More** controls; wide layouts set those
+  controls at the top right, so the summary stays about as tall as the
+  portrait. Voice actor pages show the same counts as circles and no
+  internal id.
 - **More** menus keep their button's size while open, and opening one with a
   click no longer highlights its first entry.
-- **First pull**, **Refresh**, and **Retry metadata** move into **More** and
-  show only to users allowed to refresh a catalog. A catalog that was never
-  pulled says so under the counts with a **Pull the full catalog** link for
-  those users; sync state and failed sources show only to them.
+- One button before **More** reads **First pull** until a catalog was pulled
+  once and **Refresh** after that, and follows a running refresh to its run;
+  **Retry metadata** moves into **More**. These show only to users allowed to
+  refresh a catalog, and so do sync state and failed sources.
 - The circle and voice actor works toolbar is the search field, the order, the
   availability filter, and one **View** button holding the display options
   and **Select works**; on a phone the search field stays on show and **View**

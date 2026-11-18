@@ -1,4 +1,4 @@
-import { ArrowUpRight, CircleAlert, CloudDownload, Image, RefreshCw, Rss } from "lucide-react";
+import { ArrowUpRight, CircleAlert, Image, RefreshCw, Rss } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -14,9 +14,9 @@ import type { ActionMenuItem } from "@/components/ui/action-menu";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
 import {
   CreatorActionRow,
-  CreatorCatalogNote,
   CreatorFavoriteButton,
   CreatorMoreMenu,
+  CreatorRefreshButton,
 } from "@/components/creator/CreatorDetailActions";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorWorkCaption } from "@/components/creator/CreatorWorkResults";
@@ -702,7 +702,8 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const canManageAliases = auth.demoMode || auth.hasPermission("metadata:sync");
   const voiceSyncedTime = detail.lastSyncedAt ? formatDateTime(detail.lastSyncedAt, resolvedLocale) : "";
   const metadataMissingWorks = detail.metadataMissingWorks ?? 0;
-  // Catalog management waits in More, and only for a viewer allowed to run it.
+  // First pull and Refresh stand beside More; the rest of catalog management
+  // waits in More, each entry only for a viewer allowed to run it.
   const moreMenuItems: ActionMenuItem[] = [
     ...(canChangeCover
       ? [
@@ -714,39 +715,23 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           },
         ]
       : []),
-    ...(canForceRefreshCatalog
+    ...(canForceRefreshCatalog && !firstPull && metadataMissingWorks > 0
       ? [
           {
-            key: "refresh",
-            label: firstPull ? t("detailActions.pullCatalog") : t("detailActions.refreshVoiceCatalog"),
-            icon: firstPull ? <CloudDownload className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />,
+            key: "retryMetadata",
+            label: t("detailActions.retryMetadata"),
+            icon: <RefreshCw className="h-4 w-4" />,
             disabled: isRemoteLoading || catalogRefreshActive,
-            hint: catalogRefreshActive
-              ? t("detailActions.catalogRefreshing")
-              : voiceSyncedTime
-                ? t("detailActions.catalogSyncedAt", { time: voiceSyncedTime })
-                : undefined,
-            onSelect: firstPull ? firstPullVoiceCatalog : refreshVoice,
+            hint: t("detailActions.retryMetadataCount", { count: metadataMissingWorks }),
+            onSelect: retryVoiceMetadata,
           },
-          ...(!firstPull && metadataMissingWorks > 0
-            ? [
-                {
-                  key: "retryMetadata",
-                  label: t("detailActions.retryMetadata"),
-                  icon: <RefreshCw className="h-4 w-4" />,
-                  disabled: isRemoteLoading || catalogRefreshActive,
-                  hint: t("detailActions.retryMetadataCount", { count: metadataMissingWorks }),
-                  onSelect: retryVoiceMetadata,
-                },
-              ]
-            : []),
         ]
       : []),
     ...(canOpenCatalogSync
       ? [
           {
             key: "catalogSync",
-            label: t("detailActions.syncVoiceCatalog"),
+            label: t("detailActions.syncCatalog"),
             icon: <Rss className="h-4 w-4" />,
             onSelect: () => setCatalogSyncOpen(true),
           },
@@ -775,34 +760,36 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         coverUrl={creatorCoverUrl(detail)}
         aliases={detail.aliases}
         eyebrow={
-          // Sync attention and failed sources only matter to someone who can refresh the catalog.
-          canForceRefreshCatalog && (detail.syncState === "attention" || failedRemoteSources > 0) ? (
-            <>
-              {detail.syncState === "attention" && <CatalogSyncBadge state={detail.syncState} appearance="dot" />}
-              {failedRemoteSources > 0 && (
-                <RemoteSourceWarning
-                  count={failedRemoteSources}
-                  onOpen={
-                    canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
-                  }
-                />
-              )}
-            </>
-          ) : undefined
+          <>
+            <CatalogStatStrip
+              label={t("detailActions.voiceActorStatistics")}
+              stats={[
+                { key: "works", label: t("detailActions.works"), count: detail.knownWorks },
+                { key: "local", label: t("detailActions.local"), count: detail.localWorks },
+                { key: "remote", label: t("detailActions.remote"), count: detail.remoteWorks },
+                {
+                  key: "missing",
+                  label: t("detailActions.missing"),
+                  count: Math.max(0, detail.knownWorks - detail.playableWorks),
+                },
+              ]}
+            />
+            {/* Sync attention and failed sources only matter to someone who can refresh the catalog. */}
+            {canForceRefreshCatalog && detail.syncState === "attention" && (
+              <CatalogSyncBadge state={detail.syncState} appearance="dot" />
+            )}
+            {canForceRefreshCatalog && failedRemoteSources > 0 && (
+              <RemoteSourceWarning
+                count={failedRemoteSources}
+                onOpen={
+                  canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
+                }
+              />
+            )}
+          </>
         }
         actions={
-          <CreatorActionRow
-            label={t("detailActions.voiceActorActions")}
-            tags={
-              <UserTagRow
-                tags={detail.userTags}
-                scope="voice"
-                onSave={saveVoiceTags}
-                variant="chip"
-                className="contents"
-              />
-            }
-          >
+          <CreatorActionRow label={t("detailActions.voiceActorActions")}>
             <CreatorFavoriteButton favorite={detail.favorite} onToggle={() => void toggleFavorite()} />
             <SubscribeButton
               target={{ kind: "voice", personId: detail.personId }}
@@ -811,33 +798,23 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
               canPullNow={canForceRefreshCatalog}
               onOpenSubscriptions={() => openWorkflowPath("/discover?panel=subscriptions")}
             />
+            {canForceRefreshCatalog && (
+              <CreatorRefreshButton
+                firstPull={firstPull}
+                refreshing={catalogRefreshActive}
+                disabled={isRemoteLoading}
+                syncedAt={voiceSyncedTime}
+                onRefresh={firstPull ? firstPullVoiceCatalog : refreshVoice}
+                onOpenRun={
+                  canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
+                }
+              />
+            )}
             <CreatorMoreMenu label={t("detailActions.moreVoiceActions")} items={moreMenuItems} />
           </CreatorActionRow>
         }
       >
-        <CatalogStatStrip
-          label={t("detailActions.voiceActorStatistics")}
-          stats={[
-            { key: "works", label: t("detailActions.works"), count: detail.knownWorks },
-            { key: "local", label: t("detailActions.local"), count: detail.localWorks },
-            { key: "remote", label: t("detailActions.remote"), count: detail.remoteWorks },
-            {
-              key: "missing",
-              label: t("detailActions.missing"),
-              count: Math.max(0, detail.knownWorks - detail.playableWorks),
-            },
-          ]}
-          note={
-            <CreatorCatalogNote
-              refreshing={catalogRefreshActive}
-              notPulled={firstPull}
-              onOpenRun={
-                canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
-              }
-              onPull={canForceRefreshCatalog && !isRemoteLoading ? firstPullVoiceCatalog : undefined}
-            />
-          }
-        />
+        <UserTagRow tags={detail.userTags} scope="voice" onSave={saveVoiceTags} variant="chip" />
       </CreatorDetailHeader>
 
       <section ref={resultsScroll.anchorRef} className="scroll-mt-24 space-y-3">

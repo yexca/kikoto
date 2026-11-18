@@ -450,18 +450,21 @@ Desktop:
   directory-edition chips appear only when there is another choice.
 - Circle and voice actor detail open with a compact summary shaped like the
   work detail Hero: a cover tint with no frame, the portrait, the name and
-  aliases (a circle's maker code above them; a voice actor shows no internal
-  id), the catalog counts on one quiet line (the catalog's size, then each
-  availability with a nonzero count), and a quiet row of Favorite, Subscribe,
-  and More that ends with the personal tag chips and their editor. Wide
+  aliases, and the personal tag chips with their editor under the name. One
+  quiet line above the name carries a circle's maker code followed by its
+  availability counts, or a voice actor's catalog size and availability
+  counts (a voice actor shows no internal id); a count of zero is left out,
+  and a circle leaves the catalog's size to its Works tab. A quiet row of
+  Favorite, Subscribe, the catalog refresh, and More sits beside them; wide
   layouts set that row at the summary's top right, so the summary stays about
-  as tall as the portrait. These pages have no primary action. Catalog management
-  (the first pull, Refresh, Retry metadata, the catalog sync dialog, and alias
-  management) waits in More beside the personal cover choice, each entry only
-  for a viewer allowed to use it. A note under the counts appears only while a
-  refresh runs or while the catalog was never pulled, and then offers the pull
-  as a quiet link to a viewer allowed to run it; sync state and failed sources
-  show only to that viewer.
+  as tall as the portrait. These pages have no primary action. The catalog
+  refresh reads First pull until the catalog was pulled once and Refresh
+  after that, names the last sync in its tooltip, and while a refresh runs
+  shows its progress and opens the run. The rest of catalog management (Retry
+  metadata, the catalog sync dialog, and alias management) waits in More
+  beside the personal cover choice. Each catalog control appears only for a
+  viewer allowed to use it, and sync state and failed sources show only to
+  that viewer.
 - Persistent lower-right player dock with full, compact, and draggable mini
   modes.
 - The page always reserves the classic scrollbar gutter, so content width does

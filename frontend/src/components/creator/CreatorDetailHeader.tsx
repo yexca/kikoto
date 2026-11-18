@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { assetURL } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 /**
  * Identity summary for a circle or voice actor, shaped like the work detail
- * Hero: the latest cover as a square portrait, the name, an optional summary
- * such as the one-line catalog counts, and the quiet action row, which wide
- * layouts set at the top right. The cover tint alone sets it apart from the
+ * Hero: the latest cover as a square portrait, an eyebrow line such as the
+ * code and catalog counts, the name, a row under it such as the personal tags,
+ * and the quiet action row, which wide layouts set at the top right. The cover tint alone sets it apart from the
  * page; it draws no frame.
  */
 export function CreatorDetailHeader({
@@ -32,9 +33,9 @@ export function CreatorDetailHeader({
   const visibleAliases = aliases.filter((alias) => alias && alias !== name).slice(0, 4);
   return (
     <section aria-label={label} className="relative isolate overflow-clip rounded-xl bg-card">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-4 p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-6 lg:gap-y-2 lg:p-5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-6 lg:p-5">
         <CreatorPortrait name={name} cover={cover} onError={() => setImageFailed(true)} />
-        <div className="min-w-0 self-center lg:self-end">
+        <div className={cn("min-w-0", children ? "self-end" : "row-span-2 self-center")}>
           {eyebrow && (
             <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
               {eyebrow}
@@ -47,11 +48,9 @@ export function CreatorDetailHeader({
             </p>
           )}
         </div>
-        {children && (
-          <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-2 lg:self-start">{children}</div>
-        )}
+        {children && <div className="col-start-2 row-start-2 min-w-0 self-start">{children}</div>}
         {actions && (
-          <div className="col-span-2 min-w-0 lg:col-span-1 lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:max-w-sm lg:self-start">
+          <div className="col-span-2 mt-2 min-w-0 lg:col-span-1 lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:mt-0 lg:max-w-sm lg:self-start">
             {actions}
           </div>
         )}
@@ -70,7 +69,7 @@ function CreatorPortrait({ name, cover, onError }: { name: string; cover: string
   const initial = Array.from(name.trim())[0] ?? "?";
   return (
     <div
-      className="relative h-20 w-20 shrink-0 self-start overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:row-span-2 lg:h-24 lg:w-24"
+      className="relative row-span-2 h-20 w-20 shrink-0 self-start overflow-hidden rounded-xl bg-secondary ring-1 ring-border lg:h-24 lg:w-24"
       aria-hidden="true"
     >
       {cover ? (

@@ -46,37 +46,35 @@ Circles represent makers, circles, and related party catalog state.
   the separate circle-entity list keeps its own controls. Selecting a DLsite
   tag or personal tag on a work card opens a local Library search for it.
 - Shows the circle detail summary on the cover's tint without a frame: the
-  portrait, the circle code linking to DLsite, the name, and aliases, then one
-  line with the number of catalog **Works** and their **Local**, **Remote**,
-  and **Unavailable** counts. A count of zero is left out, and the counts
-  describe the whole catalog, whatever the works below are filtered to. A
-  circle that was never pulled states that only works the library already
-  knows are listed. Series cards carry an availability bar.
-- Keeps the summary's actions quiet: **Favorite**, the subscribe bell, and
-  **More**, followed on the same row by the personal tags and the button that
-  edits them. The page has no primary button. On a phone the actions show as
-  icons named for assistive technology.
+  portrait; one line with the circle code linking to DLsite followed by the
+  catalog's **Local**, **Remote**, and **Unavailable** counts; the name and
+  aliases; and the personal tags with the button that edits them. A count of
+  zero is left out, the **Works** tab below states the catalog's size, and
+  the counts describe the whole catalog, whatever the works below are
+  filtered to. Series cards carry an availability bar.
+- Keeps the summary's actions quiet: **Favorite**, the subscribe bell, the
+  catalog refresh, and **More**. The page has no primary button. On a phone
+  the actions show as icons named for assistive technology.
 - The bell subscribes to the circle's new works, and the bell beside a series'
   DLsite link to that series; see [Discover](discover.md#subscribing). A
   series of a subscribed circle is already included.
+- For users who may refresh catalogs, the button before **More** reads
+  **First pull** for a circle that was never pulled, which reads the whole
+  catalog, and **Refresh** after that, which also checks the remote sources;
+  its tooltip names when the catalog was last synced. Either queues a Sync a
+  circle catalog run without a filter or tag and returns at once. Until the
+  run settles the button reads **Refreshing** and opens the run in Workflows.
 - The **More** menu holds **Change cover…** and, for users who may refresh
-  catalogs, the catalog actions: **Pull the full catalog** for a circle that
-  was never pulled, otherwise **Refresh circle**, which also checks the remote
-  sources and names when the catalog was last synced; **Retry metadata** only
-  while catalog works still lack metadata, which fills just those; and **Sync
-  this circle's catalog…**, which opens the Sync a circle catalog preset in a
-  dialog with this circle filled in, for every other combination of catalog
-  refresh, filter, metadata, tag, and source check. While one of the circle's
-  series is shown, **Sync this series' catalog…** opens the Sync a series
-  catalog preset for that series the same way. To refresh metadata the circle's works
-  already have, run Metadata sync with the circle scope. A user without these
-  permissions sees none of them. Demo offers **Change cover…**, which saves no
-  cover, and the preset, which opens read-only.
-- A circle that was never pulled also offers **Pull the full catalog** as a
-  link beside its note to users who may run it. Each catalog action queues a
-  Sync a circle catalog run without a filter or tag and returns at once; the
-  note reads **Refreshing the catalog** until the run settles, with a link to
-  the run in Workflows.
+  catalogs, **Retry metadata** only while catalog works still lack metadata,
+  which fills just those, and **Sync catalog…**, which opens the Sync a
+  circle catalog preset in a dialog with this circle filled in, for every
+  other combination of catalog refresh, filter, metadata, tag, and source
+  check. While one of the circle's series is shown, **Sync series catalog…**
+  opens the Sync a series catalog preset for that series the same way. To
+  refresh metadata the circle's works already have, run Metadata sync with
+  the circle scope. A user without these permissions sees none of them. Demo
+  offers **Change cover…**, which saves no cover, and the preset, which opens
+  read-only.
 - Keeps the works toolbar to the Works/Series switch, a search field, the sort
   button that names the current order, the availability filter, and **View**.
   **View** holds the **Cards** choice of **Full**, **Simple**, **Compact**,

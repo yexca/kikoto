@@ -1,4 +1,4 @@
-import { Heart, Loader2 } from "lucide-react";
+import { CloudDownload, Heart, Loader2, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,26 +15,11 @@ import { cn } from "@/lib/tailwindClassNames";
 export const creatorQuietActionClassName =
   "h-8 w-8 px-0 text-muted-foreground hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground aria-pressed:text-foreground sm:w-auto sm:gap-1.5 sm:px-2 sm:text-xs";
 
-/**
- * The row of personal actions and the More menu under a creator summary, with
- * the personal tags as chips at its end, so the tags need no row of their own.
- */
-export function CreatorActionRow({
-  label,
-  tags,
-  children,
-}: {
-  label: string;
-  /** The personal tag chips and their editor. */
-  tags?: ReactNode;
-  children: ReactNode;
-}) {
+/** The row of quiet actions in a creator summary, ending with the More menu. */
+export function CreatorActionRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2 lg:justify-end">
-      <div className="flex min-w-0 items-center gap-x-1 sm:gap-x-2" role="group" aria-label={label}>
-        {children}
-      </div>
-      {tags && <div className="flex min-w-0 flex-wrap items-center gap-1 sm:ml-1">{tags}</div>}
+    <div className="flex min-w-0 items-center gap-x-1 sm:gap-x-2 lg:justify-end" role="group" aria-label={label}>
+      {children}
     </div>
   );
 }
@@ -72,59 +57,65 @@ export function CreatorMoreMenu({ label, items }: { label: string; items: Action
       items={items}
       triggerClassName={cn(creatorQuietActionClassName, "border-transparent bg-transparent")}
       buttonLabelClassName="hidden sm:inline"
+      compact
     />
   );
 }
 
 /**
- * The line under a creator's catalog statistics. It appears only when it
- * explains something: while a catalog refresh runs, or while the catalog was
- * never pulled, when only works the library already knows are listed. A
- * viewer allowed to pull finds the pull right there as a quiet link, so the
- * summary needs no standing button for it.
+ * The summary's catalog refresh, for a viewer allowed to run it: First pull
+ * until the catalog was pulled once, Refresh after that. While a refresh runs
+ * it turns into the run's progress and opens the run for a viewer who may see
+ * runs.
  */
-export function CreatorCatalogNote({
+export function CreatorRefreshButton({
+  firstPull,
   refreshing,
-  notPulled,
+  disabled,
+  syncedAt,
+  onRefresh,
   onOpenRun,
-  onPull,
 }: {
+  firstPull: boolean;
   refreshing: boolean;
-  notPulled: boolean;
-  /** Opens the running refresh in Activity, for a viewer who may see runs. */
+  disabled: boolean;
+  /** When the catalog was last synced, already formatted. */
+  syncedAt: string;
+  onRefresh: () => void;
   onOpenRun?: () => void;
-  /** Queues the first pull, for a viewer allowed to refresh the catalog. */
-  onPull?: () => void;
 }) {
   const { t } = useTranslation();
   if (refreshing) {
+    const label = onOpenRun ? t("detailActions.viewRefreshRun") : t("detailActions.catalogRefreshing");
     return (
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1" role="status">
-        <span className="inline-flex items-center gap-1.5">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          {t("detailActions.catalogRefreshing")}
-        </span>
-        {onOpenRun && <NoteLink onClick={onOpenRun}>{t("detailActions.viewRefreshRun")}</NoteLink>}
-      </p>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={creatorQuietActionClassName}
+        aria-label={label}
+        title={label}
+        disabled={!onOpenRun}
+        onClick={onOpenRun}
+      >
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        <span className="hidden sm:inline">{t("detailActions.refreshing")}</span>
+      </Button>
     );
   }
-  if (!notPulled) return null;
+  const label = firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCatalog");
+  const title = !firstPull && syncedAt ? t("detailActions.catalogSyncedAt", { time: syncedAt }) : label;
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span>{t("detailActions.catalogNotPulledHint")}</span>
-      {onPull && <NoteLink onClick={onPull}>{t("detailActions.pullCatalog")}</NoteLink>}
-    </p>
-  );
-}
-
-function NoteLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      className="touch-target relative rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={onClick}
+    <Button
+      variant="ghost"
+      size="icon"
+      className={creatorQuietActionClassName}
+      aria-label={label}
+      title={title}
+      disabled={disabled}
+      onClick={onRefresh}
     >
-      {children}
-    </button>
+      {firstPull ? <CloudDownload className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+      <span className="hidden sm:inline">{label}</span>
+    </Button>
   );
 }
