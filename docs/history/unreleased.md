@@ -324,7 +324,9 @@
 - **Cleanup → Works** holds **Local works by rating**, which lists your
   low-rated local works largest first and deletes their local folders in one
   run. It can also clear your rating and Quick mark of them and forget the
-  works, and asks again before deleting works rated 3 stars or more.
+  works, and asks again before deleting works rated 3 stars or more. A work
+  whose folder holds anything else, such as a recycle bin with files in it,
+  keeps all its files and is reported for a retry.
 - Deleting a work's local folder also removes the system files a NAS or
   operating system keeps beside its files, such as `Thumbs.db`, `.DS_Store`,
   and `@eaDir`, which used to keep the folder from being deleted.

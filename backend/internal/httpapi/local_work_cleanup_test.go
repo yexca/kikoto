@@ -355,6 +355,21 @@ func TestLocalWorkCleanupFinishesOtherWorksAndRetriesTheOneThatFailed(t *testing
 	if count := f.count("SELECT COUNT(*) FROM work_folder_location WHERE id = 451 AND state = 'active' AND cleanup_run_id IS NULL"); count != 1 {
 		t.Fatal("the folder that could not be deleted was not returned to its work")
 	}
+	// What would stop the folder is found first, so the work keeps its files.
+	if _, err := os.Stat(filepath.Join(f.dataRoot, "RJ00000051", "track.mp3")); err != nil {
+		t.Fatalf("a file of the work that failed was deleted: %v", err)
+	}
+	if count := f.count(`SELECT COUNT(*) FROM media_file_location AS location INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = 451 AND location.availability = 'available'`); count != 1 {
+		t.Fatal("the kept file of the work that failed is not available")
+	}
+	var summary string
+	if err := f.db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", queued.RunID).Scan(&summary); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(summary, "#recycle") || !strings.Contains(summary, "nothing was deleted") {
+		t.Fatalf("failure summary = %s", summary)
+	}
 	var status string
 	if err := f.db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&status); err != nil {
 		t.Fatal(err)

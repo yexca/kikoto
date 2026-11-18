@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -144,6 +148,17 @@ func (s *Server) cleanLocalWork(
 	if err != nil {
 		return err
 	}
+	// A folder whose removal would fail keeps every file: what would stop it
+	// is found before anything is deleted.
+	for _, root := range roots {
+		blocker, err := s.localWorkCleanupBlocker(root, targets)
+		if err != nil {
+			return err
+		}
+		if blocker != "" {
+			return fmt.Errorf("%s also holds %s, so nothing was deleted", root.Path, blocker)
+		}
+	}
 	for _, target := range append(targets, roots...) {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -157,6 +172,56 @@ func (s *Server) cleanLocalWork(
 		}
 	}
 	return s.finishLocalWorkState(statusCtx, payload, work, checkpoint)
+}
+
+// localWorkCleanupBlocker names the first entry below a claimed folder that
+// would keep the folder from being removed once the run's files are gone: a
+// file the run does not delete, a link, or a special file. The lyrics folder's
+// marker and the sidecars a NAS or operating system keeps go with the folder,
+// as clearLocalWorkRoot removes them. "" means the folder can go.
+func (s *Server) localWorkCleanupBlocker(root mediaCleanupTarget, targets []mediaCleanupTarget) (string, error) {
+	absolute, err := safeDataPath(s.cfg.DataRoot, root.Path)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(absolute); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	deleted := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		if target.Kind == "local" {
+			deleted[normalizeFolderRootPath(target.Path)] = true
+		}
+	}
+	blocker := ""
+	err = filepath.WalkDir(absolute, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if current == absolute {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		relative := relativeDataPath(absolute, current)
+		if unsafeFetchStagingEntry(info) || (!info.IsDir() && !info.Mode().IsRegular()) {
+			blocker = relative
+			return fs.SkipAll
+		}
+		if info.IsDir() || localfs.IsLyricsRootMarker(relative) || workFolderEditMergeSidecarPath(relative) {
+			return nil
+		}
+		if !deleted[normalizeFolderRootPath(path.Join(root.Path, relative))] {
+			blocker = relative
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return blocker, err
 }
 
 // localWorkCleanupFolderGone reports whether an earlier attempt of the run

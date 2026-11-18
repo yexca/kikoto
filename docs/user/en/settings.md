@@ -343,9 +343,12 @@ which forgetting works also needs. Demo sees every tab read-only.
   unrated, and a selection with a work rated 3 stars or more asks again and
   lists those works. The deletion is one workflow run that cleans the works in
   turn: it indexes a work's folders again, deletes them, and only then changes
-  that work's rating, mark, and identity. A work whose folder cannot be deleted
-  keeps all of them; the run finishes the other works and fails, and
-  **Retry** in Workflows tries the failed works again.
+  that work's rating, mark, and identity. A work whose folder holds anything
+  that would keep the folder from being deleted, such as a `#recycle` folder
+  with files in it, a link, or any other file that is not the work's, keeps its files,
+  rating, mark, and identity: nothing of it is deleted. The run finishes the
+  other works and fails, and **Retry** in Workflows tries the failed works
+  again.
 
 ### Cache
 
