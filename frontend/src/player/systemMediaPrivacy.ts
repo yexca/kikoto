@@ -1,6 +1,7 @@
 import { useNativePrivacySettings } from "@/hooks/useNativePrivacySettings";
 import { supportsNativePrivacy, type LockScreenMediaContent } from "@/lib/nativePrivacy";
 
+import { playerTrackArtist } from "./playerTrackArtist";
 import { playerTrackTitle } from "./playerTrackTitle";
 import type { PlayerTrack } from "./playerTypes";
 
@@ -38,7 +39,7 @@ export function systemMediaDetails(
   if (content === "hidden") return { title: APP_NAME, artist: "", album: "", coverUrl: "" };
   return {
     title: playerTrackTitle(track, originalNames) || track.workTitle || APP_NAME,
-    artist: track.circle || track.workTitle || APP_NAME,
+    artist: playerTrackArtist(track) || APP_NAME,
     album: track.workTitle || track.workCode || APP_NAME,
     coverUrl: content === "full" ? track.coverUrl : "",
   };

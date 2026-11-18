@@ -32,6 +32,7 @@ import type { TimedLyricLine } from "@/lib/timedLyrics";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { useScreenLyrics } from "@/player/screenLyrics";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
+import { playerTrackArtist } from "@/player/playerTrackArtist";
 import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 import { orderedTrackLocations } from "@/player/trackLocations";
 
@@ -81,7 +82,7 @@ export function FullPlayer({
   const sidePanelOpen = sidePanel !== null;
   const { parsedLyrics, activeLyricsLocationId } = lyrics;
   const busy = player.isPlaying && player.isBuffering;
-  const subtitle = track.circle || track.workTitle;
+  const subtitle = playerTrackArtist(track);
   const title = usePlayerTrackTitle()(track);
   // A display name keeps the file's real name in its hint.
   const titleHint = title === track.title ? title : `${title}\n${track.title}`;

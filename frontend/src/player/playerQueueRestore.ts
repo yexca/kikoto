@@ -9,6 +9,7 @@ type WorkPresentation = {
   title: string;
   coverUrl: string;
   circle: string;
+  voiceActors?: string[];
 };
 
 function isNotFoundError(error: unknown) {
@@ -76,6 +77,7 @@ export async function revalidatePersistedQueue(
       workTitle: presentation?.title || track.workTitle,
       coverUrl: presentation?.coverUrl || track.coverUrl,
       circle: presentation?.circle || track.circle,
+      voiceActors: presentation?.voiceActors ?? track.voiceActors,
       displayTitle: mediaItemDisplayTitle(mediaItem, track.locationId),
     };
     const selected =

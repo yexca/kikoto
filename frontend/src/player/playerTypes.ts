@@ -25,6 +25,8 @@ export type PlayerTrack = {
   workTitle: string;
   coverUrl: string;
   circle: string;
+  /** The work's credited voice actors, which the player shows as the artist. */
+  voiceActors?: string[];
   progress: MediaProgress | null;
   progressRecordable: boolean;
   lyricsLocationId: number | null;

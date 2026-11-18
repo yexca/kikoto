@@ -6,6 +6,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { OverflowMarquee } from "@/components/ui/overflow-marquee";
 import { cn } from "@/lib/tailwindClassNames";
 import type { PlayerTrack } from "@/player/playerTypes";
+import { playerTrackArtist } from "@/player/playerTrackArtist";
 import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 
 import { CoverImage, NowPlayingBars } from "./playerControls";
@@ -328,7 +329,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsRef = useRef<HTMLButtonElement | null>(null);
   const queueItemId = item.queueItemId;
-  const subtitle = item.circle || item.workTitle;
+  const subtitle = playerTrackArtist(item);
   const title = usePlayerTrackTitle()(item);
   const runAction = (action: () => void) => {
     action();

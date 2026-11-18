@@ -70,6 +70,7 @@ describe("revalidatePersistedQueue", () => {
         title: "Refreshed work",
         coverUrl: "/api/assets/covers/RJ/000/RJ00000000.jpg",
         circle: "Refreshed circle",
+        voiceActors: ["Refreshed voice"],
       }),
     );
     expect(result).toHaveLength(1);
@@ -79,6 +80,7 @@ describe("revalidatePersistedQueue", () => {
       workTitle: "Refreshed work",
       coverUrl: "/api/assets/covers/RJ/000/RJ00000000.jpg",
       circle: "Refreshed circle",
+      voiceActors: ["Refreshed voice"],
       displayTitle: undefined,
     });
   });

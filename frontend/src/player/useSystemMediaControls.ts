@@ -8,6 +8,7 @@ import { useOriginalFileNames } from "@/lib/originalFileNames";
 import type { PlaybackSeekPreferences } from "./playbackPreferences";
 import { NATIVE_MEDIA_POSITION_INTERVAL_MS } from "./playerProgress";
 import { bindMediaSessionActions, type PlayerRemoteControls } from "./playerRemoteControls";
+import { playerTrackArtist } from "./playerTrackArtist";
 import { playerTrackTitle } from "./playerTrackTitle";
 import type { PlayerTrack } from "./playerTypes";
 import { systemMediaDetails, useMediaSessionContent } from "./systemMediaPrivacy";
@@ -104,7 +105,7 @@ export function useNativeMediaBridge({
     const positionMs = Math.min(Math.max(0, Math.floor(positionSeconds * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
     void updateNativeMedia({
       title: playerTrackTitle(currentTrack, originalNames) || currentTrack.workTitle || "Kikoto",
-      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
+      artist: playerTrackArtist(currentTrack) || "Kikoto",
       album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
       coverUrl: currentTrack.coverUrl ? absoluteAssetURL(currentTrack.coverUrl) : "",
       playing: isPlaying,

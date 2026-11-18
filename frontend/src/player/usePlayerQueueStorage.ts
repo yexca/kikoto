@@ -53,6 +53,7 @@ export function useRestoredQueueRevalidation(
           title: work.title,
           coverUrl: work.coverUrl,
           circle: work.circle,
+          voiceActors: work.voiceActors,
         };
       },
     ).then((validated) => {

@@ -336,6 +336,14 @@
 </details>
 
 <details>
+<summary><strong>Playback</strong></summary>
+
+- The player, its queue, and the lock screen name a work's voice actors under
+  the track title, and its circle only when it credits no voice actor.
+
+</details>
+
+<details>
 <summary><strong>Operations and reliability</strong></summary>
 
 - The Go toolchain is updated to 1.26.11, which fixes an HTTP/1 server crash

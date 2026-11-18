@@ -21,6 +21,12 @@ describe("system media details", () => {
     });
   });
 
+  it("names the work's voice actors as the artist, and its circle when it credits none", () => {
+    const voiced = { ...track, voiceActors: ["Synthetic Voice A", "Synthetic Voice B"] };
+    expect(systemMediaDetails(voiced, "full").artist).toBe("Synthetic Voice A, Synthetic Voice B");
+    expect(systemMediaDetails({ ...track, voiceActors: [] }, "full").artist).toBe("Synthetic Circle");
+  });
+
   it("keeps the text but drops the cover when the cover is hidden", () => {
     expect(systemMediaDetails(track, "hideCover")).toEqual({
       title: "Track 01",

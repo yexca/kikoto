@@ -6,6 +6,7 @@ import { OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
+import { playerTrackArtist } from "@/player/playerTrackArtist";
 import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 
 import { formatScrubTime, formatSignedSeconds, playbackProgressPercent } from "./playerFormat";
@@ -223,7 +224,7 @@ export function CompactPlayer({
             <OverflowMarqueeGroup
               className="min-w-0 flex-1"
               primaryText={trackTitle(track)}
-              secondaryText={track.circle || track.workTitle}
+              secondaryText={playerTrackArtist(track)}
               primaryClassName="text-sm font-semibold"
               secondaryClassName="text-xs text-muted-foreground"
             />
