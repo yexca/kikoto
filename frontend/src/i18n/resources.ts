@@ -465,18 +465,18 @@ export const englishResource = {
         updateAvailable: "Update available: {{version}}",
         sourceCode: "Source code",
         releaseNotes: "Release notes",
+        reportIssue: "Report an issue",
+        copyVersion: "Copy version info",
+        versionCopied: "Version info copied",
+        copyVersionFailed: "Could not copy the version info.",
         intro: "Your personal audio library, built around listening.",
         builtWithAi: "Built with AI",
-        aiCredit: "This software is developed by yexca with assistance from AI Agent.",
-        modelHistoryTitle: "AI models used",
+        aiCredit: "Developed with assistance from AI agents.",
+        showModelHistory: "Show history",
+        hideModelHistory: "Hide history",
         modelHistoryDescription: "Models that assisted development in each release range.",
         firstRelease: "Start",
         present: "Present",
-        softwareOverview: "Software overview",
-        overviewOne:
-          "Kikoto combines local folders, DLsite metadata, and Kikoeru-compatible remote sources under one unified work model.",
-        overviewTwo:
-          "It includes library browsing, favorites, circles, voice actors, workflow visibility, remote fetch flows, and a browser-based audio player.",
         referenceProjects: "Reference projects",
         showReferenceDetails: "Show details",
         hideReferenceDetails: "Hide details",
@@ -498,8 +498,7 @@ export const englishResource = {
           audiobookshelf: "Reports that combine playback position with listening time.",
           navidrome: "Event coalescing and a durable report queue with retry backoff.",
           jellyfin: "Playback events alongside periodic progress reports.",
-          comfy:
-            "Interaction design of the former workflow canvas. Kikoto never included or adapted its source code; the canvas was an independent implementation built with @xyflow/react and has since been retired.",
+          comfy: "Design reference for the workflow system. Kikoto does not include or adapt its source code.",
           cherry:
             "AGENTS.md configuration, application version management, LLM provider and model integration, and GitHub Actions design.",
           firefox:
@@ -510,11 +509,10 @@ export const englishResource = {
         },
         technologies: "Core technologies",
         license: "License",
-        copyright: "Copyright (C) 2026 yexca.",
+        copyright: "Copyright (C) 2026 yexca",
         usageNotice:
           "Kikoto does not provide any service. It is intended only for managing audio works you have purchased yourself.",
-        licenseText:
-          "Kikoto is free software licensed under <license>GNU AGPL v3</license>. It is provided without warranty; the complete corresponding source is available in the project repository.",
+        licenseText: "Free software under <license>GNU AGPL v3</license>, provided without warranty.",
         groups: {
           Frontend: "Frontend",
           Backend: "Backend",

@@ -844,17 +844,18 @@ export const koreanResource = {
         updateAvailable: "업데이트 사용 가능: {{version}}",
         sourceCode: "소스 코드",
         releaseNotes: "릴리스 노트",
+        reportIssue: "문제 보고",
+        copyVersion: "버전 정보 복사",
+        versionCopied: "버전 정보를 복사했습니다",
+        copyVersionFailed: "버전 정보를 복사할 수 없습니다.",
         intro: "감상에 집중한 나만의 오디오 라이브러리.",
         builtWithAi: "AI로 개발",
-        aiCredit: "이 소프트웨어는 yexca가 AI Agent의 도움을 받아 개발합니다.",
-        modelHistoryTitle: "사용한 AI 모델",
+        aiCredit: "AI Agent의 도움을 받아 개발합니다.",
+        showModelHistory: "기록 표시",
+        hideModelHistory: "기록 숨기기",
         modelHistoryDescription: "각 버전 범위에서 개발을 지원한 모델입니다.",
         firstRelease: "초기",
         present: "현재",
-        softwareOverview: "소프트웨어 개요",
-        overviewOne: "Kikoto는 로컬 폴더, DLsite 메타데이터와 Kikoeru 호환 원격 소스를 하나의 작품 모델로 통합합니다.",
-        overviewTwo:
-          "라이브러리 탐색, 즐겨찾기, 서클, 성우, 워크플로 가시성, 원격 가져오기와 브라우저 오디오 플레이어를 제공합니다.",
         referenceProjects: "참조 프로젝트",
         showReferenceDetails: "세부 정보 표시",
         hideReferenceDetails: "세부 정보 숨기기",
@@ -874,8 +875,7 @@ export const koreanResource = {
           audiobookshelf: "재생 위치와 실제 감상 시간을 함께 보고하는 방식.",
           navidrome: "이벤트 병합, 영구 저장 보고 큐, 재시도 대기 시간을 늘리는 방식.",
           jellyfin: "재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식.",
-          comfy:
-            "이전 워크플로 캔버스의 상호작용 설계. Kikoto는 소스 코드를 포함하거나 수정한 적이 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
+          comfy: "워크플로 시스템의 설계 참고. Kikoto는 해당 소스 코드를 포함하거나 수정하지 않습니다.",
           cherry: "AGENTS.md 구성 방식, 프로그램 버전 관리, LLM 제공자 및 모델 연결, GitHub Actions 설계.",
           firefox:
             "변경 영역에 따라 필요한 문서만 읽는 Agent 가이드, 도구와 검증의 함정을 저장소에 기록하는 방식, AI 지원 기여 정책.",
@@ -885,11 +885,10 @@ export const koreanResource = {
         },
         technologies: "주요 기술",
         license: "라이선스",
-        copyright: "Copyright (C) 2026 yexca.",
+        copyright: "Copyright (C) 2026 yexca",
         usageNotice:
           "Kikoto는 어떠한 서비스도 제공하지 않으며, 사용자가 직접 구매한 음성 작품을 관리하는 용도로만 사용됩니다.",
-        licenseText:
-          "Kikoto는 <license>GNU AGPL v3</license>에 따라 라이선스된 자유 소프트웨어입니다. 보증 없이 제공되며 전체 소스는 프로젝트 저장소에서 확인할 수 있습니다.",
+        licenseText: "<license>GNU AGPL v3</license>에 따라 라이선스된 자유 소프트웨어이며 보증 없이 제공됩니다.",
         groups: {
           Frontend: "프론트엔드",
           Backend: "백엔드",

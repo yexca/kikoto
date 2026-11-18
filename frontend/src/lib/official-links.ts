@@ -14,5 +14,6 @@ export const DLSITE_ENDPOINTS = Object.freeze({
 export const KIKOTO_GITHUB_ENDPOINTS = Object.freeze({
   repositoryURL: kikotoGitHubRepositoryURL,
   releasesURL: `${kikotoGitHubRepositoryURL}/releases`,
+  issuesURL: `${kikotoGitHubRepositoryURL}/issues`,
   licenseURL: `${kikotoGitHubRepositoryURL}/blob/main/LICENSE`,
 });

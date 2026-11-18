@@ -853,18 +853,18 @@ export const japaneseResource = {
         updateAvailable: "利用可能なアップデート：{{version}}",
         sourceCode: "ソースコード",
         releaseNotes: "リリースノート",
+        reportIssue: "問題を報告",
+        copyVersion: "バージョン情報をコピー",
+        versionCopied: "バージョン情報をコピーしました",
+        copyVersionFailed: "バージョン情報をコピーできませんでした。",
         intro: "聴くことを大切にした、あなたの音声ライブラリ。",
         builtWithAi: "AI で開発",
-        aiCredit: "このソフトウェアは yexca が AI Agent の支援を受けて開発しています。",
-        modelHistoryTitle: "使用している AI モデル",
+        aiCredit: "AI Agent の支援を受けて開発しています。",
+        showModelHistory: "履歴を表示",
+        hideModelHistory: "履歴を非表示",
         modelHistoryDescription: "各バージョン範囲で開発を支援したモデルです。",
         firstRelease: "初期",
         present: "現在",
-        softwareOverview: "ソフトウェア概要",
-        overviewOne:
-          "Kikoto はローカルフォルダー、DLsite メタデータ、Kikoeru 互換リモートソースを統合した作品モデルを提供します。",
-        overviewTwo:
-          "ライブラリ、お気に入り、サークル、声優、ワークフロー、リモート取得、ブラウザーオーディオプレイヤーを備えています。",
         referenceProjects: "参考プロジェクト",
         showReferenceDetails: "詳細を表示",
         hideReferenceDetails: "詳細を非表示",
@@ -888,8 +888,7 @@ export const japaneseResource = {
           audiobookshelf: "再生位置と実際の聴取時間をまとめて報告する方式。",
           navidrome: "イベント集約、永続化された送信キュー、待機時間を延ばす再試行方式。",
           jellyfin: "再生イベントと定期的な進捗報告を組み合わせる方式。",
-          comfy:
-            "かつてのワークフローキャンバスの操作設計。Kikoto がソースコードを含めたり改変したりしたことはなく、キャンバスは @xyflow/react で独自に実装していましたが、現在は廃止されています。",
+          comfy: "ワークフローシステムの設計参考。Kikoto はそのソースコードを含めず、改変もしていません。",
           cherry:
             "AGENTS.md の設定方法、アプリケーションのバージョン管理、LLM サービスとモデル接続、GitHub Actions の設計。",
           firefox:
@@ -900,11 +899,10 @@ export const japaneseResource = {
         },
         technologies: "主要技術",
         license: "ライセンス",
-        copyright: "Copyright (C) 2026 yexca。",
+        copyright: "Copyright (C) 2026 yexca",
         usageNotice:
           "Kikoto はいかなるサービスも提供しません。ご自身で購入した音声作品を管理するためだけに使用してください。",
-        licenseText:
-          "Kikoto は <license>GNU AGPL v3</license> でライセンスされたフリーソフトウェアです。無保証で提供され、対応する完全なソースコードはプロジェクトリポジトリで確認できます。",
+        licenseText: "<license>GNU AGPL v3</license> でライセンスされたフリーソフトウェアで、無保証で提供されます。",
         groups: {
           Frontend: "フロントエンド",
           Backend: "バックエンド",

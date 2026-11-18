@@ -122,6 +122,13 @@
   beside search instead of a row of buttons above the list. The filter shows
   each view's count, turns primary while it narrows the list, and on **All**
   marks works that need attention with a dot.
+- **About** opens with its one-line summary instead of a software overview.
+  **Built with AI** shows the current models, with the earlier release
+  ranges behind **Show history**; the technology credits name the main
+  projects only; and ComfyUI is credited as a design reference for the
+  workflow system. The sleeve adds **Report an issue**, and a button beside
+  the version copies the client, server, and browser versions for a bug
+  report.
 
 </details>
 
