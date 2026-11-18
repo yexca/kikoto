@@ -28,7 +28,7 @@ function writeRecordProgress(assetId: number, progress: RecordProgress) {
 /**
  * Captures eligible Resume checkpoints locally. HTTP cadence belongs to the
  * scheduler. A Record file saves its position to the Record library instead,
- * when the listener may write it, and never enters listening history.
+ * when the listener may play, and never enters listening history.
  */
 export function usePlaybackProgress(
   engine: PlaybackEngine,

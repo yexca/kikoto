@@ -101,6 +101,7 @@ export const recordsEnglish = {
       failed: "The file could not be deleted.",
       notDeletable: "This file cannot be deleted. It may be missing or reached through a link.",
       rootUnavailable: "The record root is offline, so nothing was deleted.",
+      changed: "This item changed or is gone since you opened the page, so nothing was deleted. Refresh and try again.",
       folderReviewDescription: "The folder moves to the trash in the record root with everything in it.",
       folderSummary: "Delete the folder {{name}} with everything in it.",
       removedFolder: "The folder with its subfolders and files, moved to .kikoto-trash/records in the record root.",

@@ -44,8 +44,8 @@ const coverImage = Buffer.from(
 async function mockRecordLibrary(page: Page) {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
-    // Saving Record progress takes library write access.
-    permissions: rolePermissions.admin,
+    // A listener who cannot manage the library still saves where they stopped.
+    permissions: rolePermissions.user,
   });
   await page.route("**/api/runtime-settings", (route) =>
     route.fulfill({ json: { ...runtimeSettingsFixture(), recordLibraryEnabled: true } }),
@@ -82,7 +82,7 @@ async function mockRecordLibrary(page: Page) {
       return route.fulfill({ json: { root } });
     }
     if (path === "/api/records/tree") {
-      return route.fulfill({ json: { folderId: 0, folders: [], assets: [clip, episode] } satisfies RecordTree });
+      return route.fulfill({ json: { folderId: 0, folders: [], assets: [clip, episode], total: 2 } satisfies RecordTree });
     }
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (path === "/api/records/assets/1/playback") {

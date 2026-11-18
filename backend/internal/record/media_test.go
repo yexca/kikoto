@@ -184,11 +184,13 @@ func TestTreeCarriesProgressAndContinueListsUnfinishedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	folders, _, err := store.ListTree(ctx, 0, 200, 7)
+	rootPage, err := store.ListTree(ctx, 0, 0, TreePageMax, 7)
+	folders := rootPage.Folders
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("root = %d folders, err %v", len(folders), err)
 	}
-	_, assets, err := store.ListTree(ctx, folders[0].ID, 200, 7)
+	folderPage, err := store.ListTree(ctx, folders[0].ID, 0, TreePageMax, 7)
+	assets := folderPage.Assets
 	if err != nil {
 		t.Fatal(err)
 	}

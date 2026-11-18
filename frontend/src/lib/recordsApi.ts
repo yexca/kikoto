@@ -1,4 +1,4 @@
-import { deleteJSON, getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import { deleteJSONBody, getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
 import type { VideoPlaybackInfo } from "@/lib/mediaApi";
 
 export type RecordRoot = {
@@ -47,10 +47,15 @@ export type RecordAsset = {
   progress?: RecordProgress;
 };
 
+/** One page of a folder's children: subfolders first, then files, each by name. */
 export type RecordTree = {
   folderId: number;
   folders: RecordFolder[];
   assets: RecordAsset[];
+  /** Every child the folder has, on every page. */
+  total: number;
+  /** Where the next page starts; absent on the last page. */
+  nextOffset?: number;
 };
 
 export type RecordProgress = {
@@ -70,11 +75,13 @@ export type RecordScan = {
 export const recordsApi = {
   getRecordRoot: () => sharedGetJSON<{ root: RecordRoot }>("/api/records"),
   initializeRecordRoot: () => postJSON<{ root: RecordRoot }>("/api/records/root/initialize"),
-  listRecordTree: (folderId?: number, signal?: AbortSignal) =>
-    sharedGetJSON<RecordTree>(
-      folderId ? `/api/records/tree?folderId=${encodeURIComponent(folderId)}` : "/api/records/tree",
-      signal,
-    ),
+  listRecordTree: (folderId?: number, signal?: AbortSignal, offset = 0) => {
+    const query = new URLSearchParams();
+    if (folderId) query.set("folderId", String(folderId));
+    if (offset > 0) query.set("offset", String(offset));
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return sharedGetJSON<RecordTree>(`/api/records/tree${suffix}`, signal);
+  },
   getRecordAsset: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<{ asset: RecordAsset }>(`/api/records/assets/${id}`, signal),
   listRecordContinue: (signal?: AbortSignal) =>
@@ -101,9 +108,13 @@ export const recordsApi = {
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),
   updateRecordProgress: (id: number, progress: RecordProgress) =>
     putJSONBody<void>(`/api/records/assets/${id}/progress`, progress),
-  /** Moves a record file to the trash in the record root; `trashPath` is relative to that root. */
-  deleteRecordAsset: (id: number) => deleteJSON<{ trashPath: string }>(`/api/records/assets/${id}`),
+  /**
+   * Moves a record file to the trash in the record root; `trashPath` is relative to that root.
+   * `expectedPath` is the relative path the viewer confirmed; the server refuses an id that now names another path.
+   */
+  deleteRecordAsset: (id: number, expectedPath: string) =>
+    deleteJSONBody<{ trashPath: string }>(`/api/records/assets/${id}`, { expectedPath }),
   /** Moves a record folder with everything in it to the trash; `assetIds` are the files it held. */
-  deleteRecordFolder: (id: number) =>
-    deleteJSON<{ trashPath: string; assetIds: number[] }>(`/api/records/folders/${id}`),
+  deleteRecordFolder: (id: number, expectedPath: string) =>
+    deleteJSONBody<{ trashPath: string; assetIds: number[] }>(`/api/records/folders/${id}`, { expectedPath }),
 };

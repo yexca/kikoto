@@ -6,7 +6,8 @@ Kikoto uses SQLite and a unified work model.
 
 The record library is a separate local-file model for home videos, audio files,
 and images.
-`record_root` stores the configured root and its `.kikoto-record` marker;
+`record_root` stores the configured root and, in `marker_id`, the identity its
+`.kikoto-record` marker carries;
 `record_folder` stores the normalized directory tree; `record_asset` stores one
 row per regular file and its discovery/probe state; `record_asset_progress`
 stores per-user playback position; and `record_asset_state` stores per-user

@@ -13,6 +13,9 @@ const refusalKeys: Record<string, string> = {
   record_asset_not_deletable: "records.delete.notDeletable",
   record_folder_not_deletable: "records.delete.folderNotDeletable",
   record_root_unavailable: "records.delete.rootUnavailable",
+  record_item_changed: "records.delete.changed",
+  record_asset_not_found: "records.delete.changed",
+  record_folder_not_found: "records.delete.changed",
 };
 
 /**
@@ -45,9 +48,10 @@ export function RecordDeleteDialog({
     setDeleting(true);
     let removed: ReadonlySet<number>;
     try {
-      if (folder) removed = new Set((await api.deleteRecordFolder(target.folder.id)).assetIds);
+      // The path shown is the path confirmed, so a stale page cannot delete what took the id since.
+      if (folder) removed = new Set((await api.deleteRecordFolder(target.folder.id, path)).assetIds);
       else {
-        await api.deleteRecordAsset(target.asset.id);
+        await api.deleteRecordAsset(target.asset.id, path);
         removed = new Set([target.asset.id]);
       }
     } catch (error) {

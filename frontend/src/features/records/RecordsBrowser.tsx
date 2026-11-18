@@ -61,6 +61,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const enabled = !auth.demoMode;
   const canScan = auth.hasPermission("library:write");
   const canDelete = auth.hasPermission("downloads:manage");
+  const canSaveProgress = auth.hasPermission("playback:use");
   const { location, historyState, navigate } = useRecordsLocation();
   const { state: rootState, reload: reloadRoot } = useRecordRoot(enabled);
   const root: RecordRoot | null = rootState.status === "ready" ? rootState.root : null;
@@ -363,7 +364,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           {...siblingProps(view.videos, overlayVideo.id)}
           knownProgress={progress.get(overlayVideo.id)}
           autoResume={autoResumeId === overlayVideo.id}
-          canSaveProgress={canScan}
+          canSaveProgress={canSaveProgress}
           phone={phone}
           onStep={stepOverlay}
           onListen={(position) => listenToVideo(overlayVideo.id, position)}

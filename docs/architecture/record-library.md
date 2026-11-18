@@ -13,10 +13,18 @@ navigation leaves Record out, and `/records` is not found; `GET
 `recordLibraryEnabled`. Turning it off deletes nothing: record rows, progress,
 and thumbnails stay for when it is turned on again.
 
-The root carries a `.kikoto-record` marker. An administrator initializes the
-root explicitly in the same settings section before the first scan. A missing, unmounted, foreign, or
-unreadable root is reported as unavailable and leaves existing record rows
-unchanged; it never marks the whole library missing.
+The root carries a `.kikoto-record` marker: `kikoto-record-v1` followed by a
+random identity that the database keeps in `record_root.marker_id`. An
+administrator initializes the root explicitly in the same settings section
+before the first scan; initializing writes a new identity, adopts the one a
+marker already carries, and gives one to a marker that has none. The root is
+online only while its marker carries the identity the database keeps. A
+missing marker, a marker without an identity, or a database that never
+initialized the root leaves it unconfigured; a marker of another identity,
+such as another initialized disk mounted at the same path, and a marker that
+is a link, oversized, or unreadable leave it offline. An unavailable root
+leaves existing record rows unchanged; it never marks the whole library
+missing, and deletions are refused.
 
 Record folders and assets have their own identities. A record asset does not
 become a `work`, does not receive a `primary_code`, and is not stored in
@@ -94,7 +102,10 @@ time and `file-<asset id>` or `folder-<folder id>` that keeps the item's
 relative path. It is a rename on the root's own filesystem; Kikoto never
 copies the item elsewhere and never empties the trash. A folder moves with
 everything in it, listed or not, and nothing inside it is followed. The
-deletion is refused while the root is not online, for an asset that is not
+request names the relative path the viewer confirmed, and the deletion is
+refused when the id now names another path: SQLite gives the id of a removed
+row to the next one, so a page left open could otherwise reach a file indexed
+since. The deletion is also refused while the root is not online, for an asset that is not
 available, for the root folder and a missing folder, and when any component
 of the item's path, or of the trash folders, is a link or anything other than
 a plain directory or, for a file, a regular file; the path is checked again
@@ -113,9 +124,12 @@ The HTTP surface is under `/api/records`:
 
 - `GET /api/records` reports root state; `POST /api/records/root/initialize`
   creates the marker for an administrator with `sources:write`.
-- `GET /api/records/tree?folderId=<id>` returns up to 200 children for one
-  folder with their artwork, stream, thumbnail, subtitle, and download URLs and
-  the viewer's saved progress on each video and audio file.
+- `GET /api/records/tree?folderId=<id>&offset=<n>` returns one page of up to
+  200 children of a folder, subfolders first and then available files, each
+  by name, with their artwork, stream, thumbnail, subtitle, and download URLs
+  and the viewer's saved progress on each video and audio file. `total`
+  counts every child, and `nextOffset`, absent on the last page, is where the
+  next page starts. The browser reads a folder to its last page.
 - `GET /api/records/assets/{id}` returns asset metadata; `GET
   /api/records/assets/{id}/stream` serves an authenticated Range-capable video,
   audio file, or image.
@@ -144,11 +158,13 @@ The HTTP surface is under `/api/records`:
 - `POST /api/records/scans` queues the coalesced durable scan for
   `library:write` users after the root is online.
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
-  video and audio progress.
+  video and audio progress; writing it needs `playback:use`.
 - `DELETE /api/records/assets/{id}` moves an available record file to the
   trash for `downloads:manage` users and answers its `trashPath` relative to
   the record root; `DELETE /api/records/folders/{id}` moves a folder with
-  everything in it and also answers `assetIds`, the files it held.
+  everything in it and also answers `assetIds`, the files it held. Both take
+  a JSON body with the confirmed `expectedPath` and answer `409` with
+  `record_item_changed` when the id now names another path.
 
 The **Record** navigation entry opens a folder browser over this tree with a
 full-screen video player and photo viewer, described in

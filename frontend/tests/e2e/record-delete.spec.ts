@@ -42,8 +42,9 @@ async function mockRecordPhotos(page: Page) {
     artwork: {},
   };
   let folders = [trip];
-  const deleted: number[] = [];
-  const deletedFolders: number[] = [];
+  // Each deletion as its id and the path the viewer confirmed.
+  const deleted: string[] = [];
+  const deletedFolders: string[] = [];
   await page.route("**/api/records**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -58,7 +59,7 @@ async function mockRecordPhotos(page: Page) {
       return route.fulfill({ json: { root } });
     }
     if (path === "/api/records/tree") {
-      return route.fulfill({ json: { folderId: 0, folders, assets: photos } satisfies RecordTree });
+      return route.fulfill({ json: { folderId: 0, folders, assets: photos, total: folders.length + photos.length } satisfies RecordTree });
     }
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (/^\/api\/records\/assets\/\d+\/stream$/.test(path))
@@ -66,13 +67,13 @@ async function mockRecordPhotos(page: Page) {
     const asset = /^\/api\/records\/assets\/(\d+)$/.exec(path);
     if (asset && request.method() === "DELETE") {
       const id = Number(asset[1]);
-      deleted.push(id);
+      deleted.push(`${id} ${(request.postDataJSON() as { expectedPath: string }).expectedPath}`);
       photos = photos.filter((item) => item.id !== id);
       return route.fulfill({ json: { trashPath: `.kikoto-trash/records/20260101T000000Z-${id}/Trip/Beach.png` } });
     }
     const folder = /^\/api\/records\/folders\/(\d+)$/.exec(path);
     if (folder && request.method() === "DELETE") {
-      deletedFolders.push(Number(folder[1]));
+      deletedFolders.push(`${folder[1]} ${(request.postDataJSON() as { expectedPath: string }).expectedPath}`);
       folders = [];
       return route.fulfill({
         json: { trashPath: ".kikoto-trash/records/20260101T000000Z-folder-3/Trip", assetIds: [] },
@@ -111,7 +112,7 @@ test("a Record photo moves to the trash after two confirmations and the viewer s
   expect(deleted).toEqual([]);
   await page.getByRole("button", { name: "Move to trash", exact: true }).click();
 
-  await expect.poll(() => deleted).toEqual([1]);
+  await expect.poll(() => deleted).toEqual(["1 Trip/Beach.png"]);
   await expect(page.getByRole("dialog", { name: "Photo viewer: Harbor" })).toBeVisible();
   await expect(page.getByText("Moved Beach.png to the trash.")).toBeVisible();
 });
@@ -128,7 +129,7 @@ test("a Record folder moves to the trash with everything in it after two confirm
   expect(deletedFolders).toEqual([]);
   await page.getByRole("button", { name: "Move to trash", exact: true }).click();
 
-  await expect.poll(() => deletedFolders).toEqual([3]);
+  await expect.poll(() => deletedFolders).toEqual(["3 Trip"]);
   await expect(page.getByText("Moved Trip to the trash.")).toBeVisible();
   await expect(page.getByRole("button", { name: "More actions for Trip" })).toHaveCount(0);
 });

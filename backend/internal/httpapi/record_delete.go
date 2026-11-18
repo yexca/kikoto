@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/record"
@@ -34,14 +36,30 @@ func (s *Server) deleteRecordAsset(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_asset_id", "Invalid record asset.", false)
 		return
 	}
+	expectedPath, ok := decodeRecordDeleteConfirmation(w, r)
+	if !ok {
+		return
+	}
 	cacheKey := recordPlaybackCacheKey(id)
-	// An encoder holds the file open, which keeps it from moving on some
-	// systems; one that starts during the move is stopped afterwards.
-	s.hlsSessions.stopSource(cacheKey)
-	trashed, err := s.recordStore.TrashAsset(r.Context(), id, time.Now())
+	var trashed record.TrashedAsset
+	// The confirmed path is checked before the file's encodes stop, so a
+	// refused request leaves another file's playback alone.
+	asset, err := s.recordStore.Asset(r.Context(), id)
+	if err == nil && !record.ConfirmedPath(asset.RelativePath, expectedPath) {
+		err = record.ErrItemChanged
+	}
+	if err == nil {
+		// An encoder holds the file open, which keeps it from moving on some
+		// systems; one that starts during the move is stopped afterwards.
+		s.hlsSessions.stopSource(cacheKey)
+		trashed, err = s.recordStore.TrashAsset(r.Context(), id, expectedPath, time.Now())
+	}
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		writeAPIError(w, http.StatusNotFound, "record_asset_not_found", "Record asset not found.", false)
+		return
+	case errors.Is(err, record.ErrItemChanged):
+		writeAPIError(w, http.StatusConflict, "record_item_changed", "This record file changed since it was confirmed.", false)
 		return
 	case errors.Is(err, record.ErrRootOffline):
 		writeAPIError(w, http.StatusConflict, "record_root_unavailable", "The record library is unavailable.", true)
@@ -75,12 +93,19 @@ func (s *Server) deleteRecordFolder(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_folder_id", "Invalid record folder.", false)
 		return
 	}
+	expectedPath, ok := decodeRecordDeleteConfirmation(w, r)
+	if !ok {
+		return
+	}
 	// Encoders hold files open, which keeps the folder from moving on some
 	// systems; one that starts during the move is stopped afterwards.
-	trashed, err := s.recordStore.TrashFolder(r.Context(), id, time.Now(), s.stopRecordSessions)
+	trashed, err := s.recordStore.TrashFolder(r.Context(), id, expectedPath, time.Now(), s.stopRecordSessions)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		writeAPIError(w, http.StatusNotFound, "record_folder_not_found", "Record folder not found.", false)
+		return
+	case errors.Is(err, record.ErrItemChanged):
+		writeAPIError(w, http.StatusConflict, "record_item_changed", "This record folder changed since it was confirmed.", false)
 		return
 	case errors.Is(err, record.ErrRootOffline):
 		writeAPIError(w, http.StatusConflict, "record_root_unavailable", "The record library is unavailable.", true)
@@ -99,6 +124,20 @@ func (s *Server) deleteRecordFolder(w http.ResponseWriter, r *http.Request) {
 		s.removeRecordCaches(r.Context(), assetID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"trashPath": trashed.TrashPath, "assetIds": trashed.AssetIDs})
+}
+
+// decodeRecordDeleteConfirmation reads the relative path the viewer confirmed
+// for a deletion. Ids of removed rows can be given to new ones, so the path
+// binds the request to what the viewer saw.
+func decodeRecordDeleteConfirmation(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var input struct {
+		ExpectedPath string `json:"expectedPath"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&input); err != nil || strings.TrimSpace(input.ExpectedPath) == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid_record_delete", "The deletion must name the confirmed path.", false)
+		return "", false
+	}
+	return input.ExpectedPath, true
 }
 
 func (s *Server) stopRecordSessions(assetIDs []int64) {

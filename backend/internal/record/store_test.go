@@ -2,9 +2,13 @@ package record
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
@@ -33,11 +37,13 @@ func TestScanIndexesTreeAndArtwork(t *testing.T) {
 	if result.State != "complete" || !result.MissingMarked {
 		t.Fatalf("scan result = %+v", result)
 	}
-	folders, assets, err := store.ListTree(context.Background(), 0, 200, 0)
+	page, err := store.ListTree(context.Background(), 0, 0, TreePageMax, 0)
+	folders, assets := page.Folders, page.Assets
 	if err != nil || len(folders) != 1 || len(assets) != 0 {
 		t.Fatalf("root tree = folders %d assets %d err %v", len(folders), len(assets), err)
 	}
-	childFolders, _, err := store.ListTree(context.Background(), folders[0].ID, 200, 0)
+	page, err = store.ListTree(context.Background(), folders[0].ID, 0, TreePageMax, 0)
+	childFolders := page.Folders
 	if err != nil || len(childFolders) != 1 {
 		t.Fatalf("artist tree = folders %d err %v", len(childFolders), err)
 	}
@@ -45,9 +51,42 @@ func TestScanIndexesTreeAndArtwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("poster artwork = %v", err)
 	}
-	_, assets, err = store.ListTree(context.Background(), childFolders[0].ID, 200, 0)
+	page, err = store.ListTree(context.Background(), childFolders[0].ID, 0, TreePageMax, 0)
+	assets = page.Assets
 	if err != nil || len(assets) != 2 {
 		t.Fatalf("folder assets = %d err %v", len(assets), err)
+	}
+}
+
+func TestListTreePagesThroughEveryChild(t *testing.T) {
+	store, _, _ := scannedStore(t, map[string]string{
+		"b/x.mp4": "video", "a/x.mp4": "video", "c/x.mp4": "video",
+		"d.mp4": "video", "B.jpg": "image", "a.mp4": "video", "c.txt": "text",
+	})
+	ctx := context.Background()
+	names := []string{}
+	offsets := []int{}
+	offset := 0
+	for {
+		page, err := store.ListTree(ctx, 0, offset, 3, 0)
+		if err != nil || page.Total != 7 {
+			t.Fatalf("page at %d = %+v, %v", offset, page, err)
+		}
+		for _, folder := range page.Folders {
+			names = append(names, folder.Name+"/")
+		}
+		for _, asset := range page.Assets {
+			names = append(names, asset.Name)
+		}
+		offsets = append(offsets, page.NextOffset)
+		if page.NextOffset == 0 {
+			break
+		}
+		offset = page.NextOffset
+	}
+	want := []string{"a/", "b/", "c/", "a.mp4", "B.jpg", "c.txt", "d.mp4"}
+	if strings.Join(names, " ") != strings.Join(want, " ") || fmt.Sprint(offsets) != "[3 6 0]" {
+		t.Fatalf("pages = %v with next offsets %v", names, offsets)
 	}
 }
 
@@ -80,6 +119,59 @@ func TestOfflineRootDoesNotMarkAssetsMissing(t *testing.T) {
 	}
 	if availability != "available" {
 		t.Fatalf("offline asset availability = %q", availability)
+	}
+}
+
+func TestAnotherInitializedDiskAtTheRootIsOffline(t *testing.T) {
+	store, db, root := scannedStore(t, map[string]string{"trip/clip.mp4": "video"})
+	ctx := context.Background()
+	// Another disk, initialized by another Kikoto, is mounted at the same path.
+	if err := os.Remove(filepath.Join(root, "trip", "clip.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMarker(root, "00000000000000000000000000000001"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.Scan(ctx)
+	if err != nil || result.State != "offline" || result.MissingMarked {
+		t.Fatalf("scan of another disk = %+v, %v", result, err)
+	}
+	var availability string
+	if err := db.QueryRow(`SELECT availability FROM record_asset WHERE name='clip.mp4'`).Scan(&availability); err != nil || availability != "available" {
+		t.Fatalf("asset on the absent disk = %q, %v", availability, err)
+	}
+	if _, err := store.TrashFolder(ctx, 0, "trip", time.Now(), nil); !errors.Is(err, ErrRootOffline) {
+		t.Fatalf("delete on another disk = %v", err)
+	}
+}
+
+func TestInitializeGivesAnUnidentifiedMarkerAnIdentity(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, markerName), []byte(markerVersion+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(storagetest.Open(t), root)
+	ctx := context.Background()
+	if state, err := store.EnsureRoot(ctx); err != nil || state.State != "unconfigured" {
+		t.Fatalf("root with an unidentified marker = %+v, %v", state, err)
+	}
+	if state, err := store.InitializeRoot(ctx); err != nil || state.State != "online" {
+		t.Fatalf("initialize = %+v, %v", state, err)
+	}
+	id, found, err := readMarker(root)
+	if err != nil || !found || len(id) != 32 {
+		t.Fatalf("marker after initialize = %q %v %v", id, found, err)
+	}
+	if state, err := store.EnsureRoot(ctx); err != nil || state.State != "online" {
+		t.Fatalf("root after initialize = %+v, %v", state, err)
+	}
+	// Each root initialized afresh gets its own identity.
+	other := t.TempDir()
+	if _, err := NewStore(storagetest.Open(t), other).InitializeRoot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if otherID, _, _ := readMarker(other); otherID == id || otherID == "" {
+		t.Fatalf("identities = %q and %q", id, otherID)
 	}
 }
 

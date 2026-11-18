@@ -16,11 +16,32 @@ import (
 )
 
 func (s recordTestServer) deleteAsset(name string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodDelete, "/api/records/assets/"+strconv.FormatInt(s.ids[name], 10), nil)
+	return s.deleteAssetConfirming(name, "trip/"+name)
+}
+
+func (s recordTestServer) deleteAssetConfirming(name, expectedPath string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(map[string]string{"expectedPath": expectedPath})
+	request := httptest.NewRequest(http.MethodDelete, "/api/records/assets/"+strconv.FormatInt(s.ids[name], 10), strings.NewReader(string(body)))
 	request.AddCookie(s.cookie)
 	response := httptest.NewRecorder()
 	s.handler.ServeHTTP(response, request)
 	return response
+}
+
+func TestRecordDeleteRefusesAPathOtherThanTheConfirmedOne(t *testing.T) {
+	server := newRecordTestServer(t)
+	response := server.deleteAssetConfirming("Day 2.mp4", "trip/Day 1.mp4")
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "record_item_changed") {
+		t.Fatalf("delete under another path = %d %s", response.Code, response.Body.String())
+	}
+	if response := server.deleteAssetConfirming("Day 2.mp4", ""); response.Code != http.StatusBadRequest {
+		t.Fatalf("delete without a confirmed path = %d", response.Code)
+	}
+	for _, name := range []string{"Day 1.mp4", "Day 2.mp4"} {
+		if _, err := os.Stat(filepath.Join(server.root, "trip", name)); err != nil {
+			t.Fatalf("%s moved: %v", name, err)
+		}
+	}
 }
 
 func TestRecordDeleteMovesTheFileToTheRecordTrashWithItsCaches(t *testing.T) {
@@ -108,7 +129,7 @@ func TestRecordDeleteRefusesAnOfflineRoot(t *testing.T) {
 
 func TestRecordDeleteRequiresDownloadsManage(t *testing.T) {
 	server := newRecordTestServer(t)
-	request := httptest.NewRequest(http.MethodDelete, "/api/records/assets/"+strconv.FormatInt(server.ids["Day 2.mp4"], 10), nil)
+	request := httptest.NewRequest(http.MethodDelete, "/api/records/assets/"+strconv.FormatInt(server.ids["Day 2.mp4"], 10), strings.NewReader(`{"expectedPath":"trip/Day 2.mp4"}`))
 	request.SetPathValue("id", strconv.FormatInt(server.ids["Day 2.mp4"], 10))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read", "library:write"}}))
 	response := httptest.NewRecorder()
@@ -127,7 +148,8 @@ func (s recordTestServer) deleteFolder(t *testing.T, relativePath string) *httpt
 	if err := s.server.db.QueryRow(`SELECT id FROM record_folder WHERE relative_path=?`, relativePath).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodDelete, "/api/records/folders/"+strconv.FormatInt(id, 10), nil)
+	body, _ := json.Marshal(map[string]string{"expectedPath": relativePath})
+	request := httptest.NewRequest(http.MethodDelete, "/api/records/folders/"+strconv.FormatInt(id, 10), strings.NewReader(string(body)))
 	request.AddCookie(s.cookie)
 	response := httptest.NewRecorder()
 	s.handler.ServeHTTP(response, request)

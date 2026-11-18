@@ -27,7 +27,17 @@ var (
 	// ErrFolderNotDeletable refuses the root folder, a missing folder, and a
 	// folder that is reached through a link or is not a plain directory.
 	ErrFolderNotDeletable = errors.New("record folder cannot be deleted")
+	// ErrItemChanged refuses a deletion whose id now names another path than
+	// the one the viewer confirmed: ids of removed rows can be given to new ones.
+	ErrItemChanged = errors.New("record item changed since it was confirmed")
 )
+
+// ConfirmedPath reports whether the path a viewer confirmed is the indexed
+// path of the item.
+func ConfirmedPath(indexed, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	return expected != "" && path.Clean(filepath.ToSlash(expected)) == path.Clean(filepath.ToSlash(indexed))
+}
 
 // TrashedAsset is a record file moved to the trash.
 type TrashedAsset struct {
@@ -49,14 +59,19 @@ type TrashedFolder struct {
 // keeping its relative path under a folder named for the time and the file,
 // and forgets the asset with every viewer's progress and state. It never
 // follows a link: every component of the file's path and of the trash must be
-// a plain directory, and the file a regular file.
-func (s *Store) TrashAsset(ctx context.Context, id int64, now time.Time) (TrashedAsset, error) {
+// a plain directory, and the file a regular file. expectedPath is the
+// relative path the viewer confirmed; another path under the same id is
+// refused.
+func (s *Store) TrashAsset(ctx context.Context, id int64, expectedPath string, now time.Time) (TrashedAsset, error) {
 	if err := s.requireOnline(ctx); err != nil {
 		return TrashedAsset{}, err
 	}
 	asset, err := s.Asset(ctx, id)
 	if err != nil {
 		return TrashedAsset{}, err
+	}
+	if !ConfirmedPath(asset.RelativePath, expectedPath) {
+		return TrashedAsset{}, ErrItemChanged
 	}
 	if asset.Availability != "available" {
 		return TrashedAsset{}, ErrAssetNotDeletable
@@ -103,14 +118,18 @@ func (s *Store) FolderAssetIDs(ctx context.Context, folderID int64) ([]int64, er
 // viewer's progress and state. Every component of the folder's path must be
 // a plain directory; what the folder holds moves with it and is never
 // followed. beforeMove runs with the files the folder holds once the folder
-// may be deleted, before it moves.
-func (s *Store) TrashFolder(ctx context.Context, id int64, now time.Time, beforeMove func(assetIDs []int64)) (TrashedFolder, error) {
+// may be deleted, before it moves. expectedPath is the relative path the
+// viewer confirmed; another path under the same id is refused.
+func (s *Store) TrashFolder(ctx context.Context, id int64, expectedPath string, now time.Time, beforeMove func(assetIDs []int64)) (TrashedFolder, error) {
 	if err := s.requireOnline(ctx); err != nil {
 		return TrashedFolder{}, err
 	}
 	var rel, key, state string
 	if err := s.db.QueryRowContext(ctx, `SELECT relative_path, path_key, state FROM record_folder WHERE id=? AND root_id=1`, id).Scan(&rel, &key, &state); err != nil {
 		return TrashedFolder{}, err
+	}
+	if !ConfirmedPath(rel, expectedPath) {
+		return TrashedFolder{}, ErrItemChanged
 	}
 	if key == "." || state != "active" {
 		return TrashedFolder{}, ErrFolderNotDeletable

@@ -99,6 +99,7 @@ export const recordsHant = {
       failed: "無法刪除此檔案。",
       notDeletable: "無法刪除此檔案。它可能已不存在，或經由連結存取。",
       rootUnavailable: "記錄根目錄處於離線狀態，沒有刪除任何內容。",
+      changed: "開啟頁面後此項目已變更或不存在，沒有刪除任何內容。請重新整理後再試。",
       folderReviewDescription: "資料夾會連同其中所有內容移到記錄根目錄的回收區。",
       folderSummary: "刪除資料夾 {{name}} 及其中所有內容。",
       removedFolder: "資料夾及其子資料夾和檔案，移到記錄根目錄的 .kikoto-trash/records。",

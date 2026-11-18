@@ -184,6 +184,14 @@ export function deleteJSON<T>(path: string): Promise<T> {
   return requestJSON<T>(path, { method: "DELETE" });
 }
 
+export function deleteJSONBody<T>(path: string, body: unknown): Promise<T> {
+  return requestJSON<T>(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // A write that may outlive the page (a pagehide flush) opts into keepalive.
 export async function sendJSONBody<T>(
   method: "POST" | "PATCH" | "PUT",

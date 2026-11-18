@@ -5,7 +5,9 @@ package record
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -24,7 +26,7 @@ import (
 const markerName = ".kikoto-record"
 
 var ignoredNames = map[string]bool{
-	markerName: true, ".kikoto-staging": true, ".kikoto-backup": true,
+	markerName: true, markerName + ".tmp": true, ".kikoto-staging": true, ".kikoto-backup": true,
 	".kikoto-trash": true, "@eaDir": true, "__MACOSX": true,
 	"#recycle": true, ".DS_Store": true, "Thumbs.db": true,
 }
@@ -141,37 +143,95 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&expectedMarker); err != nil {
 		return Root{}, err
 	}
-	markerPath := filepath.Join(path, markerName)
-	markerInfo, markerStatErr := os.Lstat(markerPath)
-	if markerStatErr == nil && markerInfo.Mode()&os.ModeSymlink != 0 {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='offline', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
+	setState := func(state string) (Root, error) {
+		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state)
 		return s.rootRecord(ctx)
 	}
-	if markerStatErr != nil && !errors.Is(markerStatErr, os.ErrNotExist) {
-		return Root{}, fmt.Errorf("inspect record marker: %w", markerStatErr)
-	}
-	marker, err := os.ReadFile(markerPath)
-	if errors.Is(err, os.ErrNotExist) {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='unconfigured', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
-		return s.rootRecord(ctx)
-	} else if err != nil {
+	markerID, found, err := readMarker(path)
+	switch {
+	case errors.Is(err, errInvalidMarker):
+		return setState("offline")
+	case err != nil:
 		return Root{}, fmt.Errorf("read record marker: %w", err)
-	} else if strings.TrimSpace(string(marker)) != "kikoto-record-v1" || (expectedMarker != "" && strings.TrimSpace(string(marker)) != expectedMarker) {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='offline', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
-		return s.rootRecord(ctx)
+	case !found:
+		return setState("unconfigured")
+	case markerID == "" || expectedMarker == "":
+		// A marker without an identity, or a database that never initialized
+		// this root, waits for an explicit initialization.
+		return setState("unconfigured")
+	case markerID != expectedMarker:
+		// Another initialized disk mounted at the same path is not this root.
+		return setState("offline")
 	}
-	if expectedMarker == "" {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='unconfigured', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
-		return s.rootRecord(ctx)
+	return setState("online")
+}
+
+// markerVersion starts every marker; the root's identity follows it.
+const markerVersion = "kikoto-record-v1"
+
+// markerMaxBytes bounds the marker read.
+const markerMaxBytes = 256
+
+var errInvalidMarker = errors.New("record root marker is invalid")
+
+// readMarker returns the identity in the root's marker. found is false when
+// there is no marker; an identity of "" is a marker written before roots had
+// their own identities. A link, a non-regular file, an oversized file, or
+// unknown content is errInvalidMarker.
+func readMarker(root string) (id string, found bool, err error) {
+	path := filepath.Join(root, markerName)
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, marker_id=?, state='online', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, strings.TrimSpace(string(marker))); err != nil {
-		return Root{}, err
+	if err != nil {
+		return "", false, err
 	}
-	return s.rootRecord(ctx)
+	if !info.Mode().IsRegular() || info.Size() > markerMaxBytes {
+		return "", true, errInvalidMarker
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", true, err
+	}
+	fields := strings.Fields(string(content))
+	if len(fields) == 0 || fields[0] != markerVersion || len(fields) > 2 {
+		return "", true, errInvalidMarker
+	}
+	if len(fields) == 1 {
+		return "", true, nil
+	}
+	return fields[1], true, nil
+}
+
+// writeMarker records id in the root's marker. The marker is written beside
+// its final name and renamed into place, so a reader sees a whole marker.
+func writeMarker(root, id string) error {
+	temporary := filepath.Join(root, markerName+".tmp")
+	if err := os.WriteFile(temporary, []byte(markerVersion+" "+id+"\n"), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, filepath.Join(root, markerName)); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func newMarkerID() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value[:]), nil
 }
 
 // InitializeRoot is an explicit administrator action. Scanning never creates
 // a marker because an empty mount point must not be mistaken for a library.
+// A new marker carries an identity of its own, so another initialized disk
+// mounted at the same path is reported offline rather than taken for this
+// root. Initializing a root that already carries an identity adopts it; a
+// marker without one is given one.
 func (s *Store) InitializeRoot(ctx context.Context) (Root, error) {
 	path := filepath.Clean(strings.TrimSpace(s.root))
 	if path == "." || path == "" {
@@ -180,25 +240,19 @@ func (s *Store) InitializeRoot(ctx context.Context) (Root, error) {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return Root{}, err
 	}
-	markerPath := filepath.Join(path, markerName)
-	if info, err := os.Lstat(markerPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return Root{}, errors.New("record root marker must not be a symbolic link")
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	id, _, err := readMarker(path)
+	if err != nil {
 		return Root{}, err
 	}
-	if marker, err := os.ReadFile(markerPath); err == nil {
-		if strings.TrimSpace(string(marker)) != "kikoto-record-v1" {
-			return Root{}, errors.New("record root marker is invalid")
-		}
-	} else if errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(markerPath, []byte("kikoto-record-v1\n"), 0o644); err != nil {
+	if id == "" {
+		if id, err = newMarkerID(); err != nil {
 			return Root{}, err
 		}
-	} else {
-		return Root{}, err
+		if err := writeMarker(path, id); err != nil {
+			return Root{}, err
+		}
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, marker_id='kikoto-record-v1', state='online', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
-	if err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, marker_id=?, state='online', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, id); err != nil {
 		return Root{}, err
 	}
 	return s.rootRecord(ctx)
@@ -470,50 +524,102 @@ func (f *progressFields) progress() *Progress {
 	return p
 }
 
-// ListTree lists up to limit subfolders and available assets of one folder,
-// the root when parentID is 0, with userID's saved progress on each video.
-func (s *Store) ListTree(ctx context.Context, parentID int64, limit int, userID int64) ([]Folder, []Asset, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 200
+// TreePageMax bounds one page of a folder listing.
+const TreePageMax = 200
+
+// TreePage is one page of a folder's children: subfolders first, then
+// available files, each by name.
+type TreePage struct {
+	Folders []Folder
+	Assets  []Asset
+	// Total counts every child the folder has, on every page.
+	Total int
+	// NextOffset is where the next page starts, or 0 on the last page.
+	NextOffset int
+}
+
+// ListTree lists one page of the subfolders and available assets of one
+// folder, the root when parentID is 0, with userID's saved progress on each
+// video and audio file. The children are ordered subfolders first, then files,
+// each by name; offset counts children across both.
+func (s *Store) ListTree(ctx context.Context, parentID int64, offset, limit int, userID int64) (TreePage, error) {
+	page := TreePage{Folders: []Folder{}, Assets: []Asset{}}
+	if limit <= 0 || limit > TreePageMax {
+		limit = TreePageMax
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	if parentID <= 0 {
 		if err := s.db.QueryRowContext(ctx, `SELECT id FROM record_folder WHERE root_id=1 AND path_key='.'`).Scan(&parentID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return []Folder{}, []Asset{}, nil
+				return page, nil
 			}
-			return nil, nil, err
+			return TreePage{}, err
 		}
 	}
-	folderRows, err := s.db.QueryContext(ctx, `SELECT f.id, f.parent_id, f.name, f.relative_path, f.depth, (SELECT COUNT(*) FROM record_folder c WHERE c.parent_id=f.id AND c.state='active'), (SELECT COUNT(*) FROM record_asset a WHERE a.folder_id=f.id AND a.availability='available') FROM record_folder f WHERE f.parent_id=? AND f.state='active' ORDER BY f.name COLLATE NOCASE, f.id LIMIT ?`, parentID, limit)
-	if err != nil {
-		return nil, nil, err
+	var folderCount, assetCount int
+	if err := s.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM record_folder WHERE parent_id=?1 AND state='active'),
+		(SELECT COUNT(*) FROM record_asset WHERE folder_id=?1 AND availability='available')`, parentID).Scan(&folderCount, &assetCount); err != nil {
+		return TreePage{}, err
 	}
-	defer folderRows.Close()
+	page.Total = folderCount + assetCount
+	if offset < folderCount {
+		folders, err := s.listFolders(ctx, parentID, offset, limit)
+		if err != nil {
+			return TreePage{}, err
+		}
+		page.Folders = folders
+	}
+	if remaining := limit - len(page.Folders); remaining > 0 {
+		assets, err := s.listAssets(ctx, parentID, max(offset-folderCount, 0), remaining, userID)
+		if err != nil {
+			return TreePage{}, err
+		}
+		page.Assets = assets
+	}
+	if next := offset + len(page.Folders) + len(page.Assets); next < page.Total && len(page.Folders)+len(page.Assets) > 0 {
+		page.NextOffset = next
+	}
+	return page, nil
+}
+
+func (s *Store) listFolders(ctx context.Context, parentID int64, offset, limit int) ([]Folder, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.parent_id, f.name, f.relative_path, f.depth, (SELECT COUNT(*) FROM record_folder c WHERE c.parent_id=f.id AND c.state='active'), (SELECT COUNT(*) FROM record_asset a WHERE a.folder_id=f.id AND a.availability='available') FROM record_folder f WHERE f.parent_id=? AND f.state='active' ORDER BY f.name COLLATE NOCASE, f.id LIMIT ? OFFSET ?`, parentID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
 	folders := []Folder{}
-	for folderRows.Next() {
+	for rows.Next() {
 		var f Folder
-		if err := folderRows.Scan(&f.ID, &f.ParentID, &f.Name, &f.RelativePath, &f.Depth, &f.ChildCount, &f.AssetCount); err != nil {
-			return nil, nil, err
+		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name, &f.RelativePath, &f.Depth, &f.ChildCount, &f.AssetCount); err != nil {
+			return nil, err
 		}
 		f.Artwork = s.artworkForFolder(f)
 		folders = append(folders, f)
 	}
-	assetRows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind IN ('video','audio') WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ?`, userID, parentID, limit)
+	return folders, rows.Err()
+}
+
+func (s *Store) listAssets(ctx context.Context, folderID int64, offset, limit int, userID int64) ([]Asset, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind IN ('video','audio') WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ? OFFSET ?`, userID, folderID, limit, offset)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	defer assetRows.Close()
+	defer func() { _ = rows.Close() }()
 	assets := []Asset{}
-	for assetRows.Next() {
+	for rows.Next() {
 		var progress progressFields
-		a, err := scanAsset(assetRows, progress.dest()...)
+		a, err := scanAsset(rows, progress.dest()...)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		a.Progress = progress.progress()
 		assets = append(assets, a)
 	}
-	return folders, assets, assetRows.Err()
+	return assets, rows.Err()
 }
 
 // ContinueLimitMax bounds the Continue watching list.

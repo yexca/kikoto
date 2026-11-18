@@ -179,6 +179,28 @@ func (s recordTestServer) setRecordLibraryEnabled(t *testing.T, enabled bool) {
 	}
 }
 
+func TestRecordProgressIsSavedByAViewerWhoCannotManageTheLibrary(t *testing.T) {
+	server := newRecordTestServer(t)
+	id := server.ids["Day 1.mp4"]
+	save := func(permissions ...string) int {
+		request := httptest.NewRequest(http.MethodPut, "/api/records/assets/"+strconv.FormatInt(id, 10)+"/progress", strings.NewReader(`{"positionSeconds":42}`))
+		request.SetPathValue("id", strconv.FormatInt(id, 10))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: permissions}))
+		response := httptest.NewRecorder()
+		server.server.updateRecordProgress(response, request)
+		return response.Code
+	}
+	if code := save("library:read"); code != http.StatusForbidden {
+		t.Fatalf("save without playback:use = %d", code)
+	}
+	if code := save("library:read", "playback:use"); code != http.StatusOK {
+		t.Fatalf("save with playback:use = %d", code)
+	}
+	if progress, err := server.server.recordStore.Progress(context.Background(), 1, id); err != nil || progress.PositionSeconds != 42 {
+		t.Fatalf("saved progress = %+v, %v", progress, err)
+	}
+}
+
 func TestRecordContinueBoundsItsLimit(t *testing.T) {
 	server := newRecordTestServer(t)
 	for value, want := range map[string]int{"0": http.StatusBadRequest, "51": http.StatusBadRequest, "x": http.StatusBadRequest, "50": http.StatusOK, "": http.StatusOK} {

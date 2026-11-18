@@ -43,11 +43,21 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 		}
 		parent = parsed
 	}
-	folders, assets, err := s.recordStore.ListTree(r.Context(), parent, 200, user.ID)
+	offset := 0
+	if value := strings.TrimSpace(r.URL.Query().Get("offset")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			writeAPIError(w, http.StatusBadRequest, "invalid_offset", "Invalid record listing offset.", false)
+			return
+		}
+		offset = parsed
+	}
+	page, err := s.recordStore.ListTree(r.Context(), parent, offset, record.TreePageMax, user.ID)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "record_tree_failed", "The record directory could not be read.", true)
 		return
 	}
+	folders, assets := page.Folders, page.Assets
 	for i := range assets {
 		decorateRecordAsset(&assets[i])
 	}
@@ -60,7 +70,11 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 			folders[i].Artwork.BackdropURL = "/api/records/folders/" + id + "/artwork/backdrop"
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"folderId": parent, "folders": folders, "assets": assets})
+	response := map[string]any{"folderId": parent, "folders": folders, "assets": assets, "total": page.Total}
+	if page.NextOffset > 0 {
+		response["nextOffset"] = page.NextOffset
+	}
+	writeJSON(w, http.StatusOK, response)
 	s.prefetchRecordVideoKeyframes(assets)
 }
 
@@ -225,7 +239,7 @@ func (s *Server) getRecordProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateRecordProgress(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:write")
+	user, ok := s.requirePermission(w, r, "playback:use")
 	if !ok {
 		return
 	}

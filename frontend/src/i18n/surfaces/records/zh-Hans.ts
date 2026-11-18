@@ -99,6 +99,7 @@ export const recordsHans = {
       failed: "无法删除该文件。",
       notDeletable: "无法删除此文件。它可能已不存在，或经由链接访问。",
       rootUnavailable: "记录根目录处于离线状态，没有删除任何内容。",
+      changed: "打开页面后此项目已变更或不存在，没有删除任何内容。请刷新后重试。",
       folderReviewDescription: "文件夹会连同其中所有内容移到记录根目录的回收区。",
       folderSummary: "删除文件夹 {{name}} 及其中所有内容。",
       removedFolder: "文件夹及其子文件夹和文件，移到记录根目录的 .kikoto-trash/records。",

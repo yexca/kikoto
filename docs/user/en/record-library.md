@@ -11,7 +11,10 @@ work.
 Record is off until an administrator turns it on. Mount a host directory at
 `/record`, then in **System → Library** turn on **Record library** under
 **Record** and choose **Initialize root**. Kikoto writes a `.kikoto-record`
-marker; scanning only starts after that explicit initialization. While Record
+marker that names this root; scanning only starts after that explicit
+initialization. Another disk mounted at `/record`, even one initialized for
+Record elsewhere, shows Record as offline and leaves this library as it was.
+While Record
 is off, the sidebar leaves it out for every account; turning it off keeps its
 folders, watched positions, and thumbnails for when it is turned on again.
 The default production mount is:
@@ -109,7 +112,7 @@ with the folder's other videos queued after it as sound. **More actions** beside
 holds **Delete**.
 
 The position is saved per account about every ten seconds, on pause, at the
-end, and when the player closes; saving it needs library write access. A video
+end, and when the player closes. A video
 that starts playing pauses the global audio player, which stays paused after
 the video player closes, and the video pauses when the global audio player
 starts again.
@@ -152,4 +155,6 @@ player's queue. Files beside a deleted file, such as its subtitles, stay.
 Kikoto never empties the trash: to restore a file or folder, move it back and
 scan, or delete it from disk to free the space. Nothing is deleted while the
 record root is offline, the root folder itself cannot be deleted, and an item
-reached through a link is refused.
+reached through a link is refused. An item that changed since the page showed
+it, such as one deleted from another tab, is refused too; refresh and review
+it again.
