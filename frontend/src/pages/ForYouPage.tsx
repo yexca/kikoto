@@ -133,7 +133,7 @@ export function ForYouPage({ userId, readOnly, canMark }: { userId: number; read
         }
       />
       {settings && !mobile && (
-        <Dialog onClose={() => showPanel(null)} ariaLabel={t("subscriptions.forYou.settings")} size="2xl">
+        <Dialog onClose={() => showPanel(null)} ariaLabel={t("subscriptions.forYou.settings")} size="full">
           <DialogBody className="px-4">{settings}</DialogBody>
         </Dialog>
       )}
