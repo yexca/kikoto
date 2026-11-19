@@ -698,7 +698,7 @@ test("Settings links land on their section and System keeps its open tab in the 
   // Recommendation tuning is For you's settings.
   await page.goto("/settings?tab=recommendation");
   await expect(page).toHaveURL(/\/for-you\?panel=tuning$/);
-  await expect(page.getByRole("tab", { name: "Tuning", selected: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "For you settings", exact: true })).toBeVisible();
 
   // A link to an administration tab of Settings opens it on the System page.
   await page.goto("/settings?tab=cache");
@@ -1297,7 +1297,7 @@ test("recommendation restores all default weights and threshold before saving", 
     (payload) => settingsPayloads.push(payload),
   );
   await page.goto("/for-you?panel=tuning");
-  await expect(page.getByRole("tab", { name: "Tuning", selected: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "For you settings", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await page.getByLabel("Highlight threshold").focus();
   await page.getByLabel("Highlight threshold").press("End");

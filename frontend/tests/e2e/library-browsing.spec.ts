@@ -252,6 +252,7 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
     "Release date",
     "Random",
     "Rating",
+    "Your rating",
     "Code",
     "Sales",
     "Title",
