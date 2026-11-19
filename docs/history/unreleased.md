@@ -11,7 +11,8 @@
 - Record is a separate library for personal videos, photos, and audio files
   in the sidebar. An administrator turns it on and initializes its root under
   **Record** in **System → Library**; it reads its own `/record` mount and
-  never adds files to the audio Library or to a work.
+  never adds files to the audio Library or to a work. Initializing another
+  disk mounted there starts the library afresh.
 - Record browses one folder at a time under a path bar that leads back to every
   parent, with **Continue watching** and **Scan** on the right, and the address
   keeps the open folder for Back, Forward, and reload. Items are ordered

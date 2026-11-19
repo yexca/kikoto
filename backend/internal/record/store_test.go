@@ -2,6 +2,7 @@ package record
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -142,6 +143,56 @@ func TestAnotherInitializedDiskAtTheRootIsOffline(t *testing.T) {
 	}
 	if _, err := store.TrashFolder(ctx, 0, "trip", time.Now(), nil); !errors.Is(err, ErrRootOffline) {
 		t.Fatalf("delete on another disk = %v", err)
+	}
+}
+
+// Initializing the root again keeps its catalog; initializing it for another
+// disk starts a new one, so the other disk's files never take over the earlier
+// disk's assets or their progress by path.
+func TestInitializingAnotherDiskStartsANewCatalog(t *testing.T) {
+	store, db, root := scannedStore(t, map[string]string{"trip/clip.mp4": "first"})
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO user_account(id,username,role,enabled) VALUES (7,'viewer','user',1)`); err != nil {
+		t.Fatal(err)
+	}
+	first := assetID(t, db, "clip.mp4")
+	if err := store.SaveProgress(ctx, 7, first, Progress{PositionSeconds: 60}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InitializeRoot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if progress, err := store.Progress(ctx, 7, first); err != nil || progress.PositionSeconds != 60 {
+		t.Fatalf("progress after initializing the same disk = %+v, %v", progress, err)
+	}
+
+	// Another initialized disk is mounted at the path, and the administrator
+	// initializes it.
+	if err := os.WriteFile(filepath.Join(root, "trip", "clip.mp4"), []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMarker(root, "00000000000000000000000000000001"); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := store.InitializeRoot(ctx); err != nil || state.State != "online" {
+		t.Fatalf("initialize another disk = %+v, %v", state, err)
+	}
+	if _, err := store.Asset(ctx, first); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("earlier disk's asset before a scan = %v", err)
+	}
+	var assets, folders, progress int
+	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM record_asset), (SELECT COUNT(*) FROM record_folder), (SELECT COUNT(*) FROM record_asset_progress)`).Scan(&assets, &folders, &progress); err != nil {
+		t.Fatal(err)
+	}
+	if assets != 0 || folders != 0 || progress != 0 {
+		t.Fatalf("catalog after initializing another disk = %d assets, %d folders, %d progress", assets, folders, progress)
+	}
+	if _, err := store.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	second := assetID(t, db, "clip.mp4")
+	if got, err := store.Progress(ctx, 7, second); err != nil || got.PositionSeconds != 0 {
+		t.Fatalf("progress of the other disk's file = %+v, %v", got, err)
 	}
 }
 

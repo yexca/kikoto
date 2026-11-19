@@ -231,7 +231,10 @@ func newMarkerID() (string, error) {
 // A new marker carries an identity of its own, so another initialized disk
 // mounted at the same path is reported offline rather than taken for this
 // root. Initializing a root that already carries an identity adopts it; a
-// marker without one is given one.
+// marker without one is given one. Adopting an identity other than the one the
+// database keeps starts a new catalog: the folders, files, progress, and
+// states recorded for the earlier identity describe another disk, so they are
+// forgotten rather than matched to this root's files by path.
 func (s *Store) InitializeRoot(ctx context.Context) (Root, error) {
 	path := filepath.Clean(strings.TrimSpace(s.root))
 	if path == "." || path == "" {
@@ -252,10 +255,43 @@ func (s *Store) InitializeRoot(ctx context.Context) (Root, error) {
 			return Root{}, err
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, marker_id=?, state='online', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, id); err != nil {
+	if err := s.adoptRootIdentity(ctx, path, id); err != nil {
 		return Root{}, err
 	}
 	return s.rootRecord(ctx)
+}
+
+// adoptRootIdentity records the root's path and identity, forgetting the
+// catalog of an earlier identity in the same transaction.
+func (s *Store) adoptRootIdentity(ctx context.Context, path, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var previous string
+	if err := tx.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&previous); err != nil {
+		return err
+	}
+	statements := []string{}
+	if previous != "" && previous != id {
+		statements = append(statements,
+			`DELETE FROM record_asset_progress WHERE asset_id IN (SELECT id FROM record_asset WHERE root_id=1)`,
+			`DELETE FROM record_asset_state WHERE asset_id IN (SELECT id FROM record_asset WHERE root_id=1)`,
+			`DELETE FROM record_asset WHERE root_id=1`,
+			`DELETE FROM record_folder WHERE root_id=1`,
+			`UPDATE record_root SET last_scan_run_id=NULL, last_scanned_at=NULL WHERE id=1`,
+		)
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE record_root SET configured_path=?, marker_id=?, state='online', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) rootRecord(ctx context.Context) (Root, error) {

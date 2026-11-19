@@ -14,6 +14,9 @@ Record is off until an administrator turns it on. Mount a host directory at
 marker that names this root; scanning only starts after that explicit
 initialization. Another disk mounted at `/record`, even one initialized for
 Record elsewhere, shows Record as offline and leaves this library as it was.
+Choosing **Initialize root** for that disk makes it the Record root and starts
+the library afresh: the earlier disk's folders and watched positions are
+forgotten.
 While Record
 is off, the sidebar leaves it out for every account; turning it off keeps its
 folders, watched positions, and thumbnails for when it is turned on again.

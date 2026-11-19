@@ -17,7 +17,11 @@ The root carries a `.kikoto-record` marker: `kikoto-record-v1` followed by a
 random identity that the database keeps in `record_root.marker_id`. An
 administrator initializes the root explicitly in the same settings section
 before the first scan; initializing writes a new identity, adopts the one a
-marker already carries, and gives one to a marker that has none. The root is
+marker already carries, and gives one to a marker that has none. Adopting an
+identity other than the one the database keeps, such as initializing another
+disk mounted at the path, forgets the folders, files, progress, and states
+recorded for the earlier identity in the same transaction, so the new disk's
+files never take over earlier assets by path. The root is
 online only while its marker carries the identity the database keeps. A
 missing marker, a marker without an identity, or a database that never
 initialized the root leaves it unconfigured; a marker of another identity,
