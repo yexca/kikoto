@@ -769,6 +769,14 @@ Every active folder's files are indexed as media of the work, and each file
 belongs to the folder its path lies in. Several folders are a state the work
 detail offers to tidy up, not an error.
 
+A local path of a work has one location, on one media item. A scanned file's
+item is the one its path is already recorded on, such as the remote item a
+Fetch published the file under; that item leaves any remote folder and takes
+the file's `local:<code>:<work-relative path>` fingerprint unless another item
+holds it. Only a path with no record goes to the item with that fingerprint,
+which the file's copies in the work's other folders share, or to a new one. A
+Fetch registers a target path on the item that holds it in the same way.
+
 A work folder is the deepest folder within the scan depth whose name carries a
 work code. A folder named `Lyrics - <language> - <code> - <date>-<time>`, the
 name a remote lyrics download gives a folder after the edition it read, names
@@ -826,7 +834,8 @@ on disk, and listings only while it matches `file_version`.
 identical-file detection, and `content_hash_version` holds the size and
 modification time it was computed for. A file observed with another version has
 no usable hash until it is hashed again. Only files that share a size with
-another local file of the same work family are ever hashed.
+another local file of the same work family are ever hashed, and a file on
+disk is one candidate however many locations name it.
 
 `media_item_display_name` and `work_folder_display_name` hold the names the
 work detail directory shows for local files and folders, one row per

@@ -3,13 +3,19 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, folder localfs.WorkFolder, file localfs.LocalFile, kind string, trackNo int) (int64, error) {
+// upsertDetectedMediaItem returns the media item of a scanned file. A file
+// already recorded at its path keeps the item that holds it, such as the
+// remote item a Fetch published the file under, so a path never gains a second
+// item. That item becomes a plain local item: it takes the file's local
+// fingerprint unless another item holds it, and leaves any remote folder.
+func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, folder localfs.WorkFolder, file localfs.LocalFile, kind string, trackNo int) (int64, error) {
 	fingerprint := fmt.Sprintf("local:%s:%s", folder.Code, file.WorkRelPath)
 	var trackNoValue any
 	if trackNo > 0 {
@@ -17,30 +23,21 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 	}
 	durationValue := nullableDuration(file.DurationSeconds)
 	hasAudioValue := nullableBoolPointer(file.HasAudio)
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO media_item (
-			work_id,
-			kind,
-			title,
-			track_no,
-			duration_seconds,
-			has_audio,
-			size_bytes,
-			file_version,
-			fingerprint
-		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-		WHERE NOT EXISTS (
-			SELECT 1 FROM media_item WHERE fingerprint = ?
-		)
-	`, workID, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, file.FileVersion, fingerprint, fingerprint)
+	itemID, err := localPathMediaItemID(ctx, tx, workID, fileSourceID, file.RelPath, fingerprint)
 	if err != nil {
 		return 0, err
 	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return 0, err
-	} else if affected > 0 {
-		return result.LastInsertId()
+	if itemID == 0 {
+		err := tx.QueryRowContext(ctx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id ASC LIMIT 1", fingerprint).Scan(&itemID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return sqlutil.InsertID(ctx, tx, `
+				INSERT INTO media_item (work_id, kind, title, track_no, duration_seconds, has_audio, size_bytes, file_version, fingerprint)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, workID, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, file.FileVersion, fingerprint)
+		}
+		if err != nil {
+			return 0, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_item
@@ -49,13 +46,38 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			track_no = ?,
 			duration_seconds = CASE WHEN file_version IS NOT ? OR size_bytes IS NOT ? THEN ? ELSE COALESCE(?, duration_seconds) END,
 			has_audio = CASE WHEN file_version IS NOT ? OR size_bytes IS NOT ? THEN ? ELSE COALESCE(?, has_audio) END,
-			size_bytes = ?, file_version = ?
-		WHERE fingerprint = ?
+			size_bytes = ?, file_version = ?,
+			parent_id = NULL,
+			fingerprint = CASE WHEN EXISTS (
+				SELECT 1 FROM media_item AS holder WHERE holder.fingerprint = ? AND holder.id <> media_item.id
+			) THEN fingerprint ELSE ? END
+		WHERE id = ?
 	`, kind, file.Title, trackNoValue, file.FileVersion, file.SizeBytes, durationValue, durationValue,
-		file.FileVersion, file.SizeBytes, hasAudioValue, hasAudioValue, file.SizeBytes, file.FileVersion, fingerprint); err != nil {
+		file.FileVersion, file.SizeBytes, hasAudioValue, hasAudioValue, file.SizeBytes, file.FileVersion,
+		fingerprint, fingerprint, itemID); err != nil {
 		return 0, err
 	}
-	return sqlutil.SelectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id ASC LIMIT 1", fingerprint)
+	return itemID, nil
+}
+
+// localPathMediaItemID returns the media item of the work that holds a local
+// location at the path, preferring the item with the file's own fingerprint,
+// or 0 when none does.
+func localPathMediaItemID(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, relPath, fingerprint string) (int64, error) {
+	var itemID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT item.id
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.file_source_id = ? AND location.location_type = 'local' AND location.path = ?
+			AND item.work_id = ?
+		ORDER BY CASE WHEN item.fingerprint = ? THEN 0 ELSE 1 END, item.id ASC
+		LIMIT 1
+	`, fileSourceID, relPath, workID, fingerprint).Scan(&itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return itemID, err
 }
 
 func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {

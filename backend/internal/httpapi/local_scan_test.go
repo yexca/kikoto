@@ -38,7 +38,7 @@ func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing
 		t.Fatal(err)
 	}
 	file := localfs.LocalFile{RelPath: "TEST-WORK-LOCAL-001/track.mp3", WorkRelPath: "track.mp3", Title: "Track", SizeBytes: 100}
-	firstItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, folder, file, "audio", 1)
+	firstItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, sourceID, folder, file, "audio", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing
 	}
 	file.Title = "Renamed track"
 	file.SizeBytes = 200
-	secondItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, folder, file, "audio", 1)
+	secondItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, sourceID, folder, file, "audio", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +73,70 @@ func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing
 	}
 	if title != "Renamed track" || itemSize != 200 || locationSize != 200 {
 		t.Fatalf("updated media = title %q, item size %d, location size %d", title, itemSize, locationSize)
+	}
+}
+
+// A Fetch records its published files on the remote media items. Scanning the
+// folder must keep each file on that item instead of adding a second local
+// item and a second location for the same path.
+func TestLocalScanKeepsFetchedFileOnItsMediaItem(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	folder := localfs.WorkFolder{Code: "RJ00000000", Title: "Example Work", RelPath: "Library/RJ00000000"}
+	workID, err := upsertDetectedWork(ctx, tx, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID, err := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2}).upsertLocalFileSource(ctx, tx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSourceID, err := sqlutil.InsertID(ctx, tx, `INSERT INTO file_source (code, display_name, source_type, enabled)
+		VALUES ('example_remote_a', 'Example Remote A', 'kikoeru_compatible', 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchedItemID, err := sqlutil.InsertID(ctx, tx, `INSERT INTO media_item (work_id, kind, title, track_no, fingerprint)
+		VALUES (?, 'audio', 'track.mp3', 1, ?)`, workID, fmt.Sprintf("remote:%d:RJ00000000:track.mp3", remoteSourceID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, size_bytes, availability)
+		VALUES (?, ?, 'local', 'Library/RJ00000000/track.mp3', 100, 'available')`, fetchedItemID, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	folder.Files = []localfs.LocalFile{{RelPath: "Library/RJ00000000/track.mp3", WorkRelPath: "track.mp3", Title: "track", SizeBytes: 100, FileVersion: "100:1"}}
+	for range 2 {
+		if _, err := persistIndexedLocalFiles(ctx, tx, workID, sourceID, folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var locations, items int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE location_type = 'local' AND path = 'Library/RJ00000000/track.mp3'`).Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_item WHERE work_id = ?`, workID).Scan(&items); err != nil {
+		t.Fatal(err)
+	}
+	var holderID int64
+	var fingerprint, fileVersion string
+	if err := db.QueryRow(`SELECT item.id, item.fingerprint, location.file_version FROM media_file_location AS location
+		JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.path = 'Library/RJ00000000/track.mp3'`).Scan(&holderID, &fingerprint, &fileVersion); err != nil {
+		t.Fatal(err)
+	}
+	if locations != 1 || items != 1 || holderID != fetchedItemID || fingerprint != "local:RJ00000000:track.mp3" || fileVersion != "100:1" {
+		t.Fatalf("scan = %d locations, %d items, holder %d (fetched %d), fingerprint %q, version %q",
+			locations, items, holderID, fetchedItemID, fingerprint, fileVersion)
 	}
 }
 

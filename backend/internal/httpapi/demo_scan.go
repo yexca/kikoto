@@ -240,7 +240,7 @@ func (s *Server) storeDemoLocalWork(ctx context.Context, fileSourceID int64, wor
 			hasAudio := true
 			file.HasAudio = &hasAudio
 		}
-		mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
+		mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, fileSourceID, folder, file, kind, trackNo)
 		if err != nil {
 			return err
 		}

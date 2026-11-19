@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func (s *Server) mediaItemIDForRemotePath(ctx context.Context, workID int64, remotePath string) (int64, error) {
+func mediaItemIDForRemotePath(ctx context.Context, db sqlutil.RowQuerier, workID int64, remotePath string) (int64, error) {
 	var mediaItemID int64
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 		SELECT item.id
 		FROM media_item AS item
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
@@ -30,25 +32,22 @@ func (s *Server) remoteFetchMediaItemID(ctx context.Context, workID int64, item 
 	if item.MediaItemID > 0 {
 		return item.MediaItemID, nil
 	}
-	mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
+	mediaItemID, err := mediaItemIDForRemotePath(ctx, s.db, workID, item.Path)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("%s is not in the stored file listing of this work; the remote listing changed after the Fetch was planned", item.Path)
 	}
 	return mediaItemID, err
 }
 
-// Registration normally resolves a remote item through its remote_stream row.
-// A published Fetch may lack those rows; the local location it wrote still
-// identifies the same media item.
-func (s *Server) mediaItemIDForFetchItem(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem) (int64, error) {
-	if item.MediaItemID > 0 {
-		return item.MediaItemID, nil
-	}
-	mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
-	if !errors.Is(err, sql.ErrNoRows) {
-		return mediaItemID, err
-	}
-	err = s.db.QueryRowContext(ctx, `
+// mediaItemIDForFetchItem keeps a target path on the media item that already
+// holds it, as a scan does, so a re-Fetch of a file a scan has recorded adds no
+// second location. A new path goes to the planned item, else to the remote
+// item found through its remote_stream row. Registration calls it inside the
+// write transaction that records the location, so a scan cannot record the
+// path in between.
+func mediaItemIDForFetchItem(ctx context.Context, tx *sql.Tx, workID int64, localSourceID int64, item remoteWorkSavePlanItem) (int64, error) {
+	var mediaItemID int64
+	err := tx.QueryRowContext(ctx, `
 		SELECT item.id
 		FROM media_item AS item
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
@@ -59,7 +58,13 @@ func (s *Server) mediaItemIDForFetchItem(ctx context.Context, workID int64, loca
 		ORDER BY item.id ASC
 		LIMIT 1
 	`, workID, localSourceID, item.TargetPath).Scan(&mediaItemID)
-	return mediaItemID, err
+	if !errors.Is(err, sql.ErrNoRows) {
+		return mediaItemID, err
+	}
+	if item.MediaItemID > 0 {
+		return item.MediaItemID, nil
+	}
+	return mediaItemIDForRemotePath(ctx, tx, workID, item.Path)
 }
 
 func (s *Server) markCacheLocationUnavailable(ctx context.Context, sourceID int64, cachePath string) error {
@@ -75,10 +80,6 @@ func (s *Server) markCacheLocationUnavailable(ctx context.Context, sourceID int6
 }
 
 func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem, targetAbsPath string) error {
-	mediaItemID, err := s.mediaItemIDForFetchItem(ctx, workID, localSourceID, item)
-	if err != nil {
-		return err
-	}
 	info, err := os.Stat(targetAbsPath)
 	if err != nil {
 		return err
@@ -87,7 +88,47 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 	if info.Size() > 0 {
 		size = info.Size()
 	}
+	mediaItemID, err := s.registerSavedLocalLocation(ctx, workID, localSourceID, item, size)
+	if err != nil {
+		return err
+	}
+	if item.Kind != "video" {
+		return nil
+	}
+	// The probe runs after the location is committed, so it holds no write
+	// transaction while it reads the file.
+	duration, hasAudio, ok := s.probeMediaMetadataSeconds(ctx, targetAbsPath)
+	if !ok {
+		return nil
+	}
+	var durationValue any
+	if duration > 0 {
+		durationValue = duration
+	}
 	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_item SET duration_seconds = COALESCE(?, duration_seconds), has_audio = ? WHERE id = ?
+	`, durationValue, hasAudio, mediaItemID); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE media_file_location SET duration_seconds = COALESCE(?, duration_seconds) WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
+	`, durationValue, mediaItemID, localSourceID, item.TargetPath)
+	return err
+}
+
+// registerSavedLocalLocation resolves the media item of a published file and
+// records its local location in one write transaction, and returns the item.
+func (s *Server) registerSavedLocalLocation(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem, size any) (int64, error) {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	mediaItemID, err := mediaItemIDForFetchItem(ctx, tx, workID, localSourceID, item)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
 			file_source_id,
@@ -107,9 +148,9 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 				AND path = ?
 		)
 	`, mediaItemID, localSourceID, item.TargetPath, size, mediaItemID, localSourceID, item.TargetPath); err != nil {
-		return err
+		return 0, err
 	}
-	if _, err = s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			availability = 'available',
@@ -119,28 +160,9 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 			AND location_type = 'local'
 			AND path = ?
 	`, size, mediaItemID, localSourceID, item.TargetPath); err != nil {
-		return err
+		return 0, err
 	}
-	if item.Kind == "video" {
-		duration, hasAudio, ok := s.probeMediaMetadataSeconds(ctx, targetAbsPath)
-		if ok {
-			var durationValue any
-			if duration > 0 {
-				durationValue = duration
-			}
-			if _, err := s.db.ExecContext(ctx, `
-				UPDATE media_item SET duration_seconds = COALESCE(?, duration_seconds), has_audio = ? WHERE id = ?
-			`, durationValue, hasAudio, mediaItemID); err != nil {
-				return err
-			}
-			if _, err := s.db.ExecContext(ctx, `
-				UPDATE media_file_location SET duration_seconds = COALESCE(?, duration_seconds) WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
-			`, durationValue, mediaItemID, localSourceID, item.TargetPath); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return mediaItemID, tx.Commit()
 }
 
 func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSourceIDs []int64, localSourceID int64, workCode string) error {

@@ -157,6 +157,33 @@ func TestDuplicateFilesAreFoundAcrossTheFamilyByContent(t *testing.T) {
 	}
 }
 
+// Two records of one path name one file on disk, which is no copy of itself.
+func TestDuplicateFilesCountAFileRecordedTwiceOnce(t *testing.T) {
+	fixture := newDuplicateFilesFixture(t)
+	if _, err := fixture.db.Exec(`
+		INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (?, 'image', 'cover.jpg', 'remote:9:RJ00000001:cover.jpg')
+	`, fixture.originID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		SELECT last_insert_rowid(), file_source_id, 'local', path, 'available'
+		FROM media_file_location WHERE location_type = 'local' AND path = 'RJ00000001/cover.jpg'
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := fixture.server.duplicateFilesForWork(context.Background(), fixture.originID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range groupPaths(response) {
+		if strings.Contains(group, "cover.jpg") {
+			t.Fatalf("groups = %v, want no group for the cover recorded twice", groupPaths(response))
+		}
+	}
+}
+
 func TestDuplicateFilesContinueAcrossRequestsAndFollowFileChanges(t *testing.T) {
 	fixture := newDuplicateFilesFixture(t)
 	ctx := context.Background()
