@@ -101,7 +101,8 @@ export const recordsKorean = {
       failed: "파일을 삭제할 수 없습니다.",
       notDeletable: "이 파일은 삭제할 수 없습니다. 없거나 링크를 통해 연결된 파일일 수 있습니다.",
       rootUnavailable: "기록 루트가 오프라인이라 아무것도 삭제하지 않았습니다.",
-      changed: "페이지를 연 뒤 이 항목이 바뀌었거나 없어져 아무것도 삭제하지 않았습니다. 새로고침한 뒤 다시 시도하세요.",
+      changed:
+        "페이지를 연 뒤 이 항목이 바뀌었거나 없어져 아무것도 삭제하지 않았습니다. 새로고침한 뒤 다시 시도하세요.",
       folderReviewDescription: "폴더는 안의 모든 항목과 함께 기록 루트의 휴지통으로 이동합니다.",
       folderSummary: "폴더 {{name}}을(를) 안의 모든 항목과 함께 삭제합니다.",
       removedFolder: "폴더와 그 하위 폴더, 파일. 기록 루트의 .kikoto-trash/records로 이동합니다.",

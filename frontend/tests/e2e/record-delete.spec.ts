@@ -59,7 +59,9 @@ async function mockRecordPhotos(page: Page) {
       return route.fulfill({ json: { root } });
     }
     if (path === "/api/records/tree") {
-      return route.fulfill({ json: { folderId: 0, folders, assets: photos, total: folders.length + photos.length } satisfies RecordTree });
+      return route.fulfill({
+        json: { folderId: 0, folders, assets: photos, total: folders.length + photos.length } satisfies RecordTree,
+      });
     }
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (/^\/api\/records\/assets\/\d+\/stream$/.test(path))

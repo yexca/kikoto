@@ -82,7 +82,9 @@ async function mockRecordLibrary(page: Page) {
       return route.fulfill({ json: { root } });
     }
     if (path === "/api/records/tree") {
-      return route.fulfill({ json: { folderId: 0, folders: [], assets: [clip, episode], total: 2 } satisfies RecordTree });
+      return route.fulfill({
+        json: { folderId: 0, folders: [], assets: [clip, episode], total: 2 } satisfies RecordTree,
+      });
     }
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (path === "/api/records/assets/1/playback") {

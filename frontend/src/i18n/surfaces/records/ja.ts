@@ -102,7 +102,8 @@ export const recordsJapanese = {
       failed: "ファイルを削除できませんでした。",
       notDeletable: "このファイルは削除できません。存在しないか、リンク経由の可能性があります。",
       rootUnavailable: "記録ルートがオフラインのため、何も削除していません。",
-      changed: "ページを開いた後にこの項目が変更または削除されたため、何も削除していません。再読み込みしてやり直してください。",
+      changed:
+        "ページを開いた後にこの項目が変更または削除されたため、何も削除していません。再読み込みしてやり直してください。",
       folderReviewDescription: "フォルダーは中身ごと記録ルートのゴミ箱に移動します。",
       folderSummary: "フォルダー {{name}} を中身ごと削除します。",
       removedFolder: "フォルダーとそのサブフォルダー、ファイル。記録ルートの .kikoto-trash/records に移動します。",
