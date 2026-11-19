@@ -1669,104 +1669,57 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
         : info.kind === "remote"
           ? Cloud
           : CloudOff;
-  const noFilesValue = info.loading ? "..." : "—";
-  const sizeValue = info.stats.knownSizeFiles > 0 ? formatBytes(info.stats.sizeBytes) : noFilesValue;
-  const sizeDetail =
-    info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
-      ? i18n.t("libraryDetail.filesMeasured", { known: info.stats.knownSizeFiles, total: info.stats.files })
-      : info.stats.knownSizeFiles > 0
-        ? i18n.t("libraryDetail.allFileSizesMeasured")
-        : i18n.t("libraryDetail.noMeasuredFileSize");
-  const hasMeasuredDuration = info.stats.knownDurationMedia > 0;
-  const durationValue = hasMeasuredDuration
-    ? formatDuration(info.stats.durationSeconds)
-    : info.metadataDurationSeconds
-      ? formatDuration(info.metadataDurationSeconds)
-      : noFilesValue;
-  const durationLabel = hasMeasuredDuration
-    ? i18n.t("libraryDetail.playableDuration")
-    : i18n.t("libraryDetail.metadataDuration");
-  const durationDetail = hasMeasuredDuration
-    ? info.stats.knownDurationMedia < info.stats.playable
-      ? i18n.t("libraryDetail.playableFilesMeasured", {
-          known: info.stats.knownDurationMedia,
-          total: info.stats.playable,
-        })
-      : i18n.t("libraryDetail.allPlayableDurationsMeasured")
-    : info.metadataDurationSeconds
-      ? i18n.t("libraryDetail.noMeasuredSourceDuration")
-      : i18n.t("libraryDetail.noKnownDuration");
+  const { files, playable, knownSizeFiles, sizeBytes } = info.stats;
+  const countPending = info.loading && files === 0;
+  // A size summed from only some files reads as approximate; its title names how many were measured.
+  const partialSize = knownSizeFiles > 0 && knownSizeFiles < files;
+  const sizeValue =
+    knownSizeFiles > 0 ? `${partialSize ? "≈" : ""}${formatBytes(sizeBytes)}` : info.loading ? "..." : "—";
 
+  // The source tabs already show an available source's status, and the Hero stat strip its duration.
   return (
-    <div data-testid="active-source-info" className="w-full min-w-0 p-4 text-sm">
-      <div className="mb-3 min-w-0">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <SourceIcon className="h-4 w-4 shrink-0" />
-          <span>{i18n.t("libraryDetail.sourceInfo")}</span>
-        </div>
-        <div className="mt-1 truncate font-semibold" title={info.label}>
+    <div data-testid="active-source-info" className="w-full min-w-0 space-y-2 p-4 text-sm">
+      <div className="flex min-w-0 items-center gap-2 font-semibold">
+        <SourceIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="truncate" title={info.label}>
           {info.label}
-        </div>
-        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+        </span>
+      </div>
+      {info.status !== "available" && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className={`h-2 w-2 rounded-full ${sourceTabStatusClass(info.status)}`} aria-hidden="true" />
           <span>{info.statusLabel}</span>
         </div>
-      </div>
-      <div className="space-y-2.5">
-        <SourceInfoRow
-          testId="source-info-audio-row"
-          firstLabel={i18n.t("libraryDetail.playable")}
-          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.playable.toLocaleString()}
-          secondLabel={durationLabel}
-          secondValue={durationValue}
-          detail={durationDetail}
+      )}
+      <dl className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-2xs leading-4">
+        <SourceInfoMetric
+          label={i18n.t("libraryDetail.playable")}
+          value={countPending ? "..." : playable.toLocaleString()}
         />
-        <SourceInfoRow
-          testId="source-info-files-row"
-          firstLabel={i18n.t("libraryDetail.filesLabel")}
-          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.files.toLocaleString()}
-          secondLabel={i18n.t("libraryDetail.size")}
-          secondValue={sizeValue}
-          detail={sizeDetail}
+        <SourceInfoMetric
+          label={i18n.t("libraryDetail.filesLabel")}
+          value={countPending ? "..." : files.toLocaleString()}
         />
-      </div>
+        <SourceInfoMetric
+          label={i18n.t("libraryDetail.size")}
+          value={sizeValue}
+          title={
+            partialSize ? i18n.t("libraryDetail.filesMeasured", { known: knownSizeFiles, total: files }) : undefined
+          }
+        />
+      </dl>
     </div>
   );
 }
 
-function SourceInfoRow({
-  testId,
-  firstLabel,
-  firstValue,
-  secondLabel,
-  secondValue,
-  detail,
-}: {
-  testId: string;
-  firstLabel: string;
-  firstValue: string;
-  secondLabel: string;
-  secondValue: string;
-  detail: string;
-}) {
+function SourceInfoMetric({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div data-testid={testId} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-2xs leading-4">
-      <span className="inline-flex shrink-0 items-baseline gap-1.5" data-source-primary-metrics>
-        <InlineSourceMetric label={firstLabel} value={firstValue} />
-        <span className="h-3 self-center border-l border-border" aria-hidden="true" />
-        <InlineSourceMetric label={secondLabel} value={secondValue} />
-      </span>
-      <span className="min-w-0 flex-1 basis-32 leading-4 text-muted-foreground">({detail})</span>
+    <div className="inline-flex shrink-0 items-baseline gap-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-semibold tabular-nums text-foreground" title={title}>
+        {value}
+      </dd>
     </div>
-  );
-}
-
-function InlineSourceMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex shrink-0 items-baseline gap-1">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold text-foreground">{value}</span>
-    </span>
   );
 }
 

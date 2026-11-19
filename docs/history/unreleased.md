@@ -259,6 +259,10 @@
   lyrics**, **Edit display names**, and **Translate with AI** move into one
   **Manage** menu. Source info lists the
   selected source's actions at every width.
+- Source info is headed by the source's name and lists its playable, file,
+  and size counts on one line. It shows the source's status only when the
+  source is not available, leaves the duration to the stat strip, and marks a
+  size measured from only some files as approximate.
 - Management entries and source actions show only to users allowed to use
   them; a listener sees none.
 - The stat strip and the Hero draw no frame of their own, the stat strip is

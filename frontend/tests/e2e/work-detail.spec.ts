@@ -757,21 +757,11 @@ test("work detail summarizes DLsite stats in the hero and groups active source i
   // The stat row scrolls sideways only, so a vertical swipe across it scrolls the page.
   await expect(dlsiteInfo).toHaveCSS("overflow-y", "hidden");
   const sourceInfo = page.getByTestId("active-source-info");
-  await expect(sourceInfo.getByText("Source info", { exact: true })).toBeVisible();
-  await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
-  await expect(sourceInfo.getByText("Playable duration", { exact: true })).toBeVisible();
-  await expect(sourceInfo.getByText("1m", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("source-info-audio-row")).toContainText(
-    "Playable1Playable duration1m(All playable durations measured)",
-  );
-  await expect(page.getByTestId("source-info-files-row")).toContainText("Files1Size2.0 KB(All file sizes measured)");
-  const sourcePrimaryMetrics = page.locator("[data-source-primary-metrics]");
-  await expect(sourcePrimaryMetrics).toHaveCount(2);
-  expect(
-    await sourcePrimaryMetrics.evaluateAll((elements) =>
-      elements.every((element) => element.getBoundingClientRect().height <= 18),
-    ),
-  ).toBe(true);
+  // The card names the source and its file figures; the Hero carries the duration and the
+  // source tabs an available source's status.
+  await expect(sourceInfo).toHaveText("Main local libraryPlayable1Files1Size2.0 KB");
+  const sourceMetrics = sourceInfo.locator("dl");
+  expect((await sourceMetrics.boundingBox())!.height).toBeLessThanOrEqual(18);
 });
 
 test("work detail prompts for missing metadata and refreshes after sync completes", async ({ page }) => {
