@@ -22,7 +22,6 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, assetURL, type MaintenanceWork, type MaintenanceWorkPage, type Work } from "@/lib/api";
 import { librarySourceProvidesMetadata } from "@/lib/remoteSourceCapabilities";
 import { cn } from "@/lib/tailwindClassNames";
@@ -61,11 +60,11 @@ function pressedRowItself(event: MouseEvent<HTMLElement>) {
 
 /**
  * Saved work metadata and attention records for one reason, as a management
- * table: the work with its circle, what it needs (empty for a healthy work),
- * then row actions. Pressing a row opens the work inspector, beside the table
- * on wide screens and in a sheet otherwise; keyboard focus reveals an inspect
- * button that does the same. The page owns the
- * reason rail and URL state, and composes the metadata editor behind
+ * list without a frame: the work with its circle and, under the title, what it
+ * needs (nothing for a healthy work), then row actions. Pressing a row opens
+ * the work inspector, beside the table on wide screens and in a sheet
+ * otherwise; keyboard focus reveals an inspect button that does the same. The
+ * page owns the reason rail and URL state, and composes the metadata editor behind
  * `onEditWork`; this table owns paging, search, selection, the selection bar's
  * recovery actions, and the inspector. Its search and list controls render
  * into the page header through `toolbar`. The list loads on demand rather than
@@ -105,7 +104,6 @@ export function WorkMaintenance({
 }) {
   const toast = useToast();
   const { t } = useTranslation();
-  const wideLayout = !useMobileNavigationLayout();
   const inspectorBeside = useMediaQuery(INSPECTOR_BESIDE_QUERY);
   const inspectorTitleId = useId();
   const [page, setPage] = useState(1);
@@ -190,10 +188,7 @@ export function WorkMaintenance({
   );
   // The inspector follows the loaded page, so a work that left the view closes it.
   const inspectedWork = result.works.find((work) => work.id === inspectedWorkId) ?? null;
-  // An inspector beside the table repeats the state, so the rows fold it under the title
-  // and the titles keep their width.
-  const wide = wideLayout && !(inspectorBeside && inspectedWork);
-  const columnCount = wide ? 4 : 3;
+  const columnCount = 3;
   const sourceWorks = selectedWorks.filter((work) => work.noSource);
   const retryIds = selectedWorks.flatMap((work) => {
     const id = metadataRetryWorkId(work);
@@ -442,17 +437,13 @@ export function WorkMaintenance({
               )}
             </WorkSelectionBar>
           ) : (
-            (hasLoaded || !loadError) && (
-              <WorkCollectionPagination {...paginationProps} placement="top" compactMobile compactTop />
-            )
+            // A single page needs no pager; the filter and tab already count the works.
+            (hasLoaded || !loadError) &&
+            totalPages > 1 && <WorkCollectionPagination {...paginationProps} placement="top" compactMobile compactTop />
           )}
-          <section
-            id="metadata-records"
-            aria-label={t("workMaintenance.title")}
-            className="overflow-hidden rounded-lg border bg-card"
-          >
+          <section id="metadata-records" aria-label={t("workMaintenance.title")} className="min-w-0 border-b">
             {runId && (
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-info-border bg-info-surface px-4 py-1.5 text-sm text-info-foreground">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-info-border bg-info-surface px-4 py-1.5 text-sm text-info-foreground">
                 <span>{t("metadataIssues.runFilter", { id: runId })}</span>
                 <Button size="sm" variant="ghost" onClick={() => onFilterChange("all")}>
                   {t("metadataIssues.showAll")}
@@ -460,13 +451,13 @@ export function WorkMaintenance({
               </div>
             )}
             {notice && (
-              <p role="status" className="border-b px-4 py-2 text-sm text-muted-foreground">
+              <p role="status" className="px-2 pb-2 text-sm text-muted-foreground">
                 {notice}
               </p>
             )}
             {loadError && hasLoaded && (
               <div
-                className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
+                className="mb-2 flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-md border border-error-border bg-error-surface px-4 py-2"
                 role="alert"
               >
                 <span className="text-sm text-error-foreground">
@@ -483,8 +474,8 @@ export function WorkMaintenance({
                 aria-busy={loading}
                 {...(initialLoading ? { role: "status", "aria-label": t("workMaintenance.loading") } : {})}
               >
-                <WorkTableColumns wide={wide} />
-                <thead className="border-b bg-muted/30 text-xs font-medium text-muted-foreground">
+                <WorkTableColumns />
+                <thead className="border-b text-xs font-medium text-muted-foreground">
                   <tr className="h-11">
                     <th scope="col" className="pl-4 align-middle font-medium max-sm:pl-1.5">
                       <Checkbox
@@ -501,11 +492,6 @@ export function WorkMaintenance({
                     <th scope="col" className="pl-2 align-middle font-medium sm:pl-3">
                       {t("workMaintenance.workColumn")}
                     </th>
-                    {wide && (
-                      <th scope="col" className="px-3 align-middle font-medium">
-                        {t("workMaintenance.statusColumn")}
-                      </th>
-                    )}
                     <th scope="col" className="pr-1 text-right align-middle font-medium sm:pr-3">
                       <span className="sr-only">{t("unlinked.actions")}</span>
                     </th>
@@ -527,7 +513,7 @@ export function WorkMaintenance({
                     </tr>
                   </tbody>
                 ) : initialLoading ? (
-                  <WorkTableSkeletonRows wide={wide} />
+                  <WorkTableSkeletonRows />
                 ) : result.works.length === 0 ? (
                   <tbody>
                     <tr>
@@ -634,12 +620,10 @@ export function WorkMaintenance({
                                     {circle}
                                   </span>
                                 </p>
-                                {/* Narrow layouts fold the status column under the title. */}
-                                {!wide && (
-                                  <div className="mt-1.5 min-w-0 empty:hidden">
-                                    <WorkAttentionStatus work={work} metadataKnown={canSyncMetadata} />
-                                  </div>
-                                )}
+                                {/* Only what the work needs; a healthy work shows nothing here. */}
+                                <div className="mt-1.5 min-w-0 empty:hidden">
+                                  <WorkAttentionStatus work={work} metadataKnown={canSyncMetadata} />
+                                </div>
                                 {work.metadataIssues.length > 0 && !inspected && (
                                   <MetadataIssueDetails
                                     items={work.metadataIssues}
@@ -653,13 +637,6 @@ export function WorkMaintenance({
                               </div>
                             </div>
                           </td>
-                          {wide && (
-                            <td className="px-3 py-2.5 align-top">
-                              <div className="flex min-h-12 min-w-0 items-center">
-                                <WorkAttentionStatus work={work} metadataKnown={canSyncMetadata} />
-                              </div>
-                            </td>
-                          )}
                           <td className="py-2.5 pr-1 align-top sm:pr-3">
                             <div className="flex flex-col items-end gap-0.5 sm:mt-1.5 sm:flex-row sm:justify-end">
                               {onEditWork && (
@@ -802,7 +779,7 @@ function UnlinkedWorkDeleteDialog({
   );
 }
 
-function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
+function WorkTableSkeletonRows() {
   return (
     <tbody className="divide-y" aria-hidden="true">
       {Array.from({ length: 3 }, (_, index) => (
@@ -819,11 +796,6 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
               </div>
             </div>
           </td>
-          {wide && (
-            <td className="px-3 py-2.5">
-              <div className="h-4 w-16 animate-pulse rounded bg-muted" />
-            </td>
-          )}
           <td className="py-2.5 pr-3">
             <div className="ml-auto mt-1.5 h-8 w-8 animate-pulse rounded-md bg-muted" />
           </td>
@@ -833,13 +805,12 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
   );
 }
 
-/** Wide layouts give the status its own column; narrow ones fold it under the title. */
-function WorkTableColumns({ wide }: { wide: boolean }) {
+/** Selection, the work (with what it needs under the title), and row actions. */
+function WorkTableColumns() {
   return (
     <colgroup>
       <col className="w-14 sm:w-11" />
       <col />
-      {wide && <col className="w-48 xl:w-60" />}
       <col className="w-12 sm:w-32" />
     </colgroup>
   );

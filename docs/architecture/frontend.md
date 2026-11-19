@@ -697,8 +697,12 @@ applies, so a still-loading element never replaces it.
   selection actions in the shared `WorkSelectionBar`, which replaces the upper
   pagination while works are selected, and opens `WorkInspector` for a
   pressed row from the loaded row alone: an `aside` beside the table from
-  1280px, where the rows fold their status under the title, and a sheet
-  below it. The row's inspect button is visually hidden until keyboard focus.
+  1280px and a sheet below it. A row names what its work needs under the
+  title, so the table has no status column. The row's inspect button is
+  visually hidden until keyboard focus. The work, tag, circle, and voice actor
+  tables share an unframed look from `MetadataEntryTable`: a plain header and
+  divided rows, with the pinned actions column on the page background. Their
+  pagination renders only when the list has more than one page.
   The page has no settings control; `MetadataIssueDetails` links a failed
   DLsite update to System → Proxy for source managers. The Tags table is
   keyed and ordered by shared tag ID, so its rows never depend on a

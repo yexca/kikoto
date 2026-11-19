@@ -514,7 +514,6 @@ export const surfaceHans = {
     circleColumn: "社团",
     metadataColumn: "元数据",
     sourceColumn: "来源",
-    statusColumn: "状态",
     sourceLocal: "本地",
     sourceRemote: "远程",
     statusComplete: "完整",

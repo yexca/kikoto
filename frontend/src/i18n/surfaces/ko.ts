@@ -532,7 +532,6 @@ export const surfaceKorean = {
     circleColumn: "서클",
     metadataColumn: "메타데이터",
     sourceColumn: "소스",
-    statusColumn: "상태",
     sourceLocal: "로컬",
     sourceRemote: "원격",
     statusComplete: "완료",

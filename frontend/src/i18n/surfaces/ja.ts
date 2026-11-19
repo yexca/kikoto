@@ -533,7 +533,6 @@ export const surfaceJapanese = {
     circleColumn: "サークル",
     metadataColumn: "メタデータ",
     sourceColumn: "ソース",
-    statusColumn: "状態",
     sourceLocal: "ローカル",
     sourceRemote: "リモート",
     statusComplete: "完了",

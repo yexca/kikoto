@@ -5,26 +5,26 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Shared look for the metadata entry tables (tags, circles, voice actors), so
- * they read like the works table: a muted header, divided rows that highlight
- * under the pointer, and icon actions pinned to the visible right edge.
+ * they read like the works table: a list without a frame under a plain header,
+ * divided rows that highlight under the pointer, and icon actions pinned to the
+ * visible right edge.
  */
 export const metadataTableClassName = "w-full text-left text-sm";
-export const metadataHeadClassName = "border-b bg-muted/30 text-xs font-medium text-muted-foreground";
+export const metadataHeadClassName = "border-b text-xs font-medium text-muted-foreground";
 export const metadataBodyClassName = "divide-y";
 export const metadataRowClassName = "group transition-colors hover:bg-muted/30";
 
 // The pinned column must stay opaque while wider columns scroll beneath it, so
-// it lays the same translucent muted wash over the card instead of using it as
-// the background color.
-// Written out in full so Tailwind can find both classes in source.
-const mutedWash = "[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]";
+// under a hovered row it lays the same translucent muted wash over the page
+// background instead of using it as the background color.
+// Written out in full so Tailwind can find the class in source.
 const hoverMutedWash = "group-hover:[background-image:linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))]";
-const stickyEdge = "sticky right-0 z-[1] bg-card";
+const stickyEdge = "sticky right-0 z-[1] bg-background";
 
 export function MetadataActionsHeader() {
   const { t } = useTranslation();
   return (
-    <th scope="col" className={`${stickyEdge} ${mutedWash} py-2 pr-1 text-right font-medium sm:pr-3`}>
+    <th scope="col" className={`${stickyEdge} py-2 pr-1 text-right font-medium sm:pr-3`}>
       <span className="max-sm:sr-only">{t("unlinked.actions")}</span>
     </th>
   );

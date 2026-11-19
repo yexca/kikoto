@@ -124,9 +124,11 @@
   them open it; works without a source are deleted from there. The filter
   shows each view's count, turns primary while it narrows the list, and on
   **All** marks works that need attention with a dot.
-- Metadata work rows show one **Status** column in place of **Metadata** and
-  **Source**. It names only what a work needs and stays empty for a healthy
-  work; the inspector keeps the complete states. Pressing a row opens the
+- Metadata work rows name only what a work needs under the title, in place
+  of the **Metadata** and **Source** columns, and show nothing for a healthy
+  work; the inspector keeps the complete states. Metadata's tables drop their
+  card frame and shaded header, and their pagination shows only when a list
+  has more than one page. Pressing a row opens the
   inspector, and its inspect button shows only on keyboard focus.
 - The **Metadata settings** gear is removed. Its DLsite proxy switch and
   catalog freshness link are in **System**, where links to the settings open,

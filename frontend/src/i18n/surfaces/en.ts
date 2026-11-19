@@ -578,7 +578,6 @@ export const surfaceEnglish = {
     circleColumn: "Circle",
     metadataColumn: "Metadata",
     sourceColumn: "Source",
-    statusColumn: "Status",
     sourceLocal: "Local",
     sourceRemote: "Remote",
     statusComplete: "Complete",

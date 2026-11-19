@@ -514,7 +514,6 @@ export const surfaceHant = {
     circleColumn: "社團",
     metadataColumn: "中繼資料",
     sourceColumn: "來源",
-    statusColumn: "狀態",
     sourceLocal: "本機",
     sourceRemote: "遠端",
     statusComplete: "完整",

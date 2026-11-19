@@ -131,7 +131,9 @@ export function MetadataEntryMaintenance({
           {t("metadataEntries.pendingWorks", { count: result.pendingWorkCount })}
         </p>
       )}
-      {(loaded || !failed) && <CollectionPagination {...pagination} placement="top" compactMobile compactTop />}
+      {(loaded || !failed) && pagination.totalPages > 1 && (
+        <CollectionPagination {...pagination} placement="top" compactMobile compactTop />
+      )}
       {failed && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
           <span>{t("metadataEntries.loadFailed")}</span>
@@ -140,7 +142,7 @@ export function MetadataEntryMaintenance({
           </Button>
         </div>
       )}
-      <section className="overflow-hidden rounded-lg border bg-card" aria-busy={loading}>
+      <section className="min-w-0 border-b" aria-busy={loading}>
         {loading && !loaded ? (
           <p className="grid min-h-48 place-items-center p-4 text-sm text-muted-foreground" role="status">
             {t("common.loading")}

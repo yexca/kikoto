@@ -149,18 +149,14 @@ export function VoiceAliasMaintenance({
           setPage(1);
         }}
       />
-      {(hasLoaded || !loadError) && (
+      {(hasLoaded || !loadError) && totalPages > 1 && (
         <CollectionPagination {...paginationProps} placement="top" compactMobile compactTop />
       )}
-      <section
-        id="metadata-aliases"
-        aria-label={t("workManagement.voiceAliasesTitle")}
-        className="overflow-hidden rounded-lg border bg-card"
-      >
+      <section id="metadata-aliases" aria-label={t("workManagement.voiceAliasesTitle")} className="min-w-0 border-b">
         <div className="min-h-64">
           {loadError && hasLoaded && (
             <div
-              className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
+              className="mb-2 flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-md border border-error-border bg-error-surface px-4 py-2"
               role="alert"
             >
               <span className="text-sm text-error-foreground">

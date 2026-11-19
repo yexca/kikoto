@@ -338,7 +338,8 @@ test("@desktop metadata page selection resets when searching or changing pages",
   await expect(list.getByRole("checkbox", { name: /^Select RJ/ })).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Previous page", exact: true }).first()).toBeDisabled();
+  // The search returns to page 1, and a single page of results shows no pager.
+  await expect(page.getByRole("button", { name: "Previous page", exact: true })).toHaveCount(0);
 });
 
 test("@desktop personal metadata language refreshes the current list and preserves its state", async ({ page }) => {
@@ -723,10 +724,10 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await page.goto("/metadata");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
-  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Status", "Actions"]);
+  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Actions"]);
   const row = list.getByRole("row").filter({ hasText: "Example healthy work" });
-  // A healthy work leaves its status empty.
-  await expect(row.getByRole("cell")).toHaveText([/^$/, `Example healthy work${code}·Example Circle`, "", ""]);
+  // A healthy work names nothing it needs under its title.
+  await expect(row.getByRole("cell")).toHaveText([/^$/, `Example healthy work${code}·Example Circle`, ""]);
   // The list loads on demand; time passing alone must not refetch it, so only the save below adds a request.
   const loadedRequests = listRequests;
   await page.clock.fastForward(30_000);
