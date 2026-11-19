@@ -394,9 +394,10 @@
   operating system keeps beside its files, such as `Thumbs.db`, `.DS_Store`,
   and `@eaDir`, which used to keep the folder from being deleted.
 - A work fetched from a remote source lists each local file once after a
-  scan, and **Find identical files** no longer reports a file as a copy of
-  itself. The upgrade merges the second records earlier scans made, keeping
-  each file's listening progress, lyrics, and display names.
+  scan and after its source is synced again, and **Find identical files** no
+  longer reports a file as a copy of itself. The upgrade merges the second
+  records earlier scans made, keeping each file's listening progress, lyrics,
+  and display names.
 
 </details>
 

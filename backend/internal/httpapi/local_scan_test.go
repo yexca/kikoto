@@ -15,6 +15,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
@@ -137,6 +138,78 @@ func TestLocalScanKeepsFetchedFileOnItsMediaItem(t *testing.T) {
 	if locations != 1 || items != 1 || holderID != fetchedItemID || fingerprint != "local:RJ00000000:track.mp3" || fileVersion != "100:1" {
 		t.Fatalf("scan = %d locations, %d items, holder %d (fetched %d), fingerprint %q, version %q",
 			locations, items, holderID, fetchedItemID, fingerprint, fileVersion)
+	}
+}
+
+// After a scan takes a fetched file's item over as a local item, the next sync
+// of the remote source refreshes that item's remote location instead of adding
+// a second item and location for the same source path.
+func TestRemoteSyncAfterScanKeepsFetchedFileOnItsMediaItem(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	folder := localfs.WorkFolder{Code: "RJ00000000", Title: "Example Work", RelPath: "Library/RJ00000000"}
+	workID, err := upsertDetectedWork(ctx, tx, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID, err := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2}).upsertLocalFileSource(ctx, tx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSourceID, err := sqlutil.InsertID(ctx, tx, `INSERT INTO file_source (code, display_name, source_type, enabled)
+		VALUES ('example_remote_a', 'Example Remote A', 'kikoeru_compatible', 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracks := func(streamURL string) []kikoeru.Track {
+		return []kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaStreamURL: streamURL}}
+	}
+	if _, _, err := syncRemoteTrackTree(ctx, tx, remoteSourceID, workID, "RJ00000000", tracks("https://media.invalid/first.mp3")); err != nil {
+		t.Fatal(err)
+	}
+	fetchedItemID, err := sqlutil.SelectID(ctx, tx, `SELECT id FROM media_item WHERE work_id = ?`, workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The Fetch publishes the file on the remote item, and a scan records it.
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, size_bytes, availability)
+		VALUES (?, ?, 'local', 'Library/RJ00000000/track.mp3', 100, 'available')`, fetchedItemID, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	folder.Files = []localfs.LocalFile{{RelPath: "Library/RJ00000000/track.mp3", WorkRelPath: "track.mp3", Title: "track", SizeBytes: 100, FileVersion: "100:1"}}
+	if _, err := persistIndexedLocalFiles(ctx, tx, workID, sourceID, folder); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := syncRemoteTrackTree(ctx, tx, remoteSourceID, workID, "RJ00000000", tracks("https://media.invalid/second.mp3")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var items, remoteLocations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_item WHERE work_id = ?`, workID).Scan(&items); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE location_type = 'remote_stream'`).Scan(&remoteLocations); err != nil {
+		t.Fatal(err)
+	}
+	var holderID int64
+	var fingerprint, title, streamURL string
+	if err := db.QueryRow(`SELECT item.id, item.fingerprint, item.title, location.stream_url FROM media_file_location AS location
+		JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.location_type = 'remote_stream'`).Scan(&holderID, &fingerprint, &title, &streamURL); err != nil {
+		t.Fatal(err)
+	}
+	if items != 1 || remoteLocations != 1 || holderID != fetchedItemID || fingerprint != "local:RJ00000000:track.mp3" ||
+		title != "track" || streamURL != "https://media.invalid/second.mp3" {
+		t.Fatalf("sync after scan = %d items, %d remote locations, holder %d (fetched %d), fingerprint %q, title %q, stream %q",
+			items, remoteLocations, holderID, fetchedItemID, fingerprint, title, streamURL)
 	}
 }
 

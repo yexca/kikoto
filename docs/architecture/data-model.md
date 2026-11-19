@@ -775,7 +775,11 @@ Fetch published the file under; that item leaves any remote folder and takes
 the file's `local:<code>:<work-relative path>` fingerprint unless another item
 holds it. Only a path with no record goes to the item with that fingerprint,
 which the file's copies in the work's other folders share, or to a new one. A
-Fetch registers a target path on the item that holds it in the same way.
+Fetch registers a target path on the item that holds it in the same way. A
+remote sync likewise refreshes a source path's remote location on the item
+that holds it, and leaves an item a scan has made local as the scan recorded
+it; only a path no item holds goes to the item with the
+`remote:<source>:<code>:<path>` fingerprint.
 
 A work folder is the deepest folder within the scan depth whose name carries a
 work code. A folder named `Lyrics - <language> - <code> - <date>-<time>`, the
