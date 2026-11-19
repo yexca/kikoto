@@ -821,25 +821,22 @@ export const surfaceJapanese = {
       fetchFailed: "モデルを取得できませんでした。",
       modelsFetched: "{{count}} 個のモデルを取得しました。",
       policyTitle: "コンテンツ安全ポリシー",
-      policyDescription:
-        "LLM プロバイダーと ASR サービスに適用します。LLM 翻訳の判定方法は以下で選択し、ASR は作品のメタデータを使用します。各サービスに受信上限があり、不明・禁止の判定結果は送信しません。",
+      policyDescription: "不明・禁止の判定結果は送信しません。",
       policySaved: "コンテンツ安全ポリシーを保存しました。",
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
       attributionTitle: "AI 歌詞",
       attribution: "AI が作成した歌詞にモデル名を記載",
       alwaysScanAllAges: "全年齢作品もスキャン",
       alwaysScanAllAgesDescription:
-        "全年齢作品にも追加のセンシティブなキーワードチェックを行います。高センシティブ・禁止ルールは常に確認します。LLM のテキストのみのモードでは適用可能な全キーワードを確認し、この設定は ASR にも適用されます。",
+        "高センシティブ・禁止ルールは常に確認します。LLM のテキストのみのモードでは適用可能な全キーワードを確認し、この設定は ASR にも適用されます。",
       translationTextOnly: "LLM 翻訳は翻訳対象のテキストのみを確認",
       translationTextOnlyDescription:
-        "選択した翻訳原文をキーワードルールだけで判定し、作品の年齢区分やメタデータのタグルールは使用しません。ASR は作品のメタデータで判定します。",
+        "作品の年齢区分やメタデータのタグルールは使用しません。ASR は作品のメタデータで判定します。",
       translationTextOnlyWarning:
         "このモードは設定済みのキーワードだけを照合します。意味の解析、キーワードの翻訳、他言語の同等表現の検出は行いません。原文に含まれるすべての言語についてキーワードとレベルを設定してください。複数言語が混在する場合もすべてが対象です。一致がなくても、センシティブな内容ではないとは限りません。",
       sensitiveTags: "メタデータタグのルール",
-      sensitiveTagsDescription:
-        "共有タグを選び、機微・高機微・禁止を指定します。非表示名と統合済み ID のリスク情報も保持します。",
+      sensitiveTagsDescription: "非表示名と統合済み ID のリスク情報も保持します。",
       keywords: "キーワードルール",
-      keywordsDescription: "キーワード、検査項目と動作を選びます。高機微・禁止ルールはすべての年齢区分に適用します。",
       addTitle: "LLM プロバイダーを追加",
       editTitle: "LLM プロバイダーを編集",
       endpointDefaultHint: "空欄のままにすると、サービスの既定のアドレスを使います。",
@@ -958,8 +955,7 @@ export const surfaceJapanese = {
       },
       transferSafety: "転送の安全性",
       downloadLimit: "ファイルごとのダウンロード上限",
-      stagingRetention: "失敗した一時データの保持期間",
-      stagingRetentionDescription: "失敗またはキャンセルしたFetchの未公開一時データを指定期間後に削除します。",
+      stagingRetention: "失敗した Fetch の一時データの保持期間",
       downloadPacing: "リモートダウンロード間隔",
       baseDelay: "基本待機時間",
       baseDelayDescription:
@@ -1065,8 +1061,7 @@ export const surfaceJapanese = {
     },
     access: {
       instance: "インスタンスアクセス",
-      anonymous: "匿名アクセス",
-      anonymousDescription: "アカウントなしでライブラリを閲覧・再生",
+      anonymous: "アカウントなしで閲覧・再生",
       enableTitle: "匿名アクセスを許可しますか？",
       enableDescription:
         "このサーバーに接続できる人なら誰でも、アカウントなしでライブラリを閲覧し、作品を再生できるようになります。",
@@ -1173,35 +1168,29 @@ export const surfaceJapanese = {
       noEffect: "影響なし",
     },
     library: {
-      local: "ローカルライブラリ",
       scanDepth: "スキャン深度",
       libraries: "ライブラリ",
-      librariesDescription: "このサーバーが読み込むローカルライブラリとリモートソース。",
-      librariesSummary: "ローカルライブラリと、リモートソース {{total}} 件中 {{enabled}} 件が有効",
       localGroup: "ローカル",
       remoteGroup: "リモート",
-      storageSettings: "ライブラリストレージの設定",
+      storageSettings: "ローカルライブラリの設定",
       poolsOnline: "{{total}} 件中 {{online}} 件がオンライン",
       networkPrivacy: "ネットワークとプライバシー",
       addSource: "ソースを追加",
-      kikoeruImportDescription:
-        "各アカウントは個人データから、Kikoeru サーバー上の自分のレビューとプレイリストを読み取れます。",
       kikoeruPrivateAddresses: "すべてのアカウントに LAN アドレスを許可",
       kikoeruPrivateAddressesDescription:
-        "管理者は常に LAN やプライベートアドレスを入力できます。オンにすると、すべてのアカウントがこのサーバーからローカルネットワーク上の機器へ接続させられます。",
+        "すべてのアカウントの Kikoeru インポートが、このサーバーからローカルネットワーク上の機器へ接続できるようになります。管理者は常に可能です。",
       kikoeruPrivateEnableTitle: "すべてのアカウントに LAN アドレスを許可しますか？",
       kikoeruPrivateEnableDescription:
         "サインインしたどのアカウントでも、このサーバーからルーターや NAS などローカルネットワーク上の機器に接続させ、応答の有無を知ることができるようになります。すべてのアカウントを信頼できる場合のみオンにしてください。",
       kikoeruPrivateEnable: "許可",
       hideRemoteAddresses: "ソースを管理しないアカウントからアドレスを隠す",
       hideRemoteAddressesDescription:
-        "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやワークフローの実行に含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
+        "ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースのアドレスや上流リンクが渡されません。再生、カバー、プレビューはこのサーバーを経由します。",
       folderLyricsMode: "作品フォルダーの歌詞",
       folderLyricsModeDescription:
         "コピーでは作品自身のファイルはそのまま残り、移動では元の場所から移されます。編集ごとに選ぶこともできます。",
       creatorCatalogs: "クリエイターのカタログ",
-      catalogFreshnessDays: "カタログの更新日数",
-      catalogFreshnessDescription: "サークルと声優のカタログは、最後の更新からこの日数が過ぎると注意状態になります。",
+      catalogFreshnessDays: "注意状態にする未更新期間",
       configure: "設定",
       deleteSource: "ソースを削除",
       checkHealth: "状態を確認",
@@ -1260,16 +1249,12 @@ export const surfaceJapanese = {
       saved: "プロキシ設定を保存しました。",
       saveFailed: "プロキシ設定を保存できませんでした。",
       scopeTitle: "プロキシの適用範囲",
-      scopeDescription:
-        "プロキシを使うリクエストを選びます。すべてのプロキシを優先度順に使うか、特定のプロキシを 1 つ使います。",
-      scopeNeedsProxy: "適用範囲を選ぶ前にプロキシを追加してください。",
       scopes: {
         all: "すべて",
-        allDescription: "DLsite、リモートソース、音声認識・LLM、その他のリクエスト",
         dlsite: "DLsite",
         dlsiteDescription: "メタデータ、カバー画像、クリエイターカタログ",
         remote: "リモートソース",
-        remoteDescription: "閲覧、再生、ダウンロード。ソースごとに下で上書きできます。",
+        remoteDescription: "閲覧、再生、ダウンロード",
         ai: "音声認識・LLM",
         aiDescription:
           "別のアドレスにある LLM プロバイダーと音声認識サービス。このサーバーと同じマシン上のサービスは常に直接接続します。",
@@ -1278,10 +1263,9 @@ export const surfaceJapanese = {
       },
       directFallback: "直接接続へのフォールバック",
       directFallbackDescription:
-        "リクエストが試したプロキシがすべて接続できなかった場合、プロキシを使わずに 1 回だけ再試行します。オフの場合は直接接続せずに失敗します。",
+        "リクエストが試したプロキシがすべて接続できなかった場合、プロキシを使わずに 1 回だけ再試行します。",
       bypassTitle: "プロキシを使わない宛先",
-      bypassDescription:
-        "別の場所にあるプロキシからは届かないため、これらの宛先はどの適用範囲でも直接接続します。ホスト名、サブドメインを表す *.domain、IP アドレス、または 192.168.0.0/16 のようなネットワークを入力します。ネットワークは、そこに解決されるホスト名にも一致します。",
+      bypassDescription: "ネットワークは、そこに解決されるホスト名にも一致します。",
       bypassPlaceholder: "ホスト名、*.domain、IP アドレス、ネットワークを追加",
       bypassRestoreDefaults: "既定に戻す",
       bypassSave: "除外リストを保存",

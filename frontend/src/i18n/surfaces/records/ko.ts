@@ -25,7 +25,6 @@ export const recordsKorean = {
       title: "기록",
       enable: "기록 라이브러리",
       root: "기록 루트",
-      initializeDescription: "초기화하면 기록 루트에 .kikoto-record 마커가 기록됩니다.",
       rootLoadFailed: "기록 루트를 읽을 수 없습니다.",
       rootStates: {
         unconfigured: "초기화되지 않음",

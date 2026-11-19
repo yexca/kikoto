@@ -94,8 +94,20 @@
   Favorites, and Workflows, and that collapsed the workflow list to icons are
   removed, and a choice already stored in the browser is ignored.
 - Settings sections are a heading over a thin line followed by their fields,
-  without a card around them. Sources, proxies, users, and other repeated
-  items keep their rows.
+  without a card around them. On a wide screen the heading sits in a narrow
+  column beside the fields, so Settings, System, and Cleanup no longer stretch
+  each label and its control across the page. Sources, proxies, users, and
+  other repeated items keep their rows.
+- System's **Libraries** shows the local library as one card, with each
+  storage pool as a row of it instead of a card of its own. The card opens one
+  dialog for the library mode, pools, Fetch pool, **Scan depth**, and
+  **Lyrics of the work folder**, saved together; the **Library storage**
+  button and the separate **Local library** section are gone. **Add source**
+  sits on the **Remote** heading.
+- System drops descriptions that repeated a label or explained an ordinary
+  control, and renames fields whose names needed one: **Mark Attention after
+  no refresh for**, **Keep failed Fetch staging for**, and **Browse and play
+  without an account**.
 - Pages use one of two widths. Library, Favorites, Record, Circles, Voice
   Actors, and Discover use the full width; the Personal and Manage pages and
   About share one centered column, with their tab rows spanning that column,

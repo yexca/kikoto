@@ -213,15 +213,8 @@ export function ProxySettingsSection({
         )}
       </SettingsSection>
 
-      <SettingsSection
-        id="proxy-scope"
-        title={t("maintenance.proxy.scopeTitle")}
-        description={hasProxies ? t("maintenance.proxy.scopeDescription") : t("maintenance.proxy.scopeNeedsProxy")}
-      >
-        <SettingsRow
-          title={t("maintenance.proxy.scopes.all")}
-          description={t("maintenance.proxy.scopes.allDescription")}
-        >
+      <SettingsSection id="proxy-scope" title={t("maintenance.proxy.scopeTitle")}>
+        <SettingsRow title={t("maintenance.proxy.scopes.all")}>
           <Switch
             checked={allRoutesEnabled(draft.routes)}
             disabled={locked || !hasProxies}

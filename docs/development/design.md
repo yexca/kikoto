@@ -270,7 +270,12 @@ Work detail pages should show decision-level facts:
 Use cards for repeated objects, not for every section. A settings section is
 a plain heading over a hairline followed by its fields, set apart from the next
 section by whitespace and from its own fields by hairlines; it has no card or
-border, and a field has no framed container around it. A repeated object such
+border, and a field has no framed container around it. Where the section is
+wide enough, the heading, its description, and the section's action sit in a
+narrow rail beside the fields, and the hairline runs above both, so a label and
+its control stay close instead of meeting across the whole column. A section
+without fields keeps its action at the end of the heading's line. A narrow
+column, a dialog, or a phone keeps the heading above the fields. A repeated object such
 as a source, a proxy, a folder rule, or a user may be a card or a table row.
 Settings, System, and Cleanup pages share the [content column](#app-shell), section spacing,
 field rhythm, and destructive-action placement. No form, table, or section

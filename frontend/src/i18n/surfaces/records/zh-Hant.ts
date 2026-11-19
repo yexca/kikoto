@@ -23,7 +23,6 @@ export const recordsHant = {
       title: "記錄",
       enable: "記錄媒體庫",
       root: "記錄根目錄",
-      initializeDescription: "初始化會在記錄根目錄中寫入 .kikoto-record 標記。",
       rootLoadFailed: "無法讀取記錄根目錄。",
       rootStates: {
         unconfigured: "未初始化",

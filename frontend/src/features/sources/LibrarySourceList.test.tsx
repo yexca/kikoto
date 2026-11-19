@@ -44,10 +44,12 @@ describe("LibrarySourceList", () => {
 
     expect(rendered).toContain("Main local library");
     expect(rendered).toContain("Standard · Online");
-    expect(rendered).toContain("Library storage");
+    expect(rendered.match(/aria-label="Local library settings"/g)).toHaveLength(1);
+    // With no remote source, Add source appears only in the empty placeholder.
+    expect(rendered.match(/Add source/g)).toHaveLength(1);
   });
 
-  it("renders one card per pool with fetch pool badge and offline reconnect action in pools mode", () => {
+  it("renders the pools as rows of one local library card in pools mode", () => {
     const rendered = renderToStaticMarkup(
       <LibrarySourceList
         localName="Main local library"
@@ -75,6 +77,8 @@ describe("LibrarySourceList", () => {
       />,
     );
 
+    expect(rendered).toContain("Storage pools · 1 of 2 online");
+    expect(rendered.match(/aria-label="Local library settings"/g)).toHaveLength(1);
     expect(rendered).toContain("/data/disk-a");
     expect(rendered).toContain("/data/disk-b");
     expect(rendered).toContain("Fetch pool");

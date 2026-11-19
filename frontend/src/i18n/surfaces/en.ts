@@ -868,26 +868,22 @@ export const surfaceEnglish = {
       fetchFailed: "Models could not be fetched.",
       modelsFetched: "Fetched {{count}} models.",
       policyTitle: "Content safety policy",
-      policyDescription:
-        "Applies to LLM providers and ASR services. Choose how LLM translation is assessed below; ASR uses work metadata. Each service has its own receive maximum. Unknown and blocked assessments are refused.",
+      policyDescription: "Unknown and blocked assessments are refused.",
       policySaved: "Content safety policy saved.",
       policySaveFailed: "Content safety policy could not be saved.",
       attributionTitle: "AI lyrics",
       attribution: "Name the models in AI-made lyrics",
       alwaysScanAllAges: "Scan all-ages works too",
       alwaysScanAllAgesDescription:
-        "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply. LLM text-only mode always checks every applicable keyword rule; this option still applies to ASR.",
+        "High-sensitivity and blocking rules always apply. LLM text-only mode checks every applicable keyword rule; this option still applies to ASR.",
       translationTextOnly: "LLM translation checks selected text only",
       translationTextOnlyDescription:
-        "Rate only the selected translation source using keyword rules, without work age ratings or metadata tag rules. ASR continues to assess work metadata.",
+        "Skips work age ratings and metadata tag rules. ASR still assesses work metadata.",
       translationTextOnlyWarning:
         "This mode only matches configured keywords. It does not interpret meaning, translate keywords or detect equivalent expressions in other languages. Configure keywords and levels for every language in the source, including mixed-language text. No match does not guarantee that the content is not sensitive.",
       sensitiveTags: "Metadata tag rules",
-      sensitiveTagsDescription:
-        "Choose shared tags and a Sensitive, High sensitivity or Blocked action. Hidden names and merged identities retain risk evidence.",
+      sensitiveTagsDescription: "Hidden names and merged identities retain risk evidence.",
       keywords: "Keyword rules",
-      keywordsDescription:
-        "Choose a keyword, fields and action. High-sensitivity and blocking rules apply to every age rating.",
       addTitle: "Add LLM provider",
       editTitle: "Edit LLM provider",
       endpointDefaultHint: "Leave blank to use the service's default address.",
@@ -1009,8 +1005,7 @@ export const surfaceEnglish = {
     },
     access: {
       instance: "Instance access",
-      anonymous: "Anonymous access",
-      anonymousDescription: "Library browsing and playback without an account",
+      anonymous: "Browse and play without an account",
       enableTitle: "Allow anonymous access?",
       enableDescription:
         "Anyone who can reach this server could then browse the library and play its works without an account.",
@@ -1117,36 +1112,29 @@ export const surfaceEnglish = {
       noEffect: "No effect",
     },
     library: {
-      local: "Local library",
       scanDepth: "Scan depth",
       libraries: "Libraries",
-      librariesDescription: "The local library and every remote source this server reads.",
-      librariesSummary: "Local library and {{enabled}} of {{total}} remote sources enabled",
       localGroup: "Local",
       remoteGroup: "Remote",
-      storageSettings: "Library storage settings",
+      storageSettings: "Local library settings",
       poolsOnline: "{{online}} of {{total}} online",
       networkPrivacy: "Network and privacy",
       addSource: "Add source",
-      kikoeruImportDescription:
-        "Accounts can read their own reviews and playlists from a Kikoeru server in Personal data.",
       kikoeruPrivateAddresses: "Allow LAN addresses for every account",
       kikoeruPrivateAddressesDescription:
-        "Administrators can always enter LAN and private addresses. When on, every account can make this server connect to a device on its local network.",
+        "Lets every account's Kikoeru import make this server connect to devices on its local network. Administrators always can.",
       kikoeruPrivateEnableTitle: "Allow LAN addresses for every account?",
       kikoeruPrivateEnableDescription:
         "Any signed-in account could then make this server connect to devices on its local network, such as a router or NAS, and learn whether they answer. Turn this on only when you trust every account.",
       kikoeruPrivateEnable: "Allow",
       hideRemoteAddresses: "Hide addresses from accounts that do not manage sources",
       hideRemoteAddressesDescription:
-        "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and workflow runs. Browsing, playback, covers, and text previews go through this server instead.",
+        "Accounts without source management and signed-out readers get no source addresses or upstream links; playback, covers, and previews go through this server.",
       folderLyricsMode: "Lyrics of the work folder",
       folderLyricsModeDescription:
         "Copying leaves the work's own files where they are; moving takes them out of their place. Each edit can still choose.",
       creatorCatalogs: "Creator catalogs",
-      catalogFreshnessDays: "Catalog freshness days",
-      catalogFreshnessDescription:
-        "Circle and voice actor catalogs are marked Attention when their last refresh is older than this.",
+      catalogFreshnessDays: "Mark Attention after no refresh for",
       configure: "Configure",
       deleteSource: "Delete source",
       checkHealth: "Check health",
@@ -1198,15 +1186,12 @@ export const surfaceEnglish = {
       saved: "Proxy settings saved.",
       saveFailed: "Proxy settings could not be saved.",
       scopeTitle: "Proxy scope",
-      scopeDescription: "Choose which requests use a proxy: every proxy by priority, or one specific proxy.",
-      scopeNeedsProxy: "Add a proxy before choosing where proxies apply.",
       scopes: {
         all: "All",
-        allDescription: "DLsite, remote sources, ASR & LLM, and other requests",
         dlsite: "DLsite",
         dlsiteDescription: "Metadata, covers, and creator catalogs",
         remote: "Remote sources",
-        remoteDescription: "Browsing, playback, and downloads. Each source can override this below.",
+        remoteDescription: "Browsing, playback, and downloads",
         ai: "ASR & LLM",
         aiDescription:
           "LLM providers and speech recognition services at another address. Services on this server's machine always connect directly.",
@@ -1214,11 +1199,9 @@ export const surfaceEnglish = {
         otherDescription: "Update checks. Personal Kikoeru imports always connect directly.",
       },
       directFallback: "Direct connection fallback",
-      directFallbackDescription:
-        "When every proxy a request tries fails to connect, retry it once without a proxy. Off keeps proxied requests failing instead of connecting directly.",
+      directFallbackDescription: "When every proxy a request tries fails to connect, retry it once without a proxy.",
       bypassTitle: "Bypass proxy",
-      bypassDescription:
-        "These destinations connect directly in every scope, since a proxy elsewhere cannot reach them. Enter a hostname, *.domain for its subdomains, an IP address, or a network such as 192.168.0.0/16. A network also matches a hostname that resolves into it.",
+      bypassDescription: "A network also matches hostnames that resolve into it.",
       bypassPlaceholder: "Add a hostname, *.domain, IP address or network",
       bypassRestoreDefaults: "Restore defaults",
       bypassSave: "Save bypass list",
@@ -1299,9 +1282,7 @@ export const surfaceEnglish = {
       },
       transferSafety: "Transfer safety",
       downloadLimit: "Per-file download limit",
-      stagingRetention: "Failed staging retention",
-      stagingRetentionDescription:
-        "Remove unpublished staging data after failed or cancelled Fetch runs reach this age.",
+      stagingRetention: "Keep failed Fetch staging for",
       downloadPacing: "Remote download pacing",
       baseDelay: "Base delay",
       baseDelayDescription:

@@ -25,7 +25,6 @@ export const recordsJapanese = {
       title: "記録",
       enable: "記録ライブラリ",
       root: "記録ルート",
-      initializeDescription: "初期化すると、記録ルートに .kikoto-record マーカーが書き込まれます。",
       rootLoadFailed: "記録ルートを読み取れませんでした。",
       rootStates: {
         unconfigured: "未初期化",

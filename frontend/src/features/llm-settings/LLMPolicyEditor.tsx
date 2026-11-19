@@ -167,7 +167,7 @@ export function LLMPolicyEditor({
           )}
         </div>
       </SettingsRow>
-      <SettingsRow title={t("maintenance.llm.keywords")} description={t("maintenance.llm.keywordsDescription")} stack>
+      <SettingsRow title={t("maintenance.llm.keywords")} stack>
         <div className="grid w-full min-w-0 gap-2.5">
           {policy.keywords.length === 0 && (
             <p className="text-xs text-muted-foreground">{t("maintenance.llm.keywordsEmpty")}</p>

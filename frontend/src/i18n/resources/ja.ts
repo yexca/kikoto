@@ -556,13 +556,11 @@ const adminToolsJapanese = {
     },
   },
   librarySetup: {
-    title: "ライブラリの保存先",
-    description: "ローカル作品の保存場所と、Fetch が新しい作品を保存する場所です。",
     mode: "ライブラリモード",
     modes: {
       standard: {
         name: "標準",
-        description: "データディレクトリ全体を 1 つのライブラリとして扱います。以前のリリースと同じ動作です。",
+        description: "データディレクトリ全体を 1 つのライブラリとして扱います。",
       },
       pools: {
         name: "ストレージプール",
@@ -627,7 +625,7 @@ const adminToolsJapanese = {
     fetchPoolHelp:
       "新しい Fetch はここに保存されます。既存のフォルダーがある作品にファイルを追加する場合は、そのフォルダーのプールに保存されます。",
     save: "保存先を保存",
-    saved: "ライブラリの保存先を保存しました。",
+    saved: "ローカルライブラリを保存しました。",
     saveFailed: "ライブラリの保存先を保存できませんでした。",
     errors: {
       transactionUnresolved:

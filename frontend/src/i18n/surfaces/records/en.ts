@@ -25,7 +25,6 @@ export const recordsEnglish = {
       title: "Record",
       enable: "Record library",
       root: "Record root",
-      initializeDescription: "Initializing writes a .kikoto-record marker into the record root.",
       rootLoadFailed: "The record root could not be read.",
       rootStates: {
         unconfigured: "Not initialized",

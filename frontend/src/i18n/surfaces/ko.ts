@@ -819,25 +819,22 @@ export const surfaceKorean = {
       fetchFailed: "모델을 가져올 수 없습니다.",
       modelsFetched: "모델 {{count}}개를 가져왔습니다.",
       policyTitle: "콘텐츠 안전 정책",
-      policyDescription:
-        "LLM 제공업체와 ASR 서비스에 적용됩니다. 아래에서 LLM 번역 분류 방식을 선택하며 ASR은 작품 메타데이터를 사용합니다. 각 서비스에는 수신 상한이 있으며 알 수 없음과 차단 분류는 전송하지 않습니다.",
+      policyDescription: "알 수 없음과 차단 분류는 전송하지 않습니다.",
       policySaved: "콘텐츠 안전 정책을 저장했습니다.",
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
       attributionTitle: "AI 가사",
       attribution: "AI가 만든 가사에 모델 이름 표시",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
       alwaysScanAllAgesDescription:
-        "전체 연령 작품에도 추가 민감 키워드 검사를 합니다. 고민감 및 차단 규칙은 항상 검사합니다. LLM 텍스트 전용 모드에서는 적용 가능한 모든 키워드를 검사하며 이 옵션은 ASR에도 적용됩니다.",
+        "고민감 및 차단 규칙은 항상 검사합니다. LLM 텍스트 전용 모드에서는 적용 가능한 모든 키워드를 검사하며 이 옵션은 ASR에도 적용됩니다.",
       translationTextOnly: "LLM 번역은 번역할 텍스트만 검사",
       translationTextOnlyDescription:
-        "선택한 번역 원문을 키워드 규칙으로만 분류하며 작품 연령 등급과 메타데이터 태그 규칙은 사용하지 않습니다. ASR은 작품 메타데이터로 분류합니다.",
+        "작품 연령 등급과 메타데이터 태그 규칙은 사용하지 않습니다. ASR은 작품 메타데이터로 분류합니다.",
       translationTextOnlyWarning:
         "이 모드는 설정한 키워드만 일치시킵니다. 의미를 분석하거나 키워드를 번역하거나 다른 언어의 같은 표현을 감지하지 않습니다. 원문에 포함된 모든 언어에 대해 키워드와 등급을 설정하세요. 여러 언어가 섞인 텍스트도 모든 언어를 포함해야 합니다. 일치하지 않아도 민감한 내용이 없다는 보장은 없습니다.",
       sensitiveTags: "메타데이터 태그 규칙",
-      sensitiveTagsDescription:
-        "공유 태그를 선택하고 민감, 고민감 또는 차단 동작을 지정합니다. 숨겨진 이름과 병합된 ID의 위험 정보도 유지됩니다.",
+      sensitiveTagsDescription: "숨겨진 이름과 병합된 ID의 위험 정보도 유지됩니다.",
       keywords: "키워드 규칙",
-      keywordsDescription: "키워드, 검사 필드와 동작을 선택합니다. 고민감 및 차단 규칙은 모든 연령 등급에 적용됩니다.",
       addTitle: "LLM 제공자 추가",
       editTitle: "LLM 제공자 편집",
       endpointDefaultHint: "비워 두면 서비스의 기본 주소를 사용합니다.",
@@ -955,9 +952,7 @@ export const surfaceKorean = {
       },
       transferSafety: "전송 안전",
       downloadLimit: "파일별 다운로드 제한",
-      stagingRetention: "실패한 스테이징 보존",
-      stagingRetentionDescription:
-        "실패하거나 취소된 가져오기의 게시되지 않은 스테이징 데이터가 이 기간을 넘으면 제거합니다.",
+      stagingRetention: "실패한 가져오기의 스테이징 보존 기간",
       downloadPacing: "원격 다운로드 간격",
       baseDelay: "기본 지연",
       baseDelayDescription:
@@ -1063,8 +1058,7 @@ export const surfaceKorean = {
     },
     access: {
       instance: "인스턴스 접근",
-      anonymous: "익명 접근",
-      anonymousDescription: "계정 없이 라이브러리를 탐색하고 재생",
+      anonymous: "계정 없이 탐색 및 재생",
       enableTitle: "익명 접근을 허용할까요?",
       enableDescription:
         "이 서버에 접속할 수 있는 누구나 계정 없이 라이브러리를 탐색하고 작품을 재생할 수 있게 됩니다.",
@@ -1171,34 +1165,29 @@ export const surfaceKorean = {
       noEffect: "영향 없음",
     },
     library: {
-      local: "로컬 라이브러리",
       scanDepth: "스캔 깊이",
       libraries: "라이브러리",
-      librariesDescription: "이 서버가 읽는 로컬 라이브러리와 원격 소스입니다.",
-      librariesSummary: "로컬 라이브러리와 원격 소스 {{total}}개 중 {{enabled}}개 사용",
       localGroup: "로컬",
       remoteGroup: "원격",
-      storageSettings: "라이브러리 저장소 설정",
+      storageSettings: "로컬 라이브러리 설정",
       poolsOnline: "{{total}}개 중 {{online}}개 온라인",
       networkPrivacy: "네트워크 및 개인정보",
       addSource: "소스 추가",
-      kikoeruImportDescription: "각 계정은 개인 데이터에서 Kikoeru 서버의 자기 리뷰와 재생목록을 읽을 수 있습니다.",
       kikoeruPrivateAddresses: "모든 계정에 LAN 주소 허용",
       kikoeruPrivateAddressesDescription:
-        "관리자는 항상 LAN 및 사설 주소를 입력할 수 있습니다. 켜면 모든 계정이 이 서버를 로컬 네트워크의 기기에 연결하게 할 수 있습니다.",
+        "모든 계정의 Kikoeru 가져오기가 이 서버를 로컬 네트워크의 기기에 연결할 수 있게 됩니다. 관리자는 항상 가능합니다.",
       kikoeruPrivateEnableTitle: "모든 계정에 LAN 주소를 허용할까요?",
       kikoeruPrivateEnableDescription:
         "로그인한 모든 계정이 이 서버를 라우터나 NAS 같은 로컬 네트워크 기기에 연결하게 하고 응답 여부를 알 수 있게 됩니다. 모든 계정을 신뢰할 때만 켜세요.",
       kikoeruPrivateEnable: "허용",
       hideRemoteAddresses: "소스를 관리하지 않는 계정에서 주소 숨기기",
       hideRemoteAddressesDescription:
-        "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 워크플로 실행에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
+        "소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스 주소와 업스트림 링크를 받지 않습니다. 재생, 커버, 미리보기는 이 서버를 거칩니다.",
       folderLyricsMode: "작품 폴더의 가사",
       folderLyricsModeDescription:
         "복사하면 작품 자체의 파일은 그대로 남고, 이동하면 원래 자리에서 옮겨집니다. 편집할 때마다 따로 고를 수도 있습니다.",
       creatorCatalogs: "크리에이터 카탈로그",
-      catalogFreshnessDays: "카탈로그 최신 유지 일수",
-      catalogFreshnessDescription: "서클 및 성우 카탈로그는 마지막 새로 고침 후 이 일수가 지나면 주의 상태가 됩니다.",
+      catalogFreshnessDays: "새로 고침 없이 주의로 표시하기까지",
       configure: "구성",
       deleteSource: "소스 삭제",
       checkHealth: "상태 확인",
@@ -1257,16 +1246,12 @@ export const surfaceKorean = {
       saved: "프록시 설정을 저장했습니다.",
       saveFailed: "프록시 설정을 저장하지 못했습니다.",
       scopeTitle: "프록시 적용 범위",
-      scopeDescription:
-        "프록시를 사용할 요청을 선택합니다. 모든 프록시를 우선순위대로 사용하거나 특정 프록시 하나를 사용합니다.",
-      scopeNeedsProxy: "적용 범위를 선택하기 전에 프록시를 추가하세요.",
       scopes: {
         all: "전체",
-        allDescription: "DLsite, 원격 소스, 음성 인식 및 LLM, 기타 요청",
         dlsite: "DLsite",
         dlsiteDescription: "메타데이터, 커버, 크리에이터 카탈로그",
         remote: "원격 소스",
-        remoteDescription: "탐색, 재생, 다운로드. 아래에서 소스별로 재정의할 수 있습니다.",
+        remoteDescription: "탐색, 재생, 다운로드",
         ai: "음성 인식 및 LLM",
         aiDescription:
           "다른 주소에 있는 LLM 제공자와 음성 인식 서비스. 이 서버와 같은 머신의 서비스는 항상 직접 연결합니다.",
@@ -1274,11 +1259,9 @@ export const surfaceKorean = {
         otherDescription: "업데이트 확인. 개인 Kikoeru 가져오기는 항상 직접 연결합니다.",
       },
       directFallback: "직접 연결 대체",
-      directFallbackDescription:
-        "요청이 시도한 모든 프록시에 연결하지 못하면 프록시 없이 한 번 다시 시도합니다. 끄면 직접 연결하지 않고 실패합니다.",
+      directFallbackDescription: "요청이 시도한 모든 프록시에 연결하지 못하면 프록시 없이 한 번 다시 시도합니다.",
       bypassTitle: "프록시 제외 대상",
-      bypassDescription:
-        "다른 곳의 프록시는 이 대상에 닿을 수 없으므로, 모든 적용 범위에서 직접 연결합니다. 호스트 이름, 하위 도메인을 뜻하는 *.domain, IP 주소, 또는 192.168.0.0/16 같은 네트워크를 입력합니다. 네트워크는 그 안으로 확인되는 호스트 이름에도 일치합니다.",
+      bypassDescription: "네트워크는 그 안으로 확인되는 호스트 이름에도 일치합니다.",
       bypassPlaceholder: "호스트 이름, *.domain, IP 주소 또는 네트워크 추가",
       bypassRestoreDefaults: "기본값으로 복원",
       bypassSave: "제외 목록 저장",

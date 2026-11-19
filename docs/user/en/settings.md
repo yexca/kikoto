@@ -13,8 +13,7 @@ A switch or a choice saves as soon as it changes. A typed number or name saves
 when you leave the field or press Enter. The section heading then shows
 **Saving** and **Saved**. A failed save returns the field to its saved value
 and reports the error. Forms whose fields only make sense together keep a
-button of their own: the password change, library storage, folder
-preferences, recommendation tuning, the content safety policy, the proxy
+button of their own: the password change, folder preferences, recommendation tuning, the content safety policy, the proxy
 bypass list, and every dialog.
 
 `/maintenance` and `/users` links, and `/settings` links that name a System tab, open the matching System tab; `/settings?tab=cleanup` and `/system?tab=cleanup` open [Cleanup](#cleanup). `/user-data` opens **Your data**, `/settings?tab=recommendation` opens the tuning in [For you](for-you.md#settings), and `/settings?tab=tags` opens [Tags](personal-data.md#personal-tags). `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
@@ -99,14 +98,14 @@ The **System** page (`/system`) holds the instance settings. Administrators see 
 
 ### Library
 
-Library opens with **Libraries**, a card list of every library the server reads:
-the local storage first (a single card in Standard mode, or one card per pool
-in Storage pools mode with Online/Offline and Fetch pool badges plus
-**Reconnect** when an unmounted folder can be re-marked), followed by each
-configured remote source. **Library storage** or selecting any local card opens
-the storage configuration dialog. The settings follow below it: **Local
-library**, **Record**, **Creator catalogs**, **Network and privacy**, and
-read-only storage paths.
+Library opens with **Libraries**, a card list of every library the server reads.
+Under **Local**, one card stands for the local library. In Storage pools mode it
+counts the pools that are online and lists each pool as a row with its state,
+a **Fetch pool** badge on the Fetch pool, and **Reconnect** when an unmounted
+folder can be re-marked. Under **Remote**, each configured remote source has a
+card, and **Add source** sits at the end of the **Remote** heading. The
+settings follow below it: **Record**, **Creator catalogs**, **Network and
+privacy**, and read-only storage paths.
 
 - **Hide addresses from accounts that do not manage sources**, under
   **Network and privacy**, is on by default. While it is
@@ -123,13 +122,14 @@ read-only storage paths.
   private address for a Kikoeru account import; turning this on, after a
   confirmation, lets every account do so.
 
-- **Library storage** (opened from **Libraries**) configures the library mode
-  (Standard or Storage pools), which pools are active, and the Fetch pool.
+- Selecting the local library card opens its dialog, which one **Save**
+  applies as a whole. It configures the library mode (Standard or Storage
+  pools), which pools are active, and the Fetch pool, followed by **Scan
+  depth** and **Lyrics of the work folder**, which apply to all local storage.
   Pools can be added or, while they hold no works, removed; the mode itself is
   fixed once the library holds local works. **Reconnect** marks an existing
   folder again after an operator confirmed the right disk is mounted there.
-- **Local library** holds **Scan depth** and **Lyrics of the work folder**.
-  Scan depth cannot be set below the level where Fetch saves works;
+- Scan depth cannot be set below the level where Fetch saves works;
   scans always reach at least that level, so Fetched works are never reported
   missing because a scan stopped above them.
 - **Lyrics of the work folder** decides whether
@@ -141,9 +141,9 @@ read-only storage paths.
 - **Record** turns the [Record](record-library.md) library on or off for the
   instance; it is off by default. While it is on, the section shows the record
   root's state and, until the root is initialized, **Initialize root**.
-- **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30).
-  A circle or voice actor
-  catalog is marked Attention once its last refresh is older than that.
+- **Creator catalogs** holds **Mark Attention after no refresh for** (1 to
+  365 days, default 30). A circle or voice actor catalog is marked Attention
+  once its last refresh is older than that.
 - Each remote source in **Libraries** shows its health, host, a health-check
   action, and an enable switch that saves immediately. Health-check results are persisted
   through the same source health state used by automatic probes.
@@ -311,8 +311,8 @@ Each role has a fixed set of permissions:
   Library creates no work, so its progress and listening history are not
   saved. Caching while playing is skipped without a message.
 
-In **Instance access**, **Anonymous access** (off by default) allows Library
-browsing and playback without an account. Turning it on is confirmed first.
+In **Instance access**, **Browse and play without an account** (off by
+default) allows Library browsing and playback without an account. Turning it on is confirmed first.
 The change applies to the production access boundary and creates an audit
 entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an

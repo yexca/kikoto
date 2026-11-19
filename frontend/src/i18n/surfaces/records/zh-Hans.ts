@@ -23,7 +23,6 @@ export const recordsHans = {
       title: "记录",
       enable: "记录媒体库",
       root: "记录根目录",
-      initializeDescription: "初始化会在记录根目录中写入 .kikoto-record 标记。",
       rootLoadFailed: "无法读取记录根目录。",
       rootStates: {
         unconfigured: "未初始化",

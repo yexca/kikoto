@@ -550,11 +550,9 @@ const adminToolsHant = {
     },
   },
   librarySetup: {
-    title: "媒體庫儲存",
-    description: "本機作品存放的位置，以及 Fetch 儲存新作品的位置。",
     mode: "媒體庫模式",
     modes: {
-      standard: { name: "一般", description: "整個資料目錄是一個媒體庫，與先前版本的行為一致。" },
+      standard: { name: "一般", description: "整個資料目錄是一個媒體庫。" },
       pools: {
         name: "儲存池",
         description:
@@ -613,7 +611,7 @@ const adminToolsHant = {
     fetchPoolNone: "未選取",
     fetchPoolHelp: "新的 Fetch 儲存到這裡。為已有資料夾的作品加入檔案時，檔案會保留在該資料夾所在的池。",
     save: "儲存媒體庫設定",
-    saved: "媒體庫儲存已儲存。",
+    saved: "本機媒體庫已儲存。",
     saveFailed: "無法儲存媒體庫儲存。",
     errors: {
       transactionUnresolved:

@@ -5,10 +5,23 @@ import { wholeNumberFromInput } from "@/lib/numberInput";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
+ * A section at least this wide sets its heading in a rail beside its fields.
+ * The rail is the section's own container query, so a narrow column or a
+ * dialog keeps the stacked form.
+ */
+const sectionContainerClassName = "@container/settings-section min-w-0";
+const sectionColumnsClassName =
+  "min-w-0 @4xl/settings-section:grid @4xl/settings-section:grid-cols-[15rem_minmax(0,1fr)] @4xl/settings-section:gap-x-12 @4xl/settings-section:border-t";
+const railClassName =
+  "@4xl/settings-section:flex-col @4xl/settings-section:items-start @4xl/settings-section:justify-start @4xl/settings-section:border-b-0 @4xl/settings-section:pb-0 @4xl/settings-section:pt-3.5";
+
+/**
  * One settings section: a plain heading over a hairline, then its fields as
- * rows separated by hairlines. A section has no card or border of its own, so
- * a tab is a column of sections set apart by whitespace and a field never
- * sits in a box inside a box.
+ * rows separated by hairlines. In a wide column the heading, description,
+ * and action move to a rail beside the fields, and the hairline runs above
+ * both. A section has no card or border of its own, so a tab is a column of
+ * sections set apart by whitespace and a field never sits in a box inside a
+ * box.
  */
 export function SettingsSection({
   title,
@@ -29,24 +42,53 @@ export function SettingsSection({
 }) {
   const headingId = useId();
   const hasChildren = children !== undefined && children !== null && children !== false;
-  return (
-    <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
-      <div
-        className={cn(
-          "flex min-w-0 justify-between gap-3 border-b pb-2.5",
-          hasChildren ? "items-end" : "flex-wrap items-center",
-        )}
-      >
-        <div className="min-w-0">
-          <h2 id={headingId} className="text-sm font-semibold text-foreground">
-            {title}
-          </h2>
-          {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
+  const heading = (
+    <div className="min-w-0">
+      <h2 id={headingId} className="text-sm font-semibold text-foreground">
+        {title}
+      </h2>
+      {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
+    </div>
+  );
+  const footerRow = footer && (
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">{footer}</div>
+  );
+
+  if (!hasChildren) {
+    // A section without fields keeps its action on the heading's line, where the
+    // fields' controls of the other sections end.
+    return (
+      <section id={id} aria-labelledby={headingId} className={cn(sectionContainerClassName, className)}>
+        <div
+          className={cn(
+            "flex min-w-0 flex-wrap items-center justify-between gap-3 border-b pb-2.5",
+            "@4xl/settings-section:border-b-0 @4xl/settings-section:border-t @4xl/settings-section:pb-0 @4xl/settings-section:pt-3.5",
+          )}
+        >
+          {heading}
+          {action && <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2">{action}</div>}
         </div>
-        {action && <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2">{action}</div>}
+        {footerRow}
+      </section>
+    );
+  }
+
+  return (
+    <section id={id} aria-labelledby={headingId} className={cn(sectionContainerClassName, className)}>
+      <div className={sectionColumnsClassName}>
+        <div className={cn("flex min-w-0 items-end justify-between gap-3 border-b pb-2.5", railClassName)}>
+          {heading}
+          {action && (
+            <div className="flex min-w-0 max-w-full shrink-0 items-center gap-2 @4xl/settings-section:flex-wrap">
+              {action}
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <div className="min-w-0 divide-y">{children}</div>
+          {footerRow}
+        </div>
       </div>
-      {hasChildren && <div className="min-w-0 divide-y">{children}</div>}
-      {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">{footer}</div>}
     </section>
   );
 }
@@ -55,21 +97,23 @@ export function SettingsSection({
 export function SettingsSectionSkeleton({ rows = 3 }: { rows?: number }) {
   const bar = "animate-pulse rounded bg-muted";
   return (
-    <div className="min-w-0" aria-hidden="true">
-      <div className="space-y-2 border-b pb-2.5">
-        <div className={cn(bar, "h-4 w-32")} />
-        <div className={cn(bar, "h-3 w-56 max-w-full")} />
-      </div>
-      <div className="divide-y">
-        {Array.from({ length: rows }, (_, index) => (
-          <div key={index} className="flex min-w-0 items-center justify-between gap-6 py-3.5">
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className={cn(bar, "h-4 w-40 max-w-full")} />
-              <div className={cn(bar, "h-3 w-64 max-w-full")} />
+    <div className={sectionContainerClassName} aria-hidden="true">
+      <div className={sectionColumnsClassName}>
+        <div className={cn("flex min-w-0 flex-col gap-2 border-b pb-2.5", railClassName)}>
+          <div className={cn(bar, "h-4 w-32")} />
+          <div className={cn(bar, "h-3 w-56 max-w-full")} />
+        </div>
+        <div className="divide-y">
+          {Array.from({ length: rows }, (_, index) => (
+            <div key={index} className="flex min-w-0 items-center justify-between gap-6 py-3.5">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className={cn(bar, "h-4 w-40 max-w-full")} />
+                <div className={cn(bar, "h-3 w-64 max-w-full")} />
+              </div>
+              <div className={cn(bar, "h-9 w-24 shrink-0 rounded-md")} />
             </div>
-            <div className={cn(bar, "h-9 w-24 shrink-0 rounded-md")} />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

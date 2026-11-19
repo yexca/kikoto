@@ -87,13 +87,7 @@ export function RecordSettingsSection({
       {showRoot && (
         <SettingsRow
           title={t("records.settings.root")}
-          description={
-            root?.state === "unconfigured"
-              ? t("records.settings.initializeDescription")
-              : rootState.status === "error"
-                ? t("records.settings.rootLoadFailed")
-                : undefined
-          }
+          description={rootState.status === "error" ? t("records.settings.rootLoadFailed") : undefined}
         >
           <div className="flex flex-wrap items-center justify-end gap-2">
             {initializing === "failed" && (

@@ -548,11 +548,9 @@ const adminToolsHans = {
     },
   },
   librarySetup: {
-    title: "媒体库存储",
-    description: "本地作品存放的位置，以及 Fetch 保存新作品的位置。",
     mode: "媒体库模式",
     modes: {
-      standard: { name: "普通", description: "整个数据目录是一个媒体库，与之前版本的行为一致。" },
+      standard: { name: "普通", description: "整个数据目录是一个媒体库。" },
       pools: {
         name: "存储池",
         description:
@@ -611,7 +609,7 @@ const adminToolsHans = {
     fetchPoolNone: "未选择",
     fetchPoolHelp: "新的 Fetch 保存到这里。向已有文件夹的作品添加文件时，文件会保留在该文件夹所在的池。",
     save: "保存媒体库存储",
-    saved: "媒体库存储已保存。",
+    saved: "本地媒体库已保存。",
     saveFailed: "无法保存媒体库存储。",
     errors: {
       transactionUnresolved:

@@ -46,7 +46,9 @@ export type AutosaveTracker = ReturnType<typeof useAutosaveStatus>;
 export function AutosaveStatus({ state }: { state: AutosaveState }) {
   const { t } = useTranslation();
   return (
-    <span role="status" className="inline-flex min-h-5 items-center gap-1.5 text-xs text-muted-foreground">
+    // An idle status stays mounted so its live region announces the next save, and
+    // cancels the gap after it so the controls beside it keep their alignment.
+    <span role="status" className="inline-flex min-h-5 items-center gap-1.5 text-xs text-muted-foreground empty:-me-2">
       {state === "saving" && (
         <>
           <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

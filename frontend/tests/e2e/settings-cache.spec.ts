@@ -485,7 +485,7 @@ test("@desktop a cache setting saves on its own when its edit finishes and links
   await expect(page.getByText("Managed media cache", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
-  await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
+  await expect(page.getByLabel("Keep failed Fetch staging for")).toHaveValue("7");
   await expect(page.getByLabel("Transcode cache limit")).toHaveValue("5");
   await expect(page.getByRole("button", { name: /^Save/ })).toHaveCount(0);
   await page.getByLabel("Transcode cache limit").fill("6");
@@ -849,11 +849,9 @@ test("development super administrator can configure production anonymous access"
   await expect(page).toHaveURL(/\/system\?tab=users$/);
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
-  const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
+  const accessSwitch = page.getByRole("switch", { name: "Browse and play without an account", exact: true });
   const accessSection = page.getByRole("region", { name: "Instance access" });
-  await expect(
-    accessSection.getByText("Library browsing and playback without an account", { exact: true }),
-  ).toBeVisible();
+  await expect(accessSection.getByText("Browse and play without an account", { exact: true })).toBeVisible();
   await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
   // Opening the library to visitors is confirmed first; cancelling changes nothing.
   await accessSwitch.click();
@@ -994,7 +992,7 @@ for (const layout of ["mobile", "@desktop"]) {
     await navigation.getByRole("tab", { name: "Users", exact: true }).click();
     await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: "Browse and play without an account", exact: true })).toHaveCount(0);
   });
 }
 
@@ -1022,16 +1020,17 @@ test("non-admin users cannot open the System page", async ({ page }) => {
   // Settings offers the account's own sections only.
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Playback", exact: true })).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "Browse and play without an account", exact: true })).toHaveCount(0);
 });
 
 test("maintenance combines library sources and exposes read-only paths with health checks", async ({ page }) => {
   let healthChecks = 0;
   const sourceUpdates: Record<string, unknown>[] = [];
+  const settingsSaves: Record<string, unknown>[] = [];
   await mockCacheSettings(
     page,
     () => undefined,
-    () => undefined,
+    (payload) => settingsSaves.push(payload),
     () => {
       healthChecks += 1;
     },
@@ -1045,7 +1044,18 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(libraries.getByText("Standard · Online", { exact: true })).toBeVisible();
   await expect(libraries.getByRole("heading", { name: "Remote", exact: true })).toBeVisible();
   await expect(libraries.getByText("Example Remote", { exact: true })).toBeVisible();
-  await expect(page.getByText("Local library", { exact: true })).toBeVisible();
+  await expect(libraries.getByRole("button", { name: "Library storage", exact: true })).toHaveCount(0);
+
+  // The local card opens one dialog for storage, scan depth, and lyrics, saved together.
+  await libraries.getByRole("button", { name: "Local library settings", exact: true }).click();
+  const localDialog = page.getByRole("dialog");
+  const scanDepth = localDialog.getByLabel("Scan depth", { exact: true });
+  await scanDepth.fill("4");
+  await scanDepth.press("Tab");
+  expect(settingsSaves).toEqual([]);
+  await localDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(localDialog).toHaveCount(0);
+  await expect.poll(() => settingsSaves).toEqual([{ localScanDepth: 4, folderLyricsMode: "copy" }]);
   await expect(page.getByRole("button", { name: "Sources", exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Cache & Fetch", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check health", exact: true }).click();
@@ -1194,7 +1204,6 @@ test("libraries lists one card per storage pool and opens storage settings in a 
 
   await page.goto("/system?tab=library");
   const libraries = page.getByRole("region", { name: "Libraries", exact: true });
-  await expect(page.getByRole("region", { name: "Library storage", exact: true })).toHaveCount(0);
   await expect(libraries.getByText("/data/pool-a", { exact: true })).toBeVisible();
   await expect(libraries.getByText("/data/pool-b", { exact: true })).toBeVisible();
   await expect(libraries.getByText("Fetch pool", { exact: true })).toBeVisible();
@@ -1202,11 +1211,13 @@ test("libraries lists one card per storage pool and opens storage settings in a 
   await libraries.getByRole("button", { name: "Reconnect", exact: true }).click();
   await expect(libraries.getByRole("button", { name: "Reconnect", exact: true })).toHaveCount(0);
 
-  await libraries.getByRole("button", { name: "Library storage", exact: true }).click();
-  const storageDialog = page.getByRole("dialog", { name: "Library storage" });
+  // Every pool is a row of one local library card with a single settings entry.
+  await expect(libraries.getByRole("button", { name: "Local library settings", exact: true })).toHaveCount(1);
+  await libraries.getByRole("button", { name: "Local library settings", exact: true }).click();
+  const storageDialog = page.getByRole("dialog");
   await expect(storageDialog).toBeVisible();
   await storageDialog.getByRole("checkbox", { name: "Use pool-c as a storage pool" }).click();
-  await storageDialog.getByRole("button", { name: "Save library storage", exact: true }).click();
+  await storageDialog.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(storageDialog).toHaveCount(0);
   await expect(libraries.getByText("/data/pool-c", { exact: true })).toBeVisible();
@@ -1340,7 +1351,7 @@ test("@desktop administrators set catalog freshness in Library settings", async 
   // There is no instance metadata language, so Settings has no Metadata tab.
   await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveCount(0);
 
-  const freshness = page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true });
+  const freshness = page.getByRole("spinbutton", { name: "Mark Attention after no refresh for", exact: true });
   await freshness.fill("14");
   await freshness.press("Tab");
   await expect.poll(() => saves).toEqual([{ catalogFreshnessDays: 14 }]);

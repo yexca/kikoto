@@ -232,13 +232,11 @@ export const adminToolsEnglish = {
     },
   },
   librarySetup: {
-    title: "Library storage",
-    description: "Where local works live and where Fetch saves new works.",
     mode: "Library mode",
     modes: {
       standard: {
         name: "Standard",
-        description: "The whole data directory is one library. This is how earlier releases work.",
+        description: "The whole data directory is one library.",
       },
       pools: {
         name: "Storage pools",
@@ -301,7 +299,7 @@ export const adminToolsEnglish = {
     fetchPoolNone: "Not selected",
     fetchPoolHelp: "New Fetches save here. Files added to a work that already has a folder stay in that folder's pool.",
     save: "Save library storage",
-    saved: "Library storage saved.",
+    saved: "Local library saved.",
     saveFailed: "Library storage could not be saved.",
     errors: {
       transactionUnresolved:

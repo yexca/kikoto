@@ -136,7 +136,7 @@ password stays readable to anyone who can inspect the container environment.
 
 ## Authentication and Cookies
 
-A super administrator can change **Anonymous access** under
+A super administrator can change **Browse and play without an account** under
 `System -> Users -> Instance access` in production or development. The setting is stored in
 SQLite and recorded in the audit log. In production it takes effect without a
 restart. When disabled, unauthenticated clients can reach only health,

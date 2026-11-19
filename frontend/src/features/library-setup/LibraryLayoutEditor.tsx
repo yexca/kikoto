@@ -1,5 +1,5 @@
 import { ArrowRight, HardDrive, Layers, Loader2, PlugZap, Save } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,9 @@ function draftFromLayout(layout: LibraryLayout): Draft {
 
 /**
  * Library mode, storage pools, and the Fetch pool. Shared by Settings and
- * onboarding; changes that move files require a confirmed migration.
+ * onboarding; changes that move files require a confirmed migration. Settings
+ * adds the local library's other fields as `children`, saved by the same Save
+ * before the layout.
  */
 export function LibraryLayoutEditor({
   layout,
@@ -39,6 +41,9 @@ export function LibraryLayoutEditor({
   onDone,
   onCancel,
   onContinue,
+  children,
+  childrenDirty = false,
+  onSaveChildren,
 }: {
   layout: LibraryLayout;
   readOnly: boolean;
@@ -47,6 +52,10 @@ export function LibraryLayoutEditor({
   onDone?: () => void;
   onCancel?: () => void;
   onContinue?: () => void;
+  children?: ReactNode;
+  childrenDirty?: boolean;
+  /** Saves the fields in `children`; false stops the save. */
+  onSaveChildren?: () => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -61,11 +70,12 @@ export function LibraryLayoutEditor({
     const registered = layout.mode === "pools" ? layout.pools : [];
     return [...new Set([...registered.map((pool) => pool.path), ...layout.candidates])].sort();
   }, [layout]);
-  const dirty =
+  const layoutDirty =
     !layout.configured ||
     draft.mode !== saved.mode ||
     draft.fetchPool !== saved.fetchPool ||
     draft.pools.join("\n") !== saved.pools.join("\n");
+  const dirty = layoutDirty || childrenDirty;
   const poolsInvalid = draft.mode === "pools" && draft.pools.length === 0;
 
   const setMode = (mode: LibraryMode) => setDraft((current) => ({ ...current, mode }));
@@ -86,6 +96,12 @@ export function LibraryLayoutEditor({
     setSaving(true);
     setSaveError("");
     try {
+      if (childrenDirty && onSaveChildren && !(await onSaveChildren())) return;
+      if (!layoutDirty) {
+        toast.success(t("librarySetup.saved"));
+        onDone?.();
+        return;
+      }
       if (
         layout.configured &&
         (draft.mode !== layout.mode || (draft.mode === "pools" && draft.fetchPool !== layout.fetchPool))
@@ -258,6 +274,8 @@ export function LibraryLayoutEditor({
             </div>
           </div>
         )}
+
+        {children}
 
         {saveError && !migrationPreview && (
           <p role="alert" className="text-sm text-error-foreground">

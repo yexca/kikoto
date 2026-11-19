@@ -26,7 +26,7 @@ export function KikoeruImportAccessRow({
     <>
       <SettingsRow
         title={t("maintenance.library.kikoeruPrivateAddresses")}
-        description={`${t("maintenance.library.kikoeruImportDescription")} ${t("maintenance.library.kikoeruPrivateAddressesDescription")}`}
+        description={t("maintenance.library.kikoeruPrivateAddressesDescription")}
       >
         <Switch
           checked={privateAddresses}

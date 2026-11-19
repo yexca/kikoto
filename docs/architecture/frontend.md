@@ -635,7 +635,9 @@ applies, so a still-loading element never replaces it.
   page. A
   `SettingsSection` is a plain
   heading over a hairline followed by
-  its fields as rows divided by hairlines. It has no card or border of its own
+  its fields as rows divided by hairlines; a container query on the section,
+  not the viewport, moves the heading into a rail beside the fields once the
+  section is wide enough. It has no card or border of its own
   and pages set sections apart with whitespace, so a field never sits in a
   container inside a container; only a repeated object such as a source, a
   proxy, a folder rule, or a user may be a card or table row. Section

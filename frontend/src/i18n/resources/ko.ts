@@ -552,13 +552,11 @@ const adminToolsKorean = {
     },
   },
   librarySetup: {
-    title: "라이브러리 저장소",
-    description: "로컬 작품이 있는 위치와 Fetch가 새 작품을 저장하는 위치입니다.",
     mode: "라이브러리 모드",
     modes: {
       standard: {
         name: "표준",
-        description: "데이터 디렉터리 전체를 하나의 라이브러리로 사용합니다. 이전 릴리스와 같은 방식입니다.",
+        description: "데이터 디렉터리 전체를 하나의 라이브러리로 사용합니다.",
       },
       pools: {
         name: "스토리지 풀",
@@ -621,7 +619,7 @@ const adminToolsKorean = {
     fetchPoolNone: "선택 안 함",
     fetchPoolHelp: "새 Fetch는 여기에 저장됩니다. 이미 폴더가 있는 작품에 파일을 추가하면 해당 폴더의 풀에 저장됩니다.",
     save: "저장소 저장",
-    saved: "라이브러리 저장소를 저장했습니다.",
+    saved: "로컬 라이브러리를 저장했습니다.",
     saveFailed: "라이브러리 저장소를 저장하지 못했습니다.",
     errors: {
       transactionUnresolved:

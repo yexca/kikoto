@@ -37,9 +37,9 @@ const localDotClassNames = {
 } as const;
 
 /**
- * Every library the server reads: local storage first (one card in Standard
- * mode, one card per pool in Storage pools mode), followed by remote sources
- * as cards, with storage configuration handled in a modal dialog.
+ * Every library the server reads: the local library as one card (its pools
+ * as rows in Storage pools mode), followed by remote sources as cards. Each
+ * card opens its own dialog; Add source sits with the remote group.
  */
 export function LibrarySourceList({
   localName,
@@ -84,28 +84,8 @@ export function LibrarySourceList({
   legacyWorkflowReview?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const enabledCount = sources.filter((source) => source.enabled).length;
   return (
-    <SettingsSection
-      title={t("maintenance.library.libraries")}
-      description={
-        sources.length > 0
-          ? t("maintenance.library.librariesSummary", { enabled: enabledCount, total: sources.length })
-          : t("maintenance.library.librariesDescription")
-      }
-      action={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onConfigureStorage}>
-            <Settings2 className="h-4 w-4" />
-            {t("librarySetup.title")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={onCreate} disabled={readOnly}>
-            <Plus className="h-4 w-4" />
-            {t("maintenance.library.addSource")}
-          </Button>
-        </div>
-      }
-    >
+    <SettingsSection title={t("maintenance.library.libraries")}>
       <div className="!border-t-0 pb-2">
         <GroupLabel>{t("maintenance.library.localGroup")}</GroupLabel>
         <LocalStorageCards
@@ -120,7 +100,16 @@ export function LibrarySourceList({
       </div>
 
       <div className="!border-t-0">
-        <GroupLabel id="remote-sources">{t("maintenance.library.remoteGroup")}</GroupLabel>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <GroupLabel id="remote-sources">{t("maintenance.library.remoteGroup")}</GroupLabel>
+          {/* An empty list offers Add source in its own placeholder. */}
+          {sources.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={onCreate} disabled={readOnly}>
+              <Plus className="h-4 w-4" />
+              {t("maintenance.library.addSource")}
+            </Button>
+          )}
+        </div>
         {sources.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {sources.map((source) => {
@@ -302,52 +291,51 @@ function LocalStorageCards({
     );
   }
 
-  if (layout.pools.length === 0) {
-    return (
-      <LocalCardGrid>
-        <LocalLibraryCard
-          status="unknown"
-          icon={<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
-          title={localName}
-          subtitle={`${t("librarySetup.modes.pools.name")} · ${t("maintenance.library.poolsOnline", { online: 0, total: 0 })}`}
-          onConfigureStorage={onConfigureStorage}
-        />
-      </LocalCardGrid>
-    );
-  }
-
+  // Storage pools are one library: one card that names how many pools are
+  // online, with a row per pool for its state, the Fetch pool, and Reconnect.
+  const online = layout.pools.filter((pool) => pool.online).length;
+  const status = layout.pools.length === 0 ? "unknown" : online === layout.pools.length ? "online" : "offline";
   return (
-    <LocalCardGrid>
-      {layout.pools.map((pool) => (
-        <LocalLibraryCard
-          key={pool.path}
-          status={pool.online ? "online" : "offline"}
-          icon={<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
-          title={`/data/${pool.path}`}
-          titleMono
-          subtitle={t("librarySetup.modes.pools.name")}
-          onConfigureStorage={onConfigureStorage}
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant={pool.online ? "success" : "warning"}>
-                  {t(pool.online ? "librarySetup.online" : "librarySetup.offline")}
-                </Badge>
-                {layout.fetchPool === pool.path && <Badge variant="secondary">{t("librarySetup.fetchPool")}</Badge>}
-              </div>
-              {pool.canReconnect && (
-                <ReconnectPoolButton
-                  pool={pool}
-                  readOnly={readOnly}
-                  reconnectingPool={reconnectingPool}
-                  onReconnect={onReconnectPool}
+    <LocalLibraryCard
+      status={status}
+      icon={<Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+      title={localName}
+      subtitle={`${t("librarySetup.modes.pools.name")} · ${t("maintenance.library.poolsOnline", { online, total: layout.pools.length })}`}
+      subtitleWarning={status === "offline"}
+      onConfigureStorage={onConfigureStorage}
+      footer={
+        layout.pools.length > 0 ? (
+          <ul className="divide-y border-t" aria-label={t("librarySetup.pools")}>
+            {layout.pools.map((pool) => (
+              <li key={pool.path} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 py-2">
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    localDotClassNames[pool.online ? "online" : "offline"],
+                  )}
+                  aria-hidden="true"
                 />
-              )}
-            </div>
-          }
-        />
-      ))}
-    </LocalCardGrid>
+                <span className="min-w-0 flex-1 truncate font-mono text-sm" title={`/data/${pool.path}`}>
+                  /data/{pool.path}
+                </span>
+                {layout.fetchPool === pool.path && <Badge variant="secondary">{t("librarySetup.fetchPool")}</Badge>}
+                <span className={cn("text-xs", pool.online ? "text-muted-foreground" : "text-warning-foreground")}>
+                  {t(pool.online ? "librarySetup.online" : "librarySetup.offline")}
+                </span>
+                {pool.canReconnect && (
+                  <ReconnectPoolButton
+                    pool={pool}
+                    readOnly={readOnly}
+                    reconnectingPool={reconnectingPool}
+                    onReconnect={onReconnectPool}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -442,7 +430,7 @@ function ReconnectPoolButton({
   );
 }
 
-/** A loading placeholder with the footprint of the Libraries section: its heading, actions, and two card groups. */
+/** A loading placeholder with the footprint of the Libraries section: its heading and two card groups. */
 export function LibrarySourceListSkeleton() {
   const bar = "animate-pulse rounded bg-muted";
   const card = (footer: boolean, key: number) => (
@@ -465,15 +453,8 @@ export function LibrarySourceListSkeleton() {
   );
   return (
     <div className="min-w-0" aria-hidden="true">
-      <div className="flex min-w-0 items-end justify-between gap-3 border-b pb-2.5">
-        <div className="min-w-0 space-y-2">
-          <div className={cn(bar, "h-4 w-24")} />
-          <div className={cn(bar, "h-3 w-40 max-w-full")} />
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <div className={cn(bar, "h-8 w-24 rounded-md")} />
-          <div className={cn(bar, "hidden h-8 w-24 rounded-md sm:block")} />
-        </div>
+      <div className="border-b pb-2.5">
+        <div className={cn(bar, "h-4 w-24")} />
       </div>
       <div className="pb-2">
         <div className="pb-2 pt-3">

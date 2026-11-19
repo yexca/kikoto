@@ -12,11 +12,10 @@ import {
 } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LegacyWorkflowMigrationReview } from "@/features/library-setup/LegacyWorkflowMigrationReview";
-import { LibraryStorageDialog } from "@/features/library-setup/LibraryStorageDialog";
+import { LocalLibraryDialog } from "@/features/library-setup/LocalLibraryDialog";
 import { useLibraryLayout } from "@/features/library-setup/useLibraryLayout";
 import { VideoHardwareSettingsSection } from "@/features/video-hardware/VideoHardwareSettingsSection";
 import { ProxySettingsSection } from "@/features/proxy";
@@ -138,7 +137,6 @@ export function MaintenancePage({
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
   const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
   const [confirmAnonymousAccess, setConfirmAnonymousAccess] = useState(false);
-  const localStatus = useAutosaveStatus();
   const catalogStatus = useAutosaveStatus();
   const networkStatus = useAutosaveStatus();
   const accessStatus = useAutosaveStatus();
@@ -473,50 +471,6 @@ export function MaintenancePage({
             />
             {sourceChecks.dialog}
 
-            <SettingsSection
-              title={t("maintenance.library.local")}
-              description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
-              action={<AutosaveStatus state={localStatus.state} />}
-            >
-              <SettingsRow
-                title={t("maintenance.library.scanDepth")}
-                description={
-                  (settings?.localScanDepthMinimum ?? 1) > 1
-                    ? t("librarySetup.scanDepthMinimum", { count: settings?.localScanDepthMinimum ?? 1 })
-                    : undefined
-                }
-              >
-                <SettingsNumberInput
-                  disabled={readOnly}
-                  label={t("maintenance.library.scanDepth")}
-                  value={draft.localScanDepth}
-                  min={settings?.localScanDepthMinimum ?? 1}
-                  max={8}
-                  integer
-                  unit={t("sourceSetup.levels")}
-                  onChange={(localScanDepth) => patchDraft({ localScanDepth })}
-                  onCommit={() => void localStatus.track(runtimeEditor.commit("localScanDepth"))}
-                />
-              </SettingsRow>
-              <SettingsRow
-                title={t("maintenance.library.folderLyricsMode")}
-                description={t("maintenance.library.folderLyricsModeDescription")}
-              >
-                <FloatingSelect
-                  value={draft.folderLyricsMode}
-                  options={[
-                    { value: "copy", label: t("lyricsFiles.folderModeCopy") },
-                    { value: "move", label: t("lyricsFiles.folderModeMove") },
-                  ]}
-                  onValueChange={(value) =>
-                    void localStatus.track(saveRuntime({ folderLyricsMode: value === "move" ? "move" : "copy" }))
-                  }
-                  ariaLabel={t("maintenance.library.folderLyricsMode")}
-                  disabled={readOnly}
-                />
-              </SettingsRow>
-            </SettingsSection>
-
             <RecordSettingsSection
               enabled={draft.recordLibraryEnabled}
               savedEnabled={settings?.recordLibraryEnabled ?? false}
@@ -526,24 +480,22 @@ export function MaintenancePage({
 
             <SettingsSection
               title={t("maintenance.library.creatorCatalogs")}
-              description={t("maintenance.library.catalogFreshnessDescription")}
-              action={
-                <>
-                  <AutosaveStatus state={catalogStatus.state} />
-                  <SettingsNumberInput
-                    disabled={readOnly}
-                    label={t("maintenance.library.catalogFreshnessDays")}
-                    value={draft.catalogFreshnessDays}
-                    min={1}
-                    max={365}
-                    integer
-                    unit={t("sourceSetup.days")}
-                    onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
-                    onCommit={() => void catalogStatus.track(runtimeEditor.commit("catalogFreshnessDays"))}
-                  />
-                </>
-              }
-            />
+              action={<AutosaveStatus state={catalogStatus.state} />}
+            >
+              <SettingsRow title={t("maintenance.library.catalogFreshnessDays")}>
+                <SettingsNumberInput
+                  disabled={readOnly}
+                  label={t("maintenance.library.catalogFreshnessDays")}
+                  value={draft.catalogFreshnessDays}
+                  min={1}
+                  max={365}
+                  integer
+                  unit={t("sourceSetup.days")}
+                  onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
+                  onCommit={() => void catalogStatus.track(runtimeEditor.commit("catalogFreshnessDays"))}
+                />
+              </SettingsRow>
+            </SettingsSection>
 
             <SettingsSection
               title={t("maintenance.library.networkPrivacy")}
@@ -619,23 +571,21 @@ export function MaintenancePage({
               ) : (
                 <SettingsSection
                   title={t("maintenance.access.instance")}
-                  description={t("maintenance.access.anonymousDescription")}
-                  action={
-                    <>
-                      <AutosaveStatus state={accessStatus.state} />
-                      <Switch
-                        checked={anonymousAccessEnabled}
-                        disabled={isAccessPolicySaving}
-                        onCheckedChange={(enabled) => {
-                          // Opening the library to visitors without an account is confirmed first.
-                          if (enabled) setConfirmAnonymousAccess(true);
-                          else void accessStatus.track(saveAccessPolicy(false));
-                        }}
-                        aria-label={t("maintenance.access.anonymous")}
-                      />
-                    </>
-                  }
-                />
+                  action={<AutosaveStatus state={accessStatus.state} />}
+                >
+                  <SettingsRow title={t("maintenance.access.anonymous")}>
+                    <Switch
+                      checked={anonymousAccessEnabled}
+                      disabled={isAccessPolicySaving}
+                      onCheckedChange={(enabled) => {
+                        // Opening the library to visitors without an account is confirmed first.
+                        if (enabled) setConfirmAnonymousAccess(true);
+                        else void accessStatus.track(saveAccessPolicy(false));
+                      }}
+                      aria-label={t("maintenance.access.anonymous")}
+                    />
+                  </SettingsRow>
+                </SettingsSection>
               ))}
             {confirmAnonymousAccess && (
               <Dialog onClose={() => setConfirmAnonymousAccess(false)} layer="sheet" size="lg" role="alertdialog">
@@ -663,12 +613,19 @@ export function MaintenancePage({
         ) : null}
       </fieldset>
 
-      {isStorageModalOpen && (
-        <LibraryStorageDialog
+      {isStorageModalOpen && settings && (
+        <LocalLibraryDialog
+          name={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
           layout={libraryLayout.layout}
           failed={libraryLayout.failed}
           readOnly={readOnly}
+          settings={{
+            localScanDepth: settings.localScanDepth,
+            folderLyricsMode: settings.folderLyricsMode ?? "copy",
+          }}
+          scanDepthMinimum={settings.localScanDepthMinimum ?? 1}
           onSaved={libraryLayout.setLayout}
+          onSaveSettings={saveRuntime}
           onClose={() => setIsStorageModalOpen(false)}
         />
       )}
@@ -810,10 +767,7 @@ function CacheFetchSettings({
             onCommit={commitTransfer("remoteDownloadLimitGb")}
           />
         </SettingsRow>
-        <SettingsRow
-          title={t("maintenance.cache.stagingRetention")}
-          description={t("maintenance.cache.stagingRetentionDescription")}
-        >
+        <SettingsRow title={t("maintenance.cache.stagingRetention")}>
           <SettingsNumberInput
             disabled={readOnly}
             label={t("maintenance.cache.stagingRetention")}
