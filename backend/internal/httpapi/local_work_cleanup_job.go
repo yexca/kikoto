@@ -95,10 +95,12 @@ func (s *Server) executeLocalWorkCleanup(
 	return s.finishLocalWorkCleanup(statusCtx, job, payload, checkpoint, finishCancelled)
 }
 
-// cleanLocalWork deletes one work's folders. Each folder is claimed for the
-// run, indexed again so files added since its last index are deleted too,
-// emptied, and removed; only then is the actor's state cleared and the work
-// forgotten.
+// cleanLocalWork deletes one work's folders, all or nothing. Each folder is
+// claimed for the run and indexed again so files added since its last index
+// are deleted too. Every folder is then moved into the run's cleanup area on
+// its pool; a folder that cannot be moved returns the others and nothing is
+// deleted. Only then does the index forget the folders, the moved folders are
+// deleted, and the actor's state is cleared and the work forgotten.
 func (s *Server) cleanLocalWork(
 	ctx context.Context,
 	statusCtx context.Context,
@@ -108,6 +110,9 @@ func (s *Server) cleanLocalWork(
 	checkpoint *mediaCleanupCheckpoint,
 ) error {
 	roots := make([]mediaCleanupTarget, 0, len(work.Folders))
+	// leftovers are folders an earlier attempt of the run already took out of
+	// the library but did not finish deleting.
+	leftovers := []string{}
 	for _, folder := range work.Folders {
 		root := mediaCleanupTarget{
 			Kind: "local_root", FolderID: folder.ID, WorkID: folder.WorkID, SourceID: folder.SourceID,
@@ -119,6 +124,11 @@ func (s *Server) cleanLocalWork(
 				return goneErr
 			}
 			if gone {
+				stagedPath, err := s.localWorkCleanupStagingPath(statusCtx, job.RunID, folder.ID, folder.Path)
+				if err != nil {
+					return err
+				}
+				leftovers = append(leftovers, stagedPath)
 				continue
 			}
 			return err
@@ -148,20 +158,73 @@ func (s *Server) cleanLocalWork(
 	if err != nil {
 		return err
 	}
-	// A folder whose removal would fail keeps every file: what would stop it
-	// is found before anything is deleted.
+	stages := make([]localWorkCleanupStage, 0, len(roots))
 	for _, root := range roots {
-		blocker, err := s.localWorkCleanupBlocker(root, targets)
+		stage, err := s.localWorkCleanupStageFor(statusCtx, job.RunID, root)
 		if err != nil {
 			return err
 		}
-		if blocker != "" {
-			return fmt.Errorf("%s also holds %s, so nothing was deleted", root.Path, blocker)
+		stages = append(stages, stage)
+	}
+	// What would keep a folder from being deleted is found before anything
+	// moves, and again once the folders are in the cleanup area, so a file
+	// added in between keeps the work as it was.
+	blocked := func(staged bool) error {
+		for _, stage := range stages {
+			absolute := stage.original
+			if staged {
+				absolute = stage.staged
+			}
+			blocker, err := s.localWorkCleanupBlocker(absolute, stage.root.Path, targets)
+			if err != nil {
+				return err
+			}
+			if blocker != "" {
+				return fmt.Errorf("%s also holds %s, so nothing was deleted", stage.root.Path, blocker)
+			}
+		}
+		return nil
+	}
+	if err := blocked(false); err != nil {
+		return err
+	}
+	for index, stage := range stages {
+		err := ctx.Err()
+		if err == nil {
+			err = stage.move(s.cfg.DataRoot)
+		}
+		if err != nil {
+			return errors.Join(err, returnLocalWorkCleanupStages(stages[:index]))
 		}
 	}
-	for _, target := range append(targets, roots...) {
-		if err := ctx.Err(); err != nil {
-			return err
+	if err := blocked(true); err != nil {
+		return errors.Join(err, returnLocalWorkCleanupStages(stages))
+	}
+	// From here the folders leave the library: the index forgets them in one
+	// transaction, and a later failure is finished by a retry of the run.
+	if err := s.markLocalWorkRootsUnavailable(statusCtx, stages); err != nil {
+		return errors.Join(err, returnLocalWorkCleanupStages(stages))
+	}
+	for _, target := range targets {
+		if target.Kind == "local" {
+			checkpoint.Deleted++
+		}
+	}
+	for _, stage := range stages {
+		leftovers = append(leftovers, stage.stagedPath)
+		if !stage.absent {
+			checkpoint.Deleted++
+		}
+	}
+	for _, stagedPath := range leftovers {
+		if _, err := removeDestructiveTree(s.cfg.DataRoot, stagedPath); err != nil {
+			return fmt.Errorf("the deleted folder left in %s could not be removed: %w", stagedPath, err)
+		}
+		s.removeLocalWorkCleanupArea(stagedPath)
+	}
+	for _, target := range targets {
+		if target.Kind != "cache" {
+			continue
 		}
 		deleted, err := s.clearMediaCleanupTarget(statusCtx, target)
 		if err != nil {
@@ -174,16 +237,29 @@ func (s *Server) cleanLocalWork(
 	return s.finishLocalWorkState(statusCtx, payload, work, checkpoint)
 }
 
-// localWorkCleanupBlocker names the first entry below a claimed folder that
-// would keep the folder from being removed once the run's files are gone: a
-// file the run does not delete, a link, or a special file. The lyrics folder's
-// marker and the sidecars a NAS or operating system keeps go with the folder,
-// as clearLocalWorkRoot removes them. "" means the folder can go.
-func (s *Server) localWorkCleanupBlocker(root mediaCleanupTarget, targets []mediaCleanupTarget) (string, error) {
-	absolute, err := safeDataPath(s.cfg.DataRoot, root.Path)
+// markLocalWorkRootsUnavailable records that the work's moved folders and
+// their files left the library, in one transaction.
+func (s *Server) markLocalWorkRootsUnavailable(ctx context.Context, stages []localWorkCleanupStage) error {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
-		return "", err
+		return err
 	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stage := range stages {
+		if err := markLocalWorkRootUnavailableTx(ctx, tx, stage.root); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// localWorkCleanupBlocker names the first entry below a claimed folder, found
+// at absolute, that would keep the folder from being deleted with the run's
+// files: a file the run does not delete, a link, or a special file. rootPath is
+// the folder's library path, which the run's files are listed under. The
+// lyrics folder's marker and the sidecars a NAS or operating system keeps go
+// with the folder. "" means the folder can go.
+func (s *Server) localWorkCleanupBlocker(absolute, rootPath string, targets []mediaCleanupTarget) (string, error) {
 	if _, err := os.Lstat(absolute); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	} else if err != nil {
@@ -196,7 +272,7 @@ func (s *Server) localWorkCleanupBlocker(root mediaCleanupTarget, targets []medi
 		}
 	}
 	blocker := ""
-	err = filepath.WalkDir(absolute, func(current string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(absolute, func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -215,7 +291,7 @@ func (s *Server) localWorkCleanupBlocker(root mediaCleanupTarget, targets []medi
 		if info.IsDir() || localfs.IsLyricsRootMarker(relative) || workFolderEditMergeSidecarPath(relative) {
 			return nil
 		}
-		if !deleted[normalizeFolderRootPath(path.Join(root.Path, relative))] {
+		if !deleted[normalizeFolderRootPath(path.Join(rootPath, relative))] {
 			blocker = relative
 			return fs.SkipAll
 		}
@@ -393,6 +469,7 @@ func (s *Server) restoreLocalWorkCleanupFolders(ctx context.Context, runID int64
 	for _, folder := range work.Folders {
 		ids = append(ids, folder.ID)
 	}
+	s.returnStagedCleanupFolders(context.WithoutCancel(ctx), runID, ids)
 	args := append([]any{runID}, int64Args(ids)...)
 	return withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
 		_, err := s.db.ExecContext(context.WithoutCancel(ctx), `

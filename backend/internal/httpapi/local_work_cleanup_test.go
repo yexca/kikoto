@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -395,6 +396,163 @@ func TestLocalWorkCleanupFinishesOtherWorksAndRetriesTheOneThatFailed(t *testing
 	}
 	if status != "succeeded" {
 		t.Fatalf("retried run status = %q, want succeeded", status)
+	}
+}
+
+// cleanupStaging is where a run moves a folder before deleting it.
+func (f *localWorkCleanupFixture) cleanupStaging(runID, folderID int64) string {
+	return filepath.Join(f.dataRoot, ".kikoto-staging", strconv.FormatInt(runID, 10), "cleanup", strconv.FormatInt(folderID, 10))
+}
+
+// addSecondFolder indexes another folder of a work, holding one file.
+func (f *localWorkCleanupFixture) addSecondFolder(folderID, workID int64, root string) {
+	f.t.Helper()
+	if err := os.MkdirAll(filepath.Join(f.dataRoot, root), 0o755); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.dataRoot, root, "copy.mp3"), []byte("copy"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	f.exec(`INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+		VALUES (?, ?, ?, ?, 'external', 'active', 0)`, folderID, workID, localWorkCleanupSourceID, root)
+	if err := f.server.indexLocalMediaForWork(context.Background(), workID, localWorkCleanupSourceID, root); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// A work's folders are deleted all or nothing: when one folder cannot be
+// moved out of the library, the folders moved before it go back, and the work
+// keeps every file, its rating, and its folders for a retry.
+func TestLocalWorkCleanupDeletesNoFolderWhenOneCannotBeMoved(t *testing.T) {
+	f := newLocalWorkCleanupFixture(t)
+	f.addLocalWork(495, "RJ00000095", 10)
+	f.addSecondFolder(4951, 495, "Extra/RJ00000095")
+	f.rate(1, 495, 1, "finished")
+	works := f.confirmed("maxRating=1")
+	if len(works) != 1 || len(works[0].Folders) != 2 {
+		t.Fatalf("candidates = %#v, want one work with two folders", works)
+	}
+	queued, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{
+		Works: works, ClearRating: true, ClearMark: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The folder the run moves last cannot be moved, after the first one is.
+	var payloadJSON string
+	if err := f.db.QueryRow("SELECT payload_json FROM workflow_job WHERE workflow_run_id = ?", queued.RunID).Scan(&payloadJSON); err != nil {
+		t.Fatal(err)
+	}
+	var payload mediaCleanupJobPayload
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Works) != 1 || len(payload.Works[0].Folders) != 2 {
+		t.Fatalf("job works = %#v", payload.Works)
+	}
+	first, last := payload.Works[0].Folders[0], payload.Works[0].Folders[1]
+	taken := f.cleanupStaging(queued.RunID, last.ID)
+	if err := os.MkdirAll(taken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taken, "other.txt"), []byte("other"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.server.runNextQueuedWorkflowJob(context.Background())
+
+	for _, file := range []string{"RJ00000095/track.mp3", "Extra/RJ00000095/copy.mp3"} {
+		if _, err := os.Stat(filepath.Join(f.dataRoot, filepath.FromSlash(file))); err != nil {
+			t.Fatalf("%s of the work that could not be cleaned is gone: %v", file, err)
+		}
+	}
+	if _, err := os.Stat(f.cleanupStaging(queued.RunID, first.ID)); !os.IsNotExist(err) {
+		t.Fatalf("the folder moved first was not put back: %v", err)
+	}
+	if count := f.count("SELECT COUNT(*) FROM work_folder_location WHERE work_id = 495 AND state = 'active' AND cleanup_run_id IS NULL"); count != 2 {
+		t.Fatalf("active folders = %d, want both returned to the work", count)
+	}
+	if count := f.count(`SELECT COUNT(*) FROM media_file_location AS location INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = 495 AND location.availability = 'available'`); count != 2 {
+		t.Fatalf("available files = %d, want both", count)
+	}
+	if count := f.count("SELECT COUNT(*) FROM user_work_state WHERE user_id = 1 AND work_id = 495 AND rating = 1"); count != 1 {
+		t.Fatal("the rating was cleared although nothing was deleted")
+	}
+	var status, summary string
+	if err := f.db.QueryRow("SELECT status, summary_json FROM workflow_run WHERE id = ?", queued.RunID).Scan(&status, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || !strings.Contains(summary, "nothing was deleted") {
+		t.Fatalf("run = %s %s, want failed with nothing deleted", status, summary)
+	}
+
+	if err := os.RemoveAll(taken); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.retryFailedWorkflowJob(context.Background(), queued.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{"RJ00000095", "Extra/RJ00000095", filepath.Join(".kikoto-staging", strconv.FormatInt(queued.RunID, 10))} {
+		if _, err := os.Stat(filepath.Join(f.dataRoot, filepath.FromSlash(root))); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after the retry: %v", root, err)
+		}
+	}
+	if count := f.count("SELECT COUNT(*) FROM user_work_state WHERE user_id = 1 AND work_id = 495 AND rating IS NOT NULL"); count != 0 {
+		t.Fatal("the retry did not clear the rating")
+	}
+}
+
+// A folder an interrupted attempt moved out of the library is deleted by the
+// next attempt, or returned to its place when the run gives the folder back.
+func TestLocalWorkCleanupFinishesOrReturnsAFolderAnInterruptedAttemptMoved(t *testing.T) {
+	f := newLocalWorkCleanupFixture(t)
+	f.addLocalWork(496, "RJ00000096", 10)
+	f.addLocalWork(497, "RJ00000097", 10)
+	queued, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("unrated=true")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moveToStaging := func(folderID int64, root string) string {
+		t.Helper()
+		staged := f.cleanupStaging(queued.RunID, folderID)
+		if err := os.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(filepath.Join(f.dataRoot, root), staged); err != nil {
+			t.Fatal(err)
+		}
+		return staged
+	}
+
+	// Giving a claimed folder back to its work brings it back from staging.
+	f.exec("UPDATE work_folder_location SET state = 'pending_cleanup', cleanup_run_id = ? WHERE id = 497", queued.RunID)
+	moveToStaging(497, "RJ00000097")
+	if err := f.server.restoreMediaCleanupFolders(context.Background(), queued.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dataRoot, "RJ00000097", "track.mp3")); err != nil {
+		t.Fatalf("the returned folder is not back: %v", err)
+	}
+
+	// The next attempt deletes the folder an interrupted attempt moved.
+	staged := moveToStaging(496, "RJ00000096")
+	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{staged, filepath.Join(f.dataRoot, "RJ00000096"), filepath.Join(f.dataRoot, "RJ00000097")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists: %v", path, err)
+		}
+	}
+	var status string
+	if err := f.db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "succeeded" {
+		t.Fatalf("run status = %q, want succeeded", status)
 	}
 }
 

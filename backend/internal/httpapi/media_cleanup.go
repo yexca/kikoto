@@ -560,6 +560,7 @@ func (s *Server) restoreMediaCleanupFolders(ctx context.Context, runID int64) er
 	if runID <= 0 {
 		return nil
 	}
+	s.returnStagedCleanupFolders(context.WithoutCancel(ctx), runID, nil)
 	err := withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
 		_, err := s.db.ExecContext(context.WithoutCancel(ctx), `
 		UPDATE work_folder_location
@@ -1056,6 +1057,15 @@ func (s *Server) markLocalWorkRootUnavailable(ctx context.Context, target mediaC
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := markLocalWorkRootUnavailableTx(ctx, tx, target); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// markLocalWorkRootUnavailableTx records in tx that a local work root and its
+// files left the library.
+func markLocalWorkRootUnavailableTx(ctx context.Context, tx *sql.Tx, target mediaCleanupTarget) error {
 	root := normalizeFolderRootPath(target.Path)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
@@ -1105,9 +1115,6 @@ func (s *Server) markLocalWorkRootUnavailable(ctx context.Context, target mediaC
 			last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
 	`, available, remainingRoot, remainingRoot, target.WorkID, target.SourceID); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return nil

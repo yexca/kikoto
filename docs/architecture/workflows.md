@@ -100,14 +100,21 @@ Media, cleanup, and database:
   turn while it holds the library folders: it claims the work's confirmed
   folders, indexes them again, checks that every claimed folder holds nothing
   but the work's available indexed files, the lyrics folder's marker, and
-  those sidecars, deletes the files inside them and the folders, leaving any
-  folder the work gained since the confirmation, and then, in one
-  transaction, clears the requester's rating and Quick mark of the work and
+  those sidecars, and moves each claimed folder by a same-filesystem rename
+  into `.kikoto-staging/<run>/cleanup/<folder>` on its own pool, where the
+  check runs again. Only then does one transaction mark the folders and their
+  files unavailable; the moved folders are deleted from the cleanup area,
+  leaving any folder the work gained since the confirmation, and another
+  transaction clears the requester's rating and Quick mark of the work and
   forgets it when asked. A folder holding anything else, such as a link or a
-  recycle bin with files in it, stops the work before any of its files is
-  deleted. A work that cannot be cleaned gets its folders back, keeps its
-  state, and is listed in the run's failures; the run goes on with the other
-  works and then fails, so a retry cleans only the failed works.
+  recycle bin with files in it, or a folder that cannot be moved stops the
+  work before any of its files is deleted, and the folders moved before it go
+  back. A folder an interrupted attempt left in the cleanup area is deleted
+  by the run's next attempt once the index has let it go, and is otherwise
+  returned to its place when the run gives the folder back to its work. A
+  work that cannot be cleaned gets its folders back, keeps its state, and is
+  listed in the run's failures; the run goes on with the other works and then
+  fails, so a retry cleans only the failed works.
 - `work_folder_edit`: add files from the family's other local folders and
   remote editions to one local folder of a work, as files or as lyrics of a
   declared language, arrange its files and folders, remove the files taken out

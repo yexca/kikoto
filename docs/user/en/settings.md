@@ -346,7 +346,9 @@ which forgetting works also needs. Demo sees every tab read-only.
   that work's rating, mark, and identity. A work whose folder holds anything
   that would keep the folder from being deleted, such as a `#recycle` folder
   with files in it, a link, or any other file that is not the work's, keeps its files,
-  rating, mark, and identity: nothing of it is deleted. The run finishes the
+  rating, mark, and identity: nothing of it is deleted. So does a work with a
+  folder the system will not let go of, such as one another program holds
+  open. The run finishes the
   other works and fails, and **Retry** in Workflows tries the failed works
   again.
 
