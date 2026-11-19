@@ -180,8 +180,8 @@ detail surfaces load the remote Fetch workspace dialog on demand through
 and closes the draft with a toast if its chunk fails to load. The persisted
 work detail's `folder-edit` feature owns the **Manage files** workspace of a
 local folder and the Fetch into a new folder: `folderEditModel` derives the
-resources, the request, and the final folder from the selection, the lyrics
-role of each file, and the layout, `folderEditLayout` moves, places, and
+resources, the request, and the final folder from the selection and the
+layout, `folderEditLayout` moves, places, and
 numbers files and folders of the final folder as pure functions over that
 layout, `fileWorkspaceModel` names what each place may do and derives
 everything the edit deletes, `identicalFilesModel` relates the identical-file
@@ -189,7 +189,6 @@ check to the edited folder and suggests the copy each repeated set keeps,
 `useIdenticalFiles` turns its review into selection changes,
 `useFolderEditWorkspace` and `useFetchComposeWorkspace` load each resource's
 files when a column or pane first shows it and the server preview,
-`folderEditLyrics` suggests track assignments for added lyrics,
 `FolderWorkspaceView` renders the columns from `FolderWorkspaceColumns` for
 both `FolderEditDialog` and `FetchComposeDialog`, and for Manage files on a
 workspace at least 1280 pixels wide `FileManagerPanes` instead, with

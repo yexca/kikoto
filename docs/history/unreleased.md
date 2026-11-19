@@ -285,6 +285,12 @@
   show a footer status only while there are unsaved changes, and in **Manage
   files** only This folder keeps a line under its name; the other places'
   Copy, Merge, and Read-only marks say what their files do.
+- Lyrics of a language come in only through **Manage lyrics** → **Lyrics
+  files**. **Manage files** and the Fetch into a new folder add a lyrics file
+  from another place like any other file, at its own path, and no longer offer
+  a language under its name, **Selected lyrics files**, or **Assign added
+  lyrics to matching tracks**. The note in **Manage files** that counts the
+  folder's other lyrics files still opens **Lyrics files** on them.
 - Work cards have a new **Simple** mode, offered after **Full**: the cover,
   the title, and one line with the circle and voice actors, with source marks,
   listening progress, and your Quick mark as quiet status on the cover. The

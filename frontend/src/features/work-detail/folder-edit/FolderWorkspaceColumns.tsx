@@ -50,16 +50,12 @@ import {
 } from "@/features/work-detail/folder-edit/FolderEditPanes";
 import { PlaceBadge, placeIcon, placeReason, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { PendingDeletionPanel } from "@/features/work-detail/folder-edit/PendingDeletionPanel";
-import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { languageLabel } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
-import { lyricsLanguages, lyricsRootFolderName } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 
 const noSelection: ReadonlySet<string> = new Set();
 const noFiles: FolderEditFile[] = [];
-/** The role select's value for a file added at its own path. */
-const AS_FILE = "file";
 
 export function resourceTitle(resource: FolderEditResource, t: (key: string) => string) {
   if (resource.kind === "current") return t("folderEdit.currentFolder");
@@ -249,50 +245,6 @@ export function SourcesStatus({ workspace }: { workspace: FolderWorkspace }) {
   return null;
 }
 
-/** The role a file takes: a file at its own path, or lyrics of a language. */
-function LyricsRoleSelect({
-  value,
-  label,
-  mixed = false,
-  compact = false,
-  disabled,
-  onChange,
-}: {
-  value: string | undefined;
-  label: string;
-  mixed?: boolean;
-  /** Sits on a line of its own under a file name. */
-  compact?: boolean;
-  disabled: boolean;
-  onChange: (language: string | null) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <select
-      className={cn(
-        "h-7 shrink-0 rounded-md border bg-background px-1.5 text-xs",
-        compact ? "h-6 max-w-full text-2xs" : "max-w-48",
-      )}
-      aria-label={label}
-      value={mixed ? "" : (value ?? AS_FILE)}
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.value === AS_FILE ? null : event.target.value)}
-    >
-      {mixed && (
-        <option value="" disabled>
-          {t("folderEdit.roleMixed")}
-        </option>
-      )}
-      <option value={AS_FILE}>{t("folderEdit.asFile")}</option>
-      {lyricsLanguages.map(([language, labelKey]) => (
-        <option key={language || "fallback"} value={language}>
-          {t("folderEdit.asLyrics", { language: t(labelKey) })}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 /** Selects a place's files by format; for the edited folder, a selected file is a kept one. */
 export function ExtensionChips({
   files,
@@ -370,7 +322,6 @@ export function SelectionColumn({
   const state = workspace.files[resource.id];
   const files = state?.status === "ready" ? state.files : noFiles;
   const selected = workspace.selection[resource.id] ?? noSelection;
-  const roles = workspace.lyrics[resource.id];
   const current = resource.kind === "current";
   // The edited folder's identical files: marked, opened after each check, and shown alone on request.
   const identical = current ? manage?.identical : undefined;
@@ -391,13 +342,6 @@ export function SelectionColumn({
   const tree = useMemo(() => buildFolderEditTree(shown), [shown]);
   const allPaths = useMemo(() => files.map((file) => file.path), [files]);
   const place = fileWorkspacePlace(resource);
-  // The edited folder's own files keep their place; any other place's lyrics can become managed lyrics.
-  const lyricsPaths = useMemo(
-    () => (current ? [] : files.filter((file) => isLyricsFilePath(file.path)).map((file) => file.path)),
-    [current, files],
-  );
-  const selectedLyrics = lyricsPaths.filter((path) => selected.has(path));
-  const selectedRoles = new Set(selectedLyrics.map((path) => roles?.[path] ?? AS_FILE));
   const selectedCount = files.filter((file) => selected.has(file.path)).length;
   const bytes = folderEditSelectedBytes(files, selected);
   const setIncluded = (paths: readonly string[], included: boolean) =>
@@ -446,19 +390,6 @@ export function SelectionColumn({
   const meta = identical
     ? (file: FolderEditFile) => identical.badge(file.path, { deleting: !selected.has(file.path) })
     : undefined;
-  const below =
-    lyricsPaths.length > 0
-      ? (file: FolderEditFile) =>
-          isLyricsFilePath(file.path) ? (
-            <LyricsRoleSelect
-              value={roles?.[file.path]}
-              compact
-              label={t("folderEdit.fileRole", { name: file.name })}
-              disabled={workspace.applying}
-              onChange={(language) => workspace.setLyricsRole(resource.id, [file.path], language)}
-            />
-          ) : null
-      : undefined;
   return (
     <section
       aria-label={header ? resourceTitle(resource, t) : t("folderEdit.pane.select")}
@@ -559,18 +490,6 @@ export function SelectionColumn({
         ) : (
           <ExtensionChips files={files} selected={selected} disabled={workspace.applying} onToggle={setIncluded} />
         )}
-        {lyricsPaths.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-muted-foreground">{t("folderEdit.selectedLyricsRole")}</span>
-            <LyricsRoleSelect
-              value={selectedRoles.size === 1 ? [...selectedRoles][0] : undefined}
-              mixed={selectedRoles.size > 1}
-              label={t("folderEdit.selectedLyricsRole")}
-              disabled={workspace.applying || selectedLyrics.length === 0}
-              onChange={(language) => workspace.setLyricsRole(resource.id, selectedLyrics, language)}
-            />
-          </div>
-        )}
       </div>
       <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
         {!state || state.status === "loading" ? (
@@ -598,7 +517,6 @@ export function SelectionColumn({
             onToggle={setIncluded}
             onDragFiles={onDragFiles}
             meta={meta}
-            below={below}
             folderNote={current ? manage?.folderNote : undefined}
             rowMenu={rowMenu}
             expand={expand}
@@ -682,7 +600,6 @@ export function ResultColumn({
   const added = workspace.result.filter((entry) => entry.state === "add_local" || entry.state === "add_remote").length;
   const removed = workspace.result.filter((entry) => entry.state === "remove").length;
   const moved = workspace.result.filter((entry) => entry.state === "add_move").length;
-  const showAssign = workspace.canAssign && workspace.lyricsAdditionCount > 0;
   const showingPending = Boolean(manage) && view === "delete" && !header;
   const showingIdentical = Boolean(identical?.review) && view === "identical" && !header;
   const views: ResultColumnView[] = identical?.review ? ["folder", "delete", "identical"] : ["folder", "delete"];
@@ -797,26 +714,6 @@ export function ResultColumn({
                 </div>
                 {tools}
               </>
-            )}
-            {workspace.lyricsAdditionCount > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t("folderEdit.lyricsTarget", { folder: lyricsRootFolderName })}
-              </p>
-            )}
-            {showAssign && (
-              <label className="flex items-start gap-2 pt-1 text-xs" title={t("folderEdit.assignHint")}>
-                <Checkbox
-                  checked={workspace.assign}
-                  disabled={workspace.applying}
-                  onCheckedChange={(checked) => workspace.setAssign(checked)}
-                />
-                <span>
-                  {t("folderEdit.assign")}
-                  {workspace.assign && workspace.assignmentCount > 0 && (
-                    <span className="ml-1 tabular-nums">({workspace.assignmentCount})</span>
-                  )}
-                </span>
-              </label>
             )}
             {dropped && (
               <p className="text-xs text-muted-foreground" role="status">

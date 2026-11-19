@@ -140,7 +140,6 @@ describe("an arranged folder edit", () => {
       [CURRENT_FOLDER_RESOURCE]: new Set(["mp3/01.mp3", "mp3/02.mp3"]),
       "local:12": new Set(["notes.txt", "lyrics.vtt"]),
     },
-    lyrics: { "local:12": { "lyrics.vtt": "jpn" } },
     decisions: {},
     layout,
     merges: [12],
@@ -150,8 +149,7 @@ describe("an arranged folder edit", () => {
     expect(request.moves).toEqual([{ locationId: 101, path: "Disc 1/01.mp3" }]);
     expect(request.additions).toEqual([
       { kind: "local", folderId: 12, path: "notes.txt", targetPath: "Extras/notes.txt" },
-      // A lyrics role decides where the file goes, not a placement.
-      { kind: "local", folderId: 12, path: "lyrics.vtt", language: "jpn" },
+      { kind: "local", folderId: 12, path: "lyrics.vtt", targetPath: "Extras/lyrics.vtt" },
     ]);
     expect(request.folders).toEqual(["Empty"]);
     expect(request.mergeFolderIds).toEqual([12]);
@@ -182,7 +180,6 @@ describe("a placement of a cleared file", () => {
       resources,
       files: { [CURRENT_FOLDER_RESOURCE]: current, "local:12": additions },
       selection: { [CURRENT_FOLDER_RESOURCE]: selected, "local:12": added },
-      lyrics: {},
       keyFor: folderEditResourceItemKey,
     });
   const pendingAddition = { key: "local:12:01.mp3", path: "01.mp3", kind: "audio", sizeBytes: 10 };
@@ -241,7 +238,6 @@ describe("an arranged Fetch", () => {
       "local:12": [{ path: "notes.txt", name: "notes.txt", kind: "text", sizeBytes: 3, locationId: 201 }],
     },
     selection: { [fetched.id]: new Set(["mp3/01.mp3"]), "local:12": new Set(["notes.txt"]) },
-    lyrics: {},
     decisions: {},
     minFreeBytes: 0,
     layout: {

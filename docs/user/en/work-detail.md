@@ -418,8 +418,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   place takes no drops and offers no move or delete, and its menu says why:
   the edit changes only **This folder**.
 - **Undo all changes** drops every change of the edit at once, from
-  selections, deletions, moves, and new folders to merges, lyrics roles, and
-  conflict choices, and starts again from the folder as it is. Nothing on disk
+  selections, deletions, moves, and new folders to merges and conflict
+  choices, and starts again from the folder as it is. Nothing on disk
   changes, so it asks nothing first; until you change something again,
   **Restore** beside the status brings the undone changes back.
 - Dragging is a shortcut. Each row has a menu for touch screens and keyboards:
@@ -477,7 +477,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Kikoto's `lyrics_kikoto` folder is marked **Lyrics managed by Kikoto**, and
   its **Manage lyrics** opens **Manage lyrics** on its **Lyrics files** tab over
   the workspace; the workspace keeps its changes and shows the folder as it is
-  afterwards. The folder is arranged only through lyrics roles, so a dragged
+  afterwards. The folder is arranged only in **Manage lyrics**, so a dragged
   selection that holds it is not dropped. When **This folder** has other
   lyrics files (`.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`), a note
   counts them, and **Open in Manage lyrics** opens **Lyrics files** on
@@ -492,15 +492,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   deleted with everything it still holds. Switching back to **Copy** keeps the
   folder. Files from a remote
   edition are downloaded, which also needs permission to fetch, and the
-  edition is not added to the library. A lyrics file from another place can
-  be added as lyrics instead of at its own path: choose a language under its
-  name, or for all selected lyrics files of the place under **Selected lyrics
-  files**, and it goes to that language's folder inside `lyrics_kikoto`, as in
-  **Lyrics files**. You declare the language; Kikoto does not guess it. With
-  library write access, **Assign added lyrics to matching tracks** assigns
-  each added lyrics file in its language to the track it matches by file
-  name, then by track order, including tracks the same edit adds; a track
-  that already has lyrics in that language keeps them. A file that would land
+  edition is not added to the library. A lyrics file from another place is
+  added like any other file, at its own path; lyrics of a language come in
+  through **Manage lyrics** → **Lyrics files**. A file that would land
   on a different file of the same name is a conflict: keep the file in the
   folder, replace it, keep both, or rename the incoming file. A folder or
   link already at that name is never replaced, so only the other choices are
@@ -647,11 +641,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   **Manage files** on that source's edition, for users who may manage local
   files and fetch. For those users, a work without a local folder opens a
   Fetch into a new folder in the same three columns: the source's edition
-  comes first with all its files selected, the work's other editions,
-  sources, and local folders can add files, and lyrics files can be added as
-  lyrics of a language with track assignments, as in **Manage files**. Its
-  **Final folder** is arranged as in **Manage files**, except that a folder
-  holding no file is not created. The edition's own files are one Fetch.
+  comes first with all its files selected, and the work's other editions,
+  sources, and local folders can add files. Its **Final folder** is arranged
+  as in **Manage files**, except that a folder holding no file is not created. The edition's own files are one Fetch.
   Everything else is added by a
   folder edit workflow once the Fetch has published the folder, so a file
   that would land on one the Fetch publishes is a conflict to resolve first.

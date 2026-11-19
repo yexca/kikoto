@@ -2780,15 +2780,6 @@ export const surfaceKorean = {
     removeCount: "제거 {{count}}",
     currentHint: "파일 선택을 해제하면 변경을 적용할 때 삭제됩니다. 삭제 예정에 표시됩니다.",
     selectionSummary: "{{total}}개 중 {{selected}}개 선택됨",
-    asFile: "파일로",
-    asLyrics: "가사 · {{language}}",
-    roleMixed: "혼합",
-    selectedLyricsRole: "선택한 가사 파일",
-    fileRole: "{{name}} 추가 방식",
-    lyricsTarget: "가사로 추가한 파일은 {{folder}} 안의 해당 언어 폴더로 들어갑니다.",
-    assign: "추가한 가사를 일치하는 트랙에 지정",
-    assignHint:
-      "파일 이름으로 먼저 맞추고 다음으로 트랙 순서로 맞춥니다. 해당 언어 가사가 이미 있는 트랙은 그대로 둡니다.",
     loadingFiles: "파일을 불러오는 중",
     filesFailed: "파일을 불러오지 못했습니다.",
     noFiles: "파일 없음",
@@ -3019,8 +3010,7 @@ export const surfaceKorean = {
   },
   fetchCompose: {
     title: "가져오기",
-    description:
-      "{{code}}를 새 폴더로 Fetch하고, 다른 판·소스·로컬 폴더의 파일이나 언어를 지정한 가사를 함께 추가합니다.",
+    description: "{{code}}를 새 폴더로 Fetch하고, 다른 판·소스·로컬 폴더의 파일을 함께 추가합니다.",
     newFolder: "새 폴더",
     primaryHint: "선택한 파일은 {{source}}에서 새 폴더로 Fetch됩니다.",
     remoteHint: "선택한 파일은 Fetch가 폴더를 게시한 뒤 {{source}}에서 다운로드됩니다.",

@@ -148,7 +148,6 @@ function FolderEditWorkspaceDialog({
     target,
     currentItems,
     initialRemote,
-    canAssign: !auth.demoMode && auth.hasPermission("library:write"),
     localOnly,
     demo: auth.demoMode,
     onApplied,

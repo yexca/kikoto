@@ -30,11 +30,9 @@ function mergeSwitchDisabled(files: FolderEditFilesState) {
     activeResource: other,
     files: { [other.id]: files },
     selection: {},
-    lyrics: {},
     applying: false,
     merge: { folderIds: new Set<number>(), setMerged: () => undefined },
     setSelected: () => undefined,
-    setLyricsRole: () => undefined,
   } as unknown as FolderWorkspace;
   const markup = renderToStaticMarkup(<CopyMergeSwitch workspace={workspace} resource={other} />);
   const button = [...markup.matchAll(/<button[^>]*role="radio"[^>]*>/g)][1]?.[0] ?? "";

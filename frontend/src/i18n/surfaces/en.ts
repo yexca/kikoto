@@ -2844,15 +2844,6 @@ export const surfaceEnglish = {
     removeCount: "Remove {{count}}",
     currentHint: "Clear a file to delete it when the edit is applied. It is listed under To be deleted.",
     selectionSummary: "{{selected}} of {{total}} selected",
-    asFile: "As a file",
-    asLyrics: "Lyrics · {{language}}",
-    roleMixed: "Mixed",
-    selectedLyricsRole: "Selected lyrics files",
-    fileRole: "Add {{name}} as",
-    lyricsTarget: "Files added as lyrics go to the folder of their language inside {{folder}}.",
-    assign: "Assign added lyrics to matching tracks",
-    assignHint:
-      "File names are matched first, then track order. A track that already has lyrics in the language keeps them.",
     loadingFiles: "Loading files",
     filesFailed: "The files could not be loaded.",
     noFiles: "No files",
@@ -3087,8 +3078,7 @@ export const surfaceEnglish = {
   },
   fetchCompose: {
     title: "Fetch",
-    description:
-      "Fetch {{code}} into a new folder, and add files from other editions, sources, and local folders, or lyrics in a language.",
+    description: "Fetch {{code}} into a new folder, and add files from other editions, sources, and local folders.",
     newFolder: "New folder",
     primaryHint: "Selected files are fetched from {{source}} into the new folder.",
     remoteHint: "Selected files are downloaded from {{source}} into the new folder once the Fetch has published it.",

@@ -5,10 +5,7 @@ import {
   folderEditCollision,
   localFolderFiles,
   remoteEditionFiles,
-  withFolderEditPaths,
-  withLyricsRole,
   type FolderEditFile,
-  type FolderEditLyricsRoles,
   type FolderEditReadiness,
   type FolderEditResource,
   type FolderEditResultEntry,
@@ -50,20 +47,16 @@ export type FolderWorkspace = {
   localOnly?: boolean;
   files: Readonly<Record<string, FolderEditFilesState>>;
   selection: Readonly<Record<string, ReadonlySet<string>>>;
-  lyrics: FolderEditLyricsRoles;
   activeResource: FolderEditResource;
   selectResource: (resource: FolderEditResource) => void;
   /** Loads a place's files for a pane that shows it, without making it the active place. */
   openResource: (resource: FolderEditResource) => void;
   retryResource: (resource: FolderEditResource) => void;
   setSelected: (resourceId: string, paths: ReadonlySet<string>) => void;
-  /** Adds the files as lyrics of a language, or as plain files for `null`. */
-  setLyricsRole: (resourceId: string, paths: readonly string[], language: string | null) => void;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
   setDecision: (decision: RemoteFetchFileDecision) => void;
-  /** How many selected files the change brings in, and how many of them as lyrics. */
+  /** How many selected files the change brings in. */
   additionCount: number;
-  lyricsAdditionCount: number;
   /** The folder the change writes, relative to the data root; empty until a new folder is planned. */
   rootPath: string;
   result: FolderEditResultEntry[];
@@ -73,11 +66,6 @@ export type FolderWorkspace = {
   conflictCount: number;
   planFailed: boolean;
   retryPlan: () => void;
-  /** Whether added lyrics may be assigned to tracks, whether they will be, and to how many. */
-  canAssign: boolean;
-  assign: boolean;
-  setAssign: (assign: boolean) => void;
-  assignmentCount: number;
   applying: boolean;
   /** Present where the final folder's files and folders can be arranged. */
   arrange?: FolderWorkspaceArrange;
@@ -259,14 +247,12 @@ export function folderWorkspaceArrange({
 const noFiles: FolderEditFile[] = [];
 
 /**
- * The files of every place a workspace reads from, which of them are
- * selected, and which are added as lyrics. A place's files load when it is
- * first opened.
+ * The files of every place a workspace reads from, and which of them are
+ * selected. A place's files load when it is first opened.
  */
 export function useFolderWorkspaceFiles() {
   const [files, setFiles] = useState<Record<string, FolderEditFilesState>>({});
   const [selection, setSelection] = useState<Record<string, ReadonlySet<string>>>({});
-  const [lyrics, setLyrics] = useState<Record<string, Readonly<Record<string, string>>>>({});
   const loading = useRef(new Map<string, Promise<FolderEditFile[] | null>>());
 
   const loadResource = useCallback((resource: FolderEditResource): Promise<FolderEditFile[] | null> => {
@@ -301,26 +287,12 @@ export function useFolderWorkspaceFiles() {
     [],
   );
 
-  // Choosing a lyrics language for a file also selects it.
-  const setLyricsRole = useCallback((resourceId: string, paths: readonly string[], language: string | null) => {
-    setLyrics((current) => ({ ...current, [resourceId]: withLyricsRole(current[resourceId], paths, language) }));
-    if (language !== null) {
-      setSelection((current) => ({
-        ...current,
-        [resourceId]: withFolderEditPaths(current[resourceId] ?? new Set(), paths, true),
-      }));
-    }
-  }, []);
-
   return {
     files,
     setFiles,
     selection,
     setSelection,
     setSelected,
-    lyrics,
-    setLyrics,
-    setLyricsRole,
     loadResource,
     readyFiles,
   };

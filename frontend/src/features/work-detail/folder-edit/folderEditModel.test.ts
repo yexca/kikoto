@@ -426,25 +426,6 @@ describe("folder edit conflicts", () => {
   });
 });
 
-describe("folder edit lyrics", () => {
-  const resources = folderEditResources(sources, target);
-
-  it("adds a file with a declared language as lyrics, and any other file at its own path", () => {
-    const request = folderEditRequest({
-      target,
-      resources,
-      files: { "remote:7:RJ00000002": [file("sub/01.vtt"), file("sub/02.vtt")] },
-      selection: { "remote:7:RJ00000002": new Set(["sub/01.vtt", "sub/02.vtt"]) },
-      lyrics: { "remote:7:RJ00000002": { "sub/01.vtt": "zh-cn" } },
-      decisions: {},
-    });
-    expect(request.additions).toEqual([
-      { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/01.vtt", language: "zh-cn" },
-      { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/02.vtt" },
-    ]);
-  });
-});
-
 describe("fetch into a new folder", () => {
   const fetch = { sourceId: 8, sourceName: "Example Remote B", remoteCode: "RJ00000001", editionCode: "RJ00000001" };
   const preparation = {
@@ -495,18 +476,16 @@ describe("fetch into a new folder", () => {
         "remote:7:RJ00000002": new Set(["sub/01.vtt"]),
         "local:21": new Set(["wav/01.wav"]),
       },
-      lyrics: { "remote:8:RJ00000001": { "mp3/01.lrc": "ja-jp" }, "remote:7:RJ00000002": { "sub/01.vtt": "zh-cn" } },
       decisions: { fetchedDecision, followDecision },
       minFreeBytes: 1,
     });
     expect(request).toEqual({
-      paths: ["mp3/01.mp3"],
+      paths: ["mp3/01.mp3", "mp3/01.lrc"],
       decisions: [fetchedDecision],
       minFreeBytes: 1,
       followUp: {
         additions: [
-          { kind: "remote", sourceId: 8, remoteCode: "RJ00000001", path: "mp3/01.lrc", language: "ja-jp" },
-          { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/01.vtt", language: "zh-cn" },
+          { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/01.vtt" },
           { kind: "local", folderId: 21, path: "wav/01.wav" },
         ],
         decisions: [followDecision],
@@ -521,13 +500,12 @@ describe("fetch into a new folder", () => {
       action: "cache_download",
       targetPath: "Fetch/RJ00000001/mp3/01.mp3",
     });
-    const lyrics = planItem({
+    const followed = planItem({
       itemKey: "remote:7:RJ00000002:sub/01.vtt",
       sourceKind: "remote",
       kind: "text",
       action: "cache_download",
-      targetPath: "Fetch/RJ00000001/lyrics_kikoto/zh-hans/sub/01.vtt",
-      language: "zh-cn",
+      targetPath: "Fetch/RJ00000001/sub/01.vtt",
     });
     const composed = (conflict: number): ComposedFetchPlan => ({
       sourceId: 8,
@@ -538,11 +516,11 @@ describe("fetch into a new folder", () => {
       items: [fetched],
       summary: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: 1, promote: 1, conflict: 0 },
       preparation,
-      followUp: { ...plan([lyrics], conflict), saveRoot: "Fetch/RJ00000001" },
+      followUp: { ...plan([followed], conflict), saveRoot: "Fetch/RJ00000001" },
     });
     expect(fetchComposeResult(composed(0)).map((entry) => [entry.path, entry.state])).toEqual([
       ["mp3/01.mp3", "add_remote"],
-      ["lyrics_kikoto/zh-hans/sub/01.vtt", "add_remote"],
+      ["sub/01.vtt", "add_remote"],
     ]);
     const request = { paths: ["mp3/01.mp3"], decisions: [], minFreeBytes: 1 };
     const idle = { ...request, paths: [] };

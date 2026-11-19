@@ -74,27 +74,6 @@ export type FolderEditFile = {
 
 export type FolderEditSelection = Readonly<Record<string, ReadonlySet<string>>>;
 
-/**
- * The files of each resource that are added as lyrics, by path, with their
- * declared language; the empty language is the fallback lyrics. A file without
- * an entry is added as a file at its own path.
- */
-export type FolderEditLyricsRoles = Readonly<Record<string, Readonly<Record<string, string>>>>;
-
-/** Sets the role of the given files: lyrics of a language, or a plain file for `null`. */
-export function withLyricsRole(
-  roles: Readonly<Record<string, string>> | undefined,
-  paths: readonly string[],
-  language: string | null,
-): Readonly<Record<string, string>> {
-  const next: Record<string, string> = { ...roles };
-  for (const path of paths) {
-    if (language === null) delete next[path];
-    else next[path] = language;
-  }
-  return next;
-}
-
 export type FolderEditTreeNode<T> = {
   name: string;
   path: string;
@@ -385,7 +364,6 @@ export function folderEditRequest({
   resources,
   files,
   selection,
-  lyrics = {},
   decisions,
   layout = emptyFolderEditLayout,
   merges = [],
@@ -394,7 +372,6 @@ export function folderEditRequest({
   resources: readonly FolderEditResource[];
   files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
   selection: FolderEditSelection;
-  lyrics?: FolderEditLyricsRoles;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
   layout?: FolderEditLayout;
   merges?: readonly number[];
@@ -413,13 +390,9 @@ export function folderEditRequest({
         else if (placed !== undefined && placed !== file.path)
           moves.push({ locationId: file.locationId, path: placed });
       } else if (included) {
-        const addition = folderEditAddition(resource, file.path, lyrics[resource.id]?.[file.path]);
+        const addition = folderEditAddition(resource, file.path);
         const placed = layout.placements[folderEditItemKey(addition)];
-        additions.push(
-          addition.language === undefined && placed !== undefined && placed !== file.path
-            ? { ...addition, targetPath: placed }
-            : addition,
-        );
+        additions.push(placed !== undefined && placed !== file.path ? { ...addition, targetPath: placed } : addition);
       }
     }
   }
@@ -435,19 +408,15 @@ export function folderEditRequest({
   return request;
 }
 
-function folderEditAddition(resource: FolderEditResource, path: string, language: string | undefined) {
-  const addition: WorkFolderEditAddition =
-    resource.kind === "local"
-      ? { kind: "local", folderId: resource.folderId, path }
-      : { kind: "remote", sourceId: resource.sourceId, remoteCode: resource.editionCode, path };
-  return language === undefined ? addition : { ...addition, language };
+function folderEditAddition(resource: FolderEditResource, path: string): WorkFolderEditAddition {
+  return resource.kind === "local"
+    ? { kind: "local", folderId: resource.folderId, path }
+    : { kind: "remote", sourceId: resource.sourceId, remoteCode: resource.editionCode, path };
 }
 
 /** The key of the result entry and placement a file of another place takes once it is added. */
 export function folderEditResourceItemKey(resource: FolderEditResource, path: string) {
-  return resource.kind === "current"
-    ? currentFileKey(path)
-    : folderEditItemKey(folderEditAddition(resource, path, undefined));
+  return resource.kind === "current" ? currentFileKey(path) : folderEditItemKey(folderEditAddition(resource, path));
 }
 
 function decisionsFor(decisions: Readonly<Record<string, RemoteFetchFileDecision>>, itemKeys: ReadonlySet<string>) {
@@ -556,27 +525,24 @@ export function folderEditEntryMovable(entry: FolderEditResultEntry) {
 
 /**
  * The keys of the files the final folder can place: the selected files of
- * every place except those added as lyrics, whose lyrics role decides where
- * they go. A placement of any other key is stale.
+ * every place. A placement of any other key is stale.
  */
 export function folderEditPlacementKeys({
   resources,
   files,
   selection,
-  lyrics,
   keyFor,
 }: {
   resources: readonly FolderEditResource[];
   files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
   selection: FolderEditSelection;
-  lyrics: FolderEditLyricsRoles;
   keyFor: (resource: FolderEditResource, path: string) => string;
 }): Set<string> {
   const keys = new Set<string>();
   for (const resource of resources) {
     const selected = selection[resource.id];
     for (const file of files[resource.id] ?? []) {
-      if (!selected?.has(file.path) || lyrics[resource.id]?.[file.path] !== undefined) continue;
+      if (!selected?.has(file.path)) continue;
       keys.add(keyFor(resource, file.path));
     }
   }
@@ -703,7 +669,6 @@ export function createDemoFolderEditPlan(
       remotePath: local ? "" : addition.path,
       sourceOptions: [],
       ...(local ? { sourceFolderId: addition.folderId } : { remoteCode: addition.remoteCode }),
-      ...(addition.language !== undefined ? { language: addition.language } : {}),
     };
   });
   const copy = items.filter((item) => item.action === "copy_local").length;
@@ -728,7 +693,7 @@ export function createDemoFolderEditPlan(
       folders: request.folders?.length ?? 0,
       merge: request.mergeFolderIds?.length ?? 0,
       mergeFiles: 0,
-      lyrics: items.filter((item) => item.language !== undefined).length,
+      lyrics: 0,
       addBytes: items.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
       removeBytes: 0,
     },
@@ -811,15 +776,14 @@ export function fetchComposeResources(
 
 /**
  * Turns the selection into a Fetch into a new folder: the fetched edition's
- * selected files are the Fetch, and everything else selected, including the
- * fetched edition's files added as lyrics, follows once the folder exists.
+ * selected files are the Fetch, and everything else selected follows once the
+ * folder exists.
  */
 export function fetchComposeRequest({
   fetch,
   resources,
   files,
   selection,
-  lyrics,
   decisions,
   minFreeBytes,
   layout = emptyFolderEditLayout,
@@ -828,7 +792,6 @@ export function fetchComposeRequest({
   resources: readonly FolderEditResource[];
   files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
   selection: FolderEditSelection;
-  lyrics: FolderEditLyricsRoles;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
   minFreeBytes: number;
   layout?: FolderEditLayout;
@@ -840,18 +803,13 @@ export function fetchComposeRequest({
     const selected = selection[resource.id];
     for (const file of files[resource.id] ?? []) {
       if (!selected?.has(file.path)) continue;
-      const language = lyrics[resource.id]?.[file.path];
-      if (resource.id === primaryId && language === undefined) {
+      if (resource.id === primaryId) {
         paths.push(file.path);
         continue;
       }
-      const addition = folderEditAddition(resource, file.path, language);
+      const addition = folderEditAddition(resource, file.path);
       const placed = layout.placements[folderEditItemKey(addition)];
-      additions.push(
-        language === undefined && placed !== undefined && placed !== file.path
-          ? { ...addition, targetPath: placed }
-          : addition,
-      );
+      additions.push(placed !== undefined && placed !== file.path ? { ...addition, targetPath: placed } : addition);
     }
   }
   // A placed file of the fetched edition is renamed to its place; a decision

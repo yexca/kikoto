@@ -225,7 +225,7 @@ export const revealedRowClass = "bg-primary/10 ring-2 ring-primary/60";
 
 /**
  * One folder of a selection tree with its files. `meta` adds a note to a file
- * row, before its size, and `below` a line under the file's name. A folder
+ * row, before its size. A folder
  * row shows `folderNote` after its name, and every row ends with `rowMenu`
  * when it is given. With `onDragFiles`, a file or folder can be dragged: it
  * hands over the files' paths and the folder above them. `expand` opens the
@@ -239,7 +239,6 @@ export function SelectionNode({
   disabled,
   isRoot = false,
   meta,
-  below,
   folderNote,
   rowMenu,
   onToggle,
@@ -253,7 +252,6 @@ export function SelectionNode({
   disabled: boolean;
   isRoot?: boolean;
   meta?: (file: FolderEditFile) => ReactNode;
-  below?: (file: FolderEditFile) => ReactNode;
   folderNote?: (path: string, files: readonly string[]) => ReactNode;
   rowMenu?: (paths: readonly string[], base: string, name: string) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
@@ -329,7 +327,6 @@ export function SelectionNode({
             selected={selected}
             disabled={disabled}
             meta={meta}
-            below={below}
             folderNote={folderNote}
             rowMenu={rowMenu}
             onToggle={onToggle}
@@ -348,7 +345,6 @@ export function SelectionNode({
             disabled={disabled}
             revealSeq={reveal?.path === file.path ? reveal.seq : null}
             meta={meta}
-            below={below}
             rowMenu={rowMenu}
             onToggle={onToggle}
             onDragStart={draggable ? (event) => onDragFiles?.(event, [file.path], parentOf(file.path)) : undefined}
@@ -366,7 +362,6 @@ function SelectionFileRow({
   disabled,
   revealSeq,
   meta,
-  below,
   rowMenu,
   onToggle,
   onDragStart,
@@ -378,7 +373,6 @@ function SelectionFileRow({
   disabled: boolean;
   revealSeq: number | null;
   meta?: (file: FolderEditFile) => ReactNode;
-  below?: (file: FolderEditFile) => ReactNode;
   rowMenu?: (paths: readonly string[], base: string, name: string) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
   onDragStart?: (event: DragEvent) => void;
@@ -386,7 +380,6 @@ function SelectionFileRow({
 }) {
   const { t } = useTranslation();
   const revealed = useRevealedRow<HTMLDivElement>(revealSeq);
-  const line = below?.(file);
   return (
     <div ref={revealed.ref} className={cn("rounded-md", revealed.flashing && revealedRowClass)}>
       <label
@@ -414,12 +407,6 @@ function SelectionFileRow({
         </span>
         {rowMenu?.([file.path], base, file.name)}
       </label>
-      {line && (
-        // The line starts under the file's name: past the spacer, checkbox, and icon.
-        <div className="-mt-1 pb-1.5 pr-2" style={{ paddingLeft: depth * 14 + 82 }}>
-          {line}
-        </div>
-      )}
     </div>
   );
 }
