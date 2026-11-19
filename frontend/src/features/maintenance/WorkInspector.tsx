@@ -42,6 +42,7 @@ export function WorkInspector({
   remoteSources = [],
   onRetry,
   onDismiss,
+  onOpenProxySettings,
   dismissing = false,
   onCheckSources,
   onOpenWork,
@@ -64,6 +65,8 @@ export function WorkInspector({
   onRetry: (ids: number[], sourceId?: number) => void;
   /** Dismisses editions' not-found outcomes; absent without permission. */
   onDismiss?: (ids: number[]) => void;
+  /** Opens the DLsite proxy settings beside a failed DLsite update; absent without permission. */
+  onOpenProxySettings?: () => void;
   dismissing?: boolean;
   /** Present only where checking sources applies to this work. */
   onCheckSources?: () => void;
@@ -179,6 +182,7 @@ export function WorkInspector({
             remoteSources={remoteSources}
             onRetry={onRetry}
             onDismiss={onDismiss}
+            onOpenProxySettings={onOpenProxySettings}
           />
         </div>
       )}

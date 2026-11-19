@@ -117,11 +117,23 @@
   page arrives, and the Libraries settings tab shows its source cards.
 - Appearance chooses Light, Dark, or System from a row of tabs instead of a
   menu.
-- Metadata's **DLsite works** chooses **All**, **Needs attention**,
-  **Metadata issues**, or **No available source** from a filter in the header
-  beside search instead of a row of buttons above the list. The filter shows
-  each view's count, turns primary while it narrows the list, and on **All**
-  marks works that need attention with a dot.
+- Metadata's **DLsite works** chooses **All** or **Needs attention** from a
+  filter in the header beside search instead of a row of buttons above the
+  list. **Metadata issues** and **No available source** are folded into
+  **Needs attention**, whose rows name what each work needs, and links to
+  them open it; works without a source are deleted from there. The filter
+  shows each view's count, turns primary while it narrows the list, and on
+  **All** marks works that need attention with a dot.
+- Metadata work rows show one **Status** column in place of **Metadata** and
+  **Source**. It names only what a work needs and stays empty for a healthy
+  work; the inspector keeps the complete states. Pressing a row opens the
+  inspector, and its inspect button shows only on keyboard focus.
+- The **Metadata settings** gear is removed. Its DLsite proxy switch and
+  catalog freshness link are in **System**, where links to the settings open,
+  and a failed DLsite update offers **Proxy settings** in its details.
+- Metadata **Tags** shows one **Name** column in the interface language, muted
+  when a tag has no name of its own in it, in place of a column per language
+  and **Other names**; **Manage** holds every language's names.
 - **About** opens with its one-line summary instead of a software overview.
   **Built with AI** shows the current models, with the earlier release
   ranges behind **Show history**; the technology credits name the main

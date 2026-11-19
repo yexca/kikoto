@@ -229,7 +229,7 @@ test("metadata operators dismiss products reported as not found", async ({ page 
   await expect(list.getByRole("link", { name: /Synthetic work 1/ })).toBeVisible();
 });
 
-test("metadata rows show metadata completeness apart from the best available source", async ({ page }) => {
+test("metadata rows name only what a work needs", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
     permissions: ["library:read", "metadata:sync"],
@@ -271,13 +271,14 @@ test("metadata rows show metadata completeness apart from the best available sou
   const select = (index: number) =>
     list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", index)}`, exact: true });
   await expect(rowFor(0)).toContainText("Not synced");
-  await expect(rowFor(1)).toContainText("Metadata from Example Remote");
-  await expect(rowFor(1)).not.toContainText("Complete");
-  await expect(rowFor(2)).toContainText("Complete");
-  // Local and remote sources are both healthy; only a family with no source takes the attention color.
-  await expect(rowFor(0).getByText("Local", { exact: true })).toBeVisible();
-  await expect(rowFor(1).getByText("Remote", { exact: true })).toBeVisible();
   await expect(rowFor(3).getByText("No available source", { exact: true })).toBeVisible();
+  // Healthy works, including metadata a remote source filled and remote or local sources, show no state.
+  for (const index of [1, 2]) {
+    await expect(rowFor(index)).toContainText(`Synthetic work ${index}`);
+    for (const text of ["Metadata from", "Complete", "Local", "Remote"])
+      await expect(rowFor(index)).not.toContainText(text);
+  }
+  await expect(rowFor(0)).not.toContainText("Local");
   // Complete metadata leaves a metadata-only operator nothing to retry.
   await expect(select(1)).toBeDisabled();
   await expect(select(2)).toBeDisabled();
@@ -465,7 +466,7 @@ function asMaintenanceWork(item: MetadataIssueWork): MaintenanceWork {
   };
 }
 
-test("work maintenance keeps source actions scoped and metadata settings separate", async ({ page }) => {
+test("Needs attention scopes source actions and links a failed update to proxy settings", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
     permissions: ["library:read", "sources:write", "metadata:sync"],
@@ -561,15 +562,11 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await page.goto("/maintenance?tab=works");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
   const filter = page.getByRole("combobox", { name: "Filter DLsite works", exact: true });
-  const chooseFilter = async (name: string) => {
-    await filter.click();
-    await page
-      .getByRole("listbox", { name: "Filter DLsite works" })
-      .getByRole("option", { name: new RegExp(`^${name}`) })
-      .click();
-  };
   await expect(filter).toHaveText(/^Needs attention/);
-  await expect(list.getByRole("button", { name: /Delete local information/ })).toHaveCount(0);
+  // A row names each thing its work needs.
+  const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
+  await expect(row.getByText("No available source", { exact: true })).toBeVisible();
+  await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry metadata (1)", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
@@ -577,34 +574,24 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await page.getByRole("button", { name: "Check sources (2)", exact: true }).click();
   expect(checked).toEqual([1, 3]);
-  await chooseFilter("Metadata issues");
-  await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
-  const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
-  await expect(row.getByText("No available source", { exact: true })).toBeVisible();
-  await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
-  await row.getByText("Affected editions and providers (1)").click();
-  await expect(row.getByRole("button", { name: `Retry ${syntheticWorkCode("RJ", 1)}`, exact: true })).toBeEnabled();
-  await chooseFilter("No available source");
+  // Works without a source can have their local information deleted here, after confirmation.
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await page.getByRole("button", { name: "Delete local information (2)", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Delete local work information?" });
   await expect(dialog).toBeVisible();
   expect(deleted).toEqual([]);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.keyboard.press("Control+Home");
-  await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/tab=settings/);
-  await page
-    .getByRole("dialog", { name: "Metadata settings", exact: true })
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
-  await expect(filter).toHaveText(/^No available source/);
-  await expect(list).toBeVisible();
+  await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
+  await row.getByText("Affected editions and providers (1)").click();
+  await expect(row.getByRole("button", { name: `Retry ${syntheticWorkCode("RJ", 1)}`, exact: true })).toBeEnabled();
+  // The page has no settings of its own; a failed DLsite update points at the DLsite proxy in System.
+  await expect(page.getByRole("button", { name: "Metadata settings", exact: true })).toHaveCount(0);
+  await row.getByRole("button", { name: "Proxy settings", exact: true }).click();
+  await expect(page).toHaveURL(/\/system\?tab=proxy$/);
 });
 
 for (const viewport of ["mobile", "@desktop"]) {
-  test(`${viewport} Metadata catalog includes healthy works and preserves filters under settings`, async ({
+  test(`${viewport} Metadata catalog includes healthy works and narrows to works that need attention`, async ({
     page,
   }, testInfo) => {
     await mockApplication(page, undefined, false, 1, 0, [], undefined, {
@@ -665,7 +652,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(filter).toHaveText(/^All/);
     await filter.click();
     const filterOptions = page.getByRole("listbox", { name: "Filter DLsite works" }).getByRole("option");
-    await expect(filterOptions).toHaveText([/^All/, /^Needs attention/, /^Metadata issues/, /^No available source/]);
+    await expect(filterOptions).toHaveText([/^All/, /^Needs attention/]);
     await expect(filterOptions.first()).toHaveAttribute("aria-selected", "true");
     const list = page.getByRole("region", { name: "Metadata records", exact: true });
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toBeVisible();
@@ -692,18 +679,9 @@ for (const viewport of ["mobile", "@desktop"]) {
     }
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
-    await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
-    const bounds = (await dialog.boundingBox())!;
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-    await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible();
+    await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
     await expect(filter).toHaveText(/^Needs attention/);
-    await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toHaveValue("Example");
+    await expect(page.getByRole("button", { name: "Metadata settings", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("metadata-management.png") });
     await expect(page.getByRole("button", { name: "Metadata sync", exact: true })).toHaveCount(0);
   });
@@ -745,15 +723,10 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await page.goto("/metadata");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
-  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Metadata", "Source", "Actions"]);
+  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Status", "Actions"]);
   const row = list.getByRole("row").filter({ hasText: "Example healthy work" });
-  await expect(row.getByRole("cell")).toHaveText([
-    /^$/,
-    `Example healthy work${code}·Example Circle`,
-    "Complete",
-    "Local",
-    "",
-  ]);
+  // A healthy work leaves its status empty.
+  await expect(row.getByRole("cell")).toHaveText([/^$/, `Example healthy work${code}·Example Circle`, "", ""]);
   // The list loads on demand; time passing alone must not refetch it, so only the save below adds a request.
   const loadedRequests = listRequests;
   await page.clock.fastForward(30_000);
@@ -980,13 +953,17 @@ for (const viewport of ["mobile", "@desktop"]) {
     // Filter options read their counts; the view tabs describe theirs without changing their names.
     await page.getByRole("combobox", { name: "Filter DLsite works", exact: true }).click();
     await expect(
-      page.getByRole("listbox", { name: "Filter DLsite works" }).getByRole("option", { name: /^Metadata issues/ }),
-    ).toHaveAccessibleName(/2 works/);
+      page.getByRole("listbox", { name: "Filter DLsite works" }).getByRole("option", { name: /^Needs attention/ }),
+    ).toHaveAccessibleName(/3 works/);
     await page.keyboard.press("Escape");
     await expect(tabs.getByRole("tab", { name: "Custom works", exact: true })).toHaveAccessibleDescription(/0 works/);
 
     const list = page.getByRole("region", { name: "Metadata records", exact: true });
-    await list.getByRole("button", { name: `Inspect ${code}`, exact: true }).click();
+    // Pressing the row inspects it; keyboard users reach the same through a focus-revealed button.
+    const inspect = list.getByRole("button", { name: `Inspect ${code}`, exact: true });
+    await inspect.focus();
+    await expect(inspect).toBeVisible();
+    await page.keyboard.press("Enter");
     // Wide screens keep the inspector beside the table; phones open it as a sheet.
     const inspector = page.getByRole(viewport === "mobile" ? "dialog" : "complementary", {
       name: "Example inspected work",

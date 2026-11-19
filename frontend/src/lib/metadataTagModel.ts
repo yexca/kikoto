@@ -63,7 +63,7 @@ export function changedMetadataTagNames(
 
 type MetadataTagName = MetadataTag["names"][number];
 
-/** The languages a tag list shows as columns; every other name is listed as Other. */
+/** The supported metadata languages, without the all-language scope. */
 export const metadataTagNameLanguages = metadataTagLanguages.filter(([language]) => language !== "");
 
 /**
@@ -139,29 +139,6 @@ export function metadataTagHasName(tag: { names?: MetadataTagName[]; displayName
     sameMetadataTagName(tag.displayName, name) ||
     (tag.names ?? []).some((value) => sameMetadataTagName(value.name, name))
   );
-}
-
-/**
- * Every known name no language column shows, once each ignoring case: names
- * a manual name replaced, names without a language, and a stored display
- * name that has no name record.
- */
-export function otherMetadataTagNames(tag: Pick<MetadataTag, "names" | "displayName">): MetadataTagName[] {
-  const seen = new Set<string>();
-  for (const [language] of metadataTagNameLanguages) {
-    const shown = metadataTagLanguageName(tag, language);
-    if (shown) seen.add(sameNameKey(shown.name));
-  }
-  const result: MetadataTagName[] = [];
-  const add = (name: MetadataTagName) => {
-    const key = sameNameKey(name.name);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    result.push({ ...name, name: name.name.trim() });
-  };
-  tag.names.forEach(add);
-  add({ language: "", name: tag.displayName, source: "stored" });
-  return result;
 }
 
 function sameNameKey(name: string) {

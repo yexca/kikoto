@@ -3,20 +3,23 @@ import { describe, expect, it } from "vitest";
 import { legacyLibraryRedirect } from "./legacyLibraryRoutes";
 
 describe("legacyLibraryRedirect", () => {
-  it("canonicalizes Metadata links while preserving category, settings and run filters", () => {
+  it("canonicalizes Metadata links while preserving category and run filters", () => {
     expect(legacyLibraryRedirect("/work-management", "?reason=metadata&metadataRun=42")).toBe(
       "/metadata?reason=metadata&metadataRun=42",
     );
-    expect(legacyLibraryRedirect("/work-management/", "?tab=settings&reason=no_source")).toBe(
-      "/metadata?tab=settings&reason=no_source",
-    );
+    expect(legacyLibraryRedirect("/work-management/", "?reason=no_source")).toBe("/metadata?reason=no_source");
     expect(legacyLibraryRedirect("/metadata/", "?reason=catalog")).toBe("/metadata?reason=catalog");
     expect(legacyLibraryRedirect("/metadata", "?reason=metadata")).toBeNull();
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata&metadataRun=42")).toBe(
       "/metadata?metadataRun=42&reason=metadata",
     );
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata&reason=metadata")).toBe("/metadata?reason=metadata");
-    expect(legacyLibraryRedirect("/no-source", "?metadataRun=42&page=2")).toBe("/metadata?page=2&reason=no_source");
+    expect(legacyLibraryRedirect("/no-source", "?metadataRun=42&page=2")).toBe("/metadata?page=2&reason=all");
+  });
+  it("opens Metadata settings links on the System proxy settings", () => {
+    expect(legacyLibraryRedirect("/metadata", "?tab=settings")).toBe("/system?tab=proxy");
+    expect(legacyLibraryRedirect("/work-management/", "?tab=settings&reason=no_source")).toBe("/system?tab=proxy");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=metadata")).toBe("/system?tab=proxy");
   });
   it("opens earlier run log addresses on Workflows with the run and list they named", () => {
     expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBe("/workflows?tab=history&status=failed&run=7");
@@ -36,8 +39,8 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/workflows")).toBeNull();
   });
   it("moves no-source routes to work management", () => {
-    expect(legacyLibraryRedirect("/no-source")).toBe("/metadata?reason=no_source");
-    expect(legacyLibraryRedirect("/library/no-source/")).toBe("/metadata?reason=no_source");
+    expect(legacyLibraryRedirect("/no-source")).toBe("/metadata?reason=all");
+    expect(legacyLibraryRedirect("/library/no-source/")).toBe("/metadata?reason=all");
   });
 
   it("opens followed circles and voice actors on their own pages' Favorite view", () => {
@@ -121,8 +124,7 @@ describe("legacyLibraryRedirect", () => {
       "/metadata?reason=metadata&metadataRun=7",
     );
     expect(legacyLibraryRedirect("/maintenance", "?tab=works")).toBe("/metadata?reason=all");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=metadata")).toBe("/metadata?tab=settings");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=unlinked")).toBe("/metadata?reason=no_source");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=unlinked")).toBe("/metadata?reason=all");
   });
 
   it("sends translation coverage links to the Translation page", () => {

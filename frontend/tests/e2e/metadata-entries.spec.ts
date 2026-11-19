@@ -842,7 +842,7 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   await page.screenshot({ path: "test-results/metadata-tag-management.png", fullPage: true });
 });
 
-test("tags are listed by id with the name each language shows", async ({ page }) => {
+test("tags are listed by id with the name the interface language shows", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
     permissions: ["library:read", "library:write"],
@@ -871,37 +871,18 @@ test("tags are listed by id with the name each language shows", async ({ page })
   });
   await page.goto("/metadata?view=tags");
   const table = page.getByRole("table", { name: "Tags", exact: true });
-  await expect(table.getByRole("columnheader")).toHaveText([
-    "ID",
-    "Japanese",
-    "Simplified Chinese",
-    "Traditional Chinese",
-    "English",
-    "Korean",
-    "Other names",
-    "Works",
-    "Actions",
-  ]);
+  await expect(table.getByRole("columnheader")).toHaveText(["ID", "Name", "Works", "Actions"]);
   // The list is ordered by id, so no language preference changes it.
   expect(requests[0].get("sort")).toBe("id");
   const row = table.getByRole("row").filter({ hasText: "DLsite 9001" });
   await expect(row.getByRole("rowheader")).toHaveText("7 DLsite 9001");
-  await expect(row.getByRole("cell")).toHaveText([
-    "Synthetic Japanese genre",
-    "Synthetic remote Chinese",
-    "—",
-    "Synthetic authored English",
-    "—",
-    /^Synthetic English genre · English\s*Synthetic unlabeled$/,
-    "1",
-    "",
-  ]);
+  // The English interface shows the English name, a manual one before the dictionary's.
+  await expect(row.getByRole("cell")).toHaveText(["Synthetic authored English", "1", ""]);
   // The row action is an icon whose accessible name says which tag it manages.
   await expect(row.getByRole("button", { name: "Manage Synthetic Japanese genre", exact: true })).toBeVisible();
-  // A stored name without name records is still listed.
+  // A tag without an English name shows the name it falls back to.
   const customRow = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "9", exact: true }) });
-  await expect(customRow.getByRole("listitem")).toHaveText(["Synthetic custom tag"]);
-  // The wide table scrolls inside its own box; the page never scrolls sideways.
+  await expect(customRow.getByRole("cell").first()).toHaveText("Synthetic custom tag");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

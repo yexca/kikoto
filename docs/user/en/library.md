@@ -174,12 +174,12 @@ The Library is the main browsing surface for works.
   pagination. The bottom pagination lists the first, last, current, and
   neighboring pages; an ellipsis between them opens a field that goes to a
   typed page number.
-- Keeps database cleanup out of Library. Metadata -> DLsite works -> No
-  available source provides paged search, source checks, and confirmed
+- Keeps database cleanup out of Library. Metadata -> DLsite works -> Needs
+  attention provides paged search, source checks, and confirmed
   local-information deletion for logical families with no available source or
   media location.
 - `/no-source` and `/library/no-source` links open Metadata -> DLsite works ->
-  No available source; `/library/all` and `/library/remote` links open the
+  Needs attention; `/library/all` and `/library/remote` links open the
   Library.
 - When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial

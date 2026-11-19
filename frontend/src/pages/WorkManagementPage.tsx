@@ -1,8 +1,7 @@
-import { FolderPlus, Settings } from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { contentPageClassName } from "@/components/ui/page-width";
 import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
@@ -10,10 +9,9 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { CustomWorkAddDialog, CustomWorkNotice } from "@/features/maintenance/CustomWorkMaintenance";
-import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
-import { WorkReasonFilter, catalogWorkReasons, type CatalogWorkReason } from "@/features/maintenance/WorkReasonFilter";
+import { WorkReasonFilter, type CatalogWorkReason } from "@/features/maintenance/WorkReasonFilter";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -24,21 +22,20 @@ type MetadataView = "works" | "aliases" | "tags" | "circles";
 // DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
 type MetadataTabValue = "dlsite" | "custom" | "aliases" | "tags" | "circles";
 
+/**
+ * The work list a link names. Links that name one kind of attention, metadata
+ * issues or no available source, open Needs attention, whose rows name what
+ * each work needs; a run's issue link keeps its run scope beside it.
+ */
 function reasonFromLocation() {
   const params = new URLSearchParams(window.location.search);
-  if (metadataIssueRunFromLocation()) return "metadata";
+  if (metadataIssueRunFromLocation()) return "all";
   // `view=custom` opens Add custom work over the custom works list.
   if (params.get("view") === "custom") return "custom";
   const reason = params.get("reason");
-  if (
-    reason === "catalog" ||
-    reason === "all" ||
-    reason === "metadata" ||
-    reason === "no_source" ||
-    reason === "custom"
-  )
-    return reason;
-  return params.get("tab") === "unlinked" ? "no_source" : "catalog";
+  if (reason === "catalog" || reason === "all" || reason === "custom") return reason;
+  if (reason === "metadata" || reason === "no_source" || params.get("tab") === "unlinked") return "all";
+  return "catalog";
 }
 
 function viewFromLocation(): MetadataView {
@@ -50,21 +47,10 @@ function addCustomWorkFromLocation(canCreateCustomWorks: boolean) {
   return canCreateCustomWorks && new URLSearchParams(window.location.search).get("view") === "custom";
 }
 
-// The requested reason and view fall back to what the viewer may open.
-function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources: boolean) {
-  const requested = reasonFromLocation();
-  if (requested === "metadata" && !canSyncMetadata) return "catalog";
-  if (requested === "no_source" && !canManageSources) return "catalog";
-  return requested;
-}
-
+// The requested view falls back to what the viewer may open.
 function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
   const view = viewFromLocation();
   return view === "aliases" && !canSyncMetadata ? "works" : view;
-}
-
-function settingsFromLocation() {
-  return new URLSearchParams(window.location.search).get("tab") === "settings";
 }
 
 // Narrowest search field worth showing inline; below it the field collapses to an icon.
@@ -98,7 +84,7 @@ function useInlineSearchFits(header: RefObject<HTMLElement | null>, actions: Ref
  * Metadata page shell: tabs along the top that switch between the saved-work
  * views and the tag, circle, and voice actor views, above a header holding the active
  * view's search, list controls, and selection actions (rendered into slots),
- * the DLsite works filter, and the settings popover. Views own their own tables; this page owns the
+ * and the DLsite works filter. Views own their own tables; this page owns the
  * URL state, decides whether search fits inline, and composes the metadata
  * editor that the work table opens from its action column.
  */
@@ -119,14 +105,13 @@ export function WorkManagementPage({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
+  const [reason, setReason] = useState(reasonFromLocation);
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
   const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
   const [addingCustomWork, setAddingCustomWork] = useState(() => addCustomWorkFromLocation(canCreateCustomWorks));
   const [listRevision, setListRevision] = useState(0);
   // Whether the rename notice is accepted; null until the custom works view asks.
   const [customNotice, setCustomNotice] = useState<boolean | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(settingsFromLocation);
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
   const [searchRowSlot, setSearchRowSlot] = useState<HTMLDivElement | null>(null);
@@ -136,17 +121,13 @@ export function WorkManagementPage({
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const headerActionsRef = useRef<HTMLDivElement>(null);
-  const settingsAnchorRef = useRef<HTMLDivElement>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const settingsPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sync = () => {
-      setReason(availableReasonFromLocation(canSyncMetadata, canManageSources));
+      setReason(reasonFromLocation());
       setRunId(metadataIssueRunFromLocation());
       setView(availableViewFromLocation(canSyncMetadata));
       setAddingCustomWork(addCustomWorkFromLocation(canCreateCustomWorks));
-      setSettingsOpen(settingsFromLocation());
     };
     window.addEventListener("popstate", sync);
     window.addEventListener(NAVIGATION_EVENT, sync);
@@ -154,7 +135,7 @@ export function WorkManagementPage({
       window.removeEventListener("popstate", sync);
       window.removeEventListener(NAVIGATION_EVENT, sync);
     };
-  }, [canCreateCustomWorks, canEditMetadata, canManageSources, canSyncMetadata]);
+  }, [canCreateCustomWorks, canSyncMetadata]);
 
   const needsCustomNotice = view === "works" && reason === "custom" && canCreateCustomWorks && customNotice === null;
   useEffect(() => {
@@ -198,24 +179,6 @@ export function WorkManagementPage({
     window.history.replaceState(window.history.state, "", `/metadata?view=${nextView}`);
     setView(nextView);
   };
-  const showSettings = (open: boolean) => {
-    const url = new URL(window.location.href);
-    if (open) url.searchParams.set("tab", "settings");
-    else url.searchParams.delete("tab");
-    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-    setSettingsOpen(open);
-  };
-  // Keyboard users land inside the portaled popover and return to its trigger
-  // when it closes from within; an outside click keeps the clicked focus.
-  useEffect(() => {
-    if (settingsOpen) settingsPanelRef.current?.focus({ preventScroll: true });
-  }, [settingsOpen]);
-  const closeSettings = () => {
-    const focusInside = settingsPanelRef.current?.contains(document.activeElement) ?? false;
-    showSettings(false);
-    if (focusInside) settingsButtonRef.current?.focus({ preventScroll: true });
-  };
-
   // The editor changes one work's overrides or metadata link; the list reloads after either.
   const editWork = async (work: { id: number }, onSaved: () => void) => {
     setEditingWorkId(work.id);
@@ -241,11 +204,8 @@ export function WorkManagementPage({
     if (count === undefined) return undefined;
     return { count, description: t("workManagement.workCount", { count }) };
   };
-  const filterReasons = catalogWorkReasons.filter(
-    (value) => (value !== "metadata" || canSyncMetadata) && (value !== "no_source" || canManageSources),
-  );
   const filterCounts: Partial<Record<CatalogWorkReason, number>> = counts
-    ? { catalog: counts.catalog, all: counts.all, metadata: counts.metadata, no_source: counts.noSource }
+    ? { catalog: counts.catalog, all: counts.all }
     : {};
   const tabItems: SubNavItem<MetadataTabValue>[] = tabEntries
     .filter(([, , available]) => available)
@@ -303,12 +263,7 @@ export function WorkManagementPage({
             <div ref={setInlineSearchSlot} className="contents" />
             <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
               {catalogReason && (
-                <WorkReasonFilter
-                  reasons={filterReasons}
-                  selected={catalogReason}
-                  counts={filterCounts}
-                  onSelect={(next) => showWorks(next)}
-                />
+                <WorkReasonFilter selected={catalogReason} counts={filterCounts} onSelect={(next) => showWorks(next)} />
               )}
               <div ref={setActionsSlot} className="contents" />
               {customView && (
@@ -323,34 +278,6 @@ export function WorkManagementPage({
                   <FolderPlus className="h-4 w-4" />
                   <span className="max-sm:sr-only">{t("customWorks.add")}</span>
                 </Button>
-              )}
-              {canManageSources && (
-                <div ref={settingsAnchorRef} className="relative">
-                  <Button
-                    ref={settingsButtonRef}
-                    variant="toolbar"
-                    size="icon-sm"
-                    aria-label={t("workManagement.settings")}
-                    aria-expanded={settingsOpen}
-                    aria-haspopup="dialog"
-                    title={t("workManagement.settings")}
-                    onClick={() => showSettings(!settingsOpen)}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                  <AnchoredPopover
-                    open={settingsOpen}
-                    anchorRef={settingsAnchorRef}
-                    ariaLabel={t("workManagement.settings")}
-                    preserveOnNestedLayers
-                    className="w-[min(24rem,calc(100vw-1.5rem))]"
-                    onOpenChange={(open) => (open ? showSettings(true) : closeSettings())}
-                  >
-                    <div ref={settingsPanelRef} tabIndex={-1} className="outline-none">
-                      <MetadataSettingsPanel readOnly={readOnly} onClose={closeSettings} />
-                    </div>
-                  </AnchoredPopover>
-                </div>
               )}
             </div>
           </div>

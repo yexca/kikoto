@@ -262,7 +262,6 @@ export const surfaceEnglish = {
     catalogDescription: "All saved work metadata, grouped by work family.",
     catalogEmpty: "No work metadata saved yet.",
 
-    settings: "Metadata settings",
     voiceAliases: "Voice actors",
     voiceAliasesTitle: "Voice actors",
     searchVoices: "Search voice actors",
@@ -413,7 +412,6 @@ export const surfaceEnglish = {
     name: "Name",
     knownNames: "Known names",
     id: "ID",
-    otherNames: "Other names",
     dlsiteGenreId: "DLsite {{id}}",
     nameOrId: "Name or ID",
     code: "Code",
@@ -564,6 +562,7 @@ export const surfaceEnglish = {
     details: "Affected editions and providers ({{count}})",
     retryEdition: "Retry {{code}}",
     dismissEdition: "Dismiss {{code}}",
+    proxySettings: "Proxy settings",
     dismiss: "Dismiss unavailable",
     dismissHint:
       "Stop listing this unavailable product as an issue, for example after it was delisted. A later different result lists it again.",
@@ -579,6 +578,7 @@ export const surfaceEnglish = {
     circleColumn: "Circle",
     metadataColumn: "Metadata",
     sourceColumn: "Source",
+    statusColumn: "Status",
     sourceLocal: "Local",
     sourceRemote: "Remote",
     statusComplete: "Complete",
@@ -1035,17 +1035,6 @@ export const surfaceEnglish = {
       matchKeywords: "{{count}} match keywords",
       exclusions: "{{count}} exclusions",
       edit: "Edit",
-    },
-    metadata: {
-      proxy: "DLsite proxy",
-      proxyDescription:
-        "Routes DLsite metadata, cover, and creator catalog requests through the proxies configured in System → Proxy. This is the same switch as the DLsite scope there.",
-      noProxies: "No proxies are configured. DLsite requests connect directly.",
-      manageProxies: "Manage proxies",
-      proxyUpdated: "DLsite proxy updated.",
-      about: "About {{label}}",
-      elsewhere: "More metadata settings",
-      openCatalogFreshness: "Catalog freshness",
     },
     recommendation: {
       tuning: "Recommendation tuning",

@@ -10,7 +10,6 @@ import {
   metadataTagHasName,
   metadataTagLanguageName,
   metadataTagNameIn,
-  otherMetadataTagNames,
   sameMetadataTagName,
 } from "./metadataTagModel";
 
@@ -118,16 +117,5 @@ describe("metadata tag names by language", () => {
     ]);
     expect(metadataTagHasName(shown, " SYNTHETIC ENGLISH ")).toBe(true);
     expect(metadataTagHasName({ displayName: "Synthetic display" }, "Synthetic English")).toBe(false);
-  });
-
-  it("lists every name no language shows once, including a stored name without records", () => {
-    expect(otherMetadataTagNames(tag).map((name) => [name.language, name.name])).toEqual([
-      ["ja-jp", "Synthetic Japanese"],
-      ["en-us", "Synthetic remote English"],
-      ["", "Synthetic unlabeled"],
-    ]);
-    expect(otherMetadataTagNames({ displayName: " Synthetic legacy ", names: [] })).toEqual([
-      { language: "", name: "Synthetic legacy", source: "stored" },
-    ]);
   });
 });

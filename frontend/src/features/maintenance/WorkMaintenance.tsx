@@ -33,8 +33,7 @@ import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots 
 import { MetadataIssueDetails } from "./MetadataIssueDetails";
 import { WorkInspector } from "./WorkInspector";
 import {
-  MetadataStatus,
-  SourceStatus,
+  WorkAttentionStatus,
   canRetryMetadata,
   metadataDismissWorkIds,
   metadataRetryWorkId,
@@ -62,9 +61,10 @@ function pressedRowItself(event: MouseEvent<HTMLElement>) {
 
 /**
  * Saved work metadata and attention records for one reason, as a management
- * table: the work with its circle, its metadata and source state, then row
- * actions. Pressing a row or its inspect button opens the work inspector,
- * beside the table on wide screens and in a sheet otherwise. The page owns the
+ * table: the work with its circle, what it needs (empty for a healthy work),
+ * then row actions. Pressing a row opens the work inspector, beside the table
+ * on wide screens and in a sheet otherwise; keyboard focus reveals an inspect
+ * button that does the same. The page owns the
  * reason rail and URL state, and composes the metadata editor behind
  * `onEditWork`; this table owns paging, search, selection, the selection bar's
  * recovery actions, and the inspector. Its search and list controls render
@@ -127,10 +127,10 @@ export function WorkMaintenance({
   const [dismissing, setDismissing] = useState(false);
   const [notice, setNotice] = useState("");
   // A custom work has no provider metadata or remote source to retry or check.
-  // It never appears in the No available source view, so its own view offers
-  // the confirmed deletion when its folder is gone.
+  // It never appears in Needs attention, so its own view offers the confirmed
+  // deletion when its folder is gone.
   const customView = reason === "custom";
-  const deleteView = reason === "no_source" || customView;
+  const deleteView = reason === "all" || customView;
   // Enabled remote sources that provide metadata can each be asked instead of DLsite.
   const metadataSources = useMetadataSyncSources(canSyncMetadata && !readOnly && !customView);
   const remoteSources = useMemo(
@@ -190,10 +190,10 @@ export function WorkMaintenance({
   );
   // The inspector follows the loaded page, so a work that left the view closes it.
   const inspectedWork = result.works.find((work) => work.id === inspectedWorkId) ?? null;
-  // An inspector beside the table repeats the states, so the rows fold them under the title
+  // An inspector beside the table repeats the state, so the rows fold it under the title
   // and the titles keep their width.
   const wide = wideLayout && !(inspectorBeside && inspectedWork);
-  const columnCount = wide ? 5 : 3;
+  const columnCount = wide ? 4 : 3;
   const sourceWorks = selectedWorks.filter((work) => work.noSource);
   const retryIds = selectedWorks.flatMap((work) => {
     const id = metadataRetryWorkId(work);
@@ -235,6 +235,14 @@ export function WorkMaintenance({
     }
   };
   const onDismiss = canSyncMetadata && !readOnly ? (ids: number[]) => void dismissMetadata(ids) : undefined;
+  // A failed DLsite update points at the DLsite proxy, which source managers configure in System.
+  const onOpenProxySettings =
+    canManageSources && !readOnly
+      ? () => {
+          window.history.pushState({}, "", "/system?tab=proxy");
+          window.dispatchEvent(new Event(NAVIGATION_EVENT));
+        }
+      : undefined;
   const navigateWork: MouseEventHandler<HTMLAnchorElement> = (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -341,6 +349,7 @@ export function WorkMaintenance({
       remoteSources={remoteSources}
       onRetry={(ids, sourceId) => void retryMetadata(ids, sourceId)}
       onDismiss={onDismiss}
+      onOpenProxySettings={onOpenProxySettings}
       dismissing={dismissing}
       onCheckSources={!customView && inspectedWork.noSource ? () => void checkSources([inspectedWork.id]) : undefined}
       onOpenWork={navigateWork}
@@ -493,14 +502,9 @@ export function WorkMaintenance({
                       {t("workMaintenance.workColumn")}
                     </th>
                     {wide && (
-                      <>
-                        <th scope="col" className="px-3 align-middle font-medium">
-                          {t("workMaintenance.metadataColumn")}
-                        </th>
-                        <th scope="col" className="px-3 align-middle font-medium">
-                          {t("workMaintenance.sourceColumn")}
-                        </th>
-                      </>
+                      <th scope="col" className="px-3 align-middle font-medium">
+                        {t("workMaintenance.statusColumn")}
+                      </th>
                     )}
                     <th scope="col" className="pr-1 text-right align-middle font-medium sm:pr-3">
                       <span className="sr-only">{t("unlinked.actions")}</span>
@@ -630,11 +634,10 @@ export function WorkMaintenance({
                                     {circle}
                                   </span>
                                 </p>
-                                {/* Narrow layouts fold the metadata and source columns under the title. */}
+                                {/* Narrow layouts fold the status column under the title. */}
                                 {!wide && (
-                                  <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                                    <MetadataStatus work={work} known={canSyncMetadata} />
-                                    <SourceStatus tier={work.sourceTier} />
+                                  <div className="mt-1.5 min-w-0 empty:hidden">
+                                    <WorkAttentionStatus work={work} metadataKnown={canSyncMetadata} />
                                   </div>
                                 )}
                                 {work.metadataIssues.length > 0 && !inspected && (
@@ -644,24 +647,18 @@ export function WorkMaintenance({
                                     remoteSources={remoteSources}
                                     onRetry={(ids, sourceId) => void retryMetadata(ids, sourceId)}
                                     onDismiss={onDismiss}
+                                    onOpenProxySettings={onOpenProxySettings}
                                   />
                                 )}
                               </div>
                             </div>
                           </td>
                           {wide && (
-                            <>
-                              <td className="px-3 py-2.5 align-top">
-                                <div className="flex min-h-12 min-w-0 flex-wrap items-center gap-1">
-                                  <MetadataStatus work={work} known={canSyncMetadata} />
-                                </div>
-                              </td>
-                              <td className="px-3 py-2.5 align-top">
-                                <div className="flex min-h-12 items-center">
-                                  <SourceStatus tier={work.sourceTier} />
-                                </div>
-                              </td>
-                            </>
+                            <td className="px-3 py-2.5 align-top">
+                              <div className="flex min-h-12 min-w-0 items-center">
+                                <WorkAttentionStatus work={work} metadataKnown={canSyncMetadata} />
+                              </div>
+                            </td>
                           )}
                           <td className="py-2.5 pr-1 align-top sm:pr-3">
                             <div className="flex flex-col items-end gap-0.5 sm:mt-1.5 sm:flex-row sm:justify-end">
@@ -708,11 +705,12 @@ export function WorkMaintenance({
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               )}
+                              {/* Pressing the row inspects it; keyboard focus reveals this button instead. */}
                               <Button
                                 size="icon-sm"
                                 variant="ghost"
                                 className={cn(
-                                  "max-sm:h-11 max-sm:w-11",
+                                  "sr-only focus-visible:not-sr-only max-sm:focus-visible:h-11 max-sm:focus-visible:w-11",
                                   inspected ? "bg-primary/10 text-primary" : "text-muted-foreground",
                                 )}
                                 aria-label={t("workMaintenance.inspectFor", { code: work.primaryCode })}
@@ -822,14 +820,9 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
             </div>
           </td>
           {wide && (
-            <>
-              <td className="px-3 py-2.5">
-                <div className="h-4 w-16 animate-pulse rounded bg-muted" />
-              </td>
-              <td className="px-3 py-2.5">
-                <div className="h-4 w-12 animate-pulse rounded bg-muted" />
-              </td>
-            </>
+            <td className="px-3 py-2.5">
+              <div className="h-4 w-16 animate-pulse rounded bg-muted" />
+            </td>
           )}
           <td className="py-2.5 pr-3">
             <div className="ml-auto mt-1.5 h-8 w-8 animate-pulse rounded-md bg-muted" />
@@ -840,18 +833,13 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
   );
 }
 
-/** Wide layouts give the metadata and source their own columns; narrow ones fold them under the title. */
+/** Wide layouts give the status its own column; narrow ones fold it under the title. */
 function WorkTableColumns({ wide }: { wide: boolean }) {
   return (
     <colgroup>
       <col className="w-14 sm:w-11" />
       <col />
-      {wide && (
-        <>
-          <col className="w-36 xl:w-44" />
-          <col className="w-28" />
-        </>
-      )}
+      {wide && <col className="w-48 xl:w-60" />}
       <col className="w-12 sm:w-32" />
     </colgroup>
   );

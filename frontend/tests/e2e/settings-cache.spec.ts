@@ -898,9 +898,7 @@ test("work maintenance mounts once and keeps its result region stable while sett
   });
 
   await page.goto("/metadata?reason=no_source");
-  await expect(page.getByRole("combobox", { name: "Filter DLsite works", exact: true })).toHaveText(
-    /^No available source/,
-  );
+  await expect(page.getByRole("combobox", { name: "Filter DLsite works", exact: true })).toHaveText(/^Needs attention/);
   await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
   const panel = page.getByRole("region", { name: "Metadata records", exact: true });
   const loadingBox = await panel.boundingBox();
@@ -1311,54 +1309,7 @@ test("recommendation restores all default weights and threshold before saving", 
   await expect(page.getByLabel("Highlight threshold")).toHaveValue("50");
 });
 
-test("@desktop work management owns metadata settings in a popover", async ({ page }, testInfo) => {
-  const saves: Record<string, unknown>[] = [];
-  await mockCacheSettings(
-    page,
-    () => undefined,
-    (payload) => saves.push(payload),
-  );
-  await page.route("**/api/auth/me", (route) =>
-    route.fulfill({
-      json: authenticatedStateFixture({
-        username: "admin",
-        displayName: "Admin",
-        role: "admin",
-        permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
-      }),
-    }),
-  );
-  await page.goto("/maintenance?tab=metadata");
-  await expect(page).toHaveURL(/metadata\?tab=settings/);
-  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
-  const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-  // Catalog freshness lives in Library settings; the popover links there.
-  await expect(settingsDialog.getByRole("spinbutton")).toHaveCount(0);
-  await expect(settingsDialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
-  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toHaveCount(0);
-
-  // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
-  const dlsiteProxy = settingsDialog.getByRole("switch", { name: "Use proxy for DLsite", exact: true });
-  await expect(dlsiteProxy).toHaveAttribute("aria-checked", "false");
-  await dlsiteProxy.click();
-  await expect.poll(() => saves.length).toBe(1);
-  expect(saves[0]).toEqual({
-    proxy: {
-      proxies: [{ id: "lan", name: "", kind: "custom", scheme: "http", host: "192.0.2.10", port: 8080, username: "" }],
-      routes: expect.objectContaining({ dlsite: { enabled: true, proxyIds: [] } }),
-      directFallback: false,
-      bypass: ["localhost", "192.168.0.0/16"],
-    },
-  });
-  await expect(dlsiteProxy).toHaveAttribute("aria-checked", "true");
-  await expect(settingsDialog.getByRole("combobox", { name: "Proxy for DLsite", exact: true })).toHaveValue("all");
-  await page.screenshot({ path: testInfo.outputPath("work-management-settings.png") });
-  await settingsDialog.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(settingsDialog).toHaveCount(0);
-  await expect(page).not.toHaveURL(/tab=settings/);
-});
-
-test("@desktop the metadata DLsite proxy shortcut opens proxy management in Settings", async ({ page }) => {
+test("@desktop Metadata settings links open the DLsite proxy in System", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
@@ -1370,13 +1321,11 @@ test("@desktop the metadata DLsite proxy shortcut opens proxy management in Sett
       }),
     }),
   );
-  await page.goto("/metadata?tab=settings");
-  await page
-    .getByRole("dialog", { name: "Metadata settings", exact: true })
-    .getByRole("button", { name: "Manage proxies", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/system\?tab=proxy$/);
-  await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
+  for (const path of ["/metadata?tab=settings", "/maintenance?tab=metadata"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/system\?tab=proxy$/);
+    await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
+  }
 });
 
 test("@desktop administrators set catalog freshness in Library settings", async ({ page }) => {
@@ -1386,12 +1335,7 @@ test("@desktop administrators set catalog freshness in Library settings", async 
     () => undefined,
     (payload) => saves.push(payload),
   );
-  await page.goto("/metadata?tab=settings");
-  await page
-    .getByRole("dialog", { name: "Metadata settings", exact: true })
-    .getByRole("button", { name: "Catalog freshness", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/system\?tab=library$/);
+  await page.goto("/system?tab=library");
   await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
   // There is no instance metadata language, so Settings has no Metadata tab.
   await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveCount(0);

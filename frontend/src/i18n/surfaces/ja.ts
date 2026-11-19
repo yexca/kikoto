@@ -217,7 +217,6 @@ export const surfaceJapanese = {
     catalogDescription: "保存済みの作品メタデータを作品ファミリーごとに表示します。",
     catalogEmpty: "保存済みの作品メタデータはありません。",
 
-    settings: "メタデータ設定",
     voiceAliases: "声優",
     voiceAliasesTitle: "声優",
     searchVoices: "声優を検索",
@@ -368,7 +367,6 @@ export const surfaceJapanese = {
     name: "名前",
     knownNames: "登録済みの名前",
     id: "ID",
-    otherNames: "その他の名前",
     dlsiteGenreId: "DLsite {{id}}",
     nameOrId: "名前または ID",
     code: "コード",
@@ -519,6 +517,7 @@ export const surfaceJapanese = {
     details: "対象の版とプロバイダー（{{count}}）",
     retryEdition: "{{code}} を再試行",
     dismissEdition: "{{code}} を無視",
+    proxySettings: "プロキシ設定",
     dismiss: "取得できない作品を無視",
     dismissHint:
       "販売終了などで取得できない作品を問題として表示しないようにします。後で別の結果になると再び表示されます。",
@@ -534,6 +533,7 @@ export const surfaceJapanese = {
     circleColumn: "サークル",
     metadataColumn: "メタデータ",
     sourceColumn: "ソース",
+    statusColumn: "状態",
     sourceLocal: "ローカル",
     sourceRemote: "リモート",
     statusComplete: "完了",
@@ -1091,17 +1091,6 @@ export const surfaceJapanese = {
       matchKeywords: "{{count}}件の一致キーワード",
       exclusions: "{{count}}件の除外",
       edit: "編集",
-    },
-    metadata: {
-      proxy: "DLsite プロキシ",
-      proxyDescription:
-        "DLsite のメタデータ、カバー画像、クリエイターカタログのリクエストを、システム → プロキシで構成したプロキシ経由で送信します。そこにある DLsite の適用範囲と同じスイッチです。",
-      noProxies: "プロキシが構成されていません。DLsite へは直接接続します。",
-      manageProxies: "プロキシを管理",
-      proxyUpdated: "DLsite プロキシを更新しました。",
-      about: "{{label}}について",
-      elsewhere: "その他のメタデータ設定",
-      openCatalogFreshness: "カタログの更新日数",
     },
     recommendation: {
       tuning: "おすすめ調整",

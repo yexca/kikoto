@@ -311,23 +311,22 @@ work at a time. It requires `metadata:sync` or `library:write`.
 
 Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
-only in the no-source view and, for custom works, the custom view, and the
-server still revalidates family availability. Each permission grants only its
-corresponding maintenance actions, without exposing settings to metadata-only
-operators. Metadata management chooses the Works group (All, attention
-categories, and Custom works) and the Entries group (Tags,
-Circles, and Voice actors) from the page's top tabs. Work records use a
-management table (code and title, circle, metadata, source, actions). The
-metadata cell reads OK, names the remote source that filled the metadata in
-the same neutral style, or flags not synced and metadata issues. The source
-cell ranks the family's best available source, `sourceTier`: local when the
-Library counts the family as local, then remote for any other available
-source or location, both neutral, and no source in the attention color. The
-action column
-opens the work metadata editor, gated by `library:write`. The list loads on
-navigation, filter changes, recovery actions, saves, and manual refresh, never
-on a timer. Metadata settings open in a popover anchored to the header, with
-the current list kept underneath.
+for no-source families only in the attention view and, for custom works, the
+custom view, and the server still revalidates family availability. Each
+permission grants only its corresponding maintenance actions. Metadata
+management chooses the Works group (All, Needs attention, and Custom works)
+and the Entries group (Tags, Circles, and Voice actors) from the page's top
+tabs; the page reads `reason=metadata` and `reason=no_source` links as Needs
+attention. Work records use a management table (code and title, circle,
+status, actions). The status cell names only what the family needs, in the
+attention color: not synced or metadata issues, and no source when
+`sourceTier` is none, the family's best available source ranked local when
+the Library counts it as local, then remote for any other available source or
+location. A healthy family, including one a remote source filled, leaves it
+empty; the inspector shows the complete metadata and source states. The
+action column opens the work metadata editor, gated by `library:write`. The
+list loads on navigation, filter changes, recovery actions, saves, and manual
+refresh, never on a timer.
 Shared tags and circles use searchable management tables and review dialogs.
 Tag and circle changes, work metadata edits, cover overrides, metadata links,
 and purchase bonus links require `library:write`, granted to admin and

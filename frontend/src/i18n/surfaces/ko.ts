@@ -217,7 +217,6 @@ export const surfaceKorean = {
     catalogDescription: "저장된 작품 메타데이터를 작품 계열별로 표시합니다.",
     catalogEmpty: "저장된 작품 메타데이터가 없습니다.",
 
-    settings: "메타데이터 설정",
     voiceAliases: "성우",
     voiceAliasesTitle: "성우",
     searchVoices: "성우 검색",
@@ -367,7 +366,6 @@ export const surfaceKorean = {
     name: "이름",
     knownNames: "등록된 이름",
     id: "ID",
-    otherNames: "기타 이름",
     dlsiteGenreId: "DLsite {{id}}",
     nameOrId: "이름 또는 ID",
     code: "코드",
@@ -518,6 +516,7 @@ export const surfaceKorean = {
     details: "영향받은 버전 및 제공자 ({{count}})",
     retryEdition: "{{code}} 재시도",
     dismissEdition: "{{code}} 무시",
+    proxySettings: "프록시 설정",
     dismiss: "사용할 수 없는 작품 무시",
     dismissHint:
       "판매 중지 등으로 사용할 수 없는 작품을 더 이상 문제로 표시하지 않습니다. 이후 다른 결과가 나오면 다시 표시됩니다.",
@@ -533,6 +532,7 @@ export const surfaceKorean = {
     circleColumn: "서클",
     metadataColumn: "메타데이터",
     sourceColumn: "소스",
+    statusColumn: "상태",
     sourceLocal: "로컬",
     sourceRemote: "원격",
     statusComplete: "완료",
@@ -1089,17 +1089,6 @@ export const surfaceKorean = {
       matchKeywords: "일치 키워드 {{count}}개",
       exclusions: "제외 {{count}}개",
       edit: "편집",
-    },
-    metadata: {
-      proxy: "DLsite 프록시",
-      proxyDescription:
-        "DLsite 메타데이터, 커버, 크리에이터 카탈로그 요청을 시스템 → 프록시에서 구성한 프록시로 보냅니다. 그곳의 DLsite 적용 범위와 같은 스위치입니다.",
-      noProxies: "구성된 프록시가 없습니다. DLsite에는 직접 연결합니다.",
-      manageProxies: "프록시 관리",
-      proxyUpdated: "DLsite 프록시를 업데이트했습니다.",
-      about: "{{label}} 정보",
-      elsewhere: "기타 메타데이터 설정",
-      openCatalogFreshness: "카탈로그 최신 유지 일수",
     },
     recommendation: {
       tuning: "추천 조정",

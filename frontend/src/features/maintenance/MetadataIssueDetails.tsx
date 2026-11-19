@@ -1,4 +1,4 @@
-import { ChevronRight, CloudDownload, EyeOff, RefreshCw } from "lucide-react";
+import { ArrowRight, ChevronRight, CloudDownload, EyeOff, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/i18n/format";
@@ -14,6 +14,7 @@ export function MetadataIssueDetails({
   remoteSources = [],
   onRetry,
   onDismiss,
+  onOpenProxySettings,
 }: {
   items: MetadataIssueWork[];
   disabled: boolean;
@@ -24,9 +25,13 @@ export function MetadataIssueDetails({
   onRetry: (ids: number[], sourceId?: number) => void;
   /** Dismisses an edition's not-found outcome; absent without permission. */
   onDismiss?: (ids: number[]) => void;
+  /** Opens the DLsite proxy settings beside a failed DLsite update; absent without permission. */
+  onOpenProxySettings?: () => void;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
+  const failedDLsite = (item: MetadataIssueWork) =>
+    item.providerCode === "dlsite" && item.issues.some((issue) => issue.status !== "unavailable");
   return (
     <details className="group mt-1.5 text-xs" open={defaultOpen || undefined}>
       <summary className="-ml-0.5 inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6 [&::-webkit-details-marker]:hidden">
@@ -106,6 +111,12 @@ export function MetadataIssueDetails({
                   >
                     <EyeOff className="h-3.5 w-3.5" />
                     {t("workMaintenance.dismissEdition", { code: item.primaryCode })}
+                  </Button>
+                )}
+                {onOpenProxySettings && failedDLsite(item) && (
+                  <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={onOpenProxySettings}>
+                    {t("workMaintenance.proxySettings")}
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>

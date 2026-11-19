@@ -680,9 +680,9 @@ applies, so a still-loading element never replaces it.
 - Metadata: a Works group for DLsite works and Custom works,
   and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
   the catalog and attention categories behind `WorkReasonFilter`, a
-  `FloatingSelect` in the page header's toolbar whose options are the `reason` values `catalog`,
-  `all`, `metadata`, and `no_source`, so `?reason=` links, including the run-scoped
-  `?reason=metadata&metadataRun=<id>`, select the tab and the filter together. Each entry view owns a
+  `FloatingSelect` in the page header's toolbar whose options are the `reason` values `catalog`
+  and `all`, so `?reason=` links select the tab and the filter together; `metadata`,
+  `no_source`, and the run-scoped `?reason=metadata&metadataRun=<id>` select `all`. Each entry view owns a
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
   `?view=custom`, `?view=tags`, `?view=circles`, and
@@ -697,17 +697,16 @@ applies, so a still-loading element never replaces it.
   selection actions in the shared `WorkSelectionBar`, which replaces the upper
   pagination while works are selected, and opens `WorkInspector` for a
   pressed row from the loaded row alone: an `aside` beside the table from
-  1280px, where the rows fold their states under the title, and a sheet
-  below it. The page's Metadata settings
-  popover holds the DLsite proxy shortcut and
-  links to System → Library (creator catalog freshness) and to the
-  Metadata sync Run options (remote metadata fallback). The Tags table is
+  1280px, where the rows fold their status under the title, and a sheet
+  below it. The row's inspect button is visually hidden until keyboard focus.
+  The page has no settings control; `MetadataIssueDetails` links a failed
+  DLsite update to System → Proxy for source managers. The Tags table is
   keyed and ordered by shared tag ID, so its rows never depend on a
   language setting. The ID cell carries the DLsite genre id and, only for a
   hidden or merged tag, its status; there is no separate status column. The
-  table shows one column per supported language plus Other names and Works,
-  and scrolls sideways inside its own box on narrow screens with the Manage
-  column pinned to the right edge.
+  Name column shows the interface language's name through
+  `metadataTagNameIn`, muted when it falls back to another name, followed by
+  Works, with the Manage column pinned to the right edge.
 
 - Workflows: operation cards for Scan, Metadata, and Index above the run
   lists, with the run lists as `SubNavTabs` (Now and History), the workflow

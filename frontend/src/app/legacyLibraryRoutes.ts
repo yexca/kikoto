@@ -27,6 +27,10 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     params.set("view", "coverage");
     return `/translation?${params}`;
   }
+  // Metadata settings are the DLsite proxy in System.
+  if ((path === "/metadata" || path === "/work-management") && new URLSearchParams(search).get("tab") === "settings") {
+    return `${SYSTEM_SETTINGS_PATH}?tab=proxy`;
+  }
   if (path === "/work-management" || (path === "/metadata" && pathname !== path)) {
     return `/metadata${normalizedSearch(search)}`;
   }
@@ -35,7 +39,7 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
   if (runLog) return runLog;
   if (path === "/no-source" || path === "/library/no-source") {
     const params = new URLSearchParams(search);
-    params.set("reason", "no_source");
+    params.set("reason", "all");
     params.delete("metadataRun");
     return `/metadata?${params}`;
   }
@@ -89,9 +93,9 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     if (tab === "works" || tab === "unlinked" || tab === "metadata") {
       params.delete("tab");
       if (tab === "works" && !params.has("reason")) params.set("reason", "all");
-      if (tab === "unlinked") params.set("reason", "no_source");
+      if (tab === "unlinked") params.set("reason", "all");
       if (params.has("metadataRun")) params.set("reason", "metadata");
-      else if (tab === "metadata" && params.get("reason") !== "metadata") params.set("tab", "settings");
+      else if (tab === "metadata" && params.get("reason") !== "metadata") return `${SYSTEM_SETTINGS_PATH}?tab=proxy`;
       return `/metadata${params.size ? `?${params}` : ""}`;
     }
   }

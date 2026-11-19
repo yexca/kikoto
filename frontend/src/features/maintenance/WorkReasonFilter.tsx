@@ -3,34 +3,27 @@ import { useTranslation } from "react-i18next";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { cx } from "@/lib/classNames";
 
-export type CatalogWorkReason = "catalog" | "all" | "metadata" | "no_source";
+export type CatalogWorkReason = "catalog" | "all";
 
-export const catalogWorkReasons: readonly CatalogWorkReason[] = ["catalog", "all", "metadata", "no_source"];
-
-// Works in these filters need an operator; their counts take the attention color.
-const attentionReasons = new Set<CatalogWorkReason>(["all", "metadata", "no_source"]);
+export const catalogWorkReasons: readonly CatalogWorkReason[] = ["catalog", "all"];
 
 const reasonLabels: Record<CatalogWorkReason, string> = {
   catalog: "workManagement.all",
   all: "workMaintenance.all",
-  metadata: "workMaintenance.metadata",
-  no_source: "workMaintenance.noSource",
 };
 
 /**
- * Toolbar select over the catalog work views. Each option is one `reason` of
- * the maintenance read, so links that name a reason select it here. The
- * trigger names the selected filter (on phones only its count shows) and
- * turns primary while one narrows the list; while it does not, a dot keeps
- * works that need attention in sight.
+ * Toolbar select between every catalog work and the works that need
+ * attention. Each option is one `reason` of the maintenance read; the rows
+ * name what each work needs. The trigger names the selected filter (on phones
+ * only its count shows) and turns primary while it narrows the list; while it
+ * does not, a dot keeps works that need attention in sight.
  */
 export function WorkReasonFilter({
-  reasons,
   selected,
   counts,
   onSelect,
 }: {
-  reasons: readonly CatalogWorkReason[];
   selected: CatalogWorkReason;
   /** Works each filter lists; a missing count shows none. */
   counts: Partial<Record<CatalogWorkReason, number>>;
@@ -47,9 +40,7 @@ export function WorkReasonFilter({
           aria-hidden="true"
           className={cx(
             "shrink-0 rounded-full px-1.5 text-xs font-normal tabular-nums leading-5",
-            attentionReasons.has(reason) && value > 0
-              ? "bg-warning-surface text-warning-foreground"
-              : "text-muted-foreground",
+            reason === "all" && value > 0 ? "bg-warning-surface text-warning-foreground" : "text-muted-foreground",
           )}
         >
           {value}
@@ -57,12 +48,12 @@ export function WorkReasonFilter({
       </>
     );
   };
-  const filtered = selected !== "catalog";
-  const pending = !attentionReasons.has(selected) && (counts.all ?? 0) > 0;
+  const filtered = selected === "all";
+  const pending = !filtered && (counts.all ?? 0) > 0;
   return (
     <FloatingSelect
       value={selected}
-      options={reasons.map((reason) => ({
+      options={catalogWorkReasons.map((reason) => ({
         value: reason,
         label: (
           <span className="flex min-w-0 items-center gap-1.5">

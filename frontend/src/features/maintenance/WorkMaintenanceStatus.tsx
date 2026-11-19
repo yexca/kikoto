@@ -78,6 +78,47 @@ export function MetadataStatus({ work, known }: { work: MaintenanceWork; known: 
   );
 }
 
+/**
+ * What a table row needs, and nothing for a healthy work: a metadata issue or
+ * first sync (when the viewer may see metadata), no available source, and a
+ * sync in progress. The inspector shows the complete states.
+ */
+export function WorkAttentionStatus({ work, metadataKnown }: { work: MaintenanceWork; metadataKnown: boolean }) {
+  const { t } = useTranslation();
+  const metadata = metadataKnown
+    ? work.metadataIssues.length > 0
+      ? "workMaintenance.metadata"
+      : work.metadataNotSynced
+        ? "workMaintenance.notSynced"
+        : null
+    : null;
+  const syncing = metadataKnown && (work.metadataSyncing || work.metadataIssues.some((issue) => issue.retrying));
+  const noSource = work.sourceTier === "none";
+  if (!metadata && !noSource && !syncing) return null;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      {metadata && (
+        <Badge variant="warning" className={attentionBadgeClassName}>
+          {t(metadata)}
+        </Badge>
+      )}
+      {noSource && (
+        <Badge variant="warning" className={attentionBadgeClassName}>
+          {t("workMaintenance.noSource")}
+        </Badge>
+      )}
+      {syncing && (
+        <span role="status" className="flex items-center gap-1.5 text-xs text-primary">
+          <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+          {t(
+            work.metadataIssues.some((issue) => issue.retrying) ? "metadataIssues.retrying" : "workMaintenance.syncing",
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** The best source the family is available from: local before remote, both quiet; none needs attention. */
 export function SourceStatus({ tier }: { tier: MaintenanceWork["sourceTier"] }) {
   const { t } = useTranslation();
