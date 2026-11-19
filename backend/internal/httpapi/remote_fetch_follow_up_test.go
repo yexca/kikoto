@@ -135,6 +135,70 @@ func TestRemoteFetchFollowUpEditsThePublishedFolderOnce(t *testing.T) {
 	}
 }
 
+// A Fetch queued while follow-ups still took lyrics languages and track
+// bindings says in Activity, once, what its follow-up no longer does.
+func TestRemoteFetchFollowUpReportsLyricsChosenBeforeTheUpdate(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	fixture.addSiblingFolder(t, map[string]string{folderEditAudioPath: folderEditRemoteAudio})
+	var localSourceID int64
+	if err := fixture.db.QueryRow("SELECT file_source_id FROM work_folder_location WHERE work_id = 902").Scan(&localSourceID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	payload := remoteWorkFetchJobPayload{SourceID: 7, WorkCode: "RJ00000002", FollowUp: &remoteFetchFollowUp{
+		Additions: []workFolderEditAdditionRequest{{Kind: "remote", SourceID: 7, RemoteCode: "RJ00000002", Path: folderEditVTTPath}},
+	}}
+	tx, err := fixture.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_work_fetch", "Fetch remote work", "", remoteWorkFetchDefinition())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch RJ00000002", "succeeded", "manual", "fetch_selected", payload, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The follow-up was recorded with a lyrics language and a track binding.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run SET input_json = json_set(input_json,
+			'$.follow_up.additions[0].language', 'ja',
+			'$.follow_up.assignments', json('[{"itemKey":"remote:7:RJ00000002:`+folderEditVTTPath+`","audioPath":"`+folderEditAudioPath+`"}]'))
+		WHERE id = ?
+	`, runID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	manifest := remoteFetchManifestRecord{WorkflowRunID: runID, WorkID: 902, LocalSourceID: localSourceID, TargetRoot: followUpFetchRoot}
+
+	fixture.server.startRemoteFetchFollowUp(ctx, manifest)
+	fixture.server.startRemoteFetchFollowUp(ctx, manifest)
+	if runs := fixture.queuedRuns(t); runs != 1 {
+		t.Fatalf("follow-up runs = %d, want 1", runs)
+	}
+	rows, err := fixture.db.Query(`SELECT message FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'fetch.follow_up_lyrics_not_kept' AND level = 'warn'`, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := []string{}
+	for rows.Next() {
+		var message string
+		if err := rows.Scan(&message); err != nil {
+			t.Fatal(err)
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || !strings.Contains(messages[0], "added at their own paths") || !strings.Contains(messages[0], "1 track bindings were not stored") {
+		t.Fatalf("lyrics notices = %q", messages)
+	}
+}
+
 // A Fetch whose completion committed before the service stopped has no
 // recorded follow-up. Startup recovery queues it exactly once, waits while its
 // storage pool is offline, or records in Activity why it cannot be queued.

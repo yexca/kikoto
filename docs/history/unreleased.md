@@ -5,6 +5,14 @@
 > administrator turns it on in **System → Library**. The bundled Compose files
 > mount `./record`; add the same mount to a custom Compose file to use Record.
 
+> [!NOTE]
+> Lyrics of a language and their track bindings come in only through **Lyrics
+> files**. An **Edit files** run or a Fetch follow-up queued before the
+> upgrade still adds its files, but a lyrics file a Fetch follow-up chose with
+> a language is added at its own path, and the track bindings chosen with
+> either are not stored. Activity names each such run; bind those lyrics again
+> in **Lyrics files**.
+
 <details>
 <summary><strong>Record</strong></summary>
 

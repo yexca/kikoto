@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type workFolderEditJobPayload struct {
@@ -31,8 +33,12 @@ type workFolderEditJobPayload struct {
 	Folders []string `json:"folders,omitempty"`
 	// Merges are deleted once the folder is indexed, with the files each held
 	// when the edit was planned.
-	Merges    []workFolderEditMerge `json:"merges,omitempty"`
-	RequestID string                `json:"request_id"`
+	Merges []workFolderEditMerge `json:"merges,omitempty"`
+	// LegacyLyricsAssignments are the track bindings of added lyrics an edit
+	// queued while edits still bound lyrics to tracks. Lyrics are bound only
+	// through Lyrics files, so they are reported rather than stored.
+	LegacyLyricsAssignments []json.RawMessage `json:"assignments,omitempty"`
+	RequestID               string            `json:"request_id"`
 	// Summary is the summary of the plan the edit was queued with.
 	Summary *workFolderEditSummary `json:"summary,omitempty"`
 }
@@ -1009,6 +1015,10 @@ func (e *workFolderEditExecution) finish(ctx context.Context) error {
 		"work_id":   e.payload.WorkID,
 		"folder_id": e.payload.FolderID,
 	}
+	unbound := len(e.payload.LegacyLyricsAssignments)
+	if unbound > 0 {
+		summary["lyrics_bindings_not_stored"] = unbound
+	}
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return err
@@ -1023,6 +1033,14 @@ func (e *workFolderEditExecution) finish(ctx context.Context) error {
 	}
 	if err := finishWorkflowRunResultTx(ctx, tx, e.job.RunID, e.job.ID, "succeeded", "", e.total, e.total, mustJSON(summary)); err != nil {
 		return err
+	}
+	if unbound > 0 {
+		if err := workflow.InsertEvent(ctx, tx, e.job.RunID, workflow.EventSpec{
+			JobID: e.job.ID, Level: "warn", Type: "work_folder_edit.lyrics_bindings_not_stored",
+			Message: fmt.Sprintf("The lyrics were added, but %d track bindings chosen before the update were not stored; bind lyrics to tracks in Lyrics files", unbound),
+		}); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err

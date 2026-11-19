@@ -116,16 +116,18 @@ Media, cleanup, and database:
   listed in the run's failures; the run goes on with the other works and then
   fails, so a retry cleans only the failed works.
 - `work_folder_edit`: add files from the family's other local folders and
-  remote editions to one local folder of a work, as files or as lyrics of a
-  declared language, arrange its files and folders, remove the files taken out
-  of it, and delete the local folders merged into it. It collects and
-  size-checks every added file in `.kikoto-staging` on the folder's pool,
-  removes the files taken out, takes each moved file into the same staging
-  directory, moves each collected and moved file to its path, removes the
-  folders it emptied, creates the requested ones, indexes the folder, stores
-  the requested lyrics assignments, and then deletes the merged folders. A
+  remote editions to one local folder of a work, arrange its files and
+  folders, remove the files taken out of it, and delete the local folders
+  merged into it. It collects and size-checks every added file in
+  `.kikoto-staging` on the folder's pool, removes the files taken out, takes
+  each moved file into the same staging directory, moves each collected and
+  moved file to its path, removes the folders it emptied, creates the
+  requested ones, indexes the folder, and then deletes the merged folders. A
   retried or resumed run continues from its checkpoint. A Fetch into a new
-  folder queues one as its follow-up once it completes.
+  folder queues one as its follow-up once it completes. Lyrics track bindings
+  that an edit or a Fetch follow-up recorded are not stored: the edit run
+  counts them in its summary and Activity, and a Fetch follow-up's run notes
+  them, with any lyrics language it chose, once its edit is queued.
 - `local_media_delete`: delete one local media file and mark only that location
   unavailable. `local_symlink_review` notifies users when such a request
   targets a symlink.
