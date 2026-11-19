@@ -1,11 +1,10 @@
-import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useRef } from "react";
-import { FileText, Folder, FolderOpen, Languages, PenLine, RotateCcw } from "lucide-react";
+import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import { FileText, Folder, FolderOpen, PenLine, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
   type DisplayNameDrafts,
   type DisplayNameGroup,
@@ -20,80 +19,6 @@ import { cn } from "@/lib/tailwindClassNames";
 
 /** Marks the name fields of the list, which Enter steps through. */
 export const displayNameFieldAttribute = "data-display-name-field";
-
-/** The language strip: each metadata language with how many rows it names, and a mark while it has unsaved names. */
-export function DisplayNameLanguageTabs({
-  selected,
-  counts,
-  total,
-  pending,
-  onSelect,
-}: {
-  selected: string;
-  counts: ReadonlyMap<string, number>;
-  total: number;
-  /** Languages with unsaved changes. */
-  pending: ReadonlySet<string>;
-  onSelect: (language: string) => void;
-}) {
-  const { t } = useTranslation();
-  const stripRef = useRef<HTMLDivElement>(null);
-  // A narrow strip scrolls the selected language into view, keeping the page where it is.
-  useEffect(() => {
-    const strip = stripRef.current;
-    const button = strip?.querySelector<HTMLElement>("[aria-pressed=true]");
-    if (!strip || !button) return;
-    const start = button.offsetLeft - strip.offsetLeft;
-    if (start < strip.scrollLeft || start + button.offsetWidth > strip.scrollLeft + strip.clientWidth) {
-      strip.scrollLeft = start - (strip.clientWidth - button.offsetWidth) / 2;
-    }
-  }, [selected]);
-  return (
-    <div className="flex min-w-0 max-w-full items-center gap-2">
-      <Languages className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
-      <div
-        ref={stripRef}
-        role="group"
-        aria-label={t("fileDisplayNames.language")}
-        className={segmentedListClassName("![scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}
-      >
-        {metadataTagNameLanguages.map(([language, labelKey]) => {
-          const active = language === selected;
-          const count = counts.get(language) ?? 0;
-          const changed = pending.has(language);
-          return (
-            <button
-              key={language}
-              type="button"
-              aria-pressed={active}
-              title={t("fileDisplayNames.coverage", { count, total })}
-              className={segmentedItemClassName(active, "relative h-9 gap-1.5 sm:h-8")}
-              onClick={() => onSelect(language)}
-            >
-              {t(labelKey)}
-              {count > 0 && (
-                <span
-                  className={cn(
-                    "min-w-[1.125rem] rounded-full px-1 text-center text-2xs tabular-nums",
-                    active ? "bg-primary/10 text-primary" : "bg-background/70 text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-              {changed && (
-                <>
-                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-info" aria-hidden="true" />
-                  <span className="sr-only">{t("fileDisplayNames.changed")}</span>
-                </>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /** A display name field that shows the file's own extension inside its end, since every name keeps it. */
 function DisplayNameField({

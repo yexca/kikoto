@@ -25,15 +25,15 @@ import {
   LyricsAssignmentGroup,
   LyricsAssignmentPanel,
   LyricsAssignmentRow,
-  LyricsLanguageTabs,
 } from "@/features/work-detail/lyrics/LyricsAssignments";
+import { LanguageCountTabs } from "@/features/work-detail/LanguageCountTabs";
 import { LyricsFilesWorkspace } from "@/features/work-detail/lyrics/LyricsFilesWorkspace";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { TranscriptionPanel } from "@/features/work-detail/lyrics/TranscriptionPanel";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { api, type WorkDetail } from "@/lib/api";
 import { isLocalOffline } from "@/lib/localAvailability";
-import { allLyricsLanguages } from "@/lib/lyricsLanguage";
+import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
 
 /** Wide enough to show the selected track's lyrics beside the list. */
 const panelQuery = "(min-width: 1024px)";
@@ -288,10 +288,13 @@ export function LyricsManagerDialog({
           {hasLyrics && (
             <div className="shrink-0 space-y-2.5 border-b bg-muted/20 px-4 py-3 sm:px-5">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <LyricsLanguageTabs
+                <LanguageCountTabs
+                  label={t("lyricsManager.language")}
+                  languages={lyricsLanguages}
                   selected={language}
                   counts={languageCounts}
                   pending={pendingLanguages}
+                  changedLabel={t("lyricsManager.changed")}
                   onSelect={selectLanguage}
                 />
                 {editable && folders.length > 0 && (

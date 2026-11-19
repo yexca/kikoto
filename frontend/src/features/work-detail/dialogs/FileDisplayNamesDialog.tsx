@@ -11,12 +11,12 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   DisplayNameGroupSection,
-  DisplayNameLanguageTabs,
   DisplayNamePanel,
   type DisplayNameRowProps,
   displayNameFieldAttribute,
 } from "@/features/work-detail/dialogs/FileDisplayNamesList";
 import { DisplayNamesTextView } from "@/features/work-detail/dialogs/FileDisplayNamesText";
+import { LanguageCountTabs } from "@/features/work-detail/LanguageCountTabs";
 import {
   type DisplayNameDrafts,
   type DisplayNameRow,
@@ -348,11 +348,14 @@ export function FileDisplayNamesDialog({
       {rows.length > 0 && (
         <div className="shrink-0 space-y-2.5 border-b bg-muted/20 px-4 py-3 sm:px-5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <DisplayNameLanguageTabs
+            <LanguageCountTabs
+              label={t("fileDisplayNames.language")}
+              languages={metadataTagNameLanguages}
               selected={language}
               counts={languageCounts}
-              total={rows.length}
               pending={pendingLanguages}
+              changedLabel={t("fileDisplayNames.changed")}
+              countTitle={(count) => t("fileDisplayNames.coverage", { count, total: rows.length })}
               onSelect={chooseLanguage}
             />
             <div className="flex min-w-0 flex-1 basis-64 items-center justify-end gap-1.5">

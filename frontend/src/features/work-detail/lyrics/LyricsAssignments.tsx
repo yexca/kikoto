@@ -1,12 +1,11 @@
 import type { MouseEvent, ReactNode } from "react";
-import { CheckCircle2, CircleDashed, Eye, FileText, Folder, Languages, Wand2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, Eye, FileText, Folder, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CoverageBar } from "@/components/ui/coverage-bar";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
   storedLyricsMediaItemId,
   type LyricsManagerAudio,
@@ -15,7 +14,7 @@ import {
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview, loadLocalLyricsText } from "@/features/work-detail/lyrics/LyricsPreview";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
-import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
+import { allLyricsLanguages } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 
 const automaticValue = "auto";
@@ -32,66 +31,6 @@ export function lyricsAssignmentState(
   if (draftValue !== storedLyricsMediaItemId(entry, language)) return "changed";
   if (draftValue !== null) return "assigned";
   return effectiveLyrics ? "automatic" : "none";
-}
-
-/** The language strip: every language, then each language lyrics can declare, with its track count. */
-export function LyricsLanguageTabs({
-  selected,
-  counts,
-  pending,
-  onSelect,
-}: {
-  selected: string;
-  counts: ReadonlyMap<string, number>;
-  /** Languages with unsaved changes. */
-  pending: ReadonlySet<string>;
-  onSelect: (language: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex min-w-0 max-w-full items-center gap-2">
-      <Languages className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
-      <div
-        role="tablist"
-        aria-label={t("lyricsManager.language")}
-        className={segmentedListClassName("![scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}
-      >
-        {lyricsLanguages.map(([language, labelKey]) => {
-          const active = language === selected;
-          const count = counts.get(language) ?? 0;
-          const changed = pending.has(language);
-          return (
-            <button
-              key={language || "all"}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              className={segmentedItemClassName(active, "relative h-9 gap-1.5 sm:h-8")}
-              onClick={() => onSelect(language)}
-            >
-              {t(labelKey)}
-              {count > 0 && (
-                <span
-                  className={cn(
-                    "min-w-[1.125rem] rounded-full px-1 text-center text-2xs tabular-nums",
-                    active ? "bg-primary/10 text-primary" : "bg-background/70 text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-              {changed && (
-                <>
-                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-info" aria-hidden="true" />
-                  <span className="sr-only">{t("lyricsManager.changed")}</span>
-                </>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 /** A folder of tracks with its coverage in the selected language. */
