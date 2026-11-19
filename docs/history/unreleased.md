@@ -254,11 +254,11 @@
   Directory opens on. When nothing can play, its place says why instead of
   showing a disabled button. On a phone the actions sit right below the title,
   so Play is on the first screen.
-- Mark, your rating, and List are quieter controls beside it, and List has no
-  border in or out of a list. **Edit metadata**, **Manage files**, **Manage
-  lyrics**, **Edit display names**, and **Translate with AI** move into one
-  **Manage** menu. Source info lists the
-  selected source's actions at every width.
+- Mark, your rating, and List are quieter controls beside it, followed by
+  **Metadata**, and List has no border in or out of a list. Source info lists
+  the selected source's actions at every width, and for the local source
+  **Manage files**, **Manage lyrics**, **Edit display names**, and **Translate
+  with AI** after them.
 - Source info is headed by the source's name and lists its playable, file,
   and size counts on one line. It shows the source's status only when the
   source is not available, leaves the duration to the stat strip, and marks a

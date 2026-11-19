@@ -22,7 +22,6 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { WorkCardListButton, WorkCardQuickMarkButton } from "@/components/work-card/WorkCardShell";
 import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
-import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import type { HeroPlayback, HeroPlaybackUnavailableReason } from "@/features/work-detail/heroPlaybackModel";
 import type { RemoteSourceAvailability } from "@/features/work-detail/source/sourceContextModel";
@@ -155,54 +154,30 @@ export function WorkIdentityActionBar({
   );
 }
 
-/**
- * The work's management entries behind one quiet Manage menu. Each entry is
- * present only for a viewer allowed to use it, and the menu shows nothing when
- * none is.
- */
-export function WorkManageMenu({
-  busy,
-  onEditMetadata,
-  onManageFiles,
-  onManageLyrics,
-  onEditFileNames,
-  onTranslateWithAI,
-}: {
-  busy: boolean;
-  onEditMetadata?: () => void;
-  onManageFiles?: () => void;
-  onManageLyrics?: () => void;
-  /** Opens the editor of the names the directory shows for local files. */
-  onEditFileNames?: () => void;
-  /** Opens Translate with AI for the work's text, display names and lyrics. */
-  onTranslateWithAI?: () => void;
-}) {
+/** Opens the metadata editor from the Hero actions, quiet like the personal actions beside it. */
+export function EditMetadataButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   const { t } = useTranslation();
-  const entries: [string, string, ReactNode, (() => void) | undefined][] = [
-    ["metadata", t("detailActions.editMetadata"), <Database className="h-4 w-4" />, onEditMetadata],
-    ["files", t("detailActions.manageFiles"), <FolderCog className="h-4 w-4" />, onManageFiles],
-    ["lyrics", t("detailActions.manageLyrics"), <Captions className="h-4 w-4" />, onManageLyrics],
-    ["names", t("detailActions.editFileNames"), <Languages className="h-4 w-4" />, onEditFileNames],
-    ["translate", t("detailActions.translateWithAI"), <Sparkles className="h-4 w-4" />, onTranslateWithAI],
-  ];
-  const items: ActionMenuItem[] = entries.flatMap(([key, label, icon, onSelect]) =>
-    onSelect ? [{ key, label, icon, disabled: busy, onSelect }] : [],
-  );
   return (
-    <ActionMenu
-      label={t("detailActions.manageWork")}
-      buttonLabel={t("detailActions.manage")}
-      items={items}
-      // Quiet like the personal actions beside it; the label shows from tablet width.
-      triggerClassName="h-8 w-8 border-transparent bg-transparent px-0 text-muted-foreground hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground sm:w-auto sm:gap-1.5 sm:px-2 sm:text-xs"
-      buttonLabelClassName="hidden sm:inline"
-    />
+    <Button
+      variant="outline"
+      size="sm"
+      // The label shows from tablet width.
+      className="h-8 w-8 border-transparent bg-transparent px-0 text-muted-foreground hover:text-foreground sm:w-auto sm:gap-1.5 sm:px-2 sm:text-xs"
+      title={t("detailActions.editMetadata")}
+      aria-label={t("detailActions.editMetadata")}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Database className="h-4 w-4" aria-hidden="true" />
+      <span className="hidden sm:inline">{t("detailActions.metadata")}</span>
+    </Button>
   );
 }
 
 /**
- * The selected source's actions, listed in Source info. Each action is present
- * only for a viewer allowed to use it; with none, the list renders nothing.
+ * The selected source's actions, listed in Source info, then the work's local
+ * files entries while a local source is selected. Each action is present only
+ * for a viewer allowed to use it; with none, the list renders nothing.
  */
 export function MediaContextActionBar({
   busy,
@@ -224,6 +199,10 @@ export function MediaContextActionBar({
   sourceDetailsLoading = false,
   onManageCache,
   manageCacheDisabled = false,
+  onManageFiles,
+  onManageLyrics,
+  onEditFileNames,
+  onTranslateWithAI,
 }: {
   busy: boolean;
   mode: DetailActionMode;
@@ -245,12 +224,32 @@ export function MediaContextActionBar({
   sourceDetailsLoading?: boolean;
   onManageCache?: () => void;
   manageCacheDisabled?: boolean;
+  onManageFiles?: () => void;
+  onManageLyrics?: () => void;
+  /** Opens the editor of the names the directory shows for local files. */
+  onEditFileNames?: () => void;
+  /** Opens Translate with AI for the work's text, display names and lyrics. */
+  onTranslateWithAI?: () => void;
 }) {
   const { t } = useTranslation();
   const [untrackConfirming, setUntrackConfirming] = useState(false);
   const hasForkOptions = (mode === "tracked_unforked" || mode === "tracked_forked") && Boolean(onFork);
+  const workEntries: [string, ReactNode, (() => void) | undefined][] = [
+    [t("detailActions.manageFiles"), <FolderCog className="h-4 w-4" />, onManageFiles],
+    [t("detailActions.manageLyrics"), <Captions className="h-4 w-4" />, onManageLyrics],
+    [t("detailActions.editFileNames"), <Languages className="h-4 w-4" />, onEditFileNames],
+    [t("detailActions.translateWithAI"), <Sparkles className="h-4 w-4" />, onTranslateWithAI],
+  ];
+  const hasWorkEntries = workEntries.some(([, , onClick]) => onClick);
   const hasOptions = Boolean(
-    onTrack || onUntrack || hasForkOptions || onFetch || remoteSourceWorkUrl || onManageCache || sourceDetailsLoading,
+    onTrack ||
+    onUntrack ||
+    hasForkOptions ||
+    onFetch ||
+    remoteSourceWorkUrl ||
+    onManageCache ||
+    hasWorkEntries ||
+    sourceDetailsLoading,
   );
   const displaySourceLabel = sourceLabel || remoteSourceName || t("detailActions.source");
 
@@ -357,6 +356,10 @@ export function MediaContextActionBar({
             onClick={onManageCache}
           />
         </>
+      )}
+      {hasWorkEntries && <div className="my-1 border-t first:hidden" />}
+      {workEntries.map(([label, icon, onClick]) =>
+        onClick ? <SourceOptionButton key={label} icon={icon} label={label} disabled={busy} onClick={onClick} /> : null,
       )}
     </div>
   );

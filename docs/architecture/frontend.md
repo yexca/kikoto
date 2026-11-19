@@ -166,8 +166,10 @@ primary action from the shown directory, the folder routing rules, and the
 saved playback cursor: Resume, Play for the folder the Directory opens on
 (the tracks that folder queues when played from its first track), loading, or
 the reason nothing can play. `WorkDetailActionBars` renders that action, the
-quiet Mark, rating, and List controls, the Manage menu (the shared
-`ActionMenu`), and the source action list. The List control on a work card
+quiet Mark, rating, and List controls, the Metadata button, and the source
+action list, which ends with the work's local files entries (Manage files,
+Manage lyrics, Edit display names, Translate with AI) while a local source is
+selected. The List control on a work card
 and on work detail is the shared `WorkCardListButton`; it names lists in the
 order `workMemberLists` gives a work's lists, which follows the `memberOrder`
 the server sets on each list holding the work. The controllers decide each management entry and source action

@@ -16,7 +16,7 @@ For provider display, any non-original edition in the work family is a translati
 
 ## Translate with AI
 
-**Translate with AI** fills in what a work lacks in other languages: its title and description, the names of its shared tags, the display names of its local files and folders, and the lyrics of its local tracks. Everything is translated by an LLM provider. Lyrics are translated only from a lyrics file the track already has; a track without lyrics is first transcribed in [Manage lyrics → Transcribe](#transcribe). Accounts with library write permission open it from the Hero's **Manage** menu, beside **Manage lyrics** and **Edit display names**, or from **More** in the metadata editor's footer after saving or discarding their edits. Titles, descriptions and shared tag names also need metadata sync permission; a category the account cannot translate is shown unavailable with the reason, and the other categories stay usable. Demo opens it with what the work really lacks and example models, sends nothing, and cannot start a translation.
+**Translate with AI** fills in what a work lacks in other languages: its title and description, the names of its shared tags, the display names of its local files and folders, and the lyrics of its local tracks. Everything is translated by an LLM provider. Lyrics are translated only from a lyrics file the track already has; a track without lyrics is first transcribed in [Manage lyrics → Transcribe](#transcribe). Accounts with library write permission open it from Source info while the local source is selected, beside **Manage lyrics** and **Edit display names**, or from **More** in the metadata editor's footer after saving or discarding their edits. Titles, descriptions and shared tag names also need metadata sync permission; a category the account cannot translate is shown unavailable with the reason, and the other categories stay usable. Demo opens it with what the work really lacks and example models, sends nothing, and cannot start a translation.
 
 The dialog has three tabs: **Translate**, **Lyrics** when the work has local tracks the account can write lyrics for, and **Results**. Choose one or more target languages at the top of **Translate** or **Lyrics**; the work's original language is marked. The table on **Translate** lists each category against the chosen languages, with how many objects lack a value in that language, a check where nothing is missing, × where the translation model cannot translate what is missing, and the counts of a category that is not selected dimmed. Every category starts selected, and only what is missing is sent:
 
@@ -70,8 +70,8 @@ Demo shows this tab with sample transcriptions of the work's tracks and an examp
 
 ## Editing metadata
 
-**Edit metadata** in the Hero's **Manage** menu opens the editor directly; it
-is there for users who edit or refresh metadata. **Refresh metadata**
+The Hero's **Metadata** button opens the editor directly; it is there for
+users who edit or refresh metadata. **Refresh metadata**
 is at the bottom left and runs the usual DLsite refresh. When an enabled remote
 source supports metadata, the adjacent arrow opens `From <source name>`
 choices. Selecting one requests fresh metadata for this work from that source;
@@ -242,11 +242,11 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   follow as quiet controls without a border. While the work is in lists, List
   names the one you added it to most recently beside its icon, shortening a
   long name, with `+N` for the others; a work in no list shows the list icon
-  alone. **Manage** follows, a menu of the work's
-  management entries: **Edit metadata**, **Manage files** while the local source is
-  selected, **Manage lyrics**, **Edit display names**, and **Translate with
-  AI**. Each entry shows only to a user allowed to use it, and a user allowed
-  none sees no **Manage** menu.
+  alone. **Metadata** follows and opens the metadata editor. While the local
+  source is selected, Source info lists **Manage files**, **Manage lyrics**,
+  **Edit display names**, and **Translate with AI** after the source's own
+  actions. Each entry shows only to a user allowed to use it, so a user
+  allowed none sees neither **Metadata** nor these entries.
 - Presents Directory as one panel that opens on its underline source tabs with
   status dots, or on the name of its only source, with the source controls at
   the end of that row, followed by a folder explorer.
@@ -299,7 +299,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   names still decide the order, track numbers, the recommended folder, and
   lyrics matching, and file management, Fetch, previews, and downloads use
   them. A user with library write access edits the names with **Edit display
-  names** in the **Manage** menu, offered while the work has local files. Its list groups the files under
+  names** in Source info, offered while the local source is selected. Its list groups the files under
   their folders and edits one language at a time; each language shows how
   many entries it names and marks unsaved changes, and Enter moves to the
   next name. An empty field shows the real name, and a file keeps its own
@@ -311,7 +311,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   list. A file or folder that **Manage files** moves keeps its names; one
   renamed outside Kikoto loses them. Demo offers the editor to try, and
   **Save** is unavailable.
-- **Manage lyrics** in the **Manage** menu lists every local audio file
+- **Manage lyrics** in Source info lists every local audio file
   with a lyrics choice. A user with library write access can assign any local
   lyrics file of the work, including translated lyrics whose names do not
   match the audio, or align a lyrics folder to the tracks by track number (or
@@ -653,8 +653,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   When the destination folder needs review, **Review in the standard Fetch**
   opens the Fetch dialog. Anyone else gets the Fetch dialog.
 - Open source-specific Track, Fork, Fetch, Origin, and cache commands from
-  Source info, and the work's file, lyrics, name, metadata, and translation
-  management from the Hero's **Manage** menu.
+  Source info, followed for the local source by the work's file, lyrics,
+  name, and translation management; the Hero's **Metadata** opens the
+  metadata editor.
 - Track the selected remote source, persist its browsable tree, and open the
   corresponding source inside the aggregated Tracked context without requiring
   a second Fork.

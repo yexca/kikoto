@@ -442,11 +442,12 @@ Desktop:
   fill of their own. List keeps that look in and out of a list: beside its
   icon it names the list the work was added to most recently, with `+N` for
   any others, so where the work is saved shows without opening it. A long
-  name truncates, and a work in no list shows the icon alone. The work's
-  management entries (metadata editor, Manage files, Manage lyrics, Edit
-  display names, Translate with AI) share one quiet Manage menu. Each entry,
-  like each source action, shows only to a viewer allowed to use it, so a
-  listener sees no management control. The metadata-language and
+  name truncates, and a work in no list shows the icon alone. A quiet
+  Metadata button follows and opens the metadata editor. The work's local
+  files entries (Manage files, Manage lyrics, Edit display names, Translate
+  with AI) follow the local source's actions in Source info. Each entry, like
+  each source action, shows only to a viewer allowed to use it, so a listener
+  sees no management control. The metadata-language and
   directory-edition chips appear only when there is another choice.
 - Circle and voice actor detail open with a compact summary shaped like the
   work detail Hero: a cover tint with no frame, the portrait, the name and

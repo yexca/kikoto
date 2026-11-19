@@ -18,13 +18,7 @@ import {
   mockRemoteSource,
   selectLibrarySource,
 } from "./fixtures/player-library";
-import {
-  openSourceActions,
-  runManageAction,
-  runSourceAction,
-  showWorkDetailTab,
-  sourceActionList,
-} from "./fixtures/work-detail";
+import { openSourceActions, runSourceAction, showWorkDetailTab, sourceActionList } from "./fixtures/work-detail";
 import { chooseLibrarySort, openLibraryView, showFullWorkCards } from "./fixtures/library-view";
 
 test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
@@ -453,7 +447,7 @@ test("local Delete selects by location, summarizes the selection, and requires t
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
-  await runManageAction(page, "Manage files");
+  await runSourceAction(page, "Manage files");
 
   const localCopy = page.getByRole("button", { name: "Local copy of track.mp3", exact: true });
   await expect(localCopy).toBeVisible();
@@ -489,7 +483,7 @@ test("local Delete selects by location, summarizes the selection, and requires t
   });
 });
 
-test("@desktop work detail leads with Play and keeps work management in the Manage menu", async ({ page }) => {
+test("@desktop work detail leads with Play and lists the local files entries in Source info", async ({ page }) => {
   const mediaItems = [mediaFixture(1, "track.mp3", `${work.primaryCode}/track.mp3`, "audio")];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
     authenticated: true,
@@ -501,13 +495,16 @@ test("@desktop work detail leads with Play and keeps work management in the Mana
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
 
-  // One primary action leads the Hero; the management entries share one menu.
+  // One primary action leads the Hero, with Metadata beside the personal actions.
   const heroActions = page.getByTestId("hero-actions");
-  await expect(heroActions.getByRole("button", { name: "Edit metadata", exact: true })).toHaveCount(0);
+  await expect(heroActions.getByRole("button", { name: "Edit metadata", exact: true })).toBeVisible();
+  await expect(heroActions.getByRole("button", { name: "Manage files", exact: true })).toHaveCount(0);
+  const actions = sourceActionList(page);
+  for (const name of ["Manage files", "Manage lyrics", "Edit display names", "Translate with AI"]) {
+    await expect(actions.getByRole("button", { name, exact: true })).toBeVisible();
+  }
   await heroActions.getByRole("button", { name: "Play this work", exact: true }).click();
   await expect(page.locator("audio")).toHaveJSProperty("paused", false);
-  await runManageAction(page, "Manage files");
-  await expect(page.getByRole("dialog", { name: "Manage files" })).toBeVisible();
 });
 
 test("a listener sees no management entry on a work detail", async ({ page }) => {
@@ -523,7 +520,7 @@ test("a listener sees no management entry on a work detail", async ({ page }) =>
 
   const heroActions = page.getByTestId("hero-actions");
   await expect(heroActions.getByRole("button", { name: "Play this work", exact: true })).toBeVisible();
-  await expect(heroActions.getByRole("button", { name: "Manage this work", exact: true })).toHaveCount(0);
+  await expect(heroActions.getByRole("button", { name: "Edit metadata", exact: true })).toHaveCount(0);
   await showWorkDetailTab(page, "Info");
   await expect(sourceActionList(page)).toHaveCount(0);
 });
@@ -641,7 +638,7 @@ test("@desktop Manage files lists the work's other places and applies the review
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Manage files");
+  await runSourceAction(page, "Manage files");
 
   const editor = page.getByRole("dialog", { name: "Manage files" });
   await expect(
@@ -829,7 +826,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Manage files");
+  await runSourceAction(page, "Manage files");
 
   // The workspace marks Kikoto's lyrics folder and sends the folder's other lyrics to Manage lyrics.
   const folder = page.getByRole("dialog", { name: "Manage files" }).getByRole("region", { name: "This folder" });
@@ -940,7 +937,7 @@ test("Manage files forgets a work with its whole folder and confirms its data bo
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Manage files");
+  await runSourceAction(page, "Manage files");
 
   // Forgetting a work deletes its whole folder, apart from the edit's own file changes.
   await page
@@ -1151,16 +1148,10 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(remoteTab).toBeVisible();
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
   await expect(missingRemoteTab).toBeVisible();
-  // The Hero holds no source actions; Manage files is a work entry of its Manage menu.
+  // The Hero holds no source actions; the local source lists Manage files in Source info.
   await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toHaveCount(0);
-  const manageButton = page.getByTestId("hero-actions").getByRole("button", { name: "Manage this work", exact: true });
-  const manageMenu = page.getByRole("menu", { name: "Manage this work", exact: true });
-  await manageButton.click();
-  await expect(manageMenu.getByRole("menuitem", { name: "Manage files", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(manageMenu).toHaveCount(0);
   let actions = await openSourceActions(page);
-  await expect(actions.scope.getByRole(actions.role, { name: "Manage files", exact: true })).toHaveCount(0);
+  await expect(actions.scope.getByRole(actions.role, { name: "Manage files", exact: true })).toBeVisible();
 
   await showWorkDetailTab(page, "Directory");
   await remoteTab.click();
@@ -1168,6 +1159,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(actions.scope.getByRole(actions.role, { name: /^Track/ })).toBeDisabled();
   await expect(actions.scope.getByRole(actions.role, { name: /^Untrack/ })).toBeVisible();
   await expect(actions.scope.getByRole(actions.role, { name: "Fetch", exact: true })).toBeVisible();
+  await expect(actions.scope.getByRole(actions.role, { name: "Manage files", exact: true })).toHaveCount(0);
   await showWorkDetailTab(page, "Directory");
   await trackedTab.click();
   await expect(page.getByText("Browsing the tracked directory forked from Remote A.", { exact: true })).toBeVisible();

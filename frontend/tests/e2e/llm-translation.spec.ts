@@ -11,7 +11,7 @@ import {
   type ApiResponse,
 } from "./fixtures/api";
 import { mockApplication, work } from "./fixtures/player-library";
-import { runManageAction } from "./fixtures/work-detail";
+import { runSourceAction } from "./fixtures/work-detail";
 
 const provider: LLMProvider = {
   id: "synthetic-provider",
@@ -423,7 +423,7 @@ test("Translate with AI sends only what each language lacks and shows what it wr
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Translate with AI");
+  await runSourceAction(page, "Translate with AI");
   const dialog = page.getByRole("dialog", { name: "Translate with AI" });
 
   // Each category counts what the chosen language lacks; the shared tag names name the works they affect.
@@ -544,7 +544,7 @@ test("Translate with AI keeps the plan of the chosen languages when an earlier p
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Translate with AI");
+  await runSourceAction(page, "Translate with AI");
   const dialog = page.getByRole("dialog", { name: "Translate with AI" });
   const start = dialog.getByRole("button", { name: "Translate 1 item", exact: true });
   await expect(start).toBeEnabled();
@@ -751,7 +751,7 @@ test("Manage lyrics transcribes from the audio language with a model that decide
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Manage lyrics");
+  await runSourceAction(page, "Manage lyrics");
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
   await lyrics.getByRole("tab", { name: "Transcribe" }).click();
 
@@ -858,7 +858,7 @@ test("Demo shows sample transcriptions in Manage lyrics with every action off @d
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await runManageAction(page, "Manage lyrics");
+  await runSourceAction(page, "Manage lyrics");
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
 
   await lyrics.getByRole("tab", { name: "Transcribe" }).click();

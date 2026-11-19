@@ -7,10 +7,10 @@ import type { HeroPlayback } from "@/features/work-detail/heroPlaybackModel";
 import { safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
 import {
   type DetailActionMode,
+  EditMetadataButton,
   HeroPrimaryAction,
   MediaContextActionBar,
   WorkIdentityActionBar,
-  WorkManageMenu,
 } from "@/features/work-detail/WorkDetailActionBars";
 import { DetailSkeletonActions, HeroActionGroups } from "@/features/work-detail/WorkDetailLayout";
 
@@ -56,7 +56,11 @@ export type PersistedDetailActionsProps = {
   onFork: (remote: RemoteSourceAvailability) => void;
   onFetch: () => void;
   onManage: () => void;
-  /** Each management entry is absent when the viewer may not use it or the work has nothing for it. */
+  /**
+   * Each management entry is absent when the viewer may not use it or the work
+   * has nothing for it. Edit metadata sits among the Hero actions; the others
+   * are listed in Source info while a local source is selected.
+   */
   onEditMetadata?: () => void;
   onManageFiles?: () => void;
   onManageLyrics?: () => void;
@@ -68,7 +72,7 @@ function identityActionsBusy(props: PersistedDetailActionsProps) {
   return props.isSyncingDetail || props.fetchBusy || props.cleanupBusy || props.isResuming;
 }
 
-/** Play or Resume, then Mark, rating, List, and the Manage menu. */
+/** Play or Resume, then Mark, rating, List, and Metadata. */
 export function PersistedHeroActions(props: PersistedDetailActionsProps) {
   if (!props.work) return <DetailSkeletonActions />;
   const busy = identityActionsBusy(props);
@@ -95,20 +99,14 @@ export function PersistedHeroActions(props: PersistedDetailActionsProps) {
         userRating={props.work.userRating}
         onRate={props.onRate}
       />
-      <WorkManageMenu
-        busy={busy}
-        onEditMetadata={props.onEditMetadata}
-        onManageFiles={props.onManageFiles}
-        onManageLyrics={props.onManageLyrics}
-        onEditFileNames={props.onEditFileNames}
-        onTranslateWithAI={props.onTranslateWithAI}
-      />
+      {props.onEditMetadata && <EditMetadataButton disabled={busy} onClick={props.onEditMetadata} />}
     </HeroActionGroups>
   );
 }
 
 function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
   const canFetch = props.canFetch && Boolean(props.fetchRemote && remoteSourceCanBrowse(props.fetchRemote.summary));
+  const local = props.actionMode === "local";
   return {
     onTrack: props.canTrack && props.selectedRemoteSource ? props.onTrack : undefined,
     trackDisabled: props.selectedRemoteSource ? !props.canTrackRemote : undefined,
@@ -118,6 +116,10 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     onFetch: canFetch ? props.onFetch : undefined,
     onManageCache: props.canManageCache && props.selectedTrackedPresence ? props.onManage : undefined,
     manageCacheDisabled: Boolean(props.selectedTrackedPresence) && !props.trackedCacheAvailable,
+    onManageFiles: local ? props.onManageFiles : undefined,
+    onManageLyrics: local ? props.onManageLyrics : undefined,
+    onEditFileNames: local ? props.onEditFileNames : undefined,
+    onTranslateWithAI: local ? props.onTranslateWithAI : undefined,
   };
 }
 

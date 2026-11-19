@@ -13,17 +13,8 @@ export async function showWorkDetailTab(page: Page, tab: "Info" | "Directory") {
   await page.getByRole("button", { name: tab, exact: true }).click();
 }
 
-/** Runs an entry of the Hero's Manage menu, such as Edit metadata or Manage files. */
-export async function runManageAction(page: Page, name: string | RegExp) {
-  await page.getByTestId("hero-actions").getByRole("button", { name: "Manage this work", exact: true }).click();
-  await page
-    .getByRole("menu", { name: "Manage this work", exact: true })
-    .getByRole("menuitem", { name, exact: typeof name === "string" })
-    .click();
-}
-
 export async function openWorkMetadataEditor(page: Page) {
-  await runManageAction(page, "Edit metadata");
+  await page.getByTestId("hero-actions").getByRole("button", { name: "Edit metadata", exact: true }).click();
 }
 
 /** The selected source's inline action list, in Source info. */
