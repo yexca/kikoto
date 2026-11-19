@@ -278,6 +278,13 @@
   description line, and a folder has no **Play all**: opening its first track
   plays the whole folder. A folder whose first track is a video, which opens
   in the viewer, shows a quiet **Play folder** instead.
+- **Manage files**, **Manage lyrics**, and **Display names** open without a
+  description under their title. The metadata editor's Cover and Links
+  sections open on their fields, and its other sections keep one sentence on
+  what an edit changes. The editor, **Manage lyrics**, and **Display names**
+  show a footer status only while there are unsaved changes, and in **Manage
+  files** only This folder keeps a line under its name; the other places'
+  Copy, Merge, and Read-only marks say what their files do.
 - Work cards have a new **Simple** mode, offered after **Full**: the cover,
   the title, and one line with the circle and voice actors, with source marks,
   listening progress, and your Quick mark as quiet status on the cover. The

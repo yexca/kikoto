@@ -73,7 +73,7 @@ export function FileManagerPanes({
 }: {
   workspace: FolderWorkspace;
   manage: FolderWorkspaceManage;
-  hints: (resource: FolderEditResource) => string;
+  hints: (resource: FolderEditResource) => string | undefined;
   notice?: ReactNode;
   emptyResult: string;
 }) {

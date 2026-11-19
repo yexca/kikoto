@@ -52,11 +52,11 @@ export function FolderWorkspaceView({
 }: {
   workspace: FolderWorkspace;
   title: string;
-  description: string;
+  description?: string;
   icon: ReactNode;
   marker: string;
-  /** What selecting a file of each kind of place does. */
-  hints: (resource: FolderEditResource) => string;
+  /** What selecting a file of a place does, where the place's own mark does not say it. */
+  hints: (resource: FolderEditResource) => string | undefined;
   /** Shown above the final folder, such as a folder that needs review. */
   notice?: ReactNode;
   emptyResult: string;

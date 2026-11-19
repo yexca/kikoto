@@ -65,6 +65,14 @@ const allSections: { id: MetadataEditorSection; icon: LucideIcon }[] = [
 
 // Only titles, descriptions and tag names are saved per language, so only these sections choose one.
 const languageScopedSections: ReadonlySet<MetadataEditorSection> = new Set(["title", "description", "tags"]);
+/** Sections whose edits have a consequence the fields cannot show, such as surviving a refresh. */
+const describedSections: ReadonlySet<MetadataEditorSection> = new Set([
+  "title",
+  "description",
+  "tags",
+  "credits",
+  "ageRating",
+]);
 
 /**
  * Edits one work's manual metadata. Every change, including reverts and the
@@ -384,11 +392,9 @@ export function WorkMetadataEditorModal({
             )}
             {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
             <fieldset disabled={readOnly || saving} className="m-0 min-w-0 space-y-5 border-0 p-0">
-              <p className="text-sm text-muted-foreground">
-                {section === "cover" && work.customWork
-                  ? t("metadataEditor.customCoverDescription")
-                  : t(`metadataEditor.descriptions.${section}`)}
-              </p>
+              {describedSections.has(section) && (
+                <p className="text-sm text-muted-foreground">{t(`metadataEditor.descriptions.${section}`)}</p>
+              )}
               {section === "title" && (
                 <WorkTitleEditor
                   work={work}
@@ -510,11 +516,10 @@ export function WorkMetadataEditorModal({
                 )}
                 aria-live="polite"
               >
-                {dirty
-                  ? t("metadataEditor.unsavedSections", {
-                      sections: changedSections.map((item) => sectionLabel(item.id)).join(" · "),
-                    })
-                  : t("metadataEditor.noChanges")}
+                {dirty &&
+                  t("metadataEditor.unsavedSections", {
+                    sections: changedSections.map((item) => sectionLabel(item.id)).join(" · "),
+                  })}
               </span>
               <div className="ml-auto flex gap-2">
                 <Button variant="outline" size="sm" disabled={saving} onClick={requestClose}>

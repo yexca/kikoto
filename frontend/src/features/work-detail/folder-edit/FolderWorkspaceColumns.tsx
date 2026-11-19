@@ -358,7 +358,7 @@ export function SelectionColumn({
 }: {
   workspace: FolderWorkspace;
   resource: FolderEditResource;
-  hint: string;
+  hint?: string;
   active: boolean;
   manage?: FolderWorkspaceManage;
   header?: ReactNode;
@@ -521,7 +521,7 @@ export function SelectionColumn({
             {t("fileWorkspace.mergeNote")}
           </p>
         ) : (
-          <p className="text-xs text-muted-foreground">{hint}</p>
+          hint && <p className="text-xs text-muted-foreground">{hint}</p>
         )}
         {current && manage ? (
           // Choosing by format folds away, so the folder's files keep the room on a phone.

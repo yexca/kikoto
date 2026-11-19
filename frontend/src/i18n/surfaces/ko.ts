@@ -86,7 +86,6 @@ export const surfaceKorean = {
     noCover: "커버 없음",
     noCoverDetail: "대신 작품 코드를 표시",
     customCoverRevertHint: "저장하면 수동 커버가 제거되어 커버가 없어집니다.",
-    customCoverDescription: "이 작품의 로컬 이미지 중 하나를 커버로 선택합니다.",
     searchCircles: "서클을 검색하거나 이름을 입력하세요",
     searchSeries: "시리즈를 검색하거나 이름을 입력하세요",
     seriesCircleId: "서클 ID",
@@ -173,22 +172,15 @@ export const surfaceKorean = {
       source: "연결",
     },
     descriptions: {
-      title:
-        "표시 언어별 제목과 대체 제목을 수정합니다. 빈 제목은 상속되며, 수동으로 설정한 내용은 메타데이터를 새로 고쳐도 유지됩니다.",
-      description:
-        "표시 언어별 작품 소개와 대체 작품 소개를 수정합니다. 빈 칸은 상속되며, 수동으로 설정한 내용은 메타데이터를 새로 고쳐도 유지됩니다.",
-      cover: "이 작품의 원본 커버나 로컬 이미지 중 하나를 선택합니다.",
+      title: "수동으로 설정한 제목은 메타데이터를 새로 고쳐도 유지됩니다.",
+      description: "수동으로 설정한 작품 소개는 메타데이터를 새로 고쳐도 유지됩니다.",
       tags: "이 작품의 태그를 추가하거나 삭제하고 태그마다 언어별 이름을 편집합니다. 태그 이름은 공유되므로 변경하면 그 태그가 있는 모든 작품에 적용됩니다.",
-      credits:
-        "제안을 선택하면 기존 서클, 시리즈, 성우와 연결됩니다. 편집한 크레디트는 메타데이터를 새로 고쳐도 유지됩니다.",
+      credits: "편집한 크레디트는 메타데이터를 새로 고쳐도 유지됩니다.",
       ageRating:
         "작품에 표시되고 라이브러리 필터에도 쓰이는 연령 등급입니다. 음성 인식 및 LLM 서비스의 콘텐츠 안전 판정에도 쓰입니다.",
-      source:
-        "이 작품에 다른 DLsite 작품의 메타데이터를 사용하거나, 구매 특전으로 연결하거나, 세트 구성을 등록하고 언어 패밀리를 확인합니다.",
     },
     unsavedMarker: "저장하지 않은 변경 사항",
     unsavedSections: "저장 안 됨: {{sections}}",
-    noChanges: "저장하지 않은 변경 사항 없음",
     discardPrompt: "저장하지 않은 변경 사항을 버릴까요?",
     keepEditing: "계속 편집",
     discard: "버리기",
@@ -2716,8 +2708,6 @@ export const surfaceKorean = {
   fileDisplayNames: {
     llmName: "LLM 번역에서 승인됨. 수정하거나 지우면 바뀝니다.",
     title: "표시 이름",
-    description:
-      "디렉터리와 플레이어가 실제 파일 이름 대신 표시하는 이름입니다. 디스크의 파일과 폴더는 실제 이름을 유지합니다.",
     language: "언어",
     copyRealNames: "실제 이름 복사",
     realNamesCopied: "실제 이름을 복사했습니다 ({{count}})",
@@ -2731,8 +2721,7 @@ export const surfaceKorean = {
     saved: "표시 이름을 저장했습니다",
     saveFailed: "표시 이름을 저장할 수 없습니다",
     saveFailedLanguages: "{{languages}} 표시 이름을 저장할 수 없습니다. 다른 언어는 저장되었습니다.",
-    languageHint: "{{language}}(으)로 보는 사용자에게 이 이름이 표시됩니다. 비워 두면 실제 이름을 표시합니다.",
-    keyboardHint: "Enter 키로 다음 이름으로 이동합니다.",
+    languageHint: "{{language}}(으)로 보는 사용자에게 이 이름이 표시됩니다. 디스크의 파일 이름은 바뀌지 않습니다.",
     coverage: "{{total}}개 중 {{count}}개 이름 있음",
     filter: "이름 필터",
     noMatches: "“{{query}}”와 일치하는 파일이나 폴더가 없습니다.",
@@ -2741,7 +2730,6 @@ export const surfaceKorean = {
     revert: "{{name}} 변경 취소",
     pending_one: "저장하지 않은 이름 {{count}}개",
     pending_other: "저장하지 않은 이름 {{count}}개",
-    noChanges: "저장하지 않은 변경 사항이 없습니다",
     saving: "저장 중…",
     panel: "모든 언어의 이름",
     panelEmpty: "파일이나 폴더를 선택하면 모든 언어의 이름을 편집할 수 있습니다.",
@@ -2755,7 +2743,7 @@ export const surfaceKorean = {
     viewList: "목록",
     viewText: "텍스트",
     textHint:
-      "각 줄은 옆에 있는 항목의 {{language}} 이름입니다. 다른 곳에서 번역한 목록을 붙여 넣거나 여기서 편집하세요. 빈 줄은 실제 이름을 표시합니다.",
+      "각 줄은 옆에 있는 항목의 {{language}} 이름이며, 빈 줄은 실제 이름을 표시합니다. 디스크의 파일 이름은 바뀌지 않습니다.",
     textLabel: "{{language}} 이름, 한 줄에 한 항목",
     realName: "실제 이름",
     languageName: "{{language}} 이름",
@@ -2791,8 +2779,6 @@ export const surfaceKorean = {
     addCount: "추가 {{count}}",
     removeCount: "제거 {{count}}",
     currentHint: "파일 선택을 해제하면 변경을 적용할 때 삭제됩니다. 삭제 예정에 표시됩니다.",
-    localHint: "선택한 파일은 이 폴더로 복사됩니다. 원본 폴더는 변경되지 않습니다.",
-    remoteHint: "선택한 파일은 {{source}}에서 이 폴더로 다운로드됩니다.",
     selectionSummary: "{{total}}개 중 {{selected}}개 선택됨",
     asFile: "파일로",
     asLyrics: "가사 · {{language}}",
@@ -2887,8 +2873,6 @@ export const surfaceKorean = {
     mergeConfirmLoss_other: "파일 {{count}}개를 잃고 삭제",
   },
   fileWorkspace: {
-    description:
-      "이 폴더를 정리하고, 작품의 다른 폴더와 원격 버전에서 파일을 추가하고, 편집으로 삭제되는 항목을 확인합니다.",
     place: {
       target: "편집 대상",
       remote: "읽기 전용",
@@ -3829,8 +3813,6 @@ export const surfaceKorean = {
   },
   lyricsManager: {
     title: "가사 관리",
-    description:
-      "각 트랙에서 모든 청취자가 사용할 가사를 언어별로 선택합니다. 플레이어에서 각자 고른 가사가 여전히 우선합니다.",
     readOnly: "가사 설정을 확인할 수 있지만, 변경하려면 라이브러리 쓰기 권한이 필요합니다.",
     noAudio: "이 작품에는 로컬 오디오 파일이 없습니다.",
     noLyrics:
@@ -3857,7 +3839,6 @@ export const surfaceKorean = {
     untimed: "이 파일에는 시간 정보가 없습니다.",
     timingExceeds: "마지막 줄이 {{time}}에 시작해 트랙 종료({{duration}}) 이후입니다. 다른 트랙의 가사일 수 있습니다.",
     pending: "저장하지 않은 변경: {{count}}",
-    noChanges: "변경 없음",
     groupCoverage: "가사가 있는 트랙: {{count}} / {{total}}",
     coverage: "가사가 있는 트랙 {{count}} / {{total}}",
     panelEmpty: "이 트랙에는 이 언어의 가사가 없습니다.",
@@ -3886,6 +3867,7 @@ export const surfaceKorean = {
       "청취자의 언어에 가사가 없을 때 쓰는 가사입니다. 대체 가사가 없는 트랙은 파일 이름으로 자동 연결됩니다.",
     languageHint:
       "재생할 때는 청취자의 메타데이터 언어 중 가사가 있는 첫 언어, 그다음 대체 가사, 마지막으로 다른 언어를 사용합니다.",
+    playerChoice: "플레이어에서 각자 고른 가사가 여전히 우선합니다.",
   },
   lyricsFiles: {
     managed: "관리 중인 가사",

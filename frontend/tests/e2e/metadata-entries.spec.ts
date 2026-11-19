@@ -206,7 +206,6 @@ test("inherited titles prefill without becoming overrides and clearing matches v
   await englishTitle.clear();
   await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
   await expect(save).toBeDisabled();
-  await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toEqual([]);
@@ -386,7 +385,7 @@ test("@desktop the original DLsite cover is a choice beside local images", async
   await expect(original).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByRole("group", { name: "Cover" }).getByText("Reverts on save")).toBeVisible();
   await local.click();
-  await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await original.click();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);

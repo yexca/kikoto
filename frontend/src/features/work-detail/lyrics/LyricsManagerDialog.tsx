@@ -34,7 +34,6 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { api, type WorkDetail } from "@/lib/api";
 import { isLocalOffline } from "@/lib/localAvailability";
 import { allLyricsLanguages } from "@/lib/lyricsLanguage";
-import { cn } from "@/lib/tailwindClassNames";
 
 /** Wide enough to show the selected track's lyrics beside the list. */
 const panelQuery = "(min-width: 1024px)";
@@ -251,7 +250,6 @@ export function LyricsManagerDialog({
     <Dialog onClose={onClose} size="workspace" dismissible={!busy} marker="lyrics-manager">
       <DialogHeader
         title={t("lyricsManager.title")}
-        description={t("lyricsManager.description")}
         icon={<Captions className="h-4 w-4" />}
         onClose={busy ? undefined : onClose}
         closeLabel={t("content.close")}
@@ -344,7 +342,8 @@ export function LyricsManagerDialog({
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
                 <p className="min-w-0 flex-1 basis-80 text-xs text-muted-foreground">
-                  {language === allLyricsLanguages ? t("lyricsManager.fallbackHint") : t("lyricsManager.languageHint")}
+                  {language === allLyricsLanguages ? t("lyricsManager.fallbackHint") : t("lyricsManager.languageHint")}{" "}
+                  {t("lyricsManager.playerChoice")}
                 </p>
                 <p className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   <CoverageBar count={covered} total={entries.audio.length} className="w-24" />
@@ -382,15 +381,13 @@ export function LyricsManagerDialog({
             </DialogBody>
           )}
           <DialogFooter>
-            <span
-              className={cn(
-                "mr-auto flex items-center gap-2 text-xs",
-                pendingChanges ? "font-medium text-foreground" : "text-muted-foreground",
+            <span className="mr-auto flex items-center gap-2 text-xs font-medium text-foreground" role="status">
+              {pendingChanges && (
+                <>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />
+                  {t("lyricsManager.pending", { count: changes.length })}
+                </>
               )}
-              role="status"
-            >
-              {pendingChanges && <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />}
-              {pendingChanges ? t("lyricsManager.pending", { count: changes.length }) : t("lyricsManager.noChanges")}
             </span>
             <Button variant="ghost" onClick={onClose} disabled={saving}>
               {t("lyricsManager.cancel")}

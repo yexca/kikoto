@@ -337,7 +337,6 @@ export function FileDisplayNamesDialog({
       <DialogHeader
         icon={<Languages className="h-4 w-4" />}
         title={t("fileDisplayNames.title")}
-        description={t("fileDisplayNames.description")}
         onClose={saving ? undefined : onClose}
         closeLabel={t("content.close")}
       />
@@ -392,14 +391,9 @@ export function FileDisplayNamesDialog({
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <p className="min-w-0 flex-1 basis-80 text-xs text-muted-foreground">
-              {view === "text" ? (
-                t("fileDisplayNames.textHint", { language: languageLabel })
-              ) : (
-                <>
-                  {t("fileDisplayNames.languageHint", { language: languageLabel })}
-                  <span className="hidden pointer-fine:inline"> {t("fileDisplayNames.keyboardHint")}</span>
-                </>
-              )}
+              {view === "text"
+                ? t("fileDisplayNames.textHint", { language: languageLabel })
+                : t("fileDisplayNames.languageHint", { language: languageLabel })}
             </p>
             <p className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
               <CoverageBar count={named} total={rows.length} className="w-24" />
@@ -448,18 +442,18 @@ export function FileDisplayNamesDialog({
         <span
           className={cn(
             "mr-auto flex min-w-0 items-center gap-2 text-xs",
-            anyInvalid ? "text-error" : changedNames > 0 ? "font-medium text-foreground" : "text-muted-foreground",
+            anyInvalid ? "text-error" : "font-medium text-foreground",
           )}
           role="status"
         >
-          {!anyInvalid && changedNames > 0 && (
-            <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />
-          )}
-          {anyInvalid
-            ? t("fileDisplayNames.invalidName")
-            : changedNames > 0
-              ? t("fileDisplayNames.pending", { count: changedNames })
-              : t("fileDisplayNames.noChanges")}
+          {anyInvalid ? (
+            t("fileDisplayNames.invalidName")
+          ) : changedNames > 0 ? (
+            <>
+              <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />
+              {t("fileDisplayNames.pending", { count: changedNames })}
+            </>
+          ) : null}
         </span>
         <Button variant="ghost" onClick={onClose} disabled={saving}>
           {t("content.cancel")}

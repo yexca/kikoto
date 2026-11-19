@@ -177,12 +177,9 @@ function FolderEditWorkspaceDialog({
     else if (removalTargets.length > 0) setConfirmation({ step: 1, targets: removalTargets });
     else void workspace.apply();
   };
+  // Another place's Copy, Merge, or Read-only mark already says what selecting its files does.
   const hints = (resource: FolderEditResource) =>
-    resource.kind === "current"
-      ? t("folderEdit.currentHint")
-      : resource.kind === "local"
-        ? t("folderEdit.localHint")
-        : t("folderEdit.remoteHint", { source: resource.sourceName });
+    resource.kind === "current" ? t("folderEdit.currentHint") : undefined;
   const moveCount = workspace.request.moves?.length ?? 0;
   const statusReady = [
     t("folderEdit.statusReady", { add: workspace.addCount, remove: workspace.removeCount }),
@@ -291,7 +288,6 @@ function FolderEditWorkspaceDialog({
       <FolderWorkspaceView
         workspace={shownWorkspace}
         title={t("libraryDetail.manageFiles")}
-        description={t("fileWorkspace.description")}
         icon={<FolderCog className="h-4 w-4" />}
         marker="folder-edit"
         hints={hints}

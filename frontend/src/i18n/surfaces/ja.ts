@@ -85,7 +85,6 @@ export const surfaceJapanese = {
     noCover: "カバーなし",
     noCoverDetail: "代わりに作品番号を表示",
     customCoverRevertHint: "保存すると手動カバーが削除され、カバーなしになります。",
-    customCoverDescription: "この作品のローカル画像からカバーを選びます。",
     searchCircles: "サークルを検索、または名前を入力",
     searchSeries: "シリーズを検索、または名前を入力",
     seriesCircleId: "サークル ID",
@@ -173,22 +172,15 @@ export const surfaceJapanese = {
       source: "リンク",
     },
     descriptions: {
-      title:
-        "表示言語ごとのタイトルとフォールバックタイトルを編集します。空欄のタイトルは継承され、手動で設定した内容はメタデータを更新しても保持されます。",
-      description:
-        "表示言語ごとの作品紹介とフォールバックの作品紹介を編集します。空欄の項目は継承され、手動で設定した内容はメタデータを更新しても保持されます。",
-      cover: "この作品の元のカバーか、ローカル画像から 1 枚を選びます。",
+      title: "手動で設定したタイトルはメタデータを更新しても保持されます。",
+      description: "手動で設定した作品紹介はメタデータを更新しても保持されます。",
       tags: "この作品のタグを追加・削除し、各タグの言語別の名前を編集します。タグ名は共有されるため、変更はそのタグを持つすべての作品に反映されます。",
-      credits:
-        "候補を選ぶと既存のサークル、シリーズ、声優にリンクされます。編集したクレジットはメタデータを更新しても固定されます。",
+      credits: "編集したクレジットはメタデータを更新しても固定されます。",
       ageRating:
         "作品に表示され、ライブラリの絞り込みにも使われる年齢区分です。音声認識・LLMサービス向けのコンテンツ安全性の判定にも使われます。",
-      source:
-        "この作品に別の DLsite 作品のメタデータを使う、購入特典としてリンクする、セットの内容を登録するほか、言語ファミリーを確認できます。",
     },
     unsavedMarker: "未保存の変更",
     unsavedSections: "未保存: {{sections}}",
-    noChanges: "未保存の変更はありません",
     discardPrompt: "未保存の変更を破棄しますか?",
     keepEditing: "編集を続ける",
     discard: "破棄",
@@ -2731,8 +2723,6 @@ export const surfaceJapanese = {
   fileDisplayNames: {
     llmName: "LLM 翻訳から承認されました。編集または消去すると置き換わります。",
     title: "表示名",
-    description:
-      "ディレクトリとプレーヤーが実際のファイル名の代わりに表示する名前です。ディスク上のファイルとフォルダーの名前は変わりません。",
     language: "言語",
     copyRealNames: "実際の名前をコピー",
     realNamesCopied: "実際の名前をコピーしました（{{count}}）",
@@ -2746,8 +2736,7 @@ export const surfaceJapanese = {
     saved: "表示名を保存しました",
     saveFailed: "表示名を保存できませんでした",
     saveFailedLanguages: "{{languages}} の表示名を保存できませんでした。ほかの言語は保存されました。",
-    languageHint: "{{language}}で閲覧するユーザーにこの名前が表示されます。空欄なら実際の名前を表示します。",
-    keyboardHint: "Enter で次の名前に移動します。",
+    languageHint: "{{language}}で閲覧するユーザーにこの名前が表示されます。ディスク上のファイル名は変わりません。",
     coverage: "{{total}} 件中 {{count}} 件に名前あり",
     filter: "名前を絞り込む",
     noMatches: "「{{query}}」に一致するファイルやフォルダーはありません。",
@@ -2756,7 +2745,6 @@ export const surfaceJapanese = {
     revert: "{{name}} の変更を元に戻す",
     pending_one: "未保存の名前 {{count}} 件",
     pending_other: "未保存の名前 {{count}} 件",
-    noChanges: "未保存の変更はありません",
     saving: "保存中…",
     panel: "すべての言語の名前",
     panelEmpty: "ファイルかフォルダーを選ぶと、すべての言語の名前を編集できます。",
@@ -2770,7 +2758,7 @@ export const surfaceJapanese = {
     viewList: "リスト",
     viewText: "テキスト",
     textHint:
-      "各行は、左に並ぶ項目の{{language}}の名前です。ほかで翻訳したリストを貼り付けるか、ここで編集します。空行なら実際の名前を表示します。",
+      "各行は、左に並ぶ項目の{{language}}の名前です。空行なら実際の名前を表示します。ディスク上のファイル名は変わりません。",
     textLabel: "{{language}}の名前（1 行に 1 項目）",
     realName: "実際の名前",
     languageName: "{{language}}の名前",
@@ -2806,8 +2794,6 @@ export const surfaceJapanese = {
     addCount: "追加 {{count}}",
     removeCount: "削除 {{count}}",
     currentHint: "チェックを外したファイルは、変更を適用すると削除されます。「削除予定」に表示されます。",
-    localHint: "選択したファイルはこのフォルダーにコピーされます。元のフォルダーは変更されません。",
-    remoteHint: "選択したファイルは {{source}} からこのフォルダーにダウンロードされます。",
     selectionSummary: "{{total}} 件中 {{selected}} 件を選択",
     asFile: "ファイルとして",
     asLyrics: "歌詞 · {{language}}",
@@ -2903,8 +2889,6 @@ export const surfaceJapanese = {
     mergeConfirmLoss_other: "{{count}} ファイルを失って削除",
   },
   fileWorkspace: {
-    description:
-      "このフォルダーを整理し、作品のほかのフォルダーやリモート版からファイルを加え、削除されるものを確認します。",
     place: {
       target: "編集対象",
       remote: "読み取り専用",
@@ -3858,7 +3842,6 @@ export const surfaceJapanese = {
   },
   lyricsManager: {
     title: "歌詞を管理",
-    description: "各トラックで全員が使う歌詞を言語ごとに選びます。プレーヤーでの各自の選択が優先されます。",
     readOnly: "歌詞の設定は確認できますが、変更にはライブラリの書き込み権限が必要です。",
     noAudio: "この作品にはローカルの音声ファイルがありません。",
     noLyrics:
@@ -3887,7 +3870,6 @@ export const surfaceJapanese = {
     timingExceeds:
       "最終行は {{time}} に始まり、このトラックの終了（{{duration}}）より後です。別のトラックの歌詞かもしれません。",
     pending: "未保存の変更：{{count}}",
-    noChanges: "変更なし",
     groupCoverage: "歌詞のあるトラック: {{count}} / {{total}}",
     coverage: "歌詞のあるトラック {{count}} / {{total}}",
     panelEmpty: "このトラックにはこの言語の歌詞がありません。",
@@ -3916,6 +3898,7 @@ export const surfaceJapanese = {
       "リスナーの言語に歌詞がないときに使われる歌詞です。フォールバックの歌詞がないトラックはファイル名で自動的に照合されます。",
     languageHint:
       "再生時は、リスナーのメタデータ言語のうち歌詞がある最初の言語、次にフォールバックの歌詞、最後にその他の言語を使います。",
+    playerChoice: "プレーヤーでの各自の選択が優先されます。",
   },
   lyricsFiles: {
     managed: "管理中の歌詞",

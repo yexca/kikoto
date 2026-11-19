@@ -130,7 +130,6 @@ export const surfaceEnglish = {
     noCover: "No cover",
     noCoverDetail: "Shows the work code instead",
     customCoverRevertHint: "Saving removes the manual cover, so the work shows no cover.",
-    customCoverDescription: "Choose one of this work's local images as its cover.",
     searchCircles: "Search circles or type a name",
     searchSeries: "Search series or type a name",
     seriesCircleId: "Circle ID",
@@ -217,22 +216,15 @@ export const surfaceEnglish = {
       source: "Links",
     },
     descriptions: {
-      title:
-        "Edit a title for each display language and the fallback title. Empty titles inherit, and your manual values survive metadata refreshes.",
-      description:
-        "Edit the introduction for each display language and the fallback introduction. Empty fields inherit, and your manual values survive metadata refreshes.",
-      cover: "Choose this work's original cover or one of its local images.",
+      title: "Manual titles stay when metadata refreshes.",
+      description: "Manual introductions stay when metadata refreshes.",
       tags: "Add or remove tags for this work, and edit each tag's name by language. Tag names are shared, so a renamed tag changes on every work that has it.",
-      credits:
-        "Pick a suggestion to link an existing circle, series, or voice actor. Edited credits stay fixed when metadata refreshes.",
+      credits: "Edited credits stay fixed when metadata refreshes.",
       ageRating:
         "The rating the work shows and is found by in the Library. Content safety for LLM and ASR services uses it too.",
-      source:
-        "Use another DLsite product's metadata for this work, link it as a purchase bonus, list the works of its bundle, and see its language family.",
     },
     unsavedMarker: "Unsaved changes",
     unsavedSections: "Unsaved: {{sections}}",
-    noChanges: "No unsaved changes",
     discardPrompt: "Discard unsaved changes?",
     keepEditing: "Keep editing",
     discard: "Discard",
@@ -2780,8 +2772,6 @@ export const surfaceEnglish = {
   fileDisplayNames: {
     llmName: "Accepted from an LLM translation. Edit or clear it to replace it.",
     title: "Display names",
-    description:
-      "Names the directory and player show in place of the real file names. Files and folders on disk keep their real names.",
     language: "Language",
     copyRealNames: "Copy real names",
     realNamesCopied: "Real names copied ({{count}})",
@@ -2795,8 +2785,7 @@ export const surfaceEnglish = {
     saved: "Display names saved",
     saveFailed: "Could not save display names",
     saveFailedLanguages: "Could not save the {{languages}} display names; the other languages were saved.",
-    languageHint: "Viewers who read {{language}} see these names. An empty field shows the real name.",
-    keyboardHint: "Enter moves to the next name.",
+    languageHint: "Viewers who read {{language}} see these names. Files on disk keep their real names.",
     coverage: "{{count}} of {{total}} named",
     filter: "Filter names",
     noMatches: "No file or folder matches “{{query}}”.",
@@ -2805,7 +2794,6 @@ export const surfaceEnglish = {
     revert: "Undo the change to {{name}}",
     pending_one: "{{count}} unsaved name",
     pending_other: "{{count}} unsaved names",
-    noChanges: "No unsaved changes",
     saving: "Saving…",
     panel: "Names in every language",
     panelEmpty: "Select a file or folder to edit its names in every language.",
@@ -2819,7 +2807,7 @@ export const surfaceEnglish = {
     viewList: "List",
     viewText: "Text",
     textHint:
-      "Each line is the {{language}} name of the entry beside it. Paste a list translated elsewhere, or edit it here; an empty line shows the real name.",
+      "Each line is the {{language}} name of the entry beside it; an empty line shows the real name. Files on disk keep their real names.",
     textLabel: "{{language}} names, one line per entry",
     realName: "Real name",
     languageName: "{{language}} name",
@@ -2855,8 +2843,6 @@ export const surfaceEnglish = {
     addCount: "Add {{count}}",
     removeCount: "Remove {{count}}",
     currentHint: "Clear a file to delete it when the edit is applied. It is listed under To be deleted.",
-    localHint: "Selected files are copied into this folder. The folder they come from is not changed.",
-    remoteHint: "Selected files are downloaded from {{source}} into this folder.",
     selectionSummary: "{{selected}} of {{total}} selected",
     asFile: "As a file",
     asLyrics: "Lyrics · {{language}}",
@@ -2954,8 +2940,6 @@ export const surfaceEnglish = {
     mergeConfirmLoss_other: "Delete, losing {{count}} files",
   },
   fileWorkspace: {
-    description:
-      "Arrange this folder, add files from the work's other folders and remote editions, and review what the edit deletes.",
     place: {
       target: "Edited",
       remote: "Read-only",
@@ -3905,8 +3889,6 @@ export const surfaceEnglish = {
   },
   lyricsManager: {
     title: "Manage lyrics",
-    description:
-      "Choose the lyrics every listener uses for each track, per language. A listener's own choice in the player still takes priority.",
     readOnly: "You can review these lyrics, but changing them requires library write access.",
     noAudio: "This work has no local audio files.",
     noLyrics:
@@ -3934,7 +3916,6 @@ export const surfaceEnglish = {
     timingExceeds:
       "The last line starts at {{time}}, after this track ends ({{duration}}). It may belong to another track.",
     pending: "Unsaved changes: {{count}}",
-    noChanges: "No changes",
     groupCoverage: "Tracks with lyrics: {{count}} of {{total}}",
     coverage: "Lyrics on {{count}} of {{total}} tracks",
     panelEmpty: "This track has no lyrics in this language.",
@@ -3963,6 +3944,7 @@ export const surfaceEnglish = {
       "Fallback lyrics are used when none of a listener's languages has lyrics. A track without fallback lyrics uses a file-name match.",
     languageHint:
       "Playback uses the first of a listener's metadata languages that has lyrics, then the fallback lyrics, then any other language.",
+    playerChoice: "A listener's own choice in the player still comes first.",
   },
   lyricsFiles: {
     managed: "Managed lyrics",
