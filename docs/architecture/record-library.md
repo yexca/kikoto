@@ -30,7 +30,9 @@ is a link, oversized, or unreadable leave it offline. An unavailable root
 leaves existing record rows unchanged; it never marks the whole library
 missing, and deletions are refused.
 
-Record folders and assets have their own identities. A record asset does not
+Record folders and assets have their own identities. Their ids are never
+handed out again, so the id of a forgotten folder or file names nothing rather
+than one indexed later, such as a file of another disk. A record asset does not
 become a `work`, does not receive a `primary_code`, and is not stored in
 `media_item`. Playback and file-serving primitives may be shared with work
 media, while record metadata, progress, and state stay in record tables.
@@ -107,9 +109,7 @@ relative path. It is a rename on the root's own filesystem; Kikoto never
 copies the item elsewhere and never empties the trash. A folder moves with
 everything in it, listed or not, and nothing inside it is followed. The
 request names the relative path the viewer confirmed, and the deletion is
-refused when the id now names another path: SQLite gives the id of a removed
-row to the next one, so a page left open could otherwise reach a file indexed
-since. The deletion is also refused while the root is not online, for an asset that is not
+refused when the id does not name that path. The deletion is also refused while the root is not online, for an asset that is not
 available, for the root folder and a missing folder, and when any component
 of the item's path, or of the trash folders, is a link or anything other than
 a plain directory or, for a file, a regular file; the path is checked again

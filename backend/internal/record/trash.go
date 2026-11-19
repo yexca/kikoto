@@ -27,8 +27,8 @@ var (
 	// ErrFolderNotDeletable refuses the root folder, a missing folder, and a
 	// folder that is reached through a link or is not a plain directory.
 	ErrFolderNotDeletable = errors.New("record folder cannot be deleted")
-	// ErrItemChanged refuses a deletion whose id now names another path than
-	// the one the viewer confirmed: ids of removed rows can be given to new ones.
+	// ErrItemChanged refuses a deletion whose id names another path than the
+	// one the viewer confirmed.
 	ErrItemChanged = errors.New("record item changed since it was confirmed")
 )
 

@@ -127,8 +127,7 @@ func (s *Server) deleteRecordFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 // decodeRecordDeleteConfirmation reads the relative path the viewer confirmed
-// for a deletion. Ids of removed rows can be given to new ones, so the path
-// binds the request to what the viewer saw.
+// for a deletion, which binds the request to what the viewer saw.
 func decodeRecordDeleteConfirmation(w http.ResponseWriter, r *http.Request) (string, bool) {
 	var input struct {
 		ExpectedPath string `json:"expectedPath"`

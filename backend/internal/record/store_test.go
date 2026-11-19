@@ -156,6 +156,10 @@ func TestInitializingAnotherDiskStartsANewCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := assetID(t, db, "clip.mp4")
+	var firstFolder int64
+	if err := db.QueryRow(`SELECT id FROM record_folder WHERE name = 'trip'`).Scan(&firstFolder); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.SaveProgress(ctx, 7, first, Progress{PositionSeconds: 60}); err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +197,17 @@ func TestInitializingAnotherDiskStartsANewCatalog(t *testing.T) {
 	second := assetID(t, db, "clip.mp4")
 	if got, err := store.Progress(ctx, 7, second); err != nil || got.PositionSeconds != 0 {
 		t.Fatalf("progress of the other disk's file = %+v, %v", got, err)
+	}
+	// The earlier disk's ids name nothing after the scan either.
+	if _, err := store.Asset(ctx, first); second == first || !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("earlier disk's asset %d after a scan = %v (other disk's file is %d)", first, err, second)
+	}
+	var secondFolder int64
+	if err := db.QueryRow(`SELECT id FROM record_folder WHERE name = 'trip'`).Scan(&secondFolder); err != nil {
+		t.Fatal(err)
+	}
+	if secondFolder == firstFolder {
+		t.Fatalf("other disk's folder reuses the earlier folder id %d", firstFolder)
 	}
 }
 

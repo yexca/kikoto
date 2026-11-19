@@ -110,7 +110,7 @@ export const recordsApi = {
     putJSONBody<void>(`/api/records/assets/${id}/progress`, progress),
   /**
    * Moves a record file to the trash in the record root; `trashPath` is relative to that root.
-   * `expectedPath` is the relative path the viewer confirmed; the server refuses an id that now names another path.
+   * `expectedPath` is the relative path the viewer confirmed; the server refuses an id that names another path.
    */
   deleteRecordAsset: (id: number, expectedPath: string) =>
     deleteJSONBody<{ trashPath: string }>(`/api/records/assets/${id}`, { expectedPath }),

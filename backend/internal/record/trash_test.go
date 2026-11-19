@@ -2,6 +2,7 @@ package record
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,7 +32,9 @@ func TestTrashAssetRefusesAFileReachedThroughALink(t *testing.T) {
 	}
 }
 
-func TestTrashRefusesAnIdThatNowNamesAnotherPath(t *testing.T) {
+// A page left open on a deleted file never reaches a file indexed afterwards,
+// and a deletion is refused for a path the id does not name.
+func TestTrashNeverReachesAFileIndexedAfterTheDeletedOne(t *testing.T) {
 	store, db, root := scannedStore(t, map[string]string{"trip/a.mp4": "video", "trip/b.mp4": "video"})
 	ctx := context.Background()
 	var newest int64
@@ -45,19 +48,22 @@ func TestTrashRefusesAnIdThatNowNamesAnotherPath(t *testing.T) {
 	if _, err := store.TrashAsset(ctx, newest, confirmed, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	// A file indexed afterwards is given the id the deleted file had.
+	// A file indexed afterwards is given an id of its own.
 	if err := os.WriteFile(filepath.Join(root, "trip", "c.mp4"), []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Scan(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if reused := assetID(t, db, "c.mp4"); reused != newest {
-		t.Fatalf("the new file was given id %d, not the freed %d", reused, newest)
+	if id := assetID(t, db, "c.mp4"); id <= newest {
+		t.Fatalf("the new file was given id %d, not one after the deleted %d", id, newest)
 	}
-	// A page that still shows the deleted file confirms its path.
-	if _, err := store.TrashAsset(ctx, newest, confirmed, time.Now()); !errors.Is(err, ErrItemChanged) {
-		t.Fatalf("trash of a reused id = %v", err)
+	// A page that still shows the deleted file names nothing.
+	if _, err := store.TrashAsset(ctx, newest, confirmed, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("trash of the deleted id = %v", err)
+	}
+	if _, err := store.TrashAsset(ctx, assetID(t, db, "c.mp4"), confirmed, time.Now()); !errors.Is(err, ErrItemChanged) {
+		t.Fatalf("trash under another path = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "trip", "c.mp4")); err != nil {
 		t.Fatalf("the newer file moved: %v", err)
