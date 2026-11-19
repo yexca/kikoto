@@ -693,7 +693,6 @@ export function createDemoFolderEditPlan(
       folders: request.folders?.length ?? 0,
       merge: request.mergeFolderIds?.length ?? 0,
       mergeFiles: 0,
-      lyrics: 0,
       addBytes: items.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
       removeBytes: 0,
     },

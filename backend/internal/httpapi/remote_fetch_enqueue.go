@@ -289,8 +289,6 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !payload.FollowUp.empty() {
-		// A preview stores nothing, so it needs no permission to assign lyrics.
-		payload.FollowUp.Assignments = nil
 		if _, ok := s.requirePermissions(w, r, remoteFetchFollowUpPermissions(payload.FollowUp)...); !ok {
 			return
 		}

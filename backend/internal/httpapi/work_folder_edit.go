@@ -38,13 +38,8 @@ type workFolderEditAdditionRequest struct {
 	RemoteCode string `json:"remoteCode,omitempty"`
 	// Path is relative to the source folder or to the remote edition's tree.
 	Path string `json:"path"`
-	// Language, when present, adds a lyrics text file as lyrics of that
-	// language: it goes to the language's folder inside Kikoto's lyrics folder
-	// instead of keeping its path. Empty is the fallback lyrics. A language is
-	// never inferred.
-	Language *string `json:"language,omitempty"`
 	// TargetPath, when present, is the path below the edited folder the file
-	// lands at instead of its own path. A lyrics role takes precedence.
+	// lands at instead of its own path.
 	TargetPath string `json:"targetPath,omitempty"`
 }
 
@@ -60,10 +55,9 @@ type workFolderEditRequest struct {
 	MergeFolderIDs []int64 `json:"mergeFolderIds"`
 	// MergeReview is the review of the complete merge check of the same edit,
 	// which merging folders requires.
-	MergeReview string                     `json:"mergeReview,omitempty"`
-	Decisions   []remoteFetchFileDecision  `json:"decisions"`
-	Assignments []workFolderEditAssignment `json:"assignments"`
-	RequestID   string                     `json:"requestId"`
+	MergeReview string                    `json:"mergeReview,omitempty"`
+	Decisions   []remoteFetchFileDecision `json:"decisions"`
+	RequestID   string                    `json:"requestId"`
 }
 
 // workFolderEditItem is one file to add to the folder. It shares the Fetch
@@ -72,8 +66,6 @@ type workFolderEditItem struct {
 	remoteWorkSavePlanItem
 	SourceFolderID int64  `json:"sourceFolderId,omitempty"`
 	RemoteCode     string `json:"remoteCode,omitempty"`
-	// Language is present for a file added as lyrics of that language.
-	Language *string `json:"language,omitempty"`
 }
 
 // workFolderEditRemoval is a file the edit removes. Version is the version of
@@ -97,10 +89,8 @@ type workFolderEditSummary struct {
 	// Folders counts the requested folders that do not exist yet.
 	Folders int `json:"folders"`
 	// Merge counts the merged folders, and MergeFiles the files they hold.
-	Merge      int `json:"merge"`
-	MergeFiles int `json:"mergeFiles"`
-	// Lyrics counts the added files that go to a lyrics folder.
-	Lyrics      int   `json:"lyrics"`
+	Merge       int   `json:"merge"`
+	MergeFiles  int   `json:"mergeFiles"`
 	AddBytes    int64 `json:"addBytes"`
 	RemoveBytes int64 `json:"removeBytes"`
 }
@@ -182,16 +172,12 @@ func workFolderEditHasRemote(additions []workFolderEditAdditionRequest) bool {
 	return false
 }
 
-// requireWorkFolderEdit checks that the actor may change local files, may
-// download from a remote source when the edit asks for remote files, and may
-// write library lyrics when it assigns added lyrics to tracks.
+// requireWorkFolderEdit checks that the actor may change local files, and may
+// download from a remote source when the edit asks for remote files.
 func (s *Server) requireWorkFolderEdit(w http.ResponseWriter, r *http.Request, payload workFolderEditRequest) (currentUser, bool) {
 	permissions := []string{"downloads:manage"}
 	if workFolderEditHasRemote(payload.Additions) {
 		permissions = append(permissions, "remote:fetch")
-	}
-	if len(payload.Assignments) > 0 {
-		permissions = append(permissions, "library:write")
 	}
 	return s.requirePermissions(w, r, permissions...)
 }
@@ -298,9 +284,6 @@ func (s *Server) planWorkFolderEdit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// A preview stores nothing, so the assignments a request carries are not
-	// part of it.
-	payload.Assignments = nil
 	if _, ok := s.requireWorkFolderEdit(w, r, payload); !ok {
 		return
 	}
@@ -429,11 +412,6 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	if err != nil {
 		return workFolderEditPlan{}, err
 	}
-	if workFolderEditAddsLyrics(candidates) {
-		if err := checkLyricsRootWritable(target.Absolute); err != nil {
-			return workFolderEditPlan{}, err
-		}
-	}
 	decisions := normalizeRemoteFetchDecisions(payload.Decisions)
 	// A moved file holds its new path, so no added file can take it.
 	seenTargets := map[string]string{}
@@ -442,14 +420,15 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	}
 	items := make([]workFolderEditItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		decision, err := workFolderEditItemDecision(candidate, decisions[candidate.ItemKey], target.RootPath)
-		if err != nil {
-			return workFolderEditPlan{}, err
-		}
-		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, target.RootPath, removing, layout.vacated, seenTargets); err != nil {
+		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decisions[candidate.ItemKey], target.RootPath, removing, layout.vacated, seenTargets); err != nil {
 			return workFolderEditPlan{}, err
 		}
 		items = append(items, candidate)
+	}
+	if workFolderEditAddsToLyricsRoot(items, target.RootPath) {
+		if err := checkLyricsRootWritable(target.Absolute); err != nil {
+			return workFolderEditPlan{}, err
+		}
 	}
 	base := make([]remoteWorkSavePlanItem, len(items))
 	for index := range items {
@@ -506,9 +485,6 @@ func summarizeWorkFolderEdit(items []workFolderEditItem, removals []workFolderEd
 			continue
 		}
 		summary.Add++
-		if item.Language != nil {
-			summary.Lyrics++
-		}
 		if item.SizeBytes != nil {
 			summary.AddBytes += *item.SizeBytes
 		}
@@ -653,9 +629,6 @@ func (s *Server) workFolderEditCandidates(ctx context.Context, family map[int64]
 			return nil, err
 		}
 		item.TargetPath = path.Join(target.RootPath, placed)
-		if err := applyWorkFolderEditLyricsRole(&item, addition.Language, target.RootPath); err != nil {
-			return nil, err
-		}
 		item.OriginalTargetPath = item.TargetPath
 		items = append(items, item)
 	}
@@ -812,10 +785,6 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	if err := s.verifyWorkFolderEditMergeReview(ctx, plan, payload.MergeReview); err != nil {
 		return workFolderEditResult{}, err
 	}
-	assignments, err := s.workFolderEditAssignments(ctx, plan, payload.Assignments)
-	if err != nil {
-		return workFolderEditResult{}, err
-	}
 	removals := make([]mediaCleanupTarget, 0, len(plan.Removals))
 	for _, removal := range plan.Removals {
 		// The complete check, including the symbolic-link review, runs only
@@ -834,7 +803,7 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 		ActorUserID: actorUserID, WorkID: plan.WorkID, WorkCode: plan.PrimaryCode, FolderID: plan.FolderID,
 		FileSourceID: fileSourceID, TargetRoot: plan.SaveRoot, TransactionPool: plan.TransactionPool,
 		Items: plan.Items, Removals: removals, RemovalFiles: plan.Removals, Moves: plan.Moves, Folders: plan.Folders,
-		Merges: plan.Merges, Assignments: assignments, RequestID: payload.RequestID, Summary: &plan.Summary,
+		Merges: plan.Merges, RequestID: payload.RequestID, Summary: &plan.Summary,
 	}
 	for index := range jobPayload.Items {
 		// A download address is resolved again when the job runs.

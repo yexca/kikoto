@@ -572,8 +572,7 @@ the backend.
   `downloads:manage`, plus `sources:write` when the cleanup forgets works, a
   folder edit, including one that merges folders,
   requires `downloads:manage` plus
-  `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
-  metadata jobs require `metadata:sync`, a
+  `remote:fetch` when it downloads, metadata jobs require `metadata:sync`, a
   speech transcription requires `library:write`, Translate with AI requires
   `library:write` and queues only the items the actor may translate, and graph jobs require their
   graph's permissions.

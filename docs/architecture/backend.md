@@ -687,9 +687,11 @@ editions, at most 16, one edition at a time, records the answers as their
 stored availability, and then returns the same listing. A plan names the
 files to add, from another active local folder of the family or from a remote
 edition of the family, and the folder's local file locations to remove. An
-addition with a declared `language` is a lyrics file of that language and
-targets the language's folder inside `lyrics_kikoto`; any other addition may
-name a `targetPath` below the folder instead of its own path. `moves` give
+addition may name a `targetPath` below the folder instead of its own path,
+never inside `lyrics_kikoto`; an addition that keeps a path inside another
+folder's `lyrics_kikoto` lands in this folder's lyrics folder only while
+Kikoto created and marked it, and the run creates and marks an absent one.
+Lyrics of a language are added through the lyrics edit. `moves` give
 files of the folder another path below it, `folders` are folders to create,
 and `mergeFolderIds` are other active local folders of the family to delete
 once the folder holds what the edit copies from them. The plan checks that no
@@ -747,15 +749,12 @@ Cancelling a run that no executor holds, such as one waiting for a retry, for
 recovery after a restart, or for another job that is changing library
 folders, settles it the same way once no other job is changing library
 folders. A cancelled run that a service stop or an offline folder kept from
-settling is settled at the next start. Apply may also carry
-`assignments`, each naming an added lyrics file and an audio file of the work
-by media item or by path below the folder; the run stores them in the lyrics'
-language once it has indexed the folder, skipping a file the index does not
-hold. Its permissions, destination checks, and limits are in
+settling is settled at the next start. Its permissions, destination checks,
+and limits are in
 [Folder edit](../development/security.md#folder-edit).
 
-A Fetch plan or Fetch request may carry `followUp`: folder edit additions,
-decisions, and assignments for the folder the Fetch publishes. The plan
+A Fetch plan or Fetch request may carry `followUp`: folder edit additions and
+decisions for the folder the Fetch publishes. The plan
 response then adds `followUp`, a folder edit plan resolved against that folder
 with the Fetch's own targets already taken, so a follow-up file that would
 land on a fetched file is a conflict. Once the Fetch completes, it queues one

@@ -232,7 +232,6 @@ func (s *Server) checkWorkFolderEditMerge(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	payload.Assignments = nil
 	if _, ok := s.requireWorkFolderEdit(w, r, payload); !ok {
 		return
 	}

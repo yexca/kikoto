@@ -95,6 +95,24 @@ func inLyricsRoot(relative string) bool {
 	return strings.EqualFold(first, localfs.LyricsRootName)
 }
 
+// targetInLyricsRoot reports whether a library path lies in the lyrics folder
+// of the folder at rootPath, as a file of another folder's lyrics folder that
+// keeps its path does. A file goes there only into a lyrics folder Kikoto
+// created and marked.
+func targetInLyricsRoot(rootPath string, targetPath string) bool {
+	relative, err := fetchPathRelativeToRoot(rootPath, targetPath)
+	return err == nil && inLyricsRoot(relative)
+}
+
+func workFolderEditAddsToLyricsRoot(items []workFolderEditItem, rootPath string) bool {
+	for _, item := range items {
+		if targetInLyricsRoot(rootPath, item.TargetPath) {
+			return true
+		}
+	}
+	return false
+}
+
 type workFolderEditLocation struct {
 	locationID  int64
 	mediaItemID int64
@@ -333,7 +351,7 @@ func (s *Server) checkWorkFolderEditFreePath(target workFolderEditFolder, librar
 // workFolderEditAdditionTarget is the path below the edited folder an added
 // file lands at: the path the request gives it, or its own path.
 func workFolderEditAdditionTarget(addition workFolderEditAdditionRequest, relative string) (string, error) {
-	if strings.TrimSpace(addition.TargetPath) == "" || addition.Language != nil {
+	if strings.TrimSpace(addition.TargetPath) == "" {
 		return relative, nil
 	}
 	placed := cleanRemoteRelativePath(addition.TargetPath)
@@ -341,7 +359,7 @@ func workFolderEditAdditionTarget(addition workFolderEditAdditionRequest, relati
 		return "", invalidRequestError("an added file needs a target path")
 	}
 	if inLyricsRoot(placed) {
-		return "", invalidRequestError("files go to the lyrics folder as lyrics of a language")
+		return "", invalidRequestError("lyrics of a language are added in Manage lyrics")
 	}
 	return placed, nil
 }

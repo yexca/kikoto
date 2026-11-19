@@ -9,24 +9,15 @@ import type {
 
 /**
  * A file to add to the edited folder: from another local folder of the family, or from a remote edition.
- * With a `language`, a lyrics text file goes to that language's folder inside Kikoto's lyrics folder;
- * the empty language is the fallback lyrics. Otherwise a `targetPath` below the folder places the file
- * there instead of at its own path.
+ * A `targetPath` below the folder places the file there instead of at its own path.
  */
 export type WorkFolderEditAddition = (
   | { kind: "local"; folderId: number; path: string }
   | { kind: "remote"; sourceId: number; remoteCode: string; path: string }
-) & { language?: string; targetPath?: string };
+) & { targetPath?: string };
 
 /** A file of the edited folder that the edit gives another path below the folder. */
 export type WorkFolderEditMoveRequest = { locationId: number; path: string };
-
-/**
- * An added lyrics file, by its item key, as the library lyrics of an audio file: a media item of the
- * work, or a path below the folder for audio that is indexed only once the files are in place.
- */
-export type WorkFolderEditAssignment =
-  { audioMediaItemId: number; itemKey: string } | { audioPath: string; itemKey: string };
 
 export type WorkFolderEditRequest = {
   folderId: number;
@@ -40,15 +31,12 @@ export type WorkFolderEditRequest = {
   /** The review of the complete merge check of the same edit, which merging folders requires. */
   mergeReview?: string;
   decisions: RemoteFetchFileDecision[];
-  assignments?: WorkFolderEditAssignment[];
   requestId?: string;
 };
 
 export type WorkFolderEditItem = RemoteWorkSavePlanItem & {
   sourceFolderId?: number;
   remoteCode?: string;
-  /** Present for a file added as lyrics of that language. */
-  language?: string;
 };
 
 export type WorkFolderEditRemoval = {
@@ -70,8 +58,6 @@ export type WorkFolderEditSummary = {
   /** Merged folders, and the files they hold. */
   merge: number;
   mergeFiles: number;
-  /** Added files that go to a lyrics folder. */
-  lyrics: number;
   addBytes: number;
   removeBytes: number;
 };
@@ -145,12 +131,11 @@ export type WorkFolderEditResult = {
 
 /**
  * What a Fetch into a new folder adds to the folder once it is published: files of other editions,
- * sources, and local folders, and lyrics of a declared language.
+ * sources, and local folders.
  */
 export type RemoteFetchFollowUp = {
   additions: WorkFolderEditAddition[];
   decisions: RemoteFetchFileDecision[];
-  assignments?: WorkFolderEditAssignment[];
 };
 
 /** A Fetch of an edition's files into a new folder, with what to add to the folder afterwards. */

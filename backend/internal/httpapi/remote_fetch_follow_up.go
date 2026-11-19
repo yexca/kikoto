@@ -20,13 +20,12 @@ const remoteFetchFollowUpRetryPeriod = time.Minute
 
 // remoteFetchFollowUp is what a Fetch into a new folder adds to that folder
 // once it is published: files of the work's other local folders and remote
-// editions, and lyrics of a declared language. It runs as an Edit files run
+// editions. It runs as an Edit files run
 // of the published folder, so each file is collected, checked, and published
 // the way an edit of an existing folder does it.
 type remoteFetchFollowUp struct {
-	Additions   []workFolderEditAdditionRequest `json:"additions"`
-	Decisions   []remoteFetchFileDecision       `json:"decisions"`
-	Assignments []workFolderEditAssignment      `json:"assignments,omitempty"`
+	Additions []workFolderEditAdditionRequest `json:"additions"`
+	Decisions []remoteFetchFileDecision       `json:"decisions"`
 }
 
 func (followUp *remoteFetchFollowUp) empty() bool {
@@ -41,17 +40,12 @@ type remoteWorkSavePlanResponse struct {
 }
 
 // remoteFetchFollowUpPermissions is what a Fetch with a follow-up needs on
-// top of the Fetch itself: changing local files, and writing library lyrics
-// when it assigns lyrics to tracks.
+// top of the Fetch itself: changing local files.
 func remoteFetchFollowUpPermissions(followUp *remoteFetchFollowUp) []string {
 	if followUp.empty() {
 		return nil
 	}
-	permissions := []string{"downloads:manage"}
-	if len(followUp.Assignments) > 0 {
-		permissions = append(permissions, "library:write")
-	}
-	return permissions
+	return []string{"downloads:manage"}
 }
 
 // planRemoteFetchFollowUp previews the follow-up against the folder the Fetch
@@ -84,15 +78,6 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 	if err != nil {
 		return workFolderEditPlan{}, err
 	}
-	if workFolderEditAddsLyrics(candidates) {
-		if _, err := os.Lstat(rootAbsolute); err == nil {
-			if err := checkLyricsRootWritable(rootAbsolute); err != nil {
-				return workFolderEditPlan{}, err
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return workFolderEditPlan{}, err
-		}
-	}
 	seenTargets := map[string]string{}
 	for _, item := range plan.Items {
 		if item.Action != "exclude" {
@@ -102,14 +87,19 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 	decisions := normalizeRemoteFetchDecisions(followUp.Decisions)
 	items := make([]workFolderEditItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		decision, err := workFolderEditItemDecision(candidate, decisions[candidate.ItemKey], rootPath)
-		if err != nil {
-			return workFolderEditPlan{}, err
-		}
-		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, rootPath, workFolderEditFiles{}, workFolderEditFiles{}, seenTargets); err != nil {
+		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decisions[candidate.ItemKey], rootPath, workFolderEditFiles{}, workFolderEditFiles{}, seenTargets); err != nil {
 			return workFolderEditPlan{}, err
 		}
 		items = append(items, candidate)
+	}
+	if workFolderEditAddsToLyricsRoot(items, rootPath) {
+		if _, err := os.Lstat(rootAbsolute); err == nil {
+			if err := checkLyricsRootWritable(rootAbsolute); err != nil {
+				return workFolderEditPlan{}, err
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return workFolderEditPlan{}, err
+		}
 	}
 	base := make([]remoteWorkSavePlanItem, len(items))
 	for index := range items {
@@ -132,8 +122,7 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 	}, nil
 }
 
-// prepareRemoteFetchFollowUp checks a follow-up before its Fetch is queued and
-// returns it with its assignments validated.
+// prepareRemoteFetchFollowUp checks a follow-up before its Fetch is queued.
 func (s *Server) prepareRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSavePlan, followUp *remoteFetchFollowUp) (*remoteFetchFollowUp, error) {
 	if followUp.empty() {
 		return nil, nil
@@ -145,11 +134,7 @@ func (s *Server) prepareRemoteFetchFollowUp(ctx context.Context, plan remoteWork
 	if preview.Summary.Conflict > 0 {
 		return nil, workFolderEditConflictError{Summary: preview.Summary}
 	}
-	assignments, err := s.workFolderEditAssignments(ctx, preview, followUp.Assignments)
-	if err != nil {
-		return nil, err
-	}
-	return &remoteFetchFollowUp{Additions: followUp.Additions, Decisions: followUp.Decisions, Assignments: assignments}, nil
+	return &remoteFetchFollowUp{Additions: followUp.Additions, Decisions: followUp.Decisions}, nil
 }
 
 func remoteFetchFollowUpRequestID(runID int64) string {
@@ -350,6 +335,6 @@ func (s *Server) enqueueRemoteFetchFollowUp(ctx context.Context, manifest remote
 	}
 	return s.enqueueWorkFolderEdit(ctx, manifest.WorkID, workFolderEditRequest{
 		FolderID: folderID, Additions: payload.FollowUp.Additions, Decisions: payload.FollowUp.Decisions,
-		Assignments: payload.FollowUp.Assignments, RequestID: remoteFetchFollowUpRequestID(manifest.WorkflowRunID),
+		RequestID: remoteFetchFollowUpRequestID(manifest.WorkflowRunID),
 	}, payload.RequestedByUserID)
 }

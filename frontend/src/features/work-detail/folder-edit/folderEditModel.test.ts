@@ -182,7 +182,6 @@ function plan(items: WorkFolderEditItem[], conflict = 0): WorkFolderEditPlan {
       folders: 0,
       merge: 0,
       mergeFiles: 0,
-      lyrics: 0,
       addBytes: 0,
       removeBytes: 0,
     },

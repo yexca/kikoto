@@ -291,6 +291,12 @@
   a language under its name, **Selected lyrics files**, or **Assign added
   lyrics to matching tracks**. The note in **Manage files** that counts the
   folder's other lyrics files still opens **Lyrics files** on them.
+- The folder edit and Fetch follow-up requests no longer take a lyrics
+  `language` on an addition or `assignments`, and the folder edit plan no
+  longer counts `lyrics`; a request that still sends them adds the file at its
+  own path. A file that keeps its path inside another folder's
+  `lyrics_kikoto`, as a merge copies it, goes only into a lyrics folder Kikoto
+  created and marked.
 - Work cards have a new **Simple** mode, offered after **Full**: the cover,
   the title, and one line with the circle and voice actors, with source marks,
   listening progress, and your Quick mark as quiet status on the cover. The

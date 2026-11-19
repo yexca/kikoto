@@ -31,10 +31,8 @@ type workFolderEditJobPayload struct {
 	Folders []string `json:"folders,omitempty"`
 	// Merges are deleted once the folder is indexed, with the files each held
 	// when the edit was planned.
-	Merges []workFolderEditMerge `json:"merges,omitempty"`
-	// Assignments are stored once the folder is indexed.
-	Assignments []workFolderEditAssignment `json:"assignments,omitempty"`
-	RequestID   string                     `json:"request_id"`
+	Merges    []workFolderEditMerge `json:"merges,omitempty"`
+	RequestID string                `json:"request_id"`
 	// Summary is the summary of the plan the edit was queued with.
 	Summary *workFolderEditSummary `json:"summary,omitempty"`
 }
@@ -69,9 +67,6 @@ func workFolderEditPermissions(payload workFolderEditJobPayload) []string {
 			break
 		}
 	}
-	if len(payload.Assignments) > 0 {
-		permissions = append(permissions, "library:write")
-	}
 	return permissions
 }
 
@@ -105,7 +100,6 @@ type workFolderEditExecution struct {
 	targetAbs  string
 	progress   int
 	total      int
-	assigned   int
 	// node is the step an error belongs to.
 	node string
 }
@@ -288,11 +282,6 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err := e.index(ctx); err != nil {
 		return err
 	}
-	assigned, err := s.declareWorkFolderEditAssignments(ctx, e.payload)
-	if err != nil {
-		return err
-	}
-	e.assigned = assigned
 	e.node = "merge"
 	if err := e.mergeFolders(ctx); err != nil {
 		return err
@@ -575,7 +564,7 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 		if err := s.ensureWorkflowRunActive(ctx, e.job.RunID); err != nil {
 			return err
 		}
-		if item.Language != nil && !lyricsRootReady {
+		if !lyricsRootReady && targetInLyricsRoot(e.payload.TargetRoot, item.TargetPath) {
 			// Kikoto creates and marks its lyrics folder, and never writes
 			// lyrics into a folder of that name it did not create.
 			if err := ensureLyricsRoot(e.targetAbs); err != nil {
@@ -1017,7 +1006,6 @@ func (e *workFolderEditExecution) finish(ctx context.Context) error {
 		"added":     len(e.checkpoint.Published),
 		"removed":   len(e.checkpoint.Removed),
 		"deleted":   e.checkpoint.Deleted,
-		"assigned":  e.assigned,
 		"work_id":   e.payload.WorkID,
 		"folder_id": e.payload.FolderID,
 	}
