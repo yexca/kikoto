@@ -716,7 +716,6 @@ export const japaneseResource = {
         name: "Kikoto",
         loading: "Kikoto を読み込んでいます...",
         notFound: "見つかりません",
-        pageReserved: "この画面は今後の製品スライスで提供されます。",
         expandSidebar: "サイドバーを展開",
         collapseSidebar: "サイドバーを折りたたむ",
         collapse: "折りたたむ",

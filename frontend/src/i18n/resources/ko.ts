@@ -707,7 +707,6 @@ export const koreanResource = {
         name: "Kikoto",
         loading: "Kikoto를 불러오는 중...",
         notFound: "찾을 수 없음",
-        pageReserved: "이 화면은 다음 제품 단계에서 제공됩니다.",
         expandSidebar: "사이드바 펼치기",
         collapseSidebar: "사이드바 접기",
         collapse: "접기",

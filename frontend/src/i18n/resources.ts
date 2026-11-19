@@ -324,7 +324,6 @@ export const englishResource = {
         name: "Kikoto",
         loading: "Loading Kikoto...",
         notFound: "Not found",
-        pageReserved: "This surface is reserved for the next product slice.",
         expandSidebar: "Expand sidebar",
         collapseSidebar: "Collapse sidebar",
         collapse: "Collapse",

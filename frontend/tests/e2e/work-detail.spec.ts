@@ -133,6 +133,10 @@ test("unknown routes and missing work codes render not found states", async ({ p
   await page.goto("/missing-route");
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
 
+  // A path under a known page is not found too, and the not-found state is the page's only content.
+  await page.goto("/system/missing-tab");
+  await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText(["Page not found"]);
+
   await page.goto("/RJ00000054");
   await expect(page.getByRole("heading", { name: "Work not found" })).toBeVisible();
   await expect(page.getByText("Loading RJ00000054...")).toHaveCount(0);

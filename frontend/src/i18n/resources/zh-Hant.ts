@@ -691,7 +691,6 @@ export const zhHantResource = {
         name: "Kikoto",
         loading: "正在載入 Kikoto...",
         notFound: "找不到",
-        pageReserved: "此頁面將在後續產品版本中提供。",
         expandSidebar: "展開側邊欄",
         collapseSidebar: "收合側邊欄",
         collapse: "收合",

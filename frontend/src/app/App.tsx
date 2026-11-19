@@ -743,26 +743,6 @@ function AuthenticatedApp() {
                   )}
                   {showRoutePage && page === "records" && auth.user && <RecordsPage />}
                   {showRoutePage && page === "about" && <AboutPage />}
-                  {![
-                    "library",
-                    "favorites",
-                    "circles",
-                    "voice-actors",
-                    "for-you",
-                    "subscriptions",
-                    "settings",
-                    "system",
-                    "cleanup",
-                    "tags",
-                    "metadata",
-                    "translation",
-                    "workflows",
-                    "insights",
-                    "records",
-                    "about",
-                  ].includes(page) && (
-                    <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
-                  )}
                 </Suspense>
               </div>
             </Suspense>
@@ -1207,16 +1187,6 @@ function resolveAppPageFromLocation() {
 
 function resolveRouteRenderKey() {
   return `${window.location.pathname}${window.location.search}`;
-}
-
-function PlaceholderPage({ title }: { title: string }) {
-  const { t } = useTranslation();
-  return (
-    <section className="rounded-lg border bg-card p-5">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">{t("app.pageReserved")}</p>
-    </section>
-  );
 }
 
 function AccessRequiredPage({ page, onOpenLogin }: { page: PageID; onOpenLogin: () => void }) {

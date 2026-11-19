@@ -686,7 +686,6 @@ export const zhHansResource = {
         name: "Kikoto",
         loading: "正在加载 Kikoto...",
         notFound: "未找到",
-        pageReserved: "此页面将在后续产品版本中提供。",
         expandSidebar: "展开侧边栏",
         collapseSidebar: "收起侧边栏",
         collapse: "收起",
