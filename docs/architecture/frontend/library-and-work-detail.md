@@ -20,7 +20,9 @@ loaders share that one set of browse controls, so tab, search, sort, and page
 state stay with the page instead of being divided between them.
 
 The two toolbars hold the source switcher, the search field, and the controls
-the page hands them: the sort button with its reshuffle beside it, the mark
+the page hands them: the shared sort control from `components/collection`,
+whose one action beside the order flips its direction or reshuffles a seeded
+order (Recommended always requests descending), the mark
 filter on local and tracked works, the recently played picker, and View. The
 wide source tabs lead with the shared source visibility picker; the phone
 source menu, which the phone toolbar renders with the result caption in the

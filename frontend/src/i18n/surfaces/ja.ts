@@ -3431,7 +3431,6 @@ export const surfaceJapanese = {
     deleteListConfirm: "リストを削除しますか？",
     deleteListDescription: "「{{name}}」を削除しますか？作品はライブラリに残りますが、このリストからは削除されます。",
     deleting: "削除中…",
-    sortOptions: "お気に入りの並べ替えオプション",
     sortActivity: "お気に入りのアクティビティ",
     sortMarkedOrAdded: "マークまたは追加日時",
     noSources: "ソースなし",

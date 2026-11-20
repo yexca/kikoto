@@ -208,9 +208,9 @@ footprint of the mode in use.
 
 The Library toolbar holds the source switcher, the search field with its
 condition builder, and the controls a listener reaches for while browsing,
-each one step away: the order (a button that names it, with its direction in
-its popover and a reshuffle beside it for a seeded order), the quick-mark
-filter, recently played works, and View. The wide source tabs lead with the
+each one step away: the order (a button that names it and opens a menu of the
+orders only, with one button beside it that flips the direction, or draws a
+new order for a seeded order), the quick-mark filter, recently played works, and View. The wide source tabs lead with the
 source visibility entry, which sets which sources the tabs show. The View
 panel holds how the results are drawn: the display options, the
 recommendation score switch, and selecting remote works. A wide layout opens
@@ -218,7 +218,9 @@ it as a popover and a phone as a sheet, and a choice leaves it open so several
 can be adjusted. Each setting shows in one place: the sort button names the
 order, and the filter button turns primary with the mark's icon (and on a wide
 layout its name) while a filter is set, so no chip restates either. A new
-display setting joins the View panel instead of the toolbar.
+display setting joins the View panel instead of the toolbar. Favorites and
+the circle and voice actor works toolbars use the same sort control, so an
+order behaves the same on every collection.
 
 The works of a circle or voice actor detail page have a toolbar of at most
 five controls: a circle's Works and Series tabs, the search field, the order,

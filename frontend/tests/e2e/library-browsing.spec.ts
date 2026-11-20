@@ -246,9 +246,10 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
 
-  const selectedSort = popover.getByRole("button", { name: "Recommended", exact: true });
-  await expect(selectedSort).toHaveAttribute("aria-pressed", "true");
-  await expect(popover.getByRole("list").getByRole("button")).toHaveText([
+  const selectedSort = popover.getByRole("menuitemradio", { name: "Recommended", exact: true });
+  await expect(selectedSort).toHaveAttribute("aria-checked", "true");
+  // The menu holds only the orders; the direction and reshuffle sit beside the sort button.
+  await expect(popover.getByRole("menuitemradio")).toHaveText([
     "Recommended",
     "Recently added",
     "Release date",
@@ -259,14 +260,7 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
     "Sales",
     "Title",
   ]);
-  // The direction sits in the same popover instead of a second toolbar button.
-  await expect(popover.getByRole("button", { name: "Descending", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await popover.getByRole("button", { name: "Ascending", exact: true }).click();
-  await expect(popover.getByRole("button", { name: "Ascending", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(popover).toBeVisible();
+  await expect(popover.getByRole("button")).toHaveCount(0);
 });
 
 test("the phone header holds the source menu and the toolbar fits one row inside a 360px screen", async ({ page }) => {
@@ -338,25 +332,28 @@ test("@desktop the wide toolbar sorts from one labeled control", async ({ page }
   await expect(page.getByRole("button", { name: "Recently played", exact: true })).toBeVisible();
   await expect(libraryViewButton(page)).toBeVisible();
 
-  // The seeded orders keep a one-click refresh beside the sort button.
+  // A seeded order's one action beside the sort button is its refresh.
   const sort = page.getByRole("button", { name: "Sort: Recommended", exact: true });
   await expect(sort).toHaveText("Recommended");
   await expect(page.getByRole("button", { name: "Refresh recommendations", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Descending", exact: true })).toHaveCount(0);
 
-  await sort.click();
-  const popover = page.getByRole("dialog", { name: "Sort" });
-  await popover.getByRole("button", { name: "Ascending", exact: true }).click();
-  await expect.poll(() => requests.at(-1)?.searchParams.get("direction")).toBe("asc");
-  await popover.getByRole("button", { name: "Title", exact: true }).click();
-  await expect(popover).toBeHidden();
+  await chooseLibrarySort(page, "Title");
 
   // The button is the one place the order shows.
   await expect(page.getByRole("button", { name: "Sort: Title", exact: true })).toHaveText("Title");
   await expect(page.getByText("Sort: Title", { exact: true })).toHaveCount(0);
   await expect.poll(() => requests.at(-1)?.searchParams.get("sort")).toBe("title");
-  // An order without a seed has nothing to refresh, and its direction lives in the popover.
+  // Any other order's one action flips its direction.
   await expect(page.getByRole("button", { name: "Refresh recommendations", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Ascending", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Descending", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("direction")).toBe("asc");
+  await expect(page.getByRole("button", { name: "Ascending", exact: true })).toBeVisible();
+
+  // Recommended always lists the best match first, whatever direction the other orders keep.
+  await chooseLibrarySort(page, "Recommended");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("sort")).toBe("recommend");
+  expect(requests.at(-1)?.searchParams.get("direction")).toBe("desc");
 });
 
 test("@desktop library results that fit one page state their count without a page bar", async ({ page }) => {

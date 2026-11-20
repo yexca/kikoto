@@ -122,8 +122,9 @@ The Library is the main browsing surface for works.
   and a sheet on phones, on any page and source.
 - The Library toolbar holds the source tabs, the search field, the sort
   button, the **Mark filter** button, **Recently played**, and **View**. The
-  sort button names the current order and opens the orders and direction in a
-  popover; the Recommended and Random orders add a refresh button beside it.
+  sort button names the current order and opens the orders in a menu; the
+  button beside it flips the direction, or, for Recommended and Random, draws
+  a new order. Recommended always lists the best match first.
   **Your rating**, also offered in Favorites, orders works by the stars you
   gave them, equal ratings by the public rating, with unrated works last;
   remote sources do not offer it.

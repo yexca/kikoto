@@ -8,13 +8,7 @@ import {
 } from "./fixtures/api";
 import { mockRemoteSource, selectLibrarySource } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
-import {
-  closeLibraryView,
-  openLibrarySort,
-  openLibraryView,
-  setRecommendationScores,
-  showFullWorkCards,
-} from "./fixtures/library-view";
+import { closeLibraryView, openLibraryView, setRecommendationScores, showFullWorkCards } from "./fixtures/library-view";
 
 test("remote recommendation toggle scores the page in one batch without reloading the source", async ({ page }) => {
   const browseRequests: URL[] = [];
@@ -163,8 +157,7 @@ test("demo remote badges reuse the local score session on browse and retry", asy
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("72");
   expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
   failNextBrowse = true;
-  await (await openLibrarySort(page)).getByRole("button", { name: "Ascending", exact: true }).click();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Descending", exact: true }).click();
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("72");

@@ -881,10 +881,9 @@ test("@desktop voice detail orders its works and switches card modes like the Li
   await expect(titles).toHaveText(["Beta work", "Gamma work", "Alpha work"]);
 
   await page.getByRole("button", { name: "Sort: Release date" }).click();
-  await page.getByRole("dialog", { name: "Sort" }).getByRole("button", { name: "Title" }).click();
+  await page.getByRole("menu", { name: "Sort" }).getByRole("menuitemradio", { name: "Title" }).click();
   await expect(titles).toHaveText(["Gamma work", "Beta work", "Alpha work"]);
-  await page.getByRole("button", { name: "Sort: Title" }).click();
-  await page.getByRole("dialog", { name: "Sort" }).getByRole("button", { name: "Ascending" }).click();
+  await page.getByRole("button", { name: "Descending", exact: true }).click();
   await expect(titles).toHaveText(["Alpha work", "Beta work", "Gamma work"]);
 
   await page.getByRole("button", { name: "View", exact: true }).click();
@@ -1269,22 +1268,13 @@ test("@desktop circle detail orders its works and switches card modes like the L
   // Newest release first is the default, so the request names no order.
   const salesRequest = circleRequest({ sort: "sales", direction: null });
   await page.getByRole("button", { name: "Sort: Release date" }).click();
-  const sortDialog = page.getByRole("dialog", { name: "Sort" });
-  await expect(sortDialog.getByRole("button")).toHaveText([
-    "Descending",
-    "Ascending",
-    "Release date",
-    "Code",
-    "Title",
-    "Rating",
-    "Sales",
-  ]);
-  await sortDialog.getByRole("button", { name: "Sales" }).click();
+  const sortDialog = page.getByRole("menu", { name: "Sort" });
+  await expect(sortDialog.getByRole("menuitemradio")).toHaveText(["Release date", "Code", "Title", "Rating", "Sales"]);
+  await sortDialog.getByRole("menuitemradio", { name: "Sales" }).click();
   await salesRequest;
 
   const ascendingRequest = circleRequest({ sort: "sales", direction: "asc" });
-  await page.getByRole("button", { name: "Sort: Sales" }).click();
-  await page.getByRole("dialog", { name: "Sort" }).getByRole("button", { name: "Ascending" }).click();
+  await page.getByRole("button", { name: "Descending", exact: true }).click();
   await ascendingRequest;
 
   await page.getByRole("button", { name: "View", exact: true }).click();
@@ -1329,7 +1319,7 @@ test("mobile circle detail keeps the order on show and card modes in the View sh
     return url.pathname === "/api/circles/RG09999" && url.searchParams.get("sort") === "title";
   });
   await page.getByRole("button", { name: "Sort: Release date" }).click();
-  await page.getByRole("dialog", { name: "Sort" }).getByRole("button", { name: "Title" }).click();
+  await page.getByRole("menu", { name: "Sort" }).getByRole("menuitemradio", { name: "Title" }).click();
   await titleRequest;
   await expect(page.getByRole("button", { name: "Sort: Title" })).toBeVisible();
 

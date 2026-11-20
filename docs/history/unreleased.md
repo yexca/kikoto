@@ -367,6 +367,12 @@
   primary and shows that mark. On phones **Recently played** opens a sheet in
   place of the Continue listening strip, and the Mark filter opens its list
   in place of a row of chips.
+- The sort control in the Library, Favorites, and the circle and voice actor
+  works names the order and opens a narrow menu of the orders alone. The
+  button beside it flips the direction, or reshuffles Random and refreshes
+  Recommended, so the menu no longer repeats the reshuffle. Recommended always
+  lists the best match first. Changing the Library order, its direction, or
+  reshuffling no longer scrolls the page to the results.
 - Library results that fit one page show their count without a page bar.
 - The Library and Favorites sort by **Your rating**: works you rated by
   their stars, equal ratings by the public rating, and unrated works last.

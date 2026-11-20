@@ -28,18 +28,18 @@ export function librarySortButton(page: Page) {
   return page.getByRole("button", { name: /^Sort: / });
 }
 
-/** Opens the toolbar's sort popover and returns it. */
+/** Opens the toolbar's order menu and returns it. */
 export async function openLibrarySort(page: Page) {
-  const popover = page.getByRole("dialog", { name: "Sort", exact: true });
+  const popover = page.getByRole("menu", { name: "Sort", exact: true });
   if (!(await popover.isVisible())) await librarySortButton(page).click();
   await expect(popover).toBeVisible();
   return popover;
 }
 
-/** Chooses an order from the toolbar's sort popover, which closes on the choice. */
+/** Chooses an order from the toolbar's order menu, which closes on the choice. */
 export async function chooseLibrarySort(page: Page, name: string) {
   const popover = await openLibrarySort(page);
-  await popover.getByRole("list").getByRole("button", { name, exact: true }).click();
+  await popover.getByRole("menuitemradio", { name, exact: true }).click();
   await expect(popover).toBeHidden();
 }
 

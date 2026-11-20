@@ -3404,7 +3404,6 @@ export const surfaceKorean = {
     deleteListConfirm: "목록을 삭제하시겠습니까?",
     deleteListDescription: '"{{name}}"을(를) 삭제할까요? 작품은 라이브러리에 남지만 이 목록에서 제거됩니다.',
     deleting: "삭제 중...",
-    sortOptions: "즐겨찾기 정렬 옵션",
     sortActivity: "즐겨찾기 활동",
     sortMarkedOrAdded: "표시 또는 추가 순",
     noSources: "소스 없음",

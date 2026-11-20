@@ -1,20 +1,8 @@
-import {
-  ArrowDownAZ,
-  ArrowDownZA,
-  ArrowUpDown,
-  BookmarkCheck,
-  Check,
-  FilterX,
-  Layers,
-  ListChecks,
-  ListFilter,
-  RefreshCw,
-  Search,
-  X,
-} from "lucide-react";
+import { BookmarkCheck, Check, FilterX, Layers, ListChecks, ListFilter, Search, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { SortControl } from "@/components/collection/SortControl";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -298,6 +286,7 @@ const favoriteSortOptions: FavoriteSort[] = [
   "random",
 ];
 
+/** The Favorites order: the shared sort control with the Favorites order names; Random reshuffles. */
 export function FavoriteSortControls({
   value,
   direction,
@@ -314,81 +303,23 @@ export function FavoriteSortControls({
   onReshuffle: () => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
   const sortLabel = (option: FavoriteSort) =>
     option === "activity"
       ? t("favorites.sortActivity")
       : option === "added"
         ? t("favorites.sortMarkedOrAdded")
         : t(`library.sortOptions.${option}`);
-  const label = sortLabel(value);
-  const directionTitle =
-    value === "random"
-      ? t("library.reshuffle")
-      : direction === "asc"
-        ? t("library.ascending")
-        : t("library.descending");
   return (
-    // The order's name truncates before a narrow phone row overflows.
-    <div className="relative min-w-0" ref={anchorRef}>
-      <div className="inline-flex h-8 min-w-0 max-w-full items-center rounded-[var(--control-radius)] border bg-background">
-        <button
-          type="button"
-          className="inline-flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-l-[var(--control-radius)] px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          disabled={disabled}
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-          aria-label={t("library.sortLabel", { label })}
-          title={t("library.sortLabel", { label })}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-foreground">{label}</span>
-        </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-full w-8 shrink-0 rounded-l-none border-l text-muted-foreground"
-          disabled={disabled}
-          onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc"))}
-          aria-label={directionTitle}
-          title={directionTitle}
-        >
-          {value === "random" ? (
-            <RefreshCw className="h-4 w-4" />
-          ) : direction === "asc" ? (
-            <ArrowDownAZ className="h-4 w-4" />
-          ) : (
-            <ArrowDownZA className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="end"
-        className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("favorites.sortOptions")}>
-          {favoriteSortOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="menuitemradio"
-              aria-checked={value === option}
-              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-              }}
-            >
-              {sortLabel(option)}
-            </button>
-          ))}
-        </div>
-      </AnchoredPopover>
-    </div>
+    <SortControl
+      options={favoriteSortOptions.map((option) => ({ value: option, label: sortLabel(option) }))}
+      value={value}
+      direction={direction}
+      disabled={disabled}
+      onChange={onChange}
+      onDirectionChange={onDirectionChange}
+      reshuffle={value === "random" ? { label: t("library.reshuffle"), onReshuffle } : undefined}
+      align="end"
+    />
   );
 }
 

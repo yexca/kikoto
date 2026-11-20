@@ -3472,7 +3472,6 @@ export const surfaceEnglish = {
     deleteListConfirm: "Delete list?",
     deleteListDescription: 'Delete "{{name}}"? Works stay in the library, but this list membership is removed.',
     deleting: "Deleting...",
-    sortOptions: "Favorite sort options",
     sortActivity: "Favorite activity",
     sortMarkedOrAdded: "Marked or added",
     noSources: "No sources",

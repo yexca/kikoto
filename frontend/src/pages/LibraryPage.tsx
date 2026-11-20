@@ -175,6 +175,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
   const remoteInlineRecommendations = auth.demoMode && recommendBadgesEnabled;
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
+  // Recommended always lists the best match first; the stored direction stays
+  // for the orders that offer one.
+  const requestDirection: SortDirection = librarySort === "recommend" ? "desc" : sortDirection;
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
   const [workPage, setWorkPage] = useState(initialBrowseState.page);
   const [workPageSize, setWorkPageSize] = useState<LibraryPageSize>(libraryPageSize(initialBrowseState.pageSize));
@@ -310,7 +313,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       scope: localScope,
       status: statusFilter,
       sort: librarySort,
-      direction: sortDirection,
+      direction: requestDirection,
       randomSeed,
     },
     recommendations,
@@ -329,7 +332,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     sourceStates: remoteSourceStates,
     query: remoteSearchQuery,
     sort: librarySort,
-    direction: sortDirection,
+    direction: requestDirection,
     randomSeed,
     inlineRecommendations: remoteInlineRecommendations,
     recommendationSessionId: recommendationSession.id,
@@ -658,8 +661,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setWorkPage(1);
     setWorkPageSize(pageSize);
   };
+  // A new order keeps the page where it is; the results update in place.
   const changeLibrarySort = (sort: LibrarySort) => {
-    queueResultsScroll();
     if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
     else setWorkPage(1);
     if (sort === "random") setRandomSeed(createRandomSortSeed());
@@ -668,13 +671,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   };
   const reshuffle = () => {
     if (librarySort === "recommend") recommendations.recordReshuffle();
-    queueResultsScroll();
     if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
     else setWorkPage(1);
     setRandomSeed(createRandomSortSeed());
   };
   const changeSortDirection = (direction: SortDirection) => {
-    queueResultsScroll();
     if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
     else setWorkPage(1);
     writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, direction);
@@ -736,7 +737,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   };
   const phone = mobileNavigationLayout;
   const controlSize = phone ? "sm" : "md";
-  const sortControl = <LibrarySortButton {...sort} variant="toolbar" size={controlSize} phone={phone} />;
+  const sortControl = <LibrarySortButton {...sort} size={controlSize} phone={phone} />;
   // Remote sources cannot filter by the viewer's quick marks.
   const markFilter = remoteSelected ? null : (
     <LibraryMarkFilter value={statusFilter} onChange={changeStatusFilter} size={controlSize} phone={phone} />

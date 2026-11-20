@@ -5,7 +5,8 @@ import { restoreCurrentHistoryScroll } from "@/lib/browserHistory";
 
 /**
  * Scroll position of the Library results. A control change returns to the
- * start of the new results once they render; a restored browse state reapplies
+ * start of the new results once they render, except a new order, direction, or
+ * reshuffle, which keeps the page where it is; a restored browse state reapplies
  * its saved offset instead. `visible` is whether the list is the surface on
  * screen.
  */

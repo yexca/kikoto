@@ -3278,7 +3278,6 @@ export const surfaceHans = {
     deleteListConfirm: "删除列表？",
     deleteListDescription: "要删除“{{name}}”吗？作品仍会保留在媒体库中，但会移除此列表归属。",
     deleting: "删除中……",
-    sortOptions: "收藏排序选项",
     sortActivity: "收藏活动",
     sortMarkedOrAdded: "标记或添加时间",
     noSources: "没有来源",

@@ -3285,7 +3285,6 @@ export const surfaceHant = {
     deleteListConfirm: "刪除清單？",
     deleteListDescription: "要刪除「{{name}}」嗎？作品仍會保留在媒體庫中，但會移除其清單歸屬。",
     deleting: "刪除中……",
-    sortOptions: "收藏排序選項",
     sortActivity: "收藏活動",
     sortMarkedOrAdded: "標記或加入時間",
     noSources: "沒有來源",
