@@ -112,6 +112,9 @@ func TestRankingFirstPullCancellationRetainsOnlyAutomaticSchedule(t *testing.T) 
 	}
 }
 
+// A first pull interrupted before it took its lists consumed nothing: startup
+// keeps its request, and the dispatcher retries the target after the retry
+// delay.
 func TestRankingStartupSettlesAnInterruptedFirstPullSchedule(t *testing.T) {
 	env := newSubscriptionTestEnv(t)
 	ctx := context.Background()
@@ -123,15 +126,27 @@ func TestRankingStartupSettlesAnInterruptedFirstPullSchedule(t *testing.T) {
 	if _, ok, err := env.server.claimNextQueuedWorkflowJob(ctx, "interrupted-ranking-runner"); err != nil || !ok {
 		t.Fatalf("claim = %v %v", ok, err)
 	}
+	before := env.rankingList(t, list.ID)
 	if _, err := env.server.settleInterruptedWorkflowRuns(ctx, "example restart"); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.server.reconcileInterruptedRankingSchedules(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := env.server.ensureRankingDispatchers(ctx); err != nil {
 		t.Fatal(err)
 	}
 	current := env.rankingList(t, list.ID)
-	if current.PullRequested || current.NextPullAt == nil || *current.NextPullAt <= formatWorkflowTimestamp(time.Now().UTC()) {
-		t.Fatalf("the interrupted first pull was not settled to a future automatic pull: %+v", current)
+	if !current.PullRequested || (before.NextPullAt == nil) != (current.NextPullAt == nil) ||
+		(before.NextPullAt != nil && *before.NextPullAt != *current.NextPullAt) {
+		t.Fatalf("the interrupted first pull consumed its request or due pull: before %+v, after %+v", before, current)
+	}
+	now := time.Now().UTC()
+	next := env.scalar(t, `SELECT trigger.next_run_at FROM workflow_trigger AS trigger
+		JOIN workflow_definition AS definition ON definition.id=trigger.workflow_definition_id
+		WHERE definition.code=?`, dlsiteRankingWorkflowCode)
+	if !next.Valid || next.String > formatWorkflowTimestamp(now.Add(rankingDispatchRetryDelay+time.Minute)) {
+		t.Fatalf("the dispatcher after an interrupted first pull = %v, want a retry within the retry delay", next)
 	}
 }
 
@@ -393,5 +408,52 @@ func TestRankingSnapshotFailureKeepsItsRecordedRetry(t *testing.T) {
 	}
 	if current := env.rankingList(t, list.ID); current.NextPullAt == nil || *current.NextPullAt != formatWorkflowTimestamp(now.Add(time.Hour)) {
 		t.Fatalf("a snapshot failure's persisted retry was replaced by the ordinary two-hour interval: %+v", current)
+	}
+}
+
+// A run that fails before it takes its lists, here on an unreadable input,
+// keeps the "Pull now" request and the due pull, and its target is dispatched
+// again after the retry delay instead of a full interval later.
+func TestRankingRunFailingBeforeItsClaimKeepsTheirRequests(t *testing.T) {
+	env := newSubscriptionTestEnv(t)
+	ctx := context.Background()
+	if err := env.server.ensureRankingDispatchers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	list := env.insertRankingList(t, `INSERT INTO ranking_list(provider,period,auto_refresh,refresh_interval_minutes,next_pull_at)
+		VALUES('dlsite','day',1,60,'2000-01-01 00:00:00')`)
+	runs, err := env.server.requestRankingPulls(ctx, []int64{list.ID}, env.adminID, "manual_run")
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("queue: %+v %v", runs, err)
+	}
+	job, ok, err := env.server.claimNextQueuedWorkflowJob(ctx, "early-failing-ranking-runner")
+	if err != nil || !ok {
+		t.Fatalf("claim = %v %v", ok, err)
+	}
+	job.PayloadJSON = "{"
+	puller := rankingPullCallback(func(context.Context, rankingList, rankingVariant) (rankingPull, error) {
+		t.Fatal("a run without lists contacted the provider")
+		return rankingPull{}, nil
+	})
+	runErr := env.server.executeRankingPullJobWith(ctx, job, puller, time.Now)
+	if runErr == nil {
+		t.Fatal("the run read an unreadable input")
+	}
+	if err := env.server.handleWorkflowJobResult(ctx, ctx, job, runErr); err == nil {
+		t.Fatal("the failed run reported success")
+	}
+	if status := env.scalar(t, "SELECT status FROM workflow_run WHERE id=?", runs[0].RunID); status.String != "failed" {
+		t.Fatalf("run = %v", status)
+	}
+	current := env.rankingList(t, list.ID)
+	if !current.PullRequested || current.NextPullAt == nil || *current.NextPullAt != "2000-01-01 00:00:00" {
+		t.Fatalf("a run that failed before its claim consumed the request or the due pull: %+v", current)
+	}
+	now := time.Now().UTC()
+	next := env.scalar(t, `SELECT trigger.next_run_at FROM workflow_trigger AS trigger
+		JOIN workflow_definition AS definition ON definition.id=trigger.workflow_definition_id
+		WHERE definition.code=?`, dlsiteRankingWorkflowCode)
+	if !next.Valid || next.String <= formatWorkflowTimestamp(now) || next.String > formatWorkflowTimestamp(now.Add(rankingDispatchRetryDelay+time.Minute)) {
+		t.Fatalf("the dispatcher after a run that failed before its claim = %v, want the retry delay", next)
 	}
 }

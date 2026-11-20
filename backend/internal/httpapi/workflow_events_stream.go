@@ -63,6 +63,12 @@ func (s *Server) streamWorkflowRunEvents(w http.ResponseWriter, r *http.Request)
 	lastTickAt := time.Time{}
 	redactor := s.remoteAddressRedactorFor(r.Context())
 	writeUpdate := func(forceTick bool) (string, error) {
+		// The status is read before the events, so every event written before
+		// a terminal status is sent before the stream closes on that status.
+		run, err := s.workflowStore.LoadRun(r.Context(), id)
+		if err != nil {
+			return "", err
+		}
 		events, err := s.workflowStore.ListEventsAfter(r.Context(), id, lastEventID)
 		if err != nil {
 			return "", err
@@ -81,10 +87,6 @@ func (s *Server) streamWorkflowRunEvents(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		run, err := s.workflowStore.LoadRun(r.Context(), id)
-		if err != nil {
-			return "", err
-		}
 		terminal := !isActiveWorkflowRunStatus(run.Status)
 		if forceTick || terminal || lastTickAt.IsZero() || time.Since(lastTickAt) >= workflowEventStreamTickInterval {
 			payload, marshalErr := json.Marshal(map[string]any{

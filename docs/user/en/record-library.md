@@ -14,9 +14,15 @@ Record is off until an administrator turns it on. Mount a host directory at
 marker that names this root; scanning only starts after that explicit
 initialization. Another disk mounted at `/record`, even one initialized for
 Record elsewhere, shows Record as offline and leaves this library as it was.
-Choosing **Initialize root** for that disk makes it the Record root and starts
-the library afresh: the earlier disk's folders and watched positions are
-forgotten.
+Choosing **Start a new catalog** for that disk, after a confirmation, makes it
+the Record root and starts the library afresh: the earlier disk's folders and
+watched positions are forgotten.
+When the directory is there but its `.kikoto-record` marker is gone, Record keeps its
+library: everyone can still browse and play it, a scan adds new files without
+marking any missing, and files cannot be deleted. Under **Record** in
+**System → Library**, **Restore marker** writes the marker again and keeps the
+library, once the disk that holds the library's folders is mounted; **Start a new catalog**, after a confirmation, forgets the library
+and indexes the directory afresh on the next scan.
 While Record
 is off, the sidebar leaves it out for every account; turning it off keeps its
 folders, watched positions, and thumbnails for when it is turned on again.

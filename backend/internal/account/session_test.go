@@ -38,3 +38,38 @@ func TestSessionStoresOnlyTokenDigest(t *testing.T) {
 		t.Fatalf("session after sign-out error = %v, want sql.ErrNoRows", err)
 	}
 }
+
+// Enabling a disabled account again must not revive a token issued before it
+// was disabled.
+func TestDisablingAnAccountRevokesItsSessions(t *testing.T) {
+	store := openAccountTestStore(t)
+	ctx := context.Background()
+	user, err := store.CreateManagedUser(ctx, CreateUserInput{
+		Username: "synthetic-user", DisplayName: "Example User", Role: "user",
+		Password: "synthetic-user-password", Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.Authenticate(ctx, "synthetic-user", "synthetic-user-password", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		if _, err := store.UpdateManagedUser(ctx, UpdateUserInput{
+			ID: user.ID, DisplayName: user.DisplayName, Role: user.Role, Enabled: enabled,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.UserForSession(ctx, session.ID, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("session after disable and enable error = %v, want sql.ErrNoRows", err)
+	}
+	var sessions int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM user_session WHERE user_id = ?", user.ID).Scan(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if sessions != 0 {
+		t.Fatalf("stored sessions = %d, want none", sessions)
+	}
+}

@@ -219,7 +219,7 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	// separate storage and display contract.
 	if s.cacheRoot != "" && isCanonicalProduct(product) {
 		if _, err := s.downloadCover(ctx, product); err != nil {
-			if dlsite.IsTimeout(err) || ctx.Err() != nil {
+			if stopsMetadataRun(ctx, err) {
 				return err
 			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", code, err.Error()))
@@ -237,7 +237,7 @@ func (s *DLsiteSyncer) recordFamilyFetchFailure(
 	result *DLsiteFamilySyncResult,
 	skipped map[string]bool,
 ) error {
-	if dlsite.IsTimeout(fetchErr) || ctx.Err() != nil {
+	if stopsMetadataRun(ctx, fetchErr) {
 		return fetchErr
 	}
 	if errors.Is(fetchErr, dlsite.ErrNoProduct) {
@@ -289,7 +289,7 @@ func (s *DLsiteSyncer) syncFamilyCanonical(ctx context.Context, result *DLsiteFa
 	}
 	originProduct, _, originFetched, err := s.syncOriginProductForCode(ctx, result.CanonicalCode)
 	if err != nil {
-		if dlsite.IsTimeout(err) || ctx.Err() != nil {
+		if stopsMetadataRun(ctx, err) {
 			return err
 		}
 		result.Failures = append(result.Failures, fmt.Sprintf("%s origin metadata: %s", result.CanonicalCode, err.Error()))
@@ -298,7 +298,7 @@ func (s *DLsiteSyncer) syncFamilyCanonical(ctx context.Context, result *DLsiteFa
 	products[result.CanonicalCode] = originProduct
 	if originFetched && s.cacheRoot != "" {
 		if _, err := s.downloadCover(ctx, originProduct); err != nil {
-			if dlsite.IsTimeout(err) || ctx.Err() != nil {
+			if stopsMetadataRun(ctx, err) {
 				return err
 			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s origin cover: %s", result.CanonicalCode, err.Error()))

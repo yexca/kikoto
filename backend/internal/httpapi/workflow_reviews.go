@@ -640,7 +640,7 @@ func (s *Server) finishLocalCandidateCleanup(ctx context.Context, candidateID in
 	}); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(result), runID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'", status, mustJSON(result), runID); err != nil {
 		return err
 	}
 	return tx.Commit()

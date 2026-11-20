@@ -135,6 +135,7 @@ export function MaintenancePage({
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [draft, setDraft] = useState<RuntimeDraft | null>(null);
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
+  const [anonymousRemoteBrowsingEnabled, setAnonymousRemoteBrowsingEnabled] = useState(false);
   const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
   const [confirmAnonymousAccess, setConfirmAnonymousAccess] = useState(false);
   const catalogStatus = useAutosaveStatus();
@@ -175,6 +176,7 @@ export function MaintenancePage({
     setSettings(next);
     setDraft(runtimeDraftFromSettings(next));
     setAnonymousAccessEnabled(next.anonymousAccessEnabled);
+    setAnonymousRemoteBrowsingEnabled(next.anonymousRemoteBrowsingEnabled ?? false);
   };
 
   // Stable so settings load when access changes, not on every render or language switch.
@@ -273,6 +275,24 @@ export function MaintenancePage({
     save: saveRuntime,
   };
 
+  const saveRemoteBrowsingPolicy = async (enabled: boolean) => {
+    if (readOnly || !canManageAccessPolicy) return false;
+    setIsAccessPolicySaving(true);
+    setAnonymousRemoteBrowsingEnabled(enabled);
+    try {
+      const next = await api.updateAccessPolicy({ anonymousRemoteBrowsingEnabled: enabled });
+      setSettings((current) => (current ? { ...current, ...next } : current));
+      setAnonymousRemoteBrowsingEnabled(next.anonymousRemoteBrowsingEnabled);
+      return true;
+    } catch (error) {
+      setAnonymousRemoteBrowsingEnabled(!enabled);
+      toast.notify(toastFromError(error, t("maintenance.accessPolicySaveFailed")));
+      return false;
+    } finally {
+      setIsAccessPolicySaving(false);
+    }
+  };
+
   const saveAccessPolicy = async (enabled: boolean) => {
     if (readOnly || !canManageAccessPolicy) return false;
     setIsAccessPolicySaving(true);
@@ -281,6 +301,8 @@ export function MaintenancePage({
       const next = await api.updateAccessPolicy({ anonymousAccessEnabled: enabled });
       setSettings((current) => (current ? { ...current, ...next } : current));
       setAnonymousAccessEnabled(next.anonymousAccessEnabled);
+      // Turning anonymous access off turns remote browsing off with it.
+      setAnonymousRemoteBrowsingEnabled(next.anonymousRemoteBrowsingEnabled ?? false);
       try {
         await onAccessPolicyUpdated();
       } catch {
@@ -583,6 +605,18 @@ export function MaintenancePage({
                         else void accessStatus.track(saveAccessPolicy(false));
                       }}
                       aria-label={t("maintenance.access.anonymous")}
+                    />
+                  </SettingsRow>
+                  <SettingsRow
+                    title={t("maintenance.access.anonymousRemote")}
+                    description={t("maintenance.access.anonymousRemoteDescription")}
+                  >
+                    <Switch
+                      checked={anonymousRemoteBrowsingEnabled}
+                      // Remote browsing only widens anonymous access, so it waits for it.
+                      disabled={isAccessPolicySaving || !anonymousAccessEnabled}
+                      onCheckedChange={(enabled) => void accessStatus.track(saveRemoteBrowsingPolicy(enabled))}
+                      aria-label={t("maintenance.access.anonymousRemote")}
                     />
                   </SettingsRow>
                 </SettingsSection>

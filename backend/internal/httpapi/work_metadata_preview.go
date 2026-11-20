@@ -166,7 +166,7 @@ func (s *Server) createWorkMetadataPreview(w http.ResponseWriter, r *http.Reques
 		fetched, previewRecord.RemoteRaw, err = s.previewRemoteWorkMetadataRaw(previewCtx, current.PrimaryCode, source)
 		previewRecord.SourceID = source.ID
 	} else {
-		product, productErr := s.newDLsiteMetadataSyncer(previewCtx).FetchProduct(previewCtx, current.PrimaryCode)
+		product, productErr := s.newDLsiteMetadataSyncer(previewCtx).FetchProductForEdition(previewCtx, current.PrimaryCode)
 		if productErr == nil {
 			fetched = previewValuesFromDLsiteProduct(product)
 			previewRecord.Product = &product

@@ -386,3 +386,88 @@ func (s *Server) subscribeLegacyWorkflowTargets(ctx context.Context, userID int6
 	}
 	return created, nil
 }
+
+// unrunnableWorkflowGraphMessage is the public reason a graph run that the
+// runtime cannot run ends with.
+const unrunnableWorkflowGraphMessage = "this run uses a workflow step that is not available; start the preset again"
+
+type unrunnableWorkflowGraphJob struct {
+	job         workflowJobRecord
+	payloadJSON string
+}
+
+// failUnrunnableWorkflowGraphRuns fails each queued or running graph run whose
+// stored graph the runtime cannot run, such as a graph saved with a step that
+// no preset workflow builds. The step's node fails, its unfinished nodes are
+// skipped, and the job is not recoverable, so the run is never claimed or
+// retried. Startup runs it after interrupted jobs are settled.
+func (s *Server) failUnrunnableWorkflowGraphRuns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT job.id, job.workflow_run_id, COALESCE(job.workflow_node_run_id, 0), job.payload_json
+		FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.worker_type = 'custom_workflow'
+			AND job.status IN ('queued', 'running') AND run.status IN ('queued', 'running')
+		ORDER BY job.id
+	`)
+	if err != nil {
+		return err
+	}
+	candidates := []unrunnableWorkflowGraphJob{}
+	for rows.Next() {
+		var candidate unrunnableWorkflowGraphJob
+		candidate.job.WorkerType = "custom_workflow"
+		if err := rows.Scan(&candidate.job.ID, &candidate.job.RunID, &candidate.job.NodeRunID, &candidate.payloadJSON); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, candidate := range candidates {
+		var payload workflowGraphJobPayload
+		if err := decodeWorkflowJobPayload(candidate.payloadJSON, &payload); err == nil {
+			if _, err := validateWorkflowGraphDefinition(payload.DefinitionJSON); err == nil {
+				continue
+			}
+		}
+		nodeRunID, err := s.firstUnrunnableWorkflowGraphNode(ctx, candidate.job.RunID)
+		if err != nil {
+			return err
+		}
+		if err := s.failWorkflowGraphJob(ctx, candidate.job, nodeRunID, unrunnableWorkflowGraphMessage); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE workflow_job SET recoverable = 0 WHERE id = ? AND status = 'failed'`, candidate.job.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// firstUnrunnableWorkflowGraphNode returns the run's first node whose type is
+// not a workflow graph node, or 0 when every node type is known.
+func (s *Server) firstUnrunnableWorkflowGraphNode(ctx context.Context, runID int64) (int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, node_type FROM workflow_node_run WHERE workflow_run_id = ? ORDER BY position, id`, runID)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var nodeType string
+		if err := rows.Scan(&id, &nodeType); err != nil {
+			return 0, err
+		}
+		if _, known := workflowGraphCapabilities[nodeType]; !known {
+			return id, nil
+		}
+	}
+	return 0, rows.Err()
+}

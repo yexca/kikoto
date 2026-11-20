@@ -1027,6 +1027,9 @@ export const surfaceHans = {
     access: {
       instance: "实例访问",
       anonymous: "无需账户即可浏览和播放",
+      anonymousRemote: "无需账户即可浏览远程源",
+      anonymousRemoteDescription:
+        "在开启无需账户即可浏览时生效。开启后，任何能访问此服务器的人都可能看到你的远程源配置。",
       enableTitle: "允许匿名访问？",
       enableDescription: "能访问此服务器的任何人都将无需账户即可浏览媒体库并播放作品。",
       enable: "允许",
@@ -2969,6 +2972,7 @@ export const surfaceHans = {
     previewScheduled: "已安排预览",
     previewRequired: "需要预览",
     fetchFolderReview: "Fetch 文件夹需要审核",
+    archivedAfterFetch: "归档待审核",
     refreshComparison: "刷新比较结果以生成文件树。",
     cancel: "取消",
     publishFetch: "发布 Fetch",

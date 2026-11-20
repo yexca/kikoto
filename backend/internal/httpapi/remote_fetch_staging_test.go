@@ -45,7 +45,10 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, []remoteWorkSavePlanItem{{TargetPath: "remote/RJ/000/RJ00000001/track.mp3"}})
+	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, "remote/RJ/000/RJ00000001", []remoteWorkSavePlanItem{
+		{TargetPath: "remote/RJ/000/RJ00000001/track.mp3", Action: "cache_hit"},
+		{TargetPath: "remote/RJ/000/RJ00000001/old.mp3", Action: "copy_local", LocalSourcePath: "Library/RJ00000001/old.mp3"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +187,10 @@ func TestFetchWaitingToPublishBehindLibraryFolderJobCanBeCancelled(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ00000001", SaveRoot: "remote/RJ00000001"}
+	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ00000001", SaveRoot: "remote/RJ00000001", Items: []remoteWorkSavePlanItem{{
+		ItemKey: "remote:track.mp3", Path: "track.mp3", Kind: "audio", SourceKind: "remote", Action: "cache_hit",
+		TargetPath: "remote/RJ00000001/track.mp3", OriginalTargetPath: "remote/RJ00000001/track.mp3", Resolution: "auto", RemoteSourceID: 1,
+	}}}
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +223,7 @@ func TestFetchWaitingToPublishBehindLibraryFolderJobCanBeCancelled(t *testing.T)
 	server.mediaCleanupMu.Lock()
 	ctx, cancel := context.WithCancel(context.Background())
 	published := make(chan error, 1)
-	go func() { published <- server.publishRemoteFetchRoot(ctx, manifest, paths) }()
+	go func() { published <- server.publishRemoteFetchFiles(ctx, manifest, paths) }()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 	select {
@@ -237,7 +243,7 @@ func TestFetchWaitingToPublishBehindLibraryFolderJobCanBeCancelled(t *testing.T)
 	}
 
 	// Once the folders are free, the same staged root publishes.
-	if err := server.publishRemoteFetchRoot(context.Background(), manifest, paths); err != nil {
+	if err := server.publishRemoteFetchFiles(context.Background(), manifest, paths); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(filepath.Join(paths.targetRoot, "track.mp3")); err != nil || string(got) != "verified" {
@@ -551,5 +557,51 @@ func TestRemoveFetchStagingTreeRejectsSymlinkedNamespace(t *testing.T) {
 	}
 	if content, readErr := os.ReadFile(sentinel); readErr != nil || string(content) != "keep" {
 		t.Fatalf("outside staging changed: content=%q err=%v", content, readErr)
+	}
+}
+
+// / The Fetch dialog lists, before the Fetch is accepted, the folders the Fetch
+// archives: only those its copied local files come from. The archive step,
+// once the Fetch is published, archives exactly the folders the plan listed.
+func TestFetchPlanListsOnlyConsolidatedFoldersForArchive(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	writeFetchTestFile(t, dataRoot, "Library/RJ00000001/old.mp3", "old")
+	writeFetchTestFile(t, dataRoot, "Other/RJ00000001/other.mp3", "other")
+	for _, statement := range []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Example', 'example')`,
+		`INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state) VALUES
+			(1, 1, 'Library/RJ00000001', 'external', 'active'),
+			(1, 1, 'Other/RJ00000001', 'external', 'active'),
+			(1, 1, 'remote/RJ00000001', 'managed_fetch', 'active')`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'running', 'manual')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := remoteWorkSavePlan{PrimaryCode: "RJ00000001", EditionCode: "RJ00000001", SaveRoot: "remote/RJ00000001",
+		Items: []remoteWorkSavePlanItem{{Action: "cache_download", TargetPath: "remote/RJ00000001/track.mp3"}}}
+	roots, err := server.fetchPlanArchiveRoots(context.Background(), plan)
+	if err != nil || len(roots) != 0 {
+		t.Fatalf("remote-only Fetch archives %v, %v", roots, err)
+	}
+	plan.Items = append(plan.Items, remoteWorkSavePlanItem{
+		Action: "copy_local", MediaItemID: 1, LocalSourcePath: "Library/RJ00000001/old.mp3", TargetPath: "remote/RJ00000001/old.mp3",
+	})
+	roots, err = server.fetchPlanArchiveRoots(context.Background(), plan)
+	if err != nil || len(roots) != 1 || roots[0] != "Library/RJ00000001" {
+		t.Fatalf("consolidating Fetch archives %v, %v", roots, err)
+	}
+	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, plan.SaveRoot, plan.Items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != len(roots) || archived[0]["original_path"] != roots[0] {
+		t.Fatalf("archived %v, but the plan listed %v", archived, roots)
 	}
 }

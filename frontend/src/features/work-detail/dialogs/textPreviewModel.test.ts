@@ -20,11 +20,12 @@ describe("text preview model", () => {
       { key: "ti", value: "Example Work" },
       { key: "ar", value: "Example Voice" },
     ]);
+    // The offset tag moves every line 120 ms earlier, as the player shows them.
     expect(parsed?.lines).toEqual([
-      { timeSeconds: 1, text: "Chorus" },
-      { timeSeconds: 5.5, text: "Second line" },
-      { timeSeconds: 10, text: "Chorus" },
-      { timeSeconds: 12.25, text: "Word timed" },
+      { timeSeconds: 0.88, text: "Chorus" },
+      { timeSeconds: 5.38, text: "Second line" },
+      { timeSeconds: 9.88, text: "Chorus" },
+      { timeSeconds: 12.13, text: "Word timed" },
     ]);
   });
 

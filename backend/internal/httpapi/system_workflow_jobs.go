@@ -24,6 +24,9 @@ type localScanJobPayload struct {
 	DirectoryEventAt    string   `json:"directory_event_at,omitempty"`
 	ObservedDirectories int      `json:"observed_directories,omitempty"`
 	FollowUpRun         bool     `json:"follow_up_run,omitempty"`
+	// JoinedTriggerIDs are the triggers whose complete-scan request joined
+	// this queued run; the run's result is recorded on each of them too.
+	JoinedTriggerIDs []int64 `json:"joined_trigger_ids,omitempty"`
 }
 
 const (
@@ -62,6 +65,19 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 		return localScanResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if payload.ScanMode == localScanModeFull {
+		existing, found, err := queuedFullLocalScanTx(ctx, tx)
+		if err != nil {
+			return localScanResult{}, err
+		}
+		if found {
+			if err := joinQueuedLocalScanTx(ctx, tx, existing, triggerID, payload.FollowUpRun); err != nil {
+				return localScanResult{}, err
+			}
+			existing.FollowUpRun = existing.FollowUpRun || payload.FollowUpRun
+			return existing, tx.Commit()
+		}
+	}
 
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local works and synchronize local source presence.", map[string]any{
 		"nodes": []map[string]string{
@@ -118,6 +134,40 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 		RunID: runID, JobID: jobID, Status: "queued", FollowUpRun: payload.FollowUpRun,
 		NewWorkCodes: []string{}, Failures: []string{},
 	}, nil
+}
+
+// queuedFullLocalScanTx returns the complete local scan that is queued and not
+// yet running, which a request for another complete scan joins. A running scan
+// may already have passed the folders a request names, so a request made while
+// one runs queues its own. An incremental run carries only its changed paths,
+// so it never stands in for a complete scan.
+func queuedFullLocalScanTx(ctx context.Context, tx *sql.Tx) (localScanResult, bool, error) {
+	var result localScanResult
+	var inputJSON string
+	err := tx.QueryRowContext(ctx, `
+		SELECT run.id, run.status, run.input_json, COALESCE((
+			SELECT job.id FROM workflow_job AS job WHERE job.workflow_run_id = run.id ORDER BY job.id DESC LIMIT 1
+		), 0)
+		FROM workflow_run AS run
+		WHERE run.workflow_code = 'local_library_scan' AND run.status = 'queued'
+			AND COALESCE(NULLIF(json_extract(run.input_json, '$.scan_mode'), ''), ?) = ?
+			AND NOT EXISTS (
+				SELECT 1 FROM workflow_job AS job WHERE job.workflow_run_id = run.id AND job.status <> 'queued'
+			)
+		ORDER BY run.id DESC
+		LIMIT 1
+	`, localScanModeFull, localScanModeFull).Scan(&result.RunID, &result.Status, &inputJSON, &result.JobID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return localScanResult{}, false, nil
+	}
+	if err != nil {
+		return localScanResult{}, false, err
+	}
+	var payload localScanJobPayload
+	_ = json.Unmarshal([]byte(inputJSON), &payload)
+	result.FollowUpRun = payload.FollowUpRun
+	result.NewWorkCodes, result.Failures = []string{}, []string{}
+	return result, true, nil
 }
 
 func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord) error {
@@ -258,9 +308,11 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		return localScanResult{}, nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.observes); err != nil {
+	missingFolderLocations, err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.observes)
+	if err != nil {
 		return localScanResult{}, nil, err
 	}
+	state.missingLocations += missingFolderLocations
 	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs, scope.observes)
 	if err != nil {
 		return localScanResult{}, nil, err
@@ -505,13 +557,13 @@ func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRe
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
+		WHERE id = ? AND status <> 'cancelled'
 	`, result.Status, result.ScannedFiles, result.ScannedFiles, errorMessage,
 		mustJSON(map[string]any{"phase": "completed", "detail": runSummary, "progressCurrent": result.ScannedFiles, "progressTotal": result.ScannedFiles}), job.ID); err != nil {
 		return err
 	}
 	runSummary["failures"] = result.Failures
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(runSummary), job.RunID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'`, result.Status, mustJSON(runSummary), job.RunID); err != nil {
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
@@ -782,7 +834,7 @@ func (s *Server) finishQueuedDLsiteMetadataSyncJob(ctx context.Context, job work
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
+		WHERE id = ? AND status <> 'cancelled'
 	`, result.Status, result.SyncedWorks, result.TargetWorks, errorMessage,
 		mustJSON(map[string]any{"phase": "completed", "detail": summary, "progressCurrent": result.SyncedWorks, "progressTotal": result.TargetWorks}), job.ID); err != nil {
 		return err
@@ -790,7 +842,7 @@ func (s *Server) finishQueuedDLsiteMetadataSyncJob(ctx context.Context, job work
 	if err := insertDLsiteReviewCandidates(ctx, tx, job.RunID, nodeIDs["sync"], result.ReviewCandidates); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(summary), job.RunID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'`, result.Status, mustJSON(summary), job.RunID); err != nil {
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
@@ -826,12 +878,24 @@ func insertDLsiteReviewCandidates(ctx context.Context, tx *sql.Tx, runID int64, 
 	return nil
 }
 
+// runTriggersSQL selects the trigger that queued a run and every trigger whose
+// request joined it.
+const runTriggersSQL = `(
+	SELECT trigger_id FROM workflow_run WHERE id = ?
+	UNION
+	SELECT joined.value FROM workflow_run, json_each(workflow_run.input_json, '$.joined_trigger_ids') AS joined
+	WHERE workflow_run.id = ? AND json_valid(workflow_run.input_json)
+)`
+
 func updateTriggerForQueuedSystemRun(ctx context.Context, tx *sql.Tx, runID int64, status string, failures []string) error {
+	// A cancelled run leaves its triggers as the cancellation left them.
+	if cancelled, err := workflowRunCancelledTx(ctx, tx, runID); err != nil || cancelled {
+		return err
+	}
 	if status == "succeeded" {
 		_, err := tx.ExecContext(ctx, `
 			UPDATE workflow_trigger SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP
-			WHERE id = (SELECT trigger_id FROM workflow_run WHERE id = ?)
-		`, runID)
+			WHERE id IN `+runTriggersSQL, runID, runID)
 		return err
 	}
 	message := strings.Join(failures, "; ")
@@ -840,8 +904,40 @@ func updateTriggerForQueuedSystemRun(ctx context.Context, tx *sql.Tx, runID int6
 	}
 	_, err := tx.ExecContext(ctx, `
 		UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = (SELECT trigger_id FROM workflow_run WHERE id = ?)
-	`, message, runID)
+		WHERE id IN `+runTriggersSQL, message, runID, runID)
+	return err
+}
+
+// joinQueuedLocalScanTx adds a joining request to a queued complete scan: its
+// trigger, so the result is recorded there too, and its follow-up metadata run.
+func joinQueuedLocalScanTx(ctx context.Context, tx *sql.Tx, run localScanResult, triggerID int64, followUpRun bool) error {
+	var inputJSON string
+	if err := tx.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", run.RunID).Scan(&inputJSON); err != nil {
+		return err
+	}
+	var payload localScanJobPayload
+	if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
+		return err
+	}
+	changed := false
+	if followUpRun && !payload.FollowUpRun {
+		payload.FollowUpRun, changed = true, true
+	}
+	var queuedBy sql.NullInt64
+	if err := tx.QueryRowContext(ctx, "SELECT trigger_id FROM workflow_run WHERE id = ?", run.RunID).Scan(&queuedBy); err != nil {
+		return err
+	}
+	if triggerID > 0 && (!queuedBy.Valid || queuedBy.Int64 != triggerID) && !slices.Contains(payload.JoinedTriggerIDs, triggerID) {
+		payload.JoinedTriggerIDs, changed = append(payload.JoinedTriggerIDs, triggerID), true
+	}
+	if !changed {
+		return nil
+	}
+	encoded := mustJSON(payload)
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET input_json = ? WHERE id = ? AND status = 'queued'", encoded, run.RunID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE workflow_job SET payload_json = ? WHERE workflow_run_id = ? AND status = 'queued'", encoded, run.RunID)
 	return err
 }
 

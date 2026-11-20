@@ -185,7 +185,7 @@ func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if !s.requireDemoWork(w, r, resolved.WorkID) {
+	if !s.requireDemoWork(w, r, resolved.WorkID) || s.refuseRemoteOnlyWork(w, r, resolved.WorkID) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resolved)

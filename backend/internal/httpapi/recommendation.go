@@ -54,7 +54,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
 		return
 	}
-	if !s.requireDemoWork(w, r, workID) {
+	if !s.requireDemoWork(w, r, workID) || s.refuseRemoteOnlyWork(w, r, workID) {
 		return
 	}
 	userID := optionalUserID(r.Context())

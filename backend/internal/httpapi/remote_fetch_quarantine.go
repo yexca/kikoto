@@ -12,15 +12,22 @@ import (
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
-func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
-	publishedRoot, records, err := s.loadFetchRootsForQuarantine(ctx, runID, workID, localSourceID)
+// quarantineFetchLocalRoots archives for review the folders a Fetch
+// consolidated: those its copy_local items came from, chosen by
+// selectFetchArchiveRoots as the plan listed them. A Fetch without copy_local
+// items leaves every existing folder as it is.
+func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, saveRoot string, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
+	if len(fetchConsolidatedSourcePaths(items)) == 0 {
+		return []map[string]any{}, nil
+	}
+	records, err := s.loadFetchArchiveCandidates(ctx, workID, runID)
 	if err != nil {
 		return nil, err
 	}
-	targetRoots := fetchPlanTargetRoots(items)
+	publishedRoot := filepath.ToSlash(strings.Trim(saveRoot, "/"))
 	archived := []map[string]any{}
-	for _, record := range records {
-		item, ok, err := s.quarantineFetchRoot(ctx, runID, workID, localSourceID, publishedRoot, targetRoots, record)
+	for _, record := range selectFetchArchiveRoots(records, saveRoot, items) {
+		item, ok, err := s.quarantineFetchRoot(ctx, runID, workID, localSourceID, publishedRoot, record)
 		if err != nil {
 			return nil, err
 		}
@@ -37,6 +44,108 @@ type fetchRootRecord struct {
 	path, role string
 }
 
+// fetchConsolidatedSourcePaths lists the local files a Fetch copies into its
+// target, relative to the data root.
+func fetchConsolidatedSourcePaths(items []remoteWorkSavePlanItem) []string {
+	paths := []string{}
+	for _, item := range items {
+		if item.Action != "copy_local" {
+			continue
+		}
+		if path := strings.Trim(filepath.ToSlash(strings.TrimSpace(item.LocalSourcePath)), "/"); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// fetchRootArchivedAfterFetch reports whether a folder of the work is archived
+// once the Fetch is published: it holds a file the Fetch consolidated, and it
+// is neither the published folder nor one the Fetch writes into.
+func fetchRootArchivedAfterFetch(root string, publishedRoot string, targetRoots map[string]bool, sources []string) bool {
+	root = filepath.ToSlash(strings.Trim(filepath.ToSlash(root), "/"))
+	if root == "" || targetRoots[root] || (publishedRoot != "" && fetchRootsOverlap(root, publishedRoot)) {
+		return false
+	}
+	for _, source := range sources {
+		if strings.HasPrefix(source, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// selectFetchArchiveRoots picks, from the work's folders, the ones a Fetch
+// archives once it is published. The Fetch plan lists them and the archive step
+// archives them with this one rule.
+func selectFetchArchiveRoots(records []fetchRootRecord, saveRoot string, items []remoteWorkSavePlanItem) []fetchRootRecord {
+	sources := fetchConsolidatedSourcePaths(items)
+	if len(sources) == 0 {
+		return nil
+	}
+	publishedRoot := filepath.ToSlash(strings.Trim(saveRoot, "/"))
+	targetRoots := fetchPlanTargetRoots(items)
+	selected := []fetchRootRecord{}
+	for _, record := range records {
+		if fetchRootArchivedAfterFetch(record.path, publishedRoot, targetRoots, sources) {
+			selected = append(selected, record)
+		}
+	}
+	return selected
+}
+
+// loadFetchArchiveCandidates loads the work's local folders a Fetch may
+// archive: the active ones, and those the run already archived, so a retry
+// records them again.
+func (s *Server) loadFetchArchiveCandidates(ctx context.Context, workID, runID int64) ([]fetchRootRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT location.id, location.root_path, location.role
+		FROM work_folder_location AS location
+		INNER JOIN file_source AS source ON source.id = location.file_source_id
+		WHERE location.work_id = ? AND source.source_type = 'local_folder'
+			AND (location.state = 'active' OR (location.state = 'pending_cleanup' AND location.cleanup_run_id = ?))
+		ORDER BY location.id ASC
+	`, workID, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	records := []fetchRootRecord{}
+	for rows.Next() {
+		var record fetchRootRecord
+		if err := rows.Scan(&record.id, &record.path, &record.role); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+// fetchPlanArchiveRoots lists the folders a Fetch archives for review once it
+// is published, so the Fetch dialog shows them before the Fetch is accepted.
+func (s *Server) fetchPlanArchiveRoots(ctx context.Context, plan remoteWorkSavePlan) ([]string, error) {
+	roots := []string{}
+	if len(fetchConsolidatedSourcePaths(plan.Items)) == 0 {
+		return roots, nil
+	}
+	var workID int64
+	err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", firstNonEmpty(plan.EditionCode, plan.PrimaryCode)).Scan(&workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return roots, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	records, err := s.loadFetchArchiveCandidates(ctx, workID, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range selectFetchArchiveRoots(records, plan.SaveRoot, plan.Items) {
+		roots = append(roots, filepath.ToSlash(strings.Trim(record.path, "/")))
+	}
+	return roots, nil
+}
+
 func fetchPlanTargetRoots(items []remoteWorkSavePlanItem) map[string]bool {
 	targets := map[string]bool{}
 	for _, item := range items {
@@ -51,44 +160,9 @@ func fetchPlanTargetRoots(items []remoteWorkSavePlanItem) map[string]bool {
 	return targets
 }
 
-func (s *Server) loadFetchRootsForQuarantine(ctx context.Context, runID, workID, localSourceID int64) (string, []fetchRootRecord, error) {
-	var publishedRoot string
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT root_path FROM work_folder_location
-		WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch' AND state = 'active' AND is_primary = 1
-		ORDER BY updated_at DESC, id DESC LIMIT 1
-	`, workID, localSourceID).Scan(&publishedRoot); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", nil, err
-	}
-	publishedRoot = filepath.ToSlash(strings.Trim(publishedRoot, "/"))
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, root_path, role
-		FROM work_folder_location
-		WHERE work_id = ? AND file_source_id = ? AND root_path <> ?
-			AND (state = 'active' OR (state = 'pending_cleanup' AND cleanup_run_id = ?))
-		ORDER BY id ASC
-	`, workID, localSourceID, publishedRoot, runID)
-	if err != nil {
-		return "", nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	records := []fetchRootRecord{}
-	for rows.Next() {
-		var record fetchRootRecord
-		if err := rows.Scan(&record.id, &record.path, &record.role); err != nil {
-			return "", nil, err
-		}
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return "", nil, err
-	}
-	return publishedRoot, records, rows.Close()
-}
-
-func (s *Server) quarantineFetchRoot(ctx context.Context, runID, workID, localSourceID int64, publishedRoot string, targetRoots map[string]bool, record fetchRootRecord) (map[string]any, bool, error) {
+func (s *Server) quarantineFetchRoot(ctx context.Context, runID, workID, localSourceID int64, publishedRoot string, record fetchRootRecord) (map[string]any, bool, error) {
 	root := filepath.ToSlash(strings.Trim(record.path, "/"))
-	if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
+	if root == "" || fetchRootsOverlap(root, publishedRoot) {
 		return nil, false, nil
 	}
 	// A root on an offline pool stays as it is until its pool is back; what

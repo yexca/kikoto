@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -23,10 +22,9 @@ type graphWorkCandidate struct {
 }
 
 type graphWorkRef struct {
-	Code       string `json:"code"`
-	WorkID     int64  `json:"workId"`
-	SourceID   int64  `json:"sourceId,omitempty"`
-	ChildRunID int64  `json:"childRunId,omitempty"`
+	Code     string `json:"code"`
+	WorkID   int64  `json:"workId"`
+	SourceID int64  `json:"sourceId,omitempty"`
 }
 
 type graphPortValue struct {
@@ -40,27 +38,14 @@ type graphNodeExecution struct {
 	Outputs map[string]graphPortValue
 	// Summary adds counts to the node output for nodes whose work has no
 	// downstream port, such as metadata refresh or source checks.
-	Summary     map[string]any
-	Partial     bool
-	ChildRunIDs []int64
-	Pending     *graphPendingExecution
+	Summary map[string]any
+	Partial bool
 }
 
-type graphPendingChild struct {
-	RunID     int64              `json:"runId"`
-	Candidate graphWorkCandidate `json:"candidate"`
-	WorkRef   graphWorkRef       `json:"workRef"`
-}
-
-type graphPendingExecution struct {
-	NodeID        string               `json:"nodeId"`
-	Kind          string               `json:"kind"`
-	Children      []graphPendingChild  `json:"children"`
-	Failed        []graphWorkCandidate `json:"failed,omitempty"`
-	Candidates    []graphWorkCandidate `json:"candidates,omitempty"`
-	OutputNodeIDs []string             `json:"outputNodeIds,omitempty"`
-}
-
+// executeWorkflowGraphJob runs the graph's nodes in topological order within
+// this one job. Each node finishes before the next starts, and the checkpoint
+// records every completed node, so a retried or resumed job continues after
+// the last completed node.
 func (s *Server) executeWorkflowGraphJob(ctx context.Context, job workflowJobRecord) error {
 	runtime, err := s.prepareWorkflowGraphRuntime(ctx, job)
 	if err != nil {
@@ -70,12 +55,8 @@ func (s *Server) executeWorkflowGraphJob(ctx context.Context, job workflowJobRec
 		if runtime.completed[nodeID] {
 			continue
 		}
-		deferred, err := s.executeWorkflowGraphRuntimeNode(ctx, job, index, nodeID, &runtime)
-		if err != nil {
+		if err := s.executeWorkflowGraphRuntimeNode(ctx, job, index, nodeID, &runtime); err != nil {
 			return err
-		}
-		if deferred {
-			return nil
 		}
 	}
 	return s.finishWorkflowGraphJob(ctx, job, runtime.checkpoint, len(runtime.graph.TopologicalOrder))
@@ -106,16 +87,13 @@ func (s *Server) prepareWorkflowGraphRuntime(ctx context.Context, job workflowJo
 		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow permission snapshot is invalid")
 		return runtime, err
 	}
-	checkpoint := workflowGraphCheckpoint{Outputs: map[string]map[string]graphPortValue{}, CompletedNodeIDs: []string{}, ChildRunIDs: []int64{}}
+	checkpoint := workflowGraphCheckpoint{Outputs: map[string]map[string]graphPortValue{}, CompletedNodeIDs: []string{}}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
 		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow checkpoint is invalid")
 		return runtime, err
 	}
 	if checkpoint.Outputs == nil {
 		checkpoint.Outputs = map[string]map[string]graphPortValue{}
-	}
-	if checkpoint.BasePriority == 0 && job.Priority > 0 {
-		checkpoint.BasePriority = job.Priority
 	}
 	completed := map[string]bool{}
 	for _, nodeID := range checkpoint.CompletedNodeIDs {
@@ -129,35 +107,25 @@ func (s *Server) prepareWorkflowGraphRuntime(ctx context.Context, job workflowJo
 	return workflowGraphRuntime{payload: payload, graph: graph, checkpoint: checkpoint, completed: completed, nodeRunIDs: nodeRunIDs}, nil
 }
 
-func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workflowJobRecord, index int, nodeID string, runtime *workflowGraphRuntime) (bool, error) {
+func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workflowJobRecord, index int, nodeID string, runtime *workflowGraphRuntime) error {
 	if err := s.ensureWorkflowRunActive(ctx, job.RunID); err != nil {
-		return false, err
+		return err
 	}
 	node := runtime.graph.NodesByID[nodeID]
 	inputs, err := graphRuntimeNodeInputs(runtime.graph, node, runtime.checkpoint.Outputs)
 	if err != nil {
 		_ = s.failWorkflowGraphJob(ctx, job, runtime.nodeRunIDs[nodeID], "custom workflow input resolution failed")
-		return false, err
+		return err
 	}
 	nodeRunID := runtime.nodeRunIDs[nodeID]
 	if err := s.startWorkflowGraphNode(ctx, job, nodeRunID, node, inputs); err != nil {
-		return false, err
+		return err
 	}
-	execution, waiting, runErr := s.runWorkflowGraphRuntimeNode(ctx, job, nodeID, node, inputs, runtime)
+	execution, runErr := s.executeWorkflowGraphNode(ctx, job.RunID, runtime.payload, node, inputs)
 	if runErr != nil {
 		slog.Error("custom workflow node failed", "run_id", job.RunID, "node_id", node.ID, "node_type", node.Type, "error", runErr)
 		_ = s.failWorkflowGraphJob(ctx, job, nodeRunID, publicWorkflowGraphError(node.Type))
-		return false, runErr
-	}
-	if waiting {
-		return true, s.deferWorkflowGraphJob(ctx, job, nodeRunID, runtime.checkpoint)
-	}
-	if execution.Pending != nil {
-		runtime.checkpoint.Pending = execution.Pending
-		for _, child := range execution.Pending.Children {
-			runtime.checkpoint.ChildRunIDs = appendUniqueInt64(runtime.checkpoint.ChildRunIDs, child.RunID)
-		}
-		return true, s.deferWorkflowGraphJob(ctx, job, nodeRunID, runtime.checkpoint)
+		return runErr
 	}
 	status := "succeeded"
 	if execution.Partial {
@@ -168,29 +136,12 @@ func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workfl
 		execution.Outputs = map[string]graphPortValue{}
 	}
 	if err := s.completeWorkflowGraphNode(ctx, job, nodeRunID, node, status, execution.Outputs, execution.Summary); err != nil {
-		return false, err
+		return err
 	}
 	runtime.checkpoint.Outputs[nodeID] = execution.Outputs
 	runtime.checkpoint.CompletedNodeIDs = append(runtime.checkpoint.CompletedNodeIDs, nodeID)
-	runtime.checkpoint.ChildRunIDs = append(runtime.checkpoint.ChildRunIDs, execution.ChildRunIDs...)
 	runtime.completed[nodeID] = true
-	err = s.updateWorkflowJobCheckpoint(ctx, job.ID, nodeID, runtime.checkpoint, index+1, len(runtime.graph.TopologicalOrder))
-	return false, err
-}
-
-func (s *Server) runWorkflowGraphRuntimeNode(ctx context.Context, job workflowJobRecord, nodeID string, node workflowGraphNode, inputs map[string]graphPortValue, runtime *workflowGraphRuntime) (graphNodeExecution, bool, error) {
-	if runtime.checkpoint.Pending == nil {
-		execution, err := s.executeWorkflowGraphNode(ctx, job.RunID, runtime.checkpoint.BasePriority, runtime.payload, runtime.graph, node, inputs)
-		return execution, false, err
-	}
-	if runtime.checkpoint.Pending.NodeID != nodeID {
-		return graphNodeExecution{}, false, fmt.Errorf("custom workflow pending node does not match execution order")
-	}
-	execution, waiting, err := s.resumeGraphPendingExecution(ctx, *runtime.checkpoint.Pending)
-	if err == nil && !waiting {
-		runtime.checkpoint.Pending = nil
-	}
-	return execution, waiting, err
+	return s.updateWorkflowJobCheckpoint(ctx, job.ID, nodeID, runtime.checkpoint, index+1, len(runtime.graph.TopologicalOrder))
 }
 
 func (s *Server) startWorkflowGraphNode(ctx context.Context, job workflowJobRecord, nodeRunID int64, node workflowGraphNode, inputs map[string]graphPortValue) error {
@@ -245,102 +196,6 @@ func (s *Server) completeWorkflowGraphNode(ctx context.Context, job workflowJobR
 	return tx.Commit()
 }
 
-func (s *Server) resumeGraphPendingExecution(ctx context.Context, pending graphPendingExecution) (graphNodeExecution, bool, error) {
-	switch pending.Kind {
-	case "fetch":
-		return s.resumeGraphPendingFetch(ctx, pending)
-	default:
-		return graphNodeExecution{}, false, fmt.Errorf("unsupported pending custom workflow operation")
-	}
-}
-
-func (s *Server) resumeGraphPendingFetch(ctx context.Context, pending graphPendingExecution) (graphNodeExecution, bool, error) {
-	completed := []graphWorkRef{}
-	failed := append([]graphWorkCandidate{}, pending.Failed...)
-	waiting := false
-	for _, child := range pending.Children {
-		var status string
-		err := s.db.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", child.RunID).Scan(&status)
-		if errors.Is(err, sql.ErrNoRows) {
-			candidate := child.Candidate
-			candidate.Reason = "fetch_child_missing"
-			failed = append(failed, candidate)
-			continue
-		}
-		if err != nil {
-			return graphNodeExecution{}, false, err
-		}
-		switch status {
-		case "queued", "running":
-			waiting = true
-		case "succeeded":
-			completed = append(completed, child.WorkRef)
-		default:
-			candidate := child.Candidate
-			candidate.Reason = "fetch_child_" + strings.ToLower(strings.TrimSpace(status))
-			failed = append(failed, candidate)
-		}
-	}
-	if waiting {
-		return graphNodeExecution{}, true, nil
-	}
-	return graphNodeExecution{Partial: len(failed) > 0, Outputs: map[string]graphPortValue{
-		"completed": {Type: "work_refs", WorkRefs: uniqueGraphWorkRefs(completed)},
-		"failed":    {Type: "work_candidates", Candidates: uniqueGraphCandidates(failed)},
-	}}, false, nil
-}
-
-func (s *Server) deferWorkflowGraphJob(ctx context.Context, job workflowJobRecord, nodeRunID int64, checkpoint workflowGraphCheckpoint) error {
-	availableAt := time.Now().UTC().Add(2 * time.Second).Format("2006-01-02 15:04:05")
-	checkpointJSON := mustJSON(map[string]any{
-		"phase": "waiting_for_children", "detail": checkpoint,
-		"progressCurrent": len(checkpoint.CompletedNodeIDs), "progressTotal": 0,
-		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
-	})
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run
-		SET status = 'queued', output_json = ?, error_message = '', finished_at = NULL
-		WHERE id = ?
-	`, mustJSON(map[string]any{"waiting_for_child_runs": checkpoint.ChildRunIDs}), nodeRunID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = 'queued', checkpoint_json = ?, available_at = ?, locked_by = '', locked_at = NULL,
-			heartbeat_at = NULL, priority = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status = 'running'
-	`, checkpointJSON, availableAt, workflow.JobPriorityBackground-1, job.ID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ? AND status = 'running'", job.RunID); err != nil {
-		return err
-	}
-	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: nodeRunID, JobID: job.ID, Level: "info", Type: "workflow.children_waiting",
-		Message: "Waiting for child workflows", Detail: map[string]any{"child_run_ids": checkpoint.ChildRunIDs, "available_at": availableAt},
-	}); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func appendUniqueInt64(values []int64, value int64) []int64 {
-	if value <= 0 {
-		return values
-	}
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
 func graphRuntimeNodeInputs(graph workflowGraph, node workflowGraphNode, outputs map[string]map[string]graphPortValue) (map[string]graphPortValue, error) {
 	result := map[string]graphPortValue{}
 	for _, edge := range graph.IncomingByNode[node.ID] {
@@ -371,7 +226,7 @@ func (s *Server) finishWorkflowGraphJob(ctx context.Context, job workflowJobReco
 		UPDATE workflow_run
 		SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND status IN ('queued', 'running')
-	`, status, mustJSON(map[string]any{"completed_nodes": len(checkpoint.CompletedNodeIDs), "child_run_ids": checkpoint.ChildRunIDs, "partial": checkpoint.Partial}), job.RunID)
+	`, status, mustJSON(map[string]any{"completed_nodes": len(checkpoint.CompletedNodeIDs), "partial": checkpoint.Partial}), job.RunID)
 	if err != nil {
 		return err
 	}
@@ -391,7 +246,7 @@ func (s *Server) finishWorkflowGraphJob(ctx context.Context, job workflowJobReco
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
 		JobID: job.ID, Level: map[bool]string{true: "warn", false: "info"}[checkpoint.Partial], Type: "custom_workflow.completed",
-		Message: "Custom workflow " + status, Detail: map[string]any{"status": status, "child_run_ids": checkpoint.ChildRunIDs},
+		Message: "Custom workflow " + status, Detail: map[string]any{"status": status},
 	}); err != nil {
 		return err
 	}
@@ -520,12 +375,10 @@ func publicWorkflowGraphError(nodeType string) string {
 		return "circle catalog request failed"
 	case "series_catalog":
 		return "series catalog query failed"
-	case "voice_catalog", "circle_sources", "check_source_availability", "track_works":
+	case "voice_catalog", "circle_sources":
 		return "remote source operation failed"
 	case "circle_metadata", "voice_metadata":
 		return "metadata refresh failed"
-	case "fetch_works":
-		return "fetch planning or submission failed"
 	case "tag_works":
 		return "tag assignment failed"
 	default:

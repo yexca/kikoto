@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -301,6 +302,26 @@ func (s *Server) dispatchDueScheduledWorkflowTrigger(ctx context.Context) error 
 	if err != nil {
 		return err
 	}
+	if err := s.dispatchDueScheduledWorkflowTriggerByID(ctx, triggerID); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		// The dispatcher always picks the earliest due trigger, so a trigger
+		// that keeps failing before its next run moves would hold back every
+		// other one. It waits a bounded delay and records why.
+		backoffErr := s.backOffUndispatchedWorkflowTrigger(ctx, triggerID)
+		return errors.Join(fmt.Errorf("dispatch workflow trigger %d: %w", triggerID, err), backoffErr)
+	}
+	return nil
+}
+
+// workflowTriggerDispatchRetryDelay is how long a scheduled trigger whose
+// dispatch failed waits before the dispatcher tries it again.
+const workflowTriggerDispatchRetryDelay = 5 * time.Minute
+
+const workflowTriggerDispatchFailedMessage = "Scheduled dispatch failed; it is retried in 5 minutes"
+
+func (s *Server) dispatchDueScheduledWorkflowTriggerByID(ctx context.Context, triggerID int64) error {
 	trigger, err := s.loadWorkflowTrigger(ctx, triggerID)
 	if err != nil {
 		return err
@@ -310,6 +331,17 @@ func (s *Server) dispatchDueScheduledWorkflowTrigger(ctx context.Context) error 
 		return err
 	}
 	return s.dispatchDueSystemWorkflowTrigger(ctx, definition, trigger)
+}
+
+// backOffUndispatchedWorkflowTrigger moves a still-due trigger whose dispatch
+// failed workflowTriggerDispatchRetryDelay ahead. A trigger the failed
+// dispatch already rescheduled, paused, or disabled keeps that state.
+func (s *Server) backOffUndispatchedWorkflowTrigger(ctx context.Context, triggerID int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_trigger SET next_run_at = ?, last_error_message = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= CURRENT_TIMESTAMP
+	`, formatWorkflowTimestamp(time.Now().UTC().Add(workflowTriggerDispatchRetryDelay)), workflowTriggerDispatchFailedMessage, triggerID)
+	return err
 }
 
 func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
@@ -340,6 +372,11 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 		_, err := s.db.ExecContext(ctx, "UPDATE workflow_trigger SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", nextRunAt, trigger.ID)
 		return err
 	}
+	var dueAt string
+	var lastRunAt sql.NullString
+	if err := s.db.QueryRowContext(ctx, "SELECT COALESCE(next_run_at, ''), last_run_at FROM workflow_trigger WHERE id = ?", trigger.ID).Scan(&dueAt, &lastRunAt); err != nil {
+		return err
+	}
 	claim, err := s.db.ExecContext(ctx, `
 		UPDATE workflow_trigger SET next_run_at = ?, last_run_at = ?, last_error_message = '', updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= CURRENT_TIMESTAMP
@@ -351,10 +388,50 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 	if err != nil || claimed == 0 {
 		return err
 	}
-	s.goTracked(func() {
-		_ = s.executeSystemWorkflowTrigger(ctx, definition, trigger, "schedule", "scheduled_interval")
+	started := s.goTracked(func() {
+		if err := s.executeSystemWorkflowTrigger(ctx, definition, trigger, "schedule", "scheduled_interval"); err != nil {
+			s.returnUndispatchedWorkflowTriggerOccurrence(ctx, trigger.ID, nextRunAt, dueAt, lastRunAt)
+		}
 	})
+	if !started {
+		// A stop began before the run was queued, so the occurrence stays due
+		// for the next start.
+		s.restoreWorkflowTriggerOccurrence(context.WithoutCancel(ctx), trigger.ID, nextRunAt, dueAt, lastRunAt)
+	}
 	return nil
+}
+
+// returnUndispatchedWorkflowTriggerOccurrence keeps an occurrence whose run
+// could not be queued. A stop leaves it due for the next start; any other
+// failure retries it after workflowTriggerDispatchRetryDelay, so a failing
+// trigger does not hold the dispatcher. Each applies only while the trigger
+// still holds the next run the claim wrote.
+func (s *Server) returnUndispatchedWorkflowTriggerOccurrence(ctx context.Context, triggerID int64, claimedNextRunAt, dueAt string, lastRunAt sql.NullString) {
+	if ctx.Err() != nil {
+		s.restoreWorkflowTriggerOccurrence(context.WithoutCancel(ctx), triggerID, claimedNextRunAt, dueAt, lastRunAt)
+		return
+	}
+	retryAt := formatWorkflowTimestamp(time.Now().UTC().Add(workflowTriggerDispatchRetryDelay))
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_trigger SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND enabled = 1 AND next_run_at = ?
+	`, retryAt, triggerID, claimedNextRunAt); err != nil {
+		slog.Error("reschedule undispatched workflow trigger", "trigger_id", triggerID, "error", err)
+	}
+}
+
+func (s *Server) restoreWorkflowTriggerOccurrence(ctx context.Context, triggerID int64, claimedNextRunAt, dueAt string, lastRunAt sql.NullString) {
+	if dueAt == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, workflowJobSettleTimeout)
+	defer cancel()
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_trigger SET next_run_at = ?, last_run_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND enabled = 1 AND next_run_at = ?
+	`, dueAt, lastRunAt, triggerID, claimedNextRunAt); err != nil {
+		slog.Error("restore undispatched workflow trigger", "trigger_id", triggerID, "error", err)
+	}
 }
 
 func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) error {

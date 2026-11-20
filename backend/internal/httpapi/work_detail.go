@@ -10,6 +10,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workcode"
 )
@@ -211,7 +212,7 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		writeWorkReadError(w, err)
 		return
 	}
-	if !s.requireDemoWork(w, r, id) {
+	if !s.requireDemoWork(w, r, id) || s.refuseRemoteOnlyWork(w, r, id) {
 		return
 	}
 
@@ -250,6 +251,10 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if localOnlyRequest(r.Context()) {
+		work.SourcePresence = localSourcePresence(work.SourcePresence)
+		localMediaLocations(work.MediaItems)
+	}
 	writeJSON(w, http.StatusOK, work)
 	if includeMedia {
 		s.prefetchWorkVideoKeyframes(work.MediaItems)
@@ -263,7 +268,7 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 		writeWorkReadError(w, err)
 		return
 	}
-	if !s.requireDemoWork(w, r, id) {
+	if !s.requireDemoWork(w, r, id) || s.refuseRemoteOnlyWork(w, r, id) {
 		return
 	}
 	if _, err := s.ensureLocalMediaIndexedForRequest(r.Context(), id); err != nil {
@@ -283,6 +288,9 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if localOnlyRequest(r.Context()) {
+		localMediaLocations(mediaItems)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workId": id, "mediaWorkId": mediaWorkID, "mediaItems": mediaItems})
 	s.prefetchWorkVideoKeyframes(mediaItems)
@@ -368,7 +376,7 @@ func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64)
 			COALESCE(user_work_state.favorite, 0) AS favorite,
 			user_work_state.rating
 		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+		LEFT JOIN user_work_state ON user_work_state.work_id = `+personal.CanonicalWorkIDSQL("work.id")+`
 			AND user_work_state.user_id = ?
 		WHERE work.id = ?
 	`, userID, id).Scan(

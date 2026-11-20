@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, jobPriority int, payload workflowGraphJobPayload, graph workflowGraph, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
+func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, payload workflowGraphJobPayload, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
 	switch node.Type {
 	case "circle_catalog":
 		return s.executeGraphCircleCatalog(ctx, runID, node, inputs)
@@ -25,10 +25,6 @@ func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, jobP
 		return s.executeGraphFilterWorks(ctx, payload.UserID, node, inputs)
 	case "metadata_sync":
 		return s.executeGraphMetadataSync(ctx, runID, node, inputs)
-	case "track_works":
-		return s.executeGraphTrackWorks(ctx, runID, node, inputs)
-	case "fetch_works":
-		return s.executeGraphFetchWorks(ctx, runID, payload.UserID, jobPriority, node, inputs)
 	case "tag_works":
 		return s.executeGraphTagWorks(ctx, payload.UserID, node, inputs)
 	default:

@@ -250,7 +250,7 @@ func (s *Server) validateLyricsFetchAudio(ctx context.Context, workID int64, ass
 func (s *Server) lyricsFetchRemoteTree(ctx context.Context, sourceID int64, remoteCode string) (remoteSourceForUse, []kikoeru.Track, error) {
 	source, _, tracks, err := s.loadInstanceRemoteWorkTracksCached(ctx, sourceID, remoteCode)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) || isNotFoundLikeError(err) {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, errRemoteWorkNotFound) {
 			return remoteSourceForUse{}, nil, lyricsFetchRequestError{status: http.StatusNotFound, message: "the edition was not found on this source"}
 		}
 		return remoteSourceForUse{}, nil, err

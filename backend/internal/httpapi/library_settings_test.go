@@ -182,7 +182,7 @@ func TestPrepareLibraryLayoutKeepsFreshInstallOnboardingAcrossRestarts(t *testin
 
 func TestLibraryLayoutRegistersPoolsAndRequiresMigrationForModeAndFetch(t *testing.T) {
 	dataRoot := t.TempDir()
-	for _, name := range []string{"disk1", "disk2", ".kikoto-staging"} {
+	for _, name := range []string{"disk1", "disk2", ".kikoto-staging", "RJ00000041 Example"} {
 		if err := os.MkdirAll(filepath.Join(dataRoot, name), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -195,6 +195,14 @@ func TestLibraryLayoutRegistersPoolsAndRequiresMigrationForModeAndFetch(t *testi
 	response, layout := libraryLayoutRequest(t, server, http.MethodGet, "/api/library/layout", "")
 	if response.Code != http.StatusOK || layout.Configured || strings.Join(layout.Candidates, ",") != "disk1,disk2" {
 		t.Fatalf("unconfigured layout = %d %+v", response.Code, layout)
+	}
+	// A work folder is never a storage pool.
+	response, _ = libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"pools","pools":["disk1","RJ00000041 Example"],"fetchPool":"disk1"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "storage_pool_is_work_folder") {
+		t.Fatalf("work folder as a pool = %d %s", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataRoot, "RJ00000041 Example", storagepool.MarkerName)); !os.IsNotExist(err) {
+		t.Fatalf("the refused work folder received a pool marker: %v", err)
 	}
 	response, _ = libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"pools","pools":["disk1"],"fetchPool":"disk2"}`)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "fetch_pool_invalid") {

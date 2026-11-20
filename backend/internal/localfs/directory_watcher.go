@@ -194,50 +194,55 @@ func (w *DirectoryWatcher) emitChange(path string, event fsnotify.Event) {
 	}
 }
 
+// addTree watches start and the folders below it that a scan reads. A data
+// root reached through a link is watched through it, as discovery walks it, so
+// changes below it are reported under the configured root.
 func (w *DirectoryWatcher) addTree(start string) error {
-	return filepath.WalkDir(start, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// A folder the scan cannot read is unseen; the watcher skips it too.
-			if entry != nil && !sameFilesystemPath(path, w.root) && isSkippableWalkError(walkErr) {
-				return filepath.SkipDir
-			}
-			return walkErr
-		}
-		if !entry.IsDir() {
-			return nil
-		}
-		if w.isInternalPath(path) {
+	return walkFollowingDataRoot(w.root, start, w.addTreeEntry)
+}
+
+func (w *DirectoryWatcher) addTreeEntry(path string, entry fs.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		// A folder the scan cannot read is unseen; the watcher skips it too.
+		if entry != nil && !sameFilesystemPath(path, w.root) && isSkippableWalkError(walkErr) {
 			return filepath.SkipDir
 		}
-		if !sameFilesystemPath(path, w.root) && fetchRootMarkerExists(path) {
-			if err := w.addExcludedRoot(path); err != nil {
-				return err
-			}
-			return filepath.SkipDir
-		}
-		depth, _, err := relativeDepth(w.root, path)
-		if err != nil {
-			return err
-		}
-		watchDirectory := depth <= w.scanDepth || w.hasWorkAncestor(path)
-		if !watchDirectory {
-			return filepath.SkipDir
-		}
-		cleanPath := filepath.Clean(path)
-		w.mu.RLock()
-		_, exists := w.watched[cleanPath]
-		w.mu.RUnlock()
-		if exists {
-			return nil
-		}
-		if err := w.watcher.Add(cleanPath); err != nil {
-			return err
-		}
-		w.mu.Lock()
-		w.watched[cleanPath] = struct{}{}
-		w.mu.Unlock()
+		return walkErr
+	}
+	if !entry.IsDir() {
 		return nil
-	})
+	}
+	if w.isInternalPath(path) {
+		return filepath.SkipDir
+	}
+	if !sameFilesystemPath(path, w.root) && fetchRootMarkerExists(path) {
+		if err := w.addExcludedRoot(path); err != nil {
+			return err
+		}
+		return filepath.SkipDir
+	}
+	depth, _, err := relativeDepth(w.root, path)
+	if err != nil {
+		return err
+	}
+	watchDirectory := depth <= w.scanDepth || w.hasWorkAncestor(path)
+	if !watchDirectory {
+		return filepath.SkipDir
+	}
+	cleanPath := filepath.Clean(path)
+	w.mu.RLock()
+	_, exists := w.watched[cleanPath]
+	w.mu.RUnlock()
+	if exists {
+		return nil
+	}
+	if err := w.watcher.Add(cleanPath); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.watched[cleanPath] = struct{}{}
+	w.mu.Unlock()
+	return nil
 }
 
 func (w *DirectoryWatcher) hasWorkAncestor(path string) bool {

@@ -375,33 +375,22 @@ type rankingPullTask struct {
 func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobRecord, puller rankingPuller, now func() time.Time) error {
 	var payload rankingJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Ranking pull input is invalid")
-		return err
+		return s.failRankingPullBeforeClaim(ctx, job, "Ranking pull input is invalid", err)
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
+		return s.failRankingPullBeforeClaim(ctx, job, err.Error(), err)
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ? AND status = 'running'", job.RunID); err != nil {
-		return err
+		return s.failRankingPullBeforeClaim(ctx, job, "Rankings could not be loaded", err)
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ? AND status IN ('queued', 'running')", nodeIDs["pull"]); err != nil {
-		return err
+		return s.failRankingPullBeforeClaim(ctx, job, "Rankings could not be loaded", err)
 	}
 	startedAt := now().UTC()
 	lists, err := s.claimRankingPullLists(ctx, job, payload, startedAt)
 	if err != nil {
-		// The run took no list, so it consumed no request and no due pull:
-		// its schedule settlement has nothing to do. The dispatcher waits a
-		// moment before it queues the target again.
-		if _, settleErr := s.db.ExecContext(ctx, `UPDATE workflow_job
-			SET checkpoint_json = json_set(checkpoint_json, '$.rankingScheduleSettled', 1) WHERE id = ? AND status = 'running'`, job.ID); settleErr != nil {
-			slog.Warn("ranking pull without lists could not be marked settled", "job_id", job.ID, "error", settleErr)
-		}
-		_ = s.failClaimedWorkflowJob(ctx, job, "Rankings could not be loaded")
-		s.refreshRankingDispatchersBestEffort(ctx)
-		return err
+		return s.failRankingPullBeforeClaim(ctx, job, "Rankings could not be loaded", err)
 	}
 	tasks := []*rankingPullTask{}
 	listIDs := make([]int64, 0, len(lists))
@@ -499,6 +488,23 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 	err = s.finishRankingPullJob(ctx, job, nodeIDs, result, len(tasks)-len(pullFailures), pullFailures, recordFailures, schedulesSettled)
 	s.refreshRankingDispatchersBestEffort(ctx)
 	return err
+}
+
+// failRankingPullBeforeClaim fails a run that stopped before it took its
+// lists. It consumed no request and no due pull, so its schedule settlement
+// has nothing to do; the dispatcher waits rankingDispatchRetryDelay before it
+// queues the target again. A stop or cancellation settles the job itself.
+func (s *Server) failRankingPullBeforeClaim(ctx context.Context, job workflowJobRecord, message string, runErr error) error {
+	if ctx.Err() != nil {
+		return runErr
+	}
+	if _, settleErr := s.db.ExecContext(ctx, `UPDATE workflow_job
+		SET checkpoint_json = json_set(checkpoint_json, '$.rankingScheduleSettled', 1) WHERE id = ? AND status = 'running'`, job.ID); settleErr != nil {
+		slog.Warn("ranking pull without lists could not be marked settled", "job_id", job.ID, "error", settleErr)
+	}
+	_ = s.failClaimedWorkflowJob(ctx, job, message)
+	s.refreshRankingDispatchersBestEffort(ctx)
+	return runErr
 }
 
 func rankingFailureStatus(err error) string {
@@ -823,7 +829,7 @@ func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord
 	if count, err := settled.RowsAffected(); err != nil || count != 1 {
 		return errors.New("ranking pull has already settled")
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(result), job.RunID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'`, result.Status, mustJSON(result), job.RunID); err != nil {
 		return err
 	}
 	if result.Status == "succeeded" {

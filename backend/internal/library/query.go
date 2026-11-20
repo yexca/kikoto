@@ -1027,3 +1027,9 @@ func listRecommendationProjection(includeRecommendation bool, config Recommendat
 	}
 	return recommendationSortColumn, recommendationSnapshotJoin
 }
+
+// LocalPresencePredicateSQL keeps a work whose family has an available local
+// folder; it reads the work through the alias "work".
+func LocalPresencePredicateSQL() string {
+	return localPresenceWhereClause()
+}

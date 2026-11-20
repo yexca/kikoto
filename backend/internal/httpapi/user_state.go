@@ -50,6 +50,13 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use favorite lists to change list membership"})
 		return
 	}
+	// The family's canonical work holds the state, also when the request
+	// names an edition.
+	stateWorkID, err := s.canonicalWorkID(r.Context(), workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	var currentStatus string
 	var currentFavorite int
 	var currentRating sql.NullInt64
@@ -57,7 +64,7 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 		SELECT COALESCE(listening_status, 'none'), COALESCE(favorite, 0), rating
 		FROM user_work_state
 		WHERE user_id = ? AND work_id = ?
-	`, user.ID, workID).Scan(&currentStatus, &currentFavorite, &currentRating); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	`, user.ID, stateWorkID).Scan(&currentStatus, &currentFavorite, &currentRating); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeError(w, err)
 		return
 	}
@@ -88,7 +95,7 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 			listening_status = excluded.listening_status,
 			rating = excluded.rating,
 			updated_at = CURRENT_TIMESTAMP
-	`, user.ID, workID, status, currentFavorite, rating); err != nil {
+	`, user.ID, stateWorkID, status, currentFavorite, rating); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -108,6 +115,24 @@ func validUserRating(value sql.NullInt64) *int {
 // loadWorkUserRatingsBatch reads the viewer's ratings of a page of works; an
 // unrated work has no entry.
 func (s *Server) loadWorkUserRatingsBatch(ctx context.Context, userID int64, workIDs []int64) (map[int64]*int, error) {
+	canonical, unique, err := s.canonicalWorkIDs(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	ratings, err := s.loadStoredWorkUserRatings(ctx, userID, unique)
+	if err != nil {
+		return nil, err
+	}
+	result := map[int64]*int{}
+	for _, id := range workIDs {
+		if rating, ok := ratings[canonical[id]]; ok {
+			result[id] = rating
+		}
+	}
+	return result, nil
+}
+
+func (s *Server) loadStoredWorkUserRatings(ctx context.Context, userID int64, workIDs []int64) (map[int64]*int, error) {
 	result := make(map[int64]*int, len(workIDs))
 	if userID <= 0 || len(workIDs) == 0 {
 		return result, nil

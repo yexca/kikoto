@@ -897,18 +897,22 @@ func firstAvailableSource(response sourceAvailabilityResponse) *sourceAvailabili
 
 func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, execution availabilityWatchExecution) error {
 	result, metadata := execution.result, execution.metadata
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	cancelled, err := workflowRunCancelledTx(ctx, tx, job.RunID)
+	if err != nil {
+		return err
+	}
 	// Metadata failures fall back to the known family, so they mark only
 	// their own node partial.
 	metadataStatus := "succeeded"
 	if len(metadata.Failed) > 0 {
 		metadataStatus = "partial"
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, metadataStatus, mustJSON(map[string]any{"synced": len(metadata.Synced), "fresh": metadata.Skipped, "failures": metadata.Failed}), strings.Join(metadata.Failed, "\n"), nodeIDs["metadata"]); err != nil {
+	if err := finishWorkflowNodeRunTx(ctx, tx, nodeIDs["metadata"], metadataStatus, mustJSON(map[string]any{"synced": len(metadata.Synced), "fresh": metadata.Skipped, "failures": metadata.Failed}), strings.Join(metadata.Failed, "\n")); err != nil {
 		return err
 	}
 	errorMessage := strings.Join(result.Failures, "\n")
@@ -916,28 +920,18 @@ func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJob
 	if len(result.Failures) > 0 {
 		checkStatus = "partial"
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, checkStatus, mustJSON(map[string]any{"checked": result.Checked, "failures": result.Failures}), errorMessage, nodeIDs["check"]); err != nil {
+	if err := finishWorkflowNodeRunTx(ctx, tx, nodeIDs["check"], checkStatus, mustJSON(map[string]any{"checked": result.Checked, "failures": result.Failures}), errorMessage); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, mustJSON(map[string]any{"ready": result.Ready, "ready_codes": result.ReadyCodes, "newly_available_codes": result.NewlyAvailableCodes}), nodeIDs["ready"]); err != nil {
+	if err := finishWorkflowNodeRunTx(ctx, tx, nodeIDs["ready"], "succeeded", mustJSON(map[string]any{"ready": result.Ready, "ready_codes": result.ReadyCodes, "newly_available_codes": result.NewlyAvailableCodes}), ""); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, result.TargetCount, result.TargetCount, errorMessage, job.ID); err != nil {
+	if err := finishWorkflowRunResultTx(ctx, tx, job.RunID, job.ID, result.Status, errorMessage, result.TargetCount, result.TargetCount, mustJSON(result)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(result), job.RunID); err != nil {
-		return err
-	}
-	if result.Status == "succeeded" {
-		if err := updateWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
-			return err
-		}
-	} else if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, "Availability Watch completed with some failures"); err != nil {
+	// A cancelled run keeps its result; only the observed availability below
+	// is recorded.
+	if err := updateWorkflowTriggerResultTx(ctx, tx, job.RunID, cancelled, result.Status, "Availability Watch completed with some failures"); err != nil {
 		return err
 	}
 	if len(result.NewlyAvailableCodes) > 0 {

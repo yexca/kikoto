@@ -53,6 +53,19 @@ func IsRetryableHTTPError(err error) bool {
 		statusErr.StatusCode == http.StatusGatewayTimeout
 }
 
+// IsRateLimited reports a response that asks the client to slow down: 429,
+// or 503 with Retry-After. A request retries it after a bounded wait; when
+// it persists, a bulk run stops so it can be retried later rather than
+// spend its remaining works on the same refusal.
+func IsRateLimited(err error) bool {
+	var statusErr HTTPStatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	return statusErr.StatusCode == http.StatusTooManyRequests ||
+		statusErr.StatusCode == http.StatusServiceUnavailable && strings.TrimSpace(statusErr.RetryAfter) != ""
+}
+
 type Client struct {
 	httpClient *http.Client
 	endpoints  Endpoints
@@ -102,7 +115,9 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 				return product, nil
 			}
 			lastErr = err
-			if !errors.Is(err, ErrNoProduct) {
+			// A rate limit outranks any later failure, so a bulk run stops
+			// rather than skip the work as if it had failed on its own.
+			if !errors.Is(err, ErrNoProduct) && !IsRateLimited(lastFailure) {
 				lastFailure = err
 			}
 			if ctx.Err() != nil || IsTimeout(err) {
@@ -229,10 +244,14 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if err != nil {
 		return Product{}, err
 	}
+	// A failed dynamic request leaves the product usable; the flag tells the
+	// store to keep what it knows for the fields this response left unknown.
 	if dynamicRaw, dynamic, err := c.fetchDynamic(ctx, product); err == nil {
 		applyDynamicProductFields(&product, dynamicRaw, dynamic)
 	} else if IsTimeout(err) || ctx.Err() != nil {
 		return Product{}, err
+	} else {
+		product.DynamicUnavailable = true
 	}
 	return product, nil
 }

@@ -8,7 +8,9 @@ import (
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
+// The outermost code-carrying folder is the work; a code-carrying folder
+// inside it holds files of that work.
+func TestDiscoverMatchesOutermostCodeFoldersWithinDepth(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "RJ00000009", "track01.mp3"))
 	writeFile(t, filepath.Join(root, "RJ00000009", "cover.jpg"))
@@ -17,6 +19,8 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	writeFile(t, filepath.Join(root, "RJ01", "RJ00000002 name", "track01.wav"))
 	writeFile(t, filepath.Join(root, "RJ09", "RJ00000007 name", "track01.ogg"))
 	writeFile(t, filepath.Join(root, "Other", "No code", "track01.mp3"))
+	writeFile(t, filepath.Join(root, "RJ00000003", "track01.mp3"))
+	writeFile(t, filepath.Join(root, "RJ00000003", "RJ00000004 bonus", "bonus.mp3"))
 
 	works, summary, err := Discover(root, Options{ScanDepth: 2})
 	if err != nil {
@@ -33,6 +37,7 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 		"RJ00000002": true,
 		"RJ00000007": true,
 		"RJ00000009": true,
+		"RJ00000003": true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("codes = %v, want %v", got, want)
@@ -42,15 +47,18 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 			t.Fatalf("unexpected code %q in %v", code, got)
 		}
 	}
-	if summary.DetectedWorks != 4 {
-		t.Fatalf("DetectedWorks = %d, want 4", summary.DetectedWorks)
+	if summary.DetectedWorks != 5 {
+		t.Fatalf("DetectedWorks = %d, want 5", summary.DetectedWorks)
 	}
-	if summary.ScannedFiles != 6 {
-		t.Fatalf("ScannedFiles = %d, want 6", summary.ScannedFiles)
+	if summary.ScannedFiles != 8 {
+		t.Fatalf("ScannedFiles = %d, want 8", summary.ScannedFiles)
 	}
 	for _, work := range works {
 		if work.Code == "RJ00000009" && len(work.Files) != 3 {
 			t.Fatalf("RJ00000009 files = %d, want 3", len(work.Files))
+		}
+		if work.Code == "RJ00000003" && len(work.Files) != 2 {
+			t.Fatalf("RJ00000003 files = %d, want its own file and the nested folder's", len(work.Files))
 		}
 	}
 }
@@ -77,7 +85,9 @@ func TestExtractWorkCodeAllowsSeparatorAndIgnoresShortBuckets(t *testing.T) {
 		})
 	}
 
-	for _, path := range []string{"RJ0000", "RJ000000000", "RJ01", "Projekt 20241019", "PKT-123456", "KT00000001", "[KT12345]"} {
+	// A code is a word of its own: letters or digits right before it make it
+	// part of a longer word.
+	for _, path := range []string{"RJ0000", "RJ000000000", "RJ01", "Projekt 20241019", "PKT-123456", "KT00000001", "[KT12345]", "XRJ00000005", "ABCRJ00000005 title", "2RJ00000005"} {
 		code, ambiguous := ExtractWorkCode(path)
 		if code != "" || ambiguous {
 			t.Fatalf("ExtractWorkCode(%q) returned %q, %v", path, code, ambiguous)

@@ -455,9 +455,9 @@ cannot create an unchecked outbound path.
 - Keep Fetch staging, rollback backup, and reviewable trash on the target's
   filesystem: `/data` in standard mode or `/data/<pool>` in storage pool mode,
   so publication and rollback use same-filesystem rename semantics.
-- Fetch checks every staging, target, and backup directory component for links
-  and reparse points. Staging copies, verification, publication, recovery, and
-  backup removal use an open data root, so replacing a directory after its
+- Fetch checks every staging, target, and backup directory component above the
+  files it writes for links and reparse points. Staging copies, verification,
+  publication, recovery, and backup removal use an open data root, so replacing a directory after its
   check cannot redirect these operations outside that root. A blocked backup
   cleanup keeps the backup and logs the failure after completion commits.
 - Keep `/cache` disposable. It must not become the only owner of a transaction,

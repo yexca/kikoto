@@ -483,6 +483,10 @@ func TestWorkFolderEditFamilyCheckRecordsEveryEditionsAvailability(t *testing.T)
 		switch {
 		case r.URL.Path == "/api/health":
 			_ = json.NewEncoder(w).Encode("ok")
+		case r.URL.Path == "/api/works":
+			// The source reads its whole listing, so a code it does not list
+			// is not on it.
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{}})
 		case strings.HasPrefix(r.URL.Path, "/api/search/"):
 			code := strings.TrimPrefix(r.URL.Path, "/api/search/")
 			mu.Lock()

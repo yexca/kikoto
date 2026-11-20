@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -167,6 +168,126 @@ func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int
 	if err := mergeVoiceCatalogPeople(ctx, tx, targetID, sourceID); err != nil {
 		return err
 	}
+	return mergeManualOverrideVoiceActors(ctx, tx, targetID, sourceID)
+}
+
+// / manualVoiceOverrideSnapshot keeps a manual voice actor list that names the
+// merged-away person as it was before the merge, so undo can restore it.
+type manualVoiceOverrideSnapshot struct {
+	WorkID    int64  `json:"workId"`
+	Language  string `json:"language"`
+	ValueJSON string `json:"valueJson"`
+}
+
+func loadManualVoiceOverrideSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]manualVoiceOverrideSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT work_id, language, value_json
+		FROM work_manual_override
+		WHERE field_name = 'voice_actors' AND json_valid(value_json)
+			AND json_type(value_json) = 'array'
+			AND EXISTS (
+				SELECT 1 FROM json_each(work_manual_override.value_json)
+				WHERE json_extract(json_each.value, '$.personId') = ?
+			)
+		ORDER BY work_id, language
+	`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	snapshots := []manualVoiceOverrideSnapshot{}
+	for rows.Next() {
+		var snapshot manualVoiceOverrideSnapshot
+		if err := rows.Scan(&snapshot.WorkID, &snapshot.Language, &snapshot.ValueJSON); err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, rows.Err()
+}
+
+// mergedManualVoiceActors is a manual voice actor list after sourceID merged
+// into targetID: entries naming sourceID name targetID, and a list that named
+// both keeps its first entry for the person.
+func mergedManualVoiceActors(valueJSON string, targetID, sourceID int64) (string, bool) {
+	var people []manualOverridePerson
+	if err := json.Unmarshal([]byte(valueJSON), &people); err != nil {
+		return "", false
+	}
+	merged := make([]manualOverridePerson, 0, len(people))
+	seen := map[int64]bool{}
+	for _, person := range people {
+		if person.PersonID == sourceID {
+			person.PersonID = targetID
+		}
+		if person.PersonID > 0 {
+			if seen[person.PersonID] {
+				continue
+			}
+			seen[person.PersonID] = true
+		}
+		merged = append(merged, person)
+	}
+	return mustJSON(merged), true
+}
+
+// mergeManualOverrideVoiceActors points manual voice actor lists at the person
+// the merge keeps, so they keep naming the same voice actor once the
+// merged-away person is deleted.
+func mergeManualOverrideVoiceActors(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) error {
+	snapshots, err := loadManualVoiceOverrideSnapshots(ctx, tx, sourceID)
+	if err != nil {
+		return err
+	}
+	for _, snapshot := range snapshots {
+		merged, ok := mergedManualVoiceActors(snapshot.ValueJSON, targetID, sourceID)
+		if !ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_manual_override SET value_json = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE work_id = ? AND field_name = 'voice_actors' AND language = ?
+		`, merged, snapshot.WorkID, snapshot.Language); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreManualOverrideVoiceActors puts back the manual voice actor lists the
+// merge rewrote. A list edited or cleared since the merge is the editor's and
+// stays; it cannot name the restored person, so the manual credit undo gave
+// back to that person on its work goes, and the credits match the list.
+func restoreManualOverrideVoiceActors(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
+	for _, override := range snapshot.ManualVoiceOverrides {
+		merged, ok := mergedManualVoiceActors(override.ValueJSON, targetID, snapshot.SourcePerson.ID)
+		if !ok {
+			continue
+		}
+		var current string
+		err := tx.QueryRowContext(ctx, `
+			SELECT value_json FROM work_manual_override
+			WHERE work_id = ? AND field_name = 'voice_actors' AND language = ?
+		`, override.WorkID, override.Language).Scan(&current)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if normalized, ok := mergedManualVoiceActors(current, 0, -1); err != nil || !ok || normalized != merged {
+			if _, err := tx.ExecContext(ctx, `
+				DELETE FROM work_credit
+				WHERE work_id = ? AND person_id = ? AND role = 'voice_actor' AND source = 'manual_override'
+			`, override.WorkID, snapshot.SourcePerson.ID); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_manual_override SET value_json = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE work_id = ? AND field_name = 'voice_actors' AND language = ?
+		`, override.ValueJSON, override.WorkID, override.Language); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -257,6 +378,9 @@ func restoreVoiceMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, 
 		return err
 	}
 	if err := restorePersonSubscriptions(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
+	if err := restoreManualOverrideVoiceActors(ctx, tx, targetID, snapshot); err != nil {
 		return err
 	}
 	for _, alias := range snapshot.AddedAliases {
@@ -480,6 +604,9 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 		TargetCatalog:   targetCatalog,
 	}
 	if err := capturePersonSubscriptions(ctx, tx, &snapshot, targetID, personID); err != nil {
+		return personMergeSnapshot{}, err
+	}
+	if snapshot.ManualVoiceOverrides, err = loadManualVoiceOverrideSnapshots(ctx, tx, personID); err != nil {
 		return personMergeSnapshot{}, err
 	}
 	return snapshot, nil

@@ -283,3 +283,44 @@ func TestDemoAccessPolicyMutationIsRejectedBeforeTheHandler(t *testing.T) {
 		t.Fatalf("demo mutation persisted %d settings", count)
 	}
 }
+
+// Visitors without an account may browse the Library while anonymous access is
+// on, but reach remote sources only when anonymous remote browsing is on too.
+func TestAnonymousRemoteBrowsingNeedsItsOwnSetting(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true'); INSERT INTO user_account (id, username, display_name, role) VALUES (1, 'synthetic-root', 'Root', 'super_admin')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{Mode: config.ModeProduction})
+	if err := server.LoadAccessPolicy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.anonymousAccessMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	status := func(path string) int {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		return response.Code
+	}
+	if code := status("/api/works"); code != http.StatusNoContent {
+		t.Fatalf("anonymous Library read = %d", code)
+	}
+	for _, path := range []string{"/api/remote-sources/1/works", "/api/remote-sources/1/works/RJ00000015/media", "/api/voices/1/remote-matches"} {
+		if code := status(path); code != http.StatusUnauthorized {
+			t.Fatalf("anonymous %s with remote browsing off = %d, want 401", path, code)
+		}
+	}
+	if _, err := server.accessPolicy.UpdateRemoteBrowsing(context.Background(), 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if code := status("/api/remote-sources/1/works"); code != http.StatusNoContent {
+		t.Fatalf("anonymous remote read with remote browsing on = %d", code)
+	}
+	if code := status("/api/voices/1/remote-matches"); code != http.StatusNoContent {
+		t.Fatalf("anonymous voice remote matches with remote browsing on = %d", code)
+	}
+	if code := status("/api/voices/1"); code != http.StatusNoContent {
+		t.Fatalf("anonymous voice page = %d", code)
+	}
+}

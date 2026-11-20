@@ -127,7 +127,8 @@ administrators.
   workflow results, such as Fetch) and, for workflow operators, the runs that
   **Need attention**, with the newest running job above both. Fetch
   notifications open the local work detail and can be dismissed independently
-  for the signed-in user; a translation that needs attention opens the
+  for the signed-in user. A Fetch or Track that succeeds on retry notifies
+  again, even after its failure was dismissed; a translation that needs attention opens the
   Translation page's **Stopped** view, and a transcription its work;
   **Open Workflows** opens Workflows.
 - **Pull remote source rankings**, **Pull DLsite rankings**, Availability

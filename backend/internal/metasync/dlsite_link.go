@@ -12,8 +12,9 @@ import (
 )
 
 // linkedProductIdentityKeys name the provider fields that place a product in a
-// DLsite family. A linked snapshot describes the target work only, so these
-// are removed rather than letting the source's family claim the target.
+// DLsite family or bundle. A linked snapshot describes the target work only, so
+// these are removed rather than letting the source's family or bundle
+// membership claim the target.
 var linkedProductIdentityKeys = []string{
 	"translation_info",
 	"language_editions",
@@ -21,6 +22,8 @@ var linkedProductIdentityKeys = []string{
 	"original_work_number",
 	"base_workno",
 	"base_code",
+	"work_pack_children",
+	"work_pack_parent",
 }
 
 // metadataLinkSourceCode returns the user-declared DLsite source code for the
@@ -66,7 +69,7 @@ func (s *DLsiteSyncer) syncLinkedWork(ctx context.Context, code string, sourceCo
 		return linkedMetadataProduct(source, code), nil
 	})
 	if err != nil {
-		if dlsite.IsTimeout(err) || ctx.Err() != nil {
+		if stopsMetadataRun(ctx, err) {
 			return result, err
 		}
 		if errors.Is(err, dlsite.ErrNoProduct) {
@@ -78,7 +81,7 @@ func (s *DLsiteSyncer) syncLinkedWork(ctx context.Context, code string, sourceCo
 	result.SyncedCodes = append(result.SyncedCodes, code)
 	if s.cacheRoot != "" {
 		if _, err := s.downloadCover(ctx, product); err != nil {
-			if dlsite.IsTimeout(err) || ctx.Err() != nil {
+			if stopsMetadataRun(ctx, err) {
 				return result, err
 			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", code, err.Error()))

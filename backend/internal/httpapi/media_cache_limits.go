@@ -111,6 +111,10 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 	defer stopHeartbeat()
 
 	cleanup, err := s.enforceRemoteCacheLimits(jobCtx, sourceID, keepLocationID)
+	if err != nil && ctx.Err() != nil {
+		// The caller ended first; the cleanup returns to the queue.
+		return result, err
+	}
 	status := "succeeded"
 	errorMessage := ""
 	if err != nil {
@@ -165,23 +169,7 @@ func (s *Server) finishCacheLimitCleanup(ctx context.Context, runID int64, nodeI
 		"source_limit_gb":    result.SourceLimitGB,
 		"error":              errorMessage,
 	})
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, nodeID); err != nil {
-		return err
-	}
-	progress := 1
-	if status != "succeeded" {
-		progress = 0
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, progress_current = ?, progress_total = 1, error_message = ?,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, progress, errorMessage, jobID); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)
-	return err
+	return finishSingleFileWorkflowJob(ctx, s.db, runID, nodeID, jobID, status, errorMessage, output)
 }
 
 func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes int64, keepLocationID int64, protected map[string]struct{}) (int, int64, error) {

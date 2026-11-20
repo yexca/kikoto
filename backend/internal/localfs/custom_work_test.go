@@ -134,3 +134,21 @@ func TestCustomWorkCandidateAtAgreesWithTheFullWalk(t *testing.T) {
 		}
 	}
 }
+
+// The custom-work picker lists the folders below a data root reached through a
+// link, as the scan does.
+func TestDiscoverCustomWorkCandidatesWalksALinkedDataRoot(t *testing.T) {
+	target := t.TempDir()
+	writeFile(t, filepath.Join(target, "Example Work 1", "track01.mp3"))
+	root := filepath.Join(t.TempDir(), "data")
+	linkDirectoryForTest(t, target, root)
+
+	discovery, err := DiscoverCustomWorkCandidates(root, Options{ScanDepth: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(discovery.Candidates) != 1 || discovery.Candidates[0].RelPath != "Example Work 1" ||
+		discovery.Candidates[0].AbsPath != filepath.Join(root, "Example Work 1") {
+		t.Fatalf("candidates below a linked data root = %+v", discovery.Candidates)
+	}
+}

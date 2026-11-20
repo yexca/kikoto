@@ -28,7 +28,7 @@ func TestScanIndexesTreeAndArtwork(t *testing.T) {
 
 	db := storagetest.Open(t)
 	store := NewStore(db, root)
-	if _, err := store.InitializeRoot(context.Background()); err != nil {
+	if _, err := store.InitializeRoot(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	result, err := store.Scan(context.Background())
@@ -91,35 +91,82 @@ func TestListTreePagesThroughEveryChild(t *testing.T) {
 	}
 }
 
-func TestOfflineRootDoesNotMarkAssetsMissing(t *testing.T) {
+// A root whose marker is gone keeps its catalog: a scan adds what it finds
+// and marks nothing missing, initializing is refused unless it asks for a new
+// catalog, and restoring the marker brings the same catalog back online.
+func TestRootWithoutItsMarkerKeepsItsCatalog(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "movie.mp4"), []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	db := storagetest.Open(t)
 	store := NewStore(db, root)
-	if _, err := store.InitializeRoot(context.Background()); err != nil {
+	ctx := context.Background()
+	if _, err := store.InitializeRoot(ctx, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Scan(context.Background()); err != nil {
+	if _, err := store.Scan(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(root, markerName)); err != nil {
+	var identity string
+	if err := db.QueryRow("SELECT marker_id FROM record_root WHERE id=1").Scan(&identity); err != nil {
 		t.Fatal(err)
 	}
-	result, err := store.Scan(context.Background())
+	for _, step := range []func() error{
+		func() error { return os.Remove(filepath.Join(root, markerName)) },
+		func() error { return os.Remove(filepath.Join(root, "movie.mp4")) },
+		func() error { return os.WriteFile(filepath.Join(root, "added.mp4"), []byte("added"), 0o600) },
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state, err := store.EnsureRoot(ctx); err != nil || state.State != RootStateMarkerMissing {
+		t.Fatalf("root without its marker = %+v, %v", state, err)
+	}
+	result, err := store.Scan(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.State != "unconfigured" || result.MissingMarked {
-		t.Fatalf("offline scan result = %+v", result)
+	if result.MissingMarked || result.State != "complete" {
+		t.Fatalf("scan without the marker marked files missing: %+v", result)
 	}
-	var availability string
-	if err := db.QueryRow("SELECT availability FROM record_asset WHERE kind='video'").Scan(&availability); err != nil {
+	availability := func(name string) string {
+		t.Helper()
+		var value string
+		if err := db.QueryRow("SELECT availability FROM record_asset WHERE name=?", name).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	if availability("movie.mp4") != "available" || availability("added.mp4") != "available" {
+		t.Fatalf("assets after the scan: movie=%q added=%q", availability("movie.mp4"), availability("added.mp4"))
+	}
+	if _, err := store.InitializeRoot(ctx, false); !errors.Is(err, ErrRootFreshRequired) {
+		t.Fatalf("initializing a root that lost its marker = %v, want ErrRootFreshRequired", err)
+	}
+
+	restored, err := store.RestoreMarker(ctx)
+	if err != nil || restored.State != "online" {
+		t.Fatalf("restore marker = %+v, %v", restored, err)
+	}
+	if id, found, err := readMarker(root); err != nil || !found || id != identity {
+		t.Fatalf("restored marker = %q found=%v, %v; want the catalog identity %q", id, found, err, identity)
+	}
+	if availability("added.mp4") != "available" {
+		t.Fatal("restoring the marker lost the catalog")
+	}
+
+	// A new catalog is an explicit choice.
+	if err := os.Remove(filepath.Join(root, markerName)); err != nil {
 		t.Fatal(err)
 	}
-	if availability != "available" {
-		t.Fatalf("offline asset availability = %q", availability)
+	if state, err := store.InitializeRoot(ctx, true); err != nil || state.State != "online" {
+		t.Fatalf("fresh initialization = %+v, %v", state, err)
+	}
+	var assets int
+	if err := db.QueryRow("SELECT COUNT(*) FROM record_asset").Scan(&assets); err != nil || assets != 0 {
+		t.Fatalf("assets after a fresh initialization = %d, %v", assets, err)
 	}
 }
 
@@ -160,25 +207,32 @@ func TestInitializingAnotherDiskStartsANewCatalog(t *testing.T) {
 	if err := db.QueryRow(`SELECT id FROM record_folder WHERE name = 'trip'`).Scan(&firstFolder); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveProgress(ctx, 7, first, Progress{PositionSeconds: 60}); err != nil {
+	if _, err := store.SaveProgress(ctx, 7, first, Progress{PositionSeconds: 60}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.InitializeRoot(ctx); err != nil {
+	if _, err := store.InitializeRoot(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	if progress, err := store.Progress(ctx, 7, first); err != nil || progress.PositionSeconds != 60 {
 		t.Fatalf("progress after initializing the same disk = %+v, %v", progress, err)
 	}
 
-	// Another initialized disk is mounted at the path, and the administrator
-	// initializes it.
+	// Another initialized disk is mounted at the path. Initializing it without
+	// asking for a new catalog is refused and keeps the catalog; a fresh
+	// initialization starts a new one.
 	if err := os.WriteFile(filepath.Join(root, "trip", "clip.mp4"), []byte("second"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeMarker(root, "00000000000000000000000000000001"); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := store.InitializeRoot(ctx); err != nil || state.State != "online" {
+	if _, err := store.InitializeRoot(ctx, false); !errors.Is(err, ErrRootFreshRequired) {
+		t.Fatalf("initializing another disk without fresh = %v, want ErrRootFreshRequired", err)
+	}
+	if _, err := store.Asset(ctx, first); err != nil {
+		t.Fatalf("a refused initialization lost the catalog: %v", err)
+	}
+	if state, err := store.InitializeRoot(ctx, true); err != nil || state.State != "online" {
 		t.Fatalf("initialize another disk = %+v, %v", state, err)
 	}
 	if _, err := store.Asset(ctx, first); !errors.Is(err, sql.ErrNoRows) {
@@ -221,7 +275,7 @@ func TestInitializeGivesAnUnidentifiedMarkerAnIdentity(t *testing.T) {
 	if state, err := store.EnsureRoot(ctx); err != nil || state.State != "unconfigured" {
 		t.Fatalf("root with an unidentified marker = %+v, %v", state, err)
 	}
-	if state, err := store.InitializeRoot(ctx); err != nil || state.State != "online" {
+	if state, err := store.InitializeRoot(ctx, false); err != nil || state.State != "online" {
 		t.Fatalf("initialize = %+v, %v", state, err)
 	}
 	id, found, err := readMarker(root)
@@ -233,7 +287,7 @@ func TestInitializeGivesAnUnidentifiedMarkerAnIdentity(t *testing.T) {
 	}
 	// Each root initialized afresh gets its own identity.
 	other := t.TempDir()
-	if _, err := NewStore(storagetest.Open(t), other).InitializeRoot(ctx); err != nil {
+	if _, err := NewStore(storagetest.Open(t), other).InitializeRoot(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	if otherID, _, _ := readMarker(other); otherID == id || otherID == "" {

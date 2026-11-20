@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
@@ -260,7 +261,7 @@ func (s *Server) loadCircleWorksPage(ctx context.Context, userID int64, partyID 
 				LIMIT 1
 			)
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(codes.primary_code)
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
+		LEFT JOIN user_work_state ON user_work_state.work_id = `+personal.CanonicalWorkIDSQL("work.id")+` AND user_work_state.user_id = ?
 		ORDER BY COALESCE(dlsite_catalog.release_date, remote_catalog.release_date, '') DESC, codes.primary_code DESC
 	`, append([]any{partyID}, append(selectedArgs, partyID, partyID, partyID, userID)...)...)
 	if err != nil {

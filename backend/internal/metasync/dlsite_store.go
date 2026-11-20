@@ -53,9 +53,14 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	`, workID, providerID, product.WorkNo, s.productURL(product)); err != nil {
 		return err
 	}
-	priceCurrency := ""
+	// A failed dynamic request leaves rating, sales, and prices unknown, not
+	// absent: a field the product response did not declare keeps its value.
+	keepStored := product.DynamicUnavailable
+	var priceCurrency any = ""
 	if product.RegularPrice != nil || product.CurrentPrice != nil {
 		priceCurrency = "JPY"
+	} else if keepStored {
+		priceCurrency = nil
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -65,12 +70,12 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			description = ?,
 			release_date = ?,
 			age_rating = ?,
-			rating_average = ?,
-			sales_count = ?,
-			regular_price = ?,
-			current_price = ?,
-			price_currency = ?,
-			is_permanently_free = ?,
+			rating_average = `+dynamicWorkColumn("rating_average", keepStored)+`,
+			sales_count = `+dynamicWorkColumn("sales_count", keepStored)+`,
+			regular_price = `+dynamicWorkColumn("regular_price", keepStored)+`,
+			current_price = `+dynamicWorkColumn("current_price", keepStored)+`,
+			price_currency = `+dynamicWorkColumn("price_currency", keepStored)+`,
+			is_permanently_free = `+dynamicWorkColumn("is_permanently_free", keepStored)+`,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString,
@@ -97,6 +102,11 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	baseRaw := product.Raw
 	if len(baseRaw) == 0 {
 		baseRaw = json.RawMessage(`{}`)
+	}
+	if keepStored {
+		if baseRaw, err = withStoredDynamicSection(ctx, tx, workID, providerID, product.WorkNo, baseRaw); err != nil {
+			return err
+		}
 	}
 	contentHash := hashSnapshot(baseRaw)
 	variantKey := metadataVariantKey(editionLanguage, editionToken)
@@ -134,7 +144,59 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := s.classifyFamilyEditions(ctx, baseProductCode(product)); err != nil {
 		return err
 	}
-	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, s.projectionPriority())
+	if err := ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, s.projectionPriority()); err != nil {
+		return err
+	}
+	if s.familyStored != nil {
+		s.familyStored(ctx, logicalWorkID)
+	}
+	return nil
+}
+
+// dynamicWorkColumn is the assignment of a normalized column that the dynamic
+// product request feeds. When that request failed, keepStored keeps the stored
+// value wherever the product response left the field unknown. The column names
+// are fixed literals.
+func dynamicWorkColumn(column string, keepStored bool) string {
+	if keepStored {
+		return "COALESCE(?, " + column + ")"
+	}
+	return "?"
+}
+
+// withStoredDynamicSection carries the dynamic section of the work's latest
+// stored snapshot into a product whose dynamic request failed, so the counts
+// read from the snapshot survive the refresh.
+func withStoredDynamicSection(ctx context.Context, tx *sql.Tx, workID, providerID int64, externalID string, raw json.RawMessage) (json.RawMessage, error) {
+	var stored string
+	err := tx.QueryRowContext(ctx, `
+		SELECT snapshot_json
+		FROM metadata_snapshot
+		WHERE work_id = ? AND provider_id = ? AND external_id = ?
+		ORDER BY fetched_at DESC, id DESC
+		LIMIT 1
+	`, workID, providerID, externalID).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return raw, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var previous map[string]json.RawMessage
+	if json.Unmarshal([]byte(stored), &previous) != nil || rawFieldEmpty(previous["dynamic"]) {
+		return raw, nil
+	}
+	var current map[string]json.RawMessage
+	if json.Unmarshal(raw, &current) != nil {
+		return raw, nil
+	}
+	if _, ok := current["product"]; !ok {
+		current = map[string]json.RawMessage{"product": raw}
+	} else if !rawFieldEmpty(current["dynamic"]) {
+		return raw, nil
+	}
+	current["dynamic"] = previous["dynamic"]
+	return mustMarshalRaw(current, raw), nil
 }
 
 // replaceDLsiteWorkGenres records the genre ids of one edition and learns
@@ -353,6 +415,8 @@ func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.
 	} else if ownerID > 0 {
 		return ownerID, nil
 	}
+	// An existing work keeps its descriptive columns here: applyProduct writes
+	// them only after confirming that no newer result was stored meanwhile.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -363,13 +427,7 @@ func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work (primary_code, work_type, title, title_kana, description, release_date, age_rating)
 		VALUES (?, 'audio', ?, ?, ?, ?, ?)
-		ON CONFLICT(primary_code) DO UPDATE SET
-			title = excluded.title,
-			title_kana = excluded.title_kana,
-			description = excluded.description,
-			release_date = COALESCE(excluded.release_date, work.release_date),
-			age_rating = excluded.age_rating,
-			updated_at = CURRENT_TIMESTAMP
+		ON CONFLICT(primary_code) DO NOTHING
 	`, code, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString); err != nil {
 		return 0, err
 	}
@@ -471,6 +529,11 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 		}
 		return fmt.Errorf("provider product does not match the existing edition")
 	}
+	if !productDeclaresFamily(product) {
+		if kept, err := keepClassifiedEditionFamily(ctx, tx, providerID, workID, currentCode, product); err != nil || kept {
+			return err
+		}
+	}
 	baseCode := baseProductCode(product)
 	canonicalCode := currentCode
 	if baseCode != "" {
@@ -528,6 +591,46 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 		}
 	}
 	return syncKnownProductLanguageEditions(ctx, tx, providerID, logicalWorkID, canonicalCode, product.LanguageEditions)
+}
+
+// productDeclaresFamily reports whether a response says anything about the
+// product's family: a translation_info or a language_editions list.
+func productDeclaresFamily(product dlsite.Product) bool {
+	info := product.TranslationInfo
+	return strings.TrimSpace(info.OriginalWorkNo) != "" || strings.TrimSpace(info.ParentWorkNo) != "" ||
+		strings.TrimSpace(info.Lang) != "" || len(info.StatusForTranslatorByLang) > 0 ||
+		len(product.LanguageEditions) > 0
+}
+
+// keepClassifiedEditionFamily keeps the family of an edition that is already
+// classified when a response declares none. Without a translation_info or a
+// language_editions list a response looks like an origin of its own, which is
+// no evidence against the family an earlier response declared. The edition's
+// descriptive fields still follow the response. It reports whether the
+// edition was already classified.
+func keepClassifiedEditionFamily(ctx context.Context, tx *sql.Tx, providerID int64, workID int64, currentCode string, product dlsite.Product) (bool, error) {
+	var logicalWorkID int64
+	err := tx.QueryRowContext(ctx, "SELECT logical_work_id FROM work_edition WHERE work_id = ?", workID).Scan(&logicalWorkID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	language := productEditionLanguage(product)
+	label := productEditionLabel(product)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE work_edition
+		SET provider_id = ?,
+			metadata_language = CASE WHEN ? <> '' THEN ? ELSE metadata_language END,
+			edition_label = CASE WHEN ? <> '' THEN ? ELSE edition_label END,
+			maker_id = CASE WHEN ? <> '' THEN ? ELSE maker_id END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE work_id = ?
+	`, providerID, language, language, label, label, strings.ToUpper(strings.TrimSpace(product.MakerID)), strings.ToUpper(strings.TrimSpace(product.MakerID)), workID); err != nil {
+		return false, err
+	}
+	return true, upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, currentCode, language, label, workID, "persisted_edition")
 }
 
 func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerID int64, logicalWorkID int64, canonicalCode string, editions []dlsite.LanguageEdition) error {

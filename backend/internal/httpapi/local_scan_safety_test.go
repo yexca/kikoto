@@ -490,3 +490,103 @@ func TestLocalScanRetiresFolderRecordsInMetadataDirectories(t *testing.T) {
 		t.Fatalf("presence = %q (%s), want %q available", presenceRoot, availability, realRoot)
 	}
 }
+
+// A work can be affected through a folder inside an incremental scan's scope
+// while its presence names a folder the scan cannot see. Losing the visible
+// folder leaves that presence's state alone, as a full scan does.
+func TestIncrementalLocalScanKeepsPresenceOfAFolderOutsideItsScope(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	if err := storagepool.WriteMarker(dataRoot, "library-test"); err != nil {
+		t.Fatal(err)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 1)
+	visibleRoot, hiddenRoot := "Works/"+code, "Archive/Hidden/"+code
+	visiblePath := visibleRoot + "/track.mp3"
+	seeded := seedIndexedLocalScanWork(t, db, server, code, hiddenRoot, visiblePath)
+	for _, folder := range []struct {
+		root    string
+		primary int
+	}{{hiddenRoot, 1}, {visibleRoot, 0}} {
+		if _, err := db.Exec(`
+			INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (?, ?, ?, 'external', 'active', ?)
+		`, seeded.workID, seeded.sourceID, folder.root, folder.primary); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	executeIncrementalLocalScanForTest(t, server, visibleRoot)
+
+	if got := localPresenceAvailability(t, db, seeded.workID, seeded.sourceID); got != "available" {
+		t.Fatalf("presence on a folder outside the scan's scope = %q, want available", got)
+	}
+	want := []string{hiddenRoot + " active 1", visibleRoot + " missing 0"}
+	if folders := localWorkFolders(t, db, code); strings.Join(folders, "|") != strings.Join(want, "|") {
+		t.Fatalf("folders = %v, want %v", folders, want)
+	}
+	assertLocalScanLocationAvailability(t, db, visiblePath, "missing")
+}
+
+// A work found in several folders keeps all of them. When one of its recorded
+// folders disappears, the files below it disappear with it, while a folder the
+// scan found, even one inside the vanished record, keeps its files.
+func TestLocalScanMarksFilesOfAVanishedFolderOfASeveralFolderWorkMissing(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 3})
+	if err := storagepool.WriteMarker(dataRoot, "library-test"); err != nil {
+		t.Fatal(err)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 2)
+	keptRoot, replacedRoot, vanishedRoot := "A/"+code, "B/"+code, "C/"+code
+	keptPath := keptRoot + "/track.mp3"
+	nestedPath := replacedRoot + "/" + code + " Disc/track.mp3"
+	vanishedPath := vanishedRoot + "/track.mp3"
+	for _, path := range []string{keptPath, nestedPath} {
+		absolute := filepath.Join(dataRoot, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(absolute, []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seeded := seedIndexedLocalScanWork(t, db, server, code, keptRoot, keptPath)
+	for _, path := range []string{nestedPath, vanishedPath} {
+		if _, err := db.Exec(`
+			INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, size_bytes, availability)
+			VALUES (?, ?, 'local', ?, 5, 'available')
+		`, seeded.mediaItemID, seeded.sourceID, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, folder := range []struct {
+		root    string
+		primary int
+	}{{keptRoot, 1}, {replacedRoot, 0}, {vanishedRoot, 0}} {
+		if _, err := db.Exec(`
+			INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (?, ?, ?, 'external', 'active', ?)
+		`, seeded.workID, seeded.sourceID, folder.root, folder.primary); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	executeLocalScanForTest(t, server)
+
+	if got := localPresenceAvailability(t, db, seeded.workID, seeded.sourceID); got != "available" {
+		t.Fatalf("presence = %q, want available", got)
+	}
+	assertLocalScanLocationAvailability(t, db, keptPath, "available")
+	assertLocalScanLocationAvailability(t, db, nestedPath, "available")
+	assertLocalScanLocationAvailability(t, db, vanishedPath, "missing")
+	var vanishedState string
+	if err := db.QueryRow("SELECT state FROM work_folder_location WHERE root_path = ?", vanishedRoot).Scan(&vanishedState); err != nil {
+		t.Fatal(err)
+	}
+	if vanishedState != "missing" {
+		t.Fatalf("vanished folder state = %q, want missing", vanishedState)
+	}
+}

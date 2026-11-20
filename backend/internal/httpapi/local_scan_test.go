@@ -230,12 +230,8 @@ func TestLocalLibraryScanDefaultsToLocalPresenceOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := server.enqueueLocalScan(context.Background(), "manual", "manual")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Status != "queued" || second.Status != "queued" || first.RunID == second.RunID {
-		t.Fatalf("queued local scan results = %#v / %#v", first, second)
+	if first.Status != "queued" {
+		t.Fatalf("queued local scan result = %#v", first)
 	}
 	var snapshotCountBefore int
 	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot").Scan(&snapshotCountBefore); err != nil {
@@ -295,14 +291,11 @@ func TestLocalLibraryScanDefaultsToLocalPresenceOnly(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'metadata_sync'").Scan(&metadataRunCount); err != nil {
 		t.Fatal(err)
 	}
-	var firstStatus, secondStatus string
+	var firstStatus string
 	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", first.RunID).Scan(&firstStatus); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", second.RunID).Scan(&secondStatus); err != nil {
-		t.Fatal(err)
-	}
-	if runCount != 2 || nodeCount != 4 || jobCount != 1 || snapshotCount != 0 || remotePresenceCount != 0 || metadataRunCount != 0 || firstStatus != "succeeded" || secondStatus != "queued" {
+	if runCount != 1 || nodeCount != 4 || jobCount != 1 || snapshotCount != 0 || remotePresenceCount != 0 || metadataRunCount != 0 || firstStatus != "succeeded" {
 		t.Fatalf("local-only run counts = runs %d nodes %d jobs %d snapshots %d remote presence %d metadata runs %d", runCount, nodeCount, jobCount, snapshotCount, remotePresenceCount, metadataRunCount)
 	}
 	if server.dlsiteClient.(*fakeDemoScanDLsiteClient).calls[code] != 0 {
@@ -451,6 +444,10 @@ func TestCreateLocalScanRunAcceptsOptionalFollowUp(t *testing.T) {
 	}
 	if !result.FollowUpRun || !payload.FollowUpRun {
 		t.Fatalf("follow-up request = result %#v payload %#v", result, payload)
+	}
+	// A request while that scan is active would join it.
+	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", result.RunID); err != nil {
+		t.Fatal(err)
 	}
 
 	request = httptest.NewRequest(http.MethodPost, "/api/workflow-runs/local-scan", nil)
@@ -1255,4 +1252,77 @@ func localScanMissingLocationCount(t *testing.T, db *sqlutil.DB, runID int64) in
 		t.Fatal(err)
 	}
 	return summary.MissingLocations
+}
+
+// A complete scan requested while one is queued or running returns that run;
+// changes from the folder watcher still queue their own incremental run.
+// A complete-scan request joins a complete scan that is still queued, adding its
+// follow-up and its trigger, and queues its own run while one is running: the
+// running scan may already have passed the folders that changed.
+func TestLocalScanRequestJoinsActiveCompleteScan(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
+	ctx := context.Background()
+	first, err := server.enqueueLocalScan(ctx, "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO workflow_trigger (id, workflow_definition_id, trigger_type, display_name)
+		VALUES (5, (SELECT id FROM workflow_definition WHERE code = 'local_library_scan'), 'schedule', 'Example interval')`); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := server.enqueueLocalScanWithOptions(ctx, "schedule", "scheduled_interval", 5, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.RunID != first.RunID || queued.JobID != first.JobID || queued.Status != "queued" || !queued.FollowUpRun {
+		t.Fatalf("request while queued = %#v, want run %d with its follow-up", queued, first.RunID)
+	}
+	var followUp bool
+	if err := db.QueryRow("SELECT json_extract(payload_json, '$.follow_up_run') = 1 FROM workflow_job WHERE id = ?", first.JobID).Scan(&followUp); err != nil || !followUp {
+		t.Fatalf("queued job follow-up = %t, %v; the joining request's follow-up was lost", followUp, err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := updateTriggerForQueuedSystemRun(ctx, tx, first.RunID, "failed", []string{"example failure"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var triggerError string
+	if err := db.QueryRow("SELECT last_error_message FROM workflow_trigger WHERE id = 5").Scan(&triggerError); err != nil || triggerError != "example failure" {
+		t.Fatalf("joining trigger result = %q, %v", triggerError, err)
+	}
+
+	if _, ok, err := server.claimNextQueuedWorkflowJob(ctx, "local-scan-single-flight"); err != nil || !ok {
+		t.Fatalf("claim = %t, %v", ok, err)
+	}
+	recovery, err := server.enqueueLocalScanWithPayload(ctx, "filesystem_event", "data_directories_changed", 0, localScanJobPayload{
+		ScanMode: localScanModeFull, FullFallbackReason: "watcher_recovery",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovery.RunID == first.RunID {
+		t.Fatal("a complete-scan request joined the running scan")
+	}
+	again, err := server.enqueueLocalScan(ctx, "manual", "retry_run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.RunID != recovery.RunID {
+		t.Fatalf("request while a scan is queued = run %d, want the queued run %d", again.RunID, recovery.RunID)
+	}
+	incremental, err := server.enqueueLocalScanWithPayload(ctx, "filesystem_event", "data_directories_changed", 0, localScanJobPayload{
+		ScanMode: localScanModeIncremental, ChangedPaths: []string{"RJ00000000"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incremental.RunID == first.RunID || incremental.RunID == recovery.RunID {
+		t.Fatal("watcher changes joined a complete scan")
+	}
 }

@@ -1,10 +1,11 @@
-import { deleteJSONBody, getJSON, postJSON, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import { deleteJSONBody, getJSON, postJSON, postJSONBody, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
 import type { VideoPlaybackInfo } from "@/lib/mediaApi";
 
 export type RecordRoot = {
   id: number;
   displayName: string;
-  state: "unconfigured" | "online" | "offline" | "unreadable";
+  /** marker_missing: the path is there without the catalog's marker; the catalog is browsed until it is restored. */
+  state: "unconfigured" | "online" | "offline" | "unreadable" | "marker_missing";
   lastScannedAt?: string;
   scanGeneration: number;
 };
@@ -63,6 +64,8 @@ export type RecordProgress = {
   durationSeconds?: number;
   completed: boolean;
   lastPlayedAt?: string;
+  /** When the client captured a save, in Unix milliseconds; the server keeps the latest. */
+  order?: number;
 };
 
 export type RecordScan = {
@@ -74,7 +77,13 @@ export type RecordScan = {
 
 export const recordsApi = {
   getRecordRoot: () => sharedGetJSON<{ root: RecordRoot }>("/api/records"),
-  initializeRecordRoot: () => postJSON<{ root: RecordRoot }>("/api/records/root/initialize"),
+  /** `fresh` starts a new catalog in place of one whose marker is missing, forgetting it. */
+  initializeRecordRoot: (options: { fresh?: boolean } = {}) =>
+    options.fresh
+      ? postJSONBody<{ root: RecordRoot }>("/api/records/root/initialize", { fresh: true })
+      : postJSON<{ root: RecordRoot }>("/api/records/root/initialize"),
+  /** Writes the marker of the kept catalog into a root that lost it. */
+  restoreRecordMarker: () => postJSON<{ root: RecordRoot }>("/api/records/root/restore-marker"),
   listRecordTree: (folderId?: number, signal?: AbortSignal, offset = 0) => {
     const query = new URLSearchParams();
     if (folderId) query.set("folderId", String(folderId));
@@ -106,8 +115,9 @@ export const recordsApi = {
   },
   getRecordProgress: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),
+  /** `stored` is false when the server already holds a save captured later. */
   updateRecordProgress: (id: number, progress: RecordProgress) =>
-    putJSONBody<void>(`/api/records/assets/${id}/progress`, progress),
+    putJSONBody<{ ok: boolean; stored?: boolean } | undefined>(`/api/records/assets/${id}/progress`, progress),
   /**
    * Moves a record file to the trash in the record root; `trashPath` is relative to that root.
    * `expectedPath` is the relative path the viewer confirmed; the server refuses an id that names another path.

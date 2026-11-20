@@ -234,3 +234,95 @@ func TestOrphanSweepSettlesOnlyReleasedLeases(t *testing.T) {
 		t.Fatalf("job=%s run=%s resumes=%d, want the orphan requeued from its checkpoint", jobStatus, runStatus, resumeCount)
 	}
 }
+
+// A run cancelled while its job was still working keeps its cancellation when
+// the job writes its result afterwards.
+func TestLateJobResultKeepsCancelledRun(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	seedQueuedCacheJobs(t, db, 1)
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, "late-result-lease")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	cancel := requestWorkflowRunAction(t, server.cancelWorkflowRun, job.RunID, account.User{ID: 1, Role: "super_admin", Permissions: account.PermissionsForRole("super_admin")})
+	if cancel.Code != http.StatusOK {
+		t.Fatalf("cancel = %d %s", cancel.Code, cancel.Body.String())
+	}
+	if err := server.finishMediaCacheCleanup(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", 7, "Cache/RJ00000000/track.mp3", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	jobStatus, runStatus, _, _, _ := loadJobState(t, db, job.ID)
+	var nodeStatus string
+	if err := db.QueryRow(`SELECT status FROM workflow_node_run WHERE id = ?`, job.NodeRunID).Scan(&nodeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "cancelled" || runStatus != "cancelled" || nodeStatus != "cancelled" {
+		t.Fatalf("late result overwrote the cancellation: job=%s run=%s node=%s", jobStatus, runStatus, nodeStatus)
+	}
+}
+
+// A single-file job writes its node, job, and run result together, so a
+// failed run write leaves the job running under its lease for settlement.
+func TestSingleFileJobResultIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	seedQueuedCacheJobs(t, db, 1)
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, "single-file-lease")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	execFetchTestStatements(t, db, `CREATE TRIGGER fail_single_file_result BEFORE UPDATE OF status ON workflow_run
+		WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'synthetic result write failure'); END`)
+	if err := server.finishMediaCacheCleanup(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", 7, "Cache/RJ00000000/track.mp3", true, ""); err == nil {
+		t.Fatal("result write unexpectedly succeeded")
+	}
+	jobStatus, runStatus, lease, _, _ := loadJobState(t, db, job.ID)
+	var nodeStatus string
+	if err := db.QueryRow(`SELECT status FROM workflow_node_run WHERE id = ?`, job.NodeRunID).Scan(&nodeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "running" || runStatus != "running" || nodeStatus != "running" || lease != job.LockedBy {
+		t.Fatalf("partial result: job=%s run=%s node=%s lease=%q", jobStatus, runStatus, nodeStatus, lease)
+	}
+}
+
+// A local scan cancelled before it records its result stays cancelled, and its
+// trigger keeps what the cancellation left.
+func TestLateLocalScanResultKeepsCancelledRun(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
+	scan, err := server.enqueueLocalScan(ctx, "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO workflow_trigger (id, workflow_definition_id, trigger_type, display_name, last_error_message)
+		VALUES (5, (SELECT id FROM workflow_definition WHERE code = 'local_library_scan'), 'schedule', 'Example interval', 'earlier error')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE workflow_run SET trigger_id = 5 WHERE id = ?`, scan.RunID); err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, "late-scan-result")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	cancel := requestWorkflowRunAction(t, server.cancelWorkflowRun, job.RunID, account.User{ID: 1, Role: "super_admin", Permissions: account.PermissionsForRole("super_admin")})
+	if cancel.Code != http.StatusOK {
+		t.Fatalf("cancel = %d %s", cancel.Code, cancel.Body.String())
+	}
+	if err := server.finishQueuedLocalScanJob(ctx, job, job.NodeRunID, localScanResult{Status: "succeeded"}, map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	jobStatus, runStatus, _, _, _ := loadJobState(t, db, job.ID)
+	var triggerError string
+	if err := db.QueryRow(`SELECT last_error_message FROM workflow_trigger WHERE id = 5`).Scan(&triggerError); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "cancelled" || runStatus != "cancelled" || triggerError != "earlier error" {
+		t.Fatalf("late scan result overwrote the cancellation: job=%s run=%s trigger=%q", jobStatus, runStatus, triggerError)
+	}
+}

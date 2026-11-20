@@ -123,6 +123,25 @@ func TestCandidateSitesUsesWorkCodePrefix(t *testing.T) {
 	}
 }
 
+// A rate limit on one candidate site is what the fetch reports, even when a
+// later candidate fails another way, so a bulk run stops instead of skipping
+// the work.
+func TestFetchProductKeepsARateLimitFromAnEarlierSite(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/maniax/") {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(server).FetchProduct(context.Background(), "RJ00000001")
+	if !IsRateLimited(err) {
+		t.Fatalf("FetchProduct() error = %v, want the rate limit", err)
+	}
+}
+
 func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/maniax/ranking/day" {
@@ -300,6 +319,32 @@ func TestFetchProductAcceptsEmptyCreatorsArray(t *testing.T) {
 	}
 	if len(product.Creators) != 0 {
 		t.Fatalf("Creators = %#v", product.Creators)
+	}
+}
+
+// A failed dynamic request still returns the product, marked so the store
+// keeps the rating, sales, and prices it already has.
+func TestFetchProductMarksAFailedDynamicRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/maniax/api/=/product.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"workno":"RJ00000001","product_name":"Example Work"}]`))
+		case "/maniax-touch/product/info/ajax":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	product, err := newTestClient(server).FetchProduct(context.Background(), "RJ00000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !product.DynamicUnavailable || product.RateAverage2DP != nil || product.CurrentPrice != nil {
+		t.Fatalf("product = unavailable %t, rating %v, price %v; want a marked product without dynamic fields",
+			product.DynamicUnavailable, product.RateAverage2DP, product.CurrentPrice)
 	}
 }
 

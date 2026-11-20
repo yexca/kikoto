@@ -1,5 +1,5 @@
 import type { VideoEmbeddedSubtitle } from "@/lib/api";
-import { parseAssCues, parseTimedCues, timedCuesToWebVtt } from "@/lib/timedLyrics";
+import { cueTextTagPattern, parseAssCues, parseTimedCues, timedCuesToWebVtt } from "@/lib/timedLyrics";
 import { sidecarSubtitleChoices, type LyricsChoice } from "@/player/lyricsMatching";
 
 /** A subtitle file beside a video: a local location, or a remote file read through `url`. */
@@ -32,17 +32,17 @@ export function videoSubtitleWebVtt(text: string) {
   return cues.some((cue) => cue.lines.length > 0) ? timedCuesToWebVtt(cues) : null;
 }
 
-const srtTagPattern = /(<\/?[a-zA-Z][^<>]*>)/;
 const webVttSharedTagPattern = /^<(\/?)([ibu])>$/i;
 
 /**
  * One line of SRT cue text as WebVTT cue text: the `<i>`, `<b>`, and `<u>`
- * markup the formats share is kept, other tags such as `<font>` are dropped,
- * and every other `<`, `>`, and `&` is escaped so it shows as written.
+ * markup the formats share is kept, other tags such as `<font>` and inline
+ * timestamps are dropped, and every other `<`, `>`, and `&` is escaped so it
+ * shows as written.
  */
 function srtCueTextToWebVtt(line: string) {
   return line
-    .split(srtTagPattern)
+    .split(cueTextTagPattern)
     .map((part, index) => {
       if (index % 2 === 1) {
         const shared = webVttSharedTagPattern.exec(part);

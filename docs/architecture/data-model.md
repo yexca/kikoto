@@ -74,10 +74,28 @@ provider that supplied the relation; `work_credit` relates a work to a person
 in a role such as `voice_actor`. `person_external_id` records a provider's
 voice actor id for a person (`id_type = 'voice_actor_id'`), scoped to that
 provider: the DLsite creator id from a DLsite snapshot, or a remote source's
-own id. Credit projection resolves a credited voice actor by that id first;
-an unknown id falls back to the name and is then bound to the person found.
+own id. The provider id, not the name, identifies a voice actor: two people may
+share a display name. Credit projection resolves a credited voice actor by
+that id first. An id seen for the first time binds to the voice actor credited
+by name before the id was known: among the people of that name, the one who
+carries no id of the same provider, or, when several carry none of it, the
+one who carries no id at all. When no person displays the name, it binds to
+the one person holding the name as a confirmed alias, if that person carries
+no id of the provider. In every other case the id gets a new person with the
+plain name, so it never binds to a namesake who carries another id of the
+provider; an administrator who knows two ids name one voice actor merges
+them. A credit without an id resolves by name alone: the one person of that
+name, or, when several share it, the person among them who carries no voice
+actor id (the earliest when several carry none), never a namesake a provider
+id identifies. When every one of them carries an id, a new person with the
+plain name takes the credit, marked `person.ambiguous_name`, and later
+credits of the name reuse it; no provider id binds to that person and no
+projection merge absorbs it, so the credits it holds never move to one of the
+identified namesakes. A name no person displays resolves through a confirmed
+alias only when one person holds it.
 `person.id` stays the voice actor's identity, and one person may hold several
-ids. Two people who share a display name still resolve to one person.
+ids. A work's voice link by name links to a credited voice actor only when
+the name matches exactly one of them.
 
 A person resolved by a provider id is named by that provider's spelling on an
 original edition, so a provider rename renames the person and keeps the former
@@ -88,7 +106,10 @@ the person never replaces the display name they kept. A person whose display
 name is the snapshot's spelling of a resolved id is the same voice actor
 credited by name before the id was known: projection merges the two through the
 same recorded, undoable merge an administrator makes, so each id is one person
-credited once per work. When the spelling names the voice actor, the person
+credited once per work. When several people of that spelling could be that
+voice actor, when another person of that spelling carries an id of the same
+provider, or when the person was made for an ambiguous name, projection
+merges none of them. When the spelling names the voice actor, the person
 already displayed under it survives, unless an administrator merged that name
 into the person carrying the id; otherwise the person carrying the id survives.
 Projection keeps them apart when the other person carries another id of
@@ -123,7 +144,9 @@ the DLsite creator id whichever provider fetched the work last, and a remote
 snapshot's id is bound to the same person when both snapshots credit the same
 name. The DLsite credits are written last, so DLsite stays the provider of a
 credit both snapshots name. One snapshot crediting no voice actor adds the
-unknown voice actor only when the other credits none either. Staff credits and
+unknown voice actor only when the other credits none either, and a work that
+credits a real voice actor loses its snapshot credit of the unknown voice
+actor, such as one an earlier snapshot that named none left. Staff credits and
 DLsite circle relations are projected from the work's latest DLsite snapshot.
 `work_snapshot_projection` records,
 per work and projection, the snapshot and a hash of the projection input it
@@ -488,8 +511,8 @@ An `ageRating` override stores a known rating under its canonical name,
 make the work's provider rating stricter; any other value is refused with
 `400 invalid_age_rating`. The effective rating is the manual one unless the
 provider rating is stricter: work detail shows it with the provider value as
-`providerAgeRating`, library search matches it, and the content safety
-assessment uses it. A stored manual value that is not a known rating leaves
+`providerAgeRating`, library search matches it, Demo eligibility requires it
+to be all-ages, and the content safety assessment uses it. A stored manual value that is not a known rating leaves
 the assessment unknown.
 
 ### Normalized Fields and Metadata Links
@@ -500,7 +523,11 @@ filtering and sorting read these columns rather than extracting snapshot JSON.
 `regular_price` and `current_price` are integer JPY amounts. A work is marked
 `is_permanently_free` only when both prices are zero and the provider does not
 report a discount; temporary free campaigns therefore remain ineligible for
-Demo mode.
+Demo mode. Rating, sales, and prices come mainly from DLsite's dynamic product
+request. When that request fails, the sync still stores the product, and each
+of these columns, the price currency, `is_permanently_free`, and the
+snapshot's `dynamic` section keep their stored values unless the product
+response itself declares the field.
 
 `work_code_alias` maps provider-declared edition codes to a logical work. An
 alias may reference a persisted edition work, but metadata-only aliases do not
@@ -539,7 +566,9 @@ work uses, for example when a bonus edition is withdrawn from sale and the
 regular edition is sold under another code. Metadata sync for a linked work
 requests only the linked code and stores the result on the linked work under
 its own code: the snapshot's product codes are rewritten to the work, its
-translation and language-edition relationships are removed, and
+translation and language-edition relationships and its bundle fields
+(`work_pack_children`, `work_pack_parent`) are removed, so no bundle membership
+is recorded for the linked work, and
 `_kikoto.metadata_source_code` keeps the source for traceability. The linked
 code never becomes a work, edition, or alias, and its family is not walked.
 Saving a link rechecks a work recorded as `not_found`; removing it keeps the
@@ -733,7 +762,10 @@ metadata sync keeps a merge instead of recreating the merged-away person. A
 name an administrator merged never replaces the target's display name. A merge
 that credit projection makes gives the merged names `identity_merged_*` alias
 sources instead of `merged_*`, so they carry no such priority; Undo treats both
-alike.
+alike. A merge points every manual voice actor list (`work_manual_override`
+field `voice_actors`) that named the merged-away person at the target, keeping
+one entry where a list named both; Undo restores a list the merge rewrote unless
+it was edited since.
 
 ## File Availability
 
@@ -759,7 +791,8 @@ presence row, so cleanup and the directory UI address a stable folder identity.
 `role` is `external` for a scanned folder or `managed_fetch` for a folder a
 Fetch published; `state` is `active`, `missing`, or a review-driven cleanup
 state (`pending_cleanup`, `ignored`). A scan marks only folders it could
-observe as missing.
+observe as missing, together with the available file locations below such a
+folder that lie in no folder it found.
 
 A work may have several active folders: a scan that finds one work code in
 several folders records each of them for that work. The local presence names
@@ -781,8 +814,12 @@ that holds it, and leaves an item a scan has made local as the scan recorded
 it; only a path no item holds goes to the item with the
 `remote:<source>:<code>:<path>` fingerprint.
 
-A work folder is the deepest folder within the scan depth whose name carries a
-work code. A folder named `Lyrics - <language> - <code> - <date>-<time>`, the
+A work folder is the outermost folder within the scan depth whose name carries
+a work code. A folder inside it whose name carries a code, such as a bonus or
+disc folder named after its own product, is part of that work folder, and its
+files are files of the outer work. A code in a folder name is a word of its
+own: a letter or digit right before it, or a digit right after it, makes it
+part of a longer word or number, so `XRJ00000001` carries no code. A folder named `Lyrics - <language> - <code> - <date>-<time>`, the
 name a remote lyrics download gives a folder after the edition it read, names
 no work: it stays part of the work folder that holds it.
 
@@ -1064,6 +1101,35 @@ Important tables:
 - `user_listening_import`
 - `user_listening_generation`
 - `audit_log`
+
+A work family's personal state lives on its canonical work: the logical
+work's canonical work, else its canonical edition, else the work itself while
+the family has neither in the library (`personal.CanonicalWorkIDSQL`).
+`user_work_state`, `user_work_tag`, favorite list items with their
+smart-list exclusions, `user_work_playback_cursor`, and the listening
+history in `user_listening_session`, `user_listening_day`, and
+`user_listening_import` are written there also when a request names an
+edition. An edition's detail, and the lists, tags, and ratings of lists,
+circles, voice actors, and workflow filters, read its family's state. A smart
+list's seen marks name each work its rule matched, editions included, and stay
+where they are. When metadata sync stores a family, the state an edition still
+holds moves to the canonical work: the later listening mark, rating, and
+cursor win, unless the later row was never changed after it was created, so a
+cleared mark or rating stays cleared; two notes are joined; the work keeps the
+personal tags of both; a tag or a list that both held keeps one entry dated by
+the earlier; listening days and imported totals are added together; and the
+favorite flag follows the moved memberships. A startup repair does the same
+for every family whose state lies on an edition, so state written before the
+canonical work changed is never split across a family. A family with nothing
+to move takes no write transaction.
+
+An account id is never handed out again: `user_account` uses an
+`AUTOINCREMENT` key, which started above the highest requester id any
+workflow run named when the key was introduced, so those ids are retired for
+good as well. A new account therefore never inherits a deleted account's runs
+or the client state the browser keeps under its id. Only the id of an account
+deleted before the key existed and named by no run could be handed out once
+more.
 
 `user_password_credential` holds one Argon2id password hash per account.
 `user_session.id` is the hex SHA-256 digest of the bearer token issued to the

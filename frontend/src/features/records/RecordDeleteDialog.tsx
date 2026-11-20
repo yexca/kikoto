@@ -62,11 +62,11 @@ export function RecordDeleteDialog({
       );
       return;
     }
-    for (const track of player.queue) {
-      if (track.record && removed.has(track.record.assetId) && track.queueItemId) {
-        player.removeQueueItem(track.queueItemId);
-      }
-    }
+    player.removeQueueItems(
+      player.queue.flatMap((track) =>
+        track.record && removed.has(track.record.assetId) && track.queueItemId ? [track.queueItemId] : [],
+      ),
+    );
     toast.success(t("records.delete.done", { name }));
     onDeleted(target);
   };

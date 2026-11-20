@@ -637,6 +637,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   an existing queued or running Fetch for the same canonical work.
 - Opens Login before any Fetch preparation request when the current visitor is
   anonymous.
+- Local files chosen in the Fetch dialog are copied into the fetched folder,
+  and once the Fetch is published the folders they came from are archived for
+  review; **After Fetch** lists those folders. A Fetch of remote files alone
+  leaves every existing folder in place.
 - **Fetch** on a remote source of a work that has a local folder opens
   **Manage files** on that source's edition, for users who may manage local
   files and fetch. For those users, a work without a local folder opens a

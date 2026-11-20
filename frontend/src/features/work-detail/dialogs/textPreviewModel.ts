@@ -11,8 +11,6 @@ const lrcTagPattern = /^\[([A-Za-z]+):(.*)\]$/;
 const displayedTagKeys = new Set(["ti", "ar", "al", "au", "by"]);
 // Mostly stamped lines make an LRC file; a script with a few stray stamps stays plain text.
 const minimumStampedShare = 0.6;
-// Cue voice and style spans and enhanced-LRC word stamps.
-const inlineMarkupPattern = /<[^>]*>/g;
 
 /**
  * Reads timed lyrics and subtitles (LRC, WebVTT, SRT) into the lines the player
@@ -41,10 +39,7 @@ export function parseLyrics(content: string): ParsedLyrics | null {
   if (stampedLines > 0 && stampedLines < textLines * minimumStampedShare) return null;
   return {
     tags,
-    lines: timed.lines.map((line) => ({
-      timeSeconds: line.time,
-      text: line.text.replace(inlineMarkupPattern, "").replace(/\s+/g, " ").trim(),
-    })),
+    lines: timed.lines.map((line) => ({ timeSeconds: line.time, text: line.text })),
   };
 }
 

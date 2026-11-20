@@ -836,8 +836,9 @@ receipt-time order, so an older offline checkpoint cannot undo a later legacy
 save. Browser storage contains no credential, title, source URL or file path.
 
 Each scope retains at most 64 sessions and 32 work cursors, within 256 KiB.
-Capacity never evicts an unconfirmed record: existing entries can merge while
-new distinct entries are refused, with a sanitized console diagnostic. A batch
+Capacity never evicts an unconfirmed record: existing entries can merge, a new
+work's cursor takes the place of the oldest quarantined cursor, and other new
+distinct entries are refused, with a sanitized console diagnostic. A batch
 stays below 48 KiB for fetch keepalive. Accepted/stale acknowledgements remove
 only the exact sent cursor or the acknowledged cumulative time; newer pending
 data survives an older response.
@@ -853,11 +854,13 @@ that owner, regardless of response order. Unknown identities are never assumed
 to belong to every work. Responses without the additive identity field still
 use cursor and previously learned ownership, without guessing unseen relations.
 
-Terminal item failures (`invalid`, `not_found`, `conflict`, or
-`history_cleared` for progress) remain quarantined, count against the existing
-capacity limits, and neither invalidate nor defer other cursor confirmations.
-A new cursor observation can replace its quarantined
-entry. Nonretryable HTTP failures quarantine the affected batch. Network errors,
+The server records a checkpoint whose location no longer exists without a
+location. A checkpoint that an older server answers `invalid` while it names a
+location is kept and sent again without the location; it is quarantined only
+when it is refused again without one. Terminal item failures (`invalid`,
+`not_found`, `conflict`, or `history_cleared` for progress) remain
+quarantined and neither invalidate nor defer other cursor confirmations. A new
+cursor observation can replace its quarantined entry. Nonretryable HTTP failures quarantine the affected batch. Network errors,
 408, 429, database busy and retryable server errors retain data and use persistent
 exponential backoff from five seconds to five minutes, without an attempt-based
 discard. Online events request a retry within that backoff.

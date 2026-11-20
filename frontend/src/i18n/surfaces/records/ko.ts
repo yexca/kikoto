@@ -12,6 +12,13 @@ export const recordsKorean = {
     initializing: "초기화 중…",
     initializeFailed: "기록 루트를 초기화할 수 없습니다.",
     setupNeedsAdmin: "관리자가 기록 루트를 초기화해야 합니다.",
+    restoreMarker: "마커 복원",
+    restoreMarkerFailed: "기록 루트 마커를 복원할 수 없습니다.",
+    startNewCatalog: "새 카탈로그 시작",
+    startNewCatalogWarning:
+      "기록된 모든 폴더와 파일, 그리고 그에 대한 모든 사용자의 진행 상황과 표시를 지우고, 다음 스캔에서 이 디렉터리를 새 라이브러리로 색인합니다. 같은 디스크라면 대신 마커를 복원하세요.",
+    markerMissingNotice:
+      "기록 루트의 마커가 없습니다. 계속 탐색하고 재생할 수 있으며, 관리자가 라이브러리 설정에서 마커를 복원할 수 있습니다.",
     rootErrorTitle: "기록을 불러올 수 없습니다",
     rootErrorMessage: "이 서버와의 연결을 확인한 후 다시 시도하세요.",
     offlineTitle: "기록 루트가 오프라인입니다",
@@ -31,6 +38,7 @@ export const recordsKorean = {
         online: "온라인",
         offline: "오프라인",
         unreadable: "읽을 수 없음",
+        marker_missing: "마커 없음",
       },
     },
     folderErrorTitle: "이 폴더를 읽을 수 없습니다",

@@ -41,9 +41,11 @@ export function preferredTrackLocation(track: PlayerTrack | null) {
   );
 }
 
+/** Moves the track to a location. The move is automatic, so it drops a location the listener picked. */
 export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLocation): PlayerTrack {
+  const { locationChosen: _locationChosen, ...rest } = track;
   return {
-    ...track,
+    ...rest,
     locationId: location.locationId,
     locationType: location.locationType,
     streamUrl: location.streamUrl,
@@ -53,6 +55,18 @@ export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLoca
         ? track.playbackKey
         : playbackKeyForLocation(location.locationId),
   };
+}
+
+/**
+ * Returns the track moved to one of its listed locations as the listener's
+ * own choice, or null when it already plays from that location or does not
+ * list it, so a manual source choice that changes nothing reloads nothing and
+ * carries no start position.
+ */
+export function switchTrackLocation(track: PlayerTrack, locationId: number): PlayerTrack | null {
+  if (track.locationId === locationId) return null;
+  const location = track.locations?.find((candidate) => candidate.locationId === locationId);
+  return location ? { ...applyTrackLocation(track, location), locationChosen: true } : null;
 }
 
 export type TrackLocationFailureState = {

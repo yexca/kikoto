@@ -279,10 +279,10 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 		errorMessage = runErr.Error()
 		output["error"] = errorMessage
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), errorMessage, dispatchNodeID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'", status, mustJSON(output), errorMessage, dispatchNodeID); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), runID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'", status, mustJSON(output), runID); err != nil {
 		return err
 	}
 	return nil
@@ -296,6 +296,6 @@ func (s *Server) finishRemoteBulkWorkflowJob(ctx context.Context, job workflowJo
 	_, err := s.db.ExecContext(ctx, `UPDATE workflow_job
 		SET status = ?, progress_current = progress_total, error_message = ?,
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?`, status, message, job.ID)
+		WHERE id = ? AND status <> 'cancelled'`, status, message, job.ID)
 	return err
 }

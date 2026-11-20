@@ -470,10 +470,10 @@ func canManageWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, a
 	return ownership.startedBy(actor), nil
 }
 
+// canRetryWorkflowGraphRun reports whether the actor holds every permission
+// the failed graph's nodes use, as starting that preset requires. Who may
+// manage the run is decided before, by canManageWorkflowRun.
 func (s *Server) canRetryWorkflowGraphRun(ctx context.Context, actor currentUser, runID int64) (bool, error) {
-	if missingWorkflowGraphPermission(actor.Permissions, []string{"system:admin"}) == "" {
-		return true, nil
-	}
 	var payloadJSON string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT payload_json
@@ -488,16 +488,15 @@ func (s *Server) canRetryWorkflowGraphRun(ctx context.Context, actor currentUser
 	if err != nil {
 		return false, err
 	}
+	// A graph the runtime cannot run, such as one with a step that is not a
+	// workflow graph node, has nothing a retry could resume.
 	var payload workflowGraphJobPayload
 	if err := decodeWorkflowJobPayload(payloadJSON, &payload); err != nil {
-		return false, err
-	}
-	if payload.UserID != actor.ID {
-		return false, nil
+		return false, errWorkflowRetryNoRecoverableJob
 	}
 	graph, err := validateWorkflowGraphDefinition(payload.DefinitionJSON)
 	if err != nil {
-		return false, err
+		return false, errWorkflowRetryNoRecoverableJob
 	}
 	return missingWorkflowGraphPermission(actor.Permissions, workflowGraphRequiredPermissions(graph)) == "", nil
 }

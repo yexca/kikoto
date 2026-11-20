@@ -160,12 +160,10 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
 			return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
 		}
+		// Anything else, such as a lookup answered 404 whose listing fallback
+		// failed, leaves the question open.
 		result.Status = "error"
 		result.Error = "remote source request failed"
-		if isNotFoundLikeError(err) {
-			result.Status = "not_found"
-			result.Error = "work was not found"
-		}
 		slog.Warn("remote source availability check failed", "source_id", source.ID, "work_code", code, "error", err)
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
@@ -507,8 +505,17 @@ func (s *Server) recordAvailabilityPresence(ctx context.Context, tx *sql.Tx, cod
 			availability = "missing"
 		case "disabled":
 			availability = "disabled"
-		case "error", "unavailable":
+		case "unavailable":
 			availability = "unavailable"
+		case "error":
+			// A failed lookup, timeout, or program error is no answer about
+			// the work: the stored presence keeps what the source last said.
+			// Only the time it was asked advances, so a presence check moves
+			// on to works it asked longest ago.
+			if err := touchFailedSourcePresenceCheck(ctx, tx, workID, result.SourceID); err != nil {
+				return err
+			}
+			continue
 		}
 		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 			WorkID:       workID,
@@ -530,4 +537,17 @@ func (s *Server) recordAvailabilityPresence(ctx context.Context, tx *sql.Tx, cod
 		}
 	}
 	return nil
+}
+
+// touchFailedSourcePresenceCheck records that a source was asked about a work
+// without an answer. A stored presence keeps its availability; a work never
+// answered for gets an `unknown` presence.
+func touchFailedSourcePresenceCheck(ctx context.Context, tx *sql.Tx, workID, sourceID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability, last_checked_at)
+		VALUES (?, ?, ?, 'unknown', CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, file_source_id, presence_type) DO UPDATE SET
+			last_checked_at = CURRENT_TIMESTAMP
+	`, workID, sourceID, sourcePresenceTypeRemoteSource)
+	return err
 }

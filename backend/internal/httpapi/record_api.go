@@ -8,9 +8,26 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/record"
 )
+
+// recordProgressOrderSkew bounds how far ahead of the server a client's
+// progress order may be.
+const recordProgressOrderSkew = 5 * time.Minute
+
+// recordProgressOrder is the order a progress save is stored under. An order
+// more than recordProgressOrderSkew ahead of the server comes from a clock
+// running fast and would hold the file's progress until the server caught
+// up; such a save, like one without an order, is ordered by when the server
+// receives it.
+func recordProgressOrder(order int64, now time.Time) int64 {
+	if order <= 0 || order > now.Add(recordProgressOrderSkew).UnixMilli() {
+		return now.UnixMilli()
+	}
+	return order
+}
 
 func parseRecordID(r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -78,13 +95,52 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 	s.prefetchRecordVideoKeyframes(assets)
 }
 
+// initializeRecordRoot initializes the record root. A root whose marker does
+// not name the catalog the database keeps is refused with
+// record_fresh_initialization_required unless the body asks for a fresh
+// catalog, which forgets the earlier one.
 func (s *Server) initializeRecordRoot(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	root, err := s.recordStore.InitializeRoot(r.Context())
+	var input struct {
+		Fresh bool `json:"fresh"`
+	}
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&input); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_record_initialization", "Invalid record initialization.", false)
+			return
+		}
+	}
+	root, err := s.recordStore.InitializeRoot(r.Context(), input.Fresh)
+	if errors.Is(err, record.ErrRootFreshRequired) {
+		writeAPIError(w, http.StatusConflict, "record_fresh_initialization_required", "The record root does not carry the marker of the kept catalog. Restore the marker to keep the catalog, or start a new catalog.", false)
+		return
+	}
+	if errors.Is(err, record.ErrRootPathMissing) {
+		writeAPIError(w, http.StatusConflict, "record_root_path_missing", "The record root folder is missing. Mount its disk before starting a new catalog.", false)
+		return
+	}
 	if err != nil {
 		writeAPIError(w, http.StatusConflict, "record_root_initialization_failed", "The record library could not be initialized.", false)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"root": root})
+}
+
+// restoreRecordMarker writes the marker of the catalog the database keeps
+// into a root that lost it.
+func (s *Server) restoreRecordMarker(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	root, err := s.recordStore.RestoreMarker(r.Context())
+	if errors.Is(err, record.ErrRootNotRecognized) {
+		writeAPIError(w, http.StatusConflict, "record_root_not_recognized", "None of the catalog's folders or files is on the record root. Mount the disk, then restore the marker.", false)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusConflict, "record_marker_restore_failed", "The record root marker could not be restored.", false)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"root": root})
@@ -195,7 +251,7 @@ func (s *Server) scanRecords(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusServiceUnavailable, "record_root_unavailable", "The record library is unavailable.", true)
 		return
 	}
-	if root.State != "online" {
+	if root.State != "online" && root.State != record.RootStateMarkerMissing {
 		writeAPIError(w, http.StatusConflict, "record_root_unavailable", "Initialize and mount the record library before scanning.", false)
 		return
 	}
@@ -265,14 +321,19 @@ func (s *Server) updateRecordProgress(w http.ResponseWriter, r *http.Request) {
 		PositionSeconds float64  `json:"positionSeconds"`
 		DurationSeconds *float64 `json:"durationSeconds"`
 		Completed       bool     `json:"completed"`
+		// Order is the client's capture order in Unix milliseconds. A save
+		// without one is ordered by when the server receives it.
+		Order int64 `json:"order"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&input); err != nil || input.PositionSeconds < 0 {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&input); err != nil || input.PositionSeconds < 0 || input.Order < 0 {
 		writeAPIError(w, http.StatusBadRequest, "invalid_record_progress", "Invalid record progress.", false)
 		return
 	}
-	if err := s.recordStore.SaveProgress(r.Context(), user.ID, id, record.Progress{PositionSeconds: input.PositionSeconds, DurationSeconds: input.DurationSeconds, Completed: input.Completed}); err != nil {
+	order := recordProgressOrder(input.Order, time.Now())
+	stored, err := s.recordStore.SaveProgress(r.Context(), user.ID, id, record.Progress{PositionSeconds: input.PositionSeconds, DurationSeconds: input.DurationSeconds, Completed: input.Completed, Order: order})
+	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "record_progress_failed", "The record progress could not be saved.", true)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "stored": stored})
 }

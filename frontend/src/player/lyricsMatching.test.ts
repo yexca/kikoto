@@ -63,6 +63,13 @@ describe("findLyricsMatch", () => {
     ).toBe(2);
   });
 
+  it("never takes a CUE sheet as lyrics", () => {
+    expect(findLyricsMatch("work/01_abc.wav", [lyric("work/01_abc.cue", 1)])).toBeNull();
+    expect(
+      findLyricsMatch("work/01_abc.wav", [lyric("work/01_abc.cue", 1), lyric("work/01_abc.lrc", 2)])?.locationId,
+    ).toBe(2);
+  });
+
   it("chooses deterministically between equal candidates", () => {
     expect(
       findLyricsMatch("work/01_abc.wav", [lyric("work/01_abc.srt", 2), lyric("work/01_abc.vtt", 1)])?.locationId,

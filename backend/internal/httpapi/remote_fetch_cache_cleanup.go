@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkSavePlan, workID int64) (int, error) {
@@ -110,42 +111,19 @@ func (s *Server) cleanupPromotedFetchCacheItem(
 	return deleted, err
 }
 
-// Fetch records source availability and local materialization. It does not
-// create tracked intent; only an already active tracked source owns its cache.
-func (s *Server) cleanupFetchCacheWithoutTrackedPresence(ctx context.Context, workID int64, sourceIDs []int64) error {
-	for _, sourceID := range sourceIDs {
-		if sourceID <= 0 {
-			continue
-		}
-		var tracked int
-		if err := s.db.QueryRowContext(ctx, `
-			SELECT EXISTS (
-				SELECT 1
-				FROM work_source_presence
-				WHERE work_id = ? AND file_source_id = ?
-					AND presence_type = 'tracked' AND availability = 'available'
-			)
-		`, workID, sourceID).Scan(&tracked); err != nil {
-			return err
-		}
-		if tracked != 0 {
-			continue
-		}
-		locations, err := s.cacheLocationsForWorkSource(ctx, workID, sourceID)
-		if err != nil {
-			return err
-		}
-		for _, location := range locations {
-			if _, _, err := s.clearCacheLocation(ctx, location.ID, location.Path); err != nil {
-				return err
-			}
-		}
+// insertFetchCleanupCandidate offers for review what a Fetch consolidated: the
+// folders its copy_local items came from, archived, or those files themselves
+// when their folder could not be archived. A Fetch that copied no local file
+// leaves the work's other folders and files alone.
+func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, workID int64, localSourceID int64, workCode string, saveRoot string, items []remoteWorkSavePlanItem) error {
+	sources := map[string]bool{}
+	for _, path := range fetchConsolidatedSourcePaths(items) {
+		sources[path] = true
 	}
-	return nil
-}
-
-func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, workID int64, localSourceID int64, workCode string, items []remoteWorkSavePlanItem) error {
-	archivedRoots, err := s.quarantineFetchLocalRoots(ctx, runID, workID, localSourceID, items)
+	if len(sources) == 0 {
+		return nil
+	}
+	archivedRoots, err := s.quarantineFetchLocalRoots(ctx, runID, workID, localSourceID, saveRoot, items)
 	if err != nil {
 		return err
 	}
@@ -160,7 +138,7 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 		`, runID, workCode, mustJSON(map[string]any{
 			"work_id": workID, "work_code": workCode, "local_source_id": localSourceID,
 			"archived_roots": archivedRoots,
-			"message":        "Old local roots were archived after Fetch. Keep the archive or permanently delete it after review.",
+			"message":        "The folders this Fetch consolidated were archived. Keep the archive or permanently delete it after review.",
 		}), runID)
 		return err
 	}
@@ -202,7 +180,7 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 		if err := rows.Scan(&id, &mediaItemID, &path, &size, &title, &kind); err != nil {
 			return err
 		}
-		if targets[filepath.ToSlash(path)] {
+		if targets[filepath.ToSlash(path)] || !sources[strings.Trim(filepath.ToSlash(path), "/")] {
 			continue
 		}
 		locationIDs = append(locationIDs, id)
@@ -238,7 +216,7 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 		"candidate_locations":    candidates,
 		"candidate_location_ids": locationIDs,
 		"fetched_targets":        sortedStringKeys(targets),
-		"message":                "Fetch completed while other local files for this work still exist. Review before deleting or hiding old local files.",
+		"message":                "This Fetch copied these local files into the fetched folder. Review before deleting or hiding them.",
 	}), runID)
 	return err
 }

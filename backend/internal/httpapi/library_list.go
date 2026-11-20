@@ -127,6 +127,9 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		DemoOnly:                s.cfg.IsDemo(),
 		TitleLanguages:          s.titleSortLanguages(r.Context(), r.URL.Query().Get("sort")),
 	}
+	if localOnlyRequest(r.Context()) {
+		options.VisibilityPredicateSQL = library.LocalPresencePredicateSQL()
+	}
 	showDemoScores := s.cfg.IsDemo() && (options.IncludeRecommendation || strings.EqualFold(options.Sort, "recommend"))
 	if s.cfg.IsDemo() {
 		options.VisibilityPredicateSQL = demoLibraryVisibilityPredicateSQL
@@ -146,6 +149,11 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if localOnlyRequest(r.Context()) {
+		for index := range works {
+			works[index].SourcePresence = localSourcePresence(works[index].SourcePresence)
+		}
 	}
 	if showDemoScores {
 		for index := range works {

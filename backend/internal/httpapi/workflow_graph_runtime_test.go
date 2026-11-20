@@ -13,7 +13,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const workflowGraphAPIDefinitionJSON = `{
@@ -27,24 +26,19 @@ const workflowGraphAPIDefinitionJSON = `{
       "position": {"x": 0, "y": 40}
     },
     {
-      "id": "fetch",
-      "type": "fetch_works",
-      "displayName": "Fetch works",
-      "config": {
-        "excludeExtensions": ["wav"],
-        "maxWorks": 2,
-        "maxFiles": 10,
-        "maxBytes": 1048576
-      },
+      "id": "action",
+      "type": "metadata_sync",
+      "displayName": "Sync metadata",
+      "config": {"maxWorks": 2},
       "position": {"x": 260, "y": 40}
     }
   ],
   "edges": [
     {
-      "id": "discover_to_fetch",
+      "id": "discover_to_action",
       "source": "discover",
       "sourceHandle": "works",
-      "target": "fetch",
+      "target": "action",
       "targetHandle": "works"
     }
   ],
@@ -236,7 +230,7 @@ func TestWorkflowGraphFailureDistinguishesFailedAndPendingNodes(t *testing.T) {
 	failedNodeID, _ := failedResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status)
-		VALUES (?, 'second', 'fetch_works', 'Second', 2, 'queued')
+		VALUES (?, 'second', 'metadata_sync', 'Second', 2, 'queued')
 	`, runID); err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +283,7 @@ func TestWorkflowGraphFailureDoesNotOverwriteCancellation(t *testing.T) {
 	runID, _ := runResult.LastInsertId()
 	nodeResult, err := db.Exec(`
 		INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status, error_message, finished_at)
-		VALUES (?, 'first', 'fetch_works', 'First', 1, 'cancelled', 'cancelled manually', CURRENT_TIMESTAMP)
+		VALUES (?, 'first', 'metadata_sync', 'First', 1, 'cancelled', 'cancelled manually', CURRENT_TIMESTAMP)
 	`, runID)
 	if err != nil {
 		t.Fatal(err)
@@ -381,165 +375,116 @@ func TestWorkflowGraphRetryRequiresCurrentPermissions(t *testing.T) {
 	}
 }
 
-func TestGraphTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
+// An administrator who did not start a graph run retries it, as the workflow
+// permissions allow every run's retry to `sources:write`.
+func TestWorkflowGraphRetryAllowsWorkflowAdministrator(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-track-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-retry-requester")
+	adminID := insertWorkflowGraphAPIUser(t, db, "workflow-retry-admin")
 	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
-	parentResult, err := db.Exec(`
-		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type)
-		VALUES (?, 'custom_fetch_test', 'Custom track parent', 'running', 'manual')
-	`, definitionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parentRunID, _ := parentResult.LastInsertId()
-	if _, err := db.Exec(`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_source_sync', 'Track remote source')`); err != nil {
-		t.Fatal(err)
-	}
-	requestID := graphTrackRequestID(parentRunID, "track", 77, "RJ00000001")
-	childResult, err := db.Exec(`
+	runResult, err := db.Exec(`
 		INSERT INTO workflow_run (
 			workflow_definition_id, workflow_code, display_name, status, trigger_type, trigger_reason, input_json
-		) VALUES (
-			(SELECT id FROM workflow_definition WHERE code = 'remote_source_sync'),
-			'remote_source_sync', 'Track remote source', 'succeeded', 'manual', ?, ?
-		)
-	`, requestID, mustJSON(map[string]any{"file_source_id": 77, "work_code": "RJ00000001", "requested_work_code": "RJ00000001"}))
+		) VALUES (?, 'custom_fetch_test', 'Custom fetch test', 'failed', 'manual', 'custom_definition', ?)
+	`, definitionID, mustJSON(map[string]any{"requested_by_user_id": ownerID}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	childRunID, _ := childResult.LastInsertId()
-	matchResult, err := db.Exec(`
-		INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status, output_json)
-		VALUES (?, 'match', 'match_works', 'Match works', 1, 'succeeded', '{"work_id":91}')
-	`, childRunID)
+	runID, _ := runResult.LastInsertId()
+	nodeResult, err := db.Exec(`
+		INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status)
+		VALUES (?, 'discover', 'series_catalog', 'Series catalog', 1, 'failed')
+	`, runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	matchNodeID, _ := matchResult.LastInsertId()
+	nodeID, _ := nodeResult.LastInsertId()
+	payload := workflowGraphJobPayload{
+		DefinitionJSON: workflowGraphAPIDefinitionJSON,
+		Inputs:         map[string]any{},
+		UserID:         ownerID,
+		Permissions:    account.PermissionsForRole("admin"),
+	}
 	if _, err := db.Exec(`
-		INSERT INTO workflow_job (workflow_run_id, workflow_node_run_id, worker_type, status)
-		VALUES (?, ?, 'kikoeru_remote_sync', 'succeeded')
-	`, childRunID, matchNodeID); err != nil {
+		INSERT INTO workflow_job (workflow_run_id, workflow_node_run_id, worker_type, status, recoverable, payload_json)
+		VALUES (?, ?, 'custom_workflow', 'failed', 1, ?)
+	`, runID, nodeID, mustJSON(payload)); err != nil {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	node := workflowGraphNode{ID: "track", Type: "track_works", Config: map[string]any{"maxWorks": 1}}
-	inputs := map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: []graphWorkCandidate{{Code: "RJ00000001", SourceID: 77}}}}
-	for attempt := 0; attempt < 2; attempt++ {
-		execution, err := server.executeGraphTrackWorks(context.Background(), parentRunID, node, inputs)
-		if err != nil {
-			t.Fatalf("attempt %d: %v", attempt+1, err)
-		}
-		refs := execution.Outputs["completed"].WorkRefs
-		if execution.Partial || len(refs) != 1 || refs[0].ChildRunID != childRunID || refs[0].WorkID != 91 {
-			t.Fatalf("attempt %d result = %+v", attempt+1, execution)
-		}
+	contributorID := insertWorkflowGraphAPIUser(t, db, "workflow-retry-contributor")
+	denied := requestWorkflowRunAction(t, server.retryWorkflowRun, runID, account.User{ID: contributorID, Role: "contributor", Permissions: account.PermissionsForRole("contributor")})
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("retry by another contributor = %d, body = %s", denied.Code, denied.Body.String())
 	}
-	var childCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'remote_source_sync' AND trigger_reason = ?", requestID).Scan(&childCount); err != nil {
+	allowed := requestWorkflowRunAction(t, server.retryWorkflowRun, runID, account.User{ID: adminID, Role: "admin", Permissions: account.PermissionsForRole("admin")})
+	if allowed.Code != http.StatusAccepted {
+		t.Fatalf("administrator retry = %d, body = %s", allowed.Code, allowed.Body.String())
+	}
+	var jobStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_job WHERE workflow_run_id = ?", runID).Scan(&jobStatus); err != nil {
 		t.Fatal(err)
 	}
-	if childCount != 1 {
-		t.Fatalf("track child count = %d, want 1", childCount)
+	if jobStatus != "queued" {
+		t.Fatalf("job after administrator retry = %s, want queued", jobStatus)
 	}
 }
 
-func TestGraphFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
+// A retried graph keeps the result of a node its checkpoint completed: the
+// runtime skips that node, so queuing it again would leave it queued forever.
+func TestWorkflowGraphRetryKeepsCheckpointCompletedNodes(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-fetch-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-retry-checkpoint")
 	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
-	if _, err := db.Exec(`
-		INSERT INTO file_source (id, code, display_name, source_type) VALUES
-			(88, 'unreachable', 'Unavailable source', 'kikoeru'),
-			(89, 'local-test', 'Local test source', 'local_folder')
-	`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (92, 'RJ00000001', 'Synthetic work')`); err != nil {
-		t.Fatal(err)
-	}
-	parentResult, err := db.Exec(`
+	runResult, err := db.Exec(`
 		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type)
-		VALUES (?, 'custom_fetch_test', 'Custom fetch parent', 'running', 'manual')
+		VALUES (?, 'custom_fetch_test', 'Custom fetch test', 'failed', 'manual')
 	`, definitionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parentRunID, _ := parentResult.LastInsertId()
-	if _, err := db.Exec(`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch remote work')`); err != nil {
-		t.Fatal(err)
+	runID, _ := runResult.LastInsertId()
+	for _, statement := range []string{
+		`INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status) VALUES (?, 'first', 'series_catalog', 'First', 1, 'partial')`,
+		`INSERT INTO workflow_node_run (workflow_run_id, node_id, node_type, display_name, position, status) VALUES (?, 'second', 'metadata_sync', 'Second', 2, 'failed')`,
+	} {
+		if _, err := db.Exec(statement, runID); err != nil {
+			t.Fatal(err)
+		}
 	}
-	childResult, err := db.Exec(`
-		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type)
-		VALUES ((SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch remote work', 'queued', 'manual')
-	`)
+	checkpoint := mustJSON(map[string]any{"phase": "first", "detail": workflowGraphCheckpoint{
+		CompletedNodeIDs: []string{"first"}, Outputs: map[string]map[string]graphPortValue{"first": {}}, Partial: true,
+	}})
+	jobResult, err := db.Exec(`
+		INSERT INTO workflow_job (workflow_run_id, worker_type, status, recoverable, checkpoint_json)
+		VALUES (?, 'custom_workflow', 'failed', 1, ?)
+	`, runID, checkpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	childRunID, _ := childResult.LastInsertId()
-	requestID := graphFetchRequestID(parentRunID, "fetch", "RJ00000001")
-	manifestResult, err := db.Exec(`
-		INSERT INTO remote_fetch_manifest (
-			workflow_run_id, request_id, work_id, remote_source_id, local_source_id,
-			edition_code, target_root, staging_root, plan_json
-		) VALUES (?, ?, 92, 88, 89, 'RJ00000001', 'library/RJ00000001', 'staging/RJ00000001', '{}')
-	`, childRunID, requestID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	manifestID, _ := manifestResult.LastInsertId()
-	if _, err := db.Exec(`
-		INSERT INTO remote_fetch_manifest_item (
-			manifest_id, relative_path, target_path, source_kind, action, expected_size_bytes, remote_source_id
-		) VALUES
-			(?, 'track.mp3', 'library/RJ00000001/track.mp3', 'remote', 'cache_download', 512, 88),
-			(?, 'cached.mp3', 'library/RJ00000001/cached.mp3', 'cache', 'cache_hit', 256, 88)
-	`, manifestID, manifestID); err != nil {
-		t.Fatal(err)
-	}
-	stored := remoteWorkSaveResult{RunID: childRunID, WorkID: 92, PrimaryCode: "RJ00000001", Status: "queued", RequestID: requestID}
-	if _, err := db.Exec(`
-		INSERT INTO remote_fetch_request (request_id, source_id, work_code, workflow_run_id, result_json)
-		VALUES (?, 88, 'RJ00000001', ?, ?)
-	`, requestID, childRunID, mustJSON(stored)); err != nil {
-		t.Fatal(err)
-	}
+	jobID, _ := jobResult.LastInsertId()
 	server := NewServer(db, config.Config{})
-	usage, err := server.graphFetchPersistedUsage(context.Background(), childRunID)
+	job := workflowJobRecord{ID: jobID, RunID: runID, WorkerType: "custom_workflow"}
+	if err := server.requeueFailedWorkflowJob(context.Background(), job, 0, "retry"); err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[string]string{}
+	rows, err := db.Query("SELECT node_id, status FROM workflow_node_run WHERE workflow_run_id = ?", runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.Files != 2 || usage.Bytes != 768 || usage.Unknown != 0 {
-		t.Fatalf("persisted fetch usage = %+v", usage)
-	}
-	node := workflowGraphNode{ID: "fetch", Type: "fetch_works", Config: map[string]any{"maxWorks": 1, "maxFiles": 10, "maxBytes": 1024}}
-	inputs := map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: []graphWorkCandidate{{Code: "RJ00000001", SourceID: 88}}}}
-	for attempt := 0; attempt < 2; attempt++ {
-		execution, err := server.executeGraphFetchWorks(context.Background(), parentRunID, 0, workflow.JobPriorityUserInitiated, node, inputs)
-		if err != nil {
-			t.Fatalf("attempt %d: %v", attempt+1, err)
+	for rows.Next() {
+		var nodeID, status string
+		if err := rows.Scan(&nodeID, &status); err != nil {
+			t.Fatal(err)
 		}
-		if execution.Partial || execution.Pending == nil || len(execution.Pending.Children) != 1 || execution.Pending.Children[0].RunID != childRunID {
-			t.Fatalf("attempt %d result = %+v", attempt+1, execution)
-		}
+		statuses[nodeID] = status
 	}
-	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", childRunID); err != nil {
+	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}
-	execution, waiting, err := server.resumeGraphPendingExecution(context.Background(), graphPendingExecution{
-		NodeID: "fetch", Kind: "fetch", Children: []graphPendingChild{{
-			RunID:     childRunID,
-			Candidate: graphWorkCandidate{Code: "RJ00000001", SourceID: 88},
-			WorkRef:   graphWorkRef{Code: "RJ00000001", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
-		}},
-	})
-	if err != nil || waiting {
-		t.Fatalf("resume fetch: waiting=%t err=%v", waiting, err)
-	}
-	refs := execution.Outputs["completed"].WorkRefs
-	if execution.Partial || len(refs) != 1 || refs[0].ChildRunID != childRunID || refs[0].WorkID != 92 {
-		t.Fatalf("resumed result = %+v", execution)
+	if statuses["first"] != "partial" || statuses["second"] != "queued" {
+		t.Fatalf("node statuses after retry = %v, want first partial and second queued", statuses)
 	}
 }
 

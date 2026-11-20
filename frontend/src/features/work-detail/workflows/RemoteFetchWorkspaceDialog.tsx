@@ -1,4 +1,14 @@
-import { AlertTriangle, CheckCircle2, Clock3, HardDrive, HardDriveDownload, Info, Loader2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  Clock3,
+  HardDrive,
+  HardDriveDownload,
+  Info,
+  Loader2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -875,6 +885,7 @@ function RemoteFetchResultPane({
           />
         )}
         <RemoteFetchRootConflictAlert plan={plan} className="hidden lg:flex" />
+        <RemoteFetchArchiveRoots plan={plan} />
         {message && (
           <div
             role="alert"
@@ -936,6 +947,27 @@ function RemoteFetchTargetSelect({
         ))}
       </NativeSelect>
     </label>
+  );
+}
+
+function RemoteFetchArchiveRoots({ plan }: { plan?: RemoteWorkSavePlan | null }) {
+  const { t } = useTranslation();
+  const roots = plan?.archiveRoots ?? [];
+  if (roots.length === 0) return null;
+  return (
+    <section aria-label={t("remoteFetch.archivedAfterFetch")} className="space-y-1 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <Archive className="h-3.5 w-3.5 shrink-0" />
+        <span>{t("remoteFetch.archivedAfterFetch")}</span>
+      </div>
+      <ul className="space-y-0.5">
+        {roots.map((root) => (
+          <li key={root} className="break-all font-mono text-foreground">
+            {root}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

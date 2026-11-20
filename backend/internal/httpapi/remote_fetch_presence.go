@@ -192,23 +192,43 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 	}); err != nil {
 		return err
 	}
+	// Presence sync leaves the cache alone: cleanupPromotedFetchCache removes
+	// the cache of the promoted files only, so unselected files stay cached.
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	s.refreshQueryPlannerStatistics(ctx)
-	return s.cleanupFetchCacheWithoutTrackedPresence(ctx, workID, remoteSourceIDs)
+	return nil
 }
 
-func retireFetchRemoteStreams(ctx context.Context, tx *sql.Tx, workID int64, remoteSourceIDs []int64) error {
-	for _, remoteSourceID := range remoteSourceIDs {
-		if remoteSourceID <= 0 {
+// retireFetchRemoteStreams drops the remote_stream rows of the files this Fetch
+// promoted: the local copy plays them now. Files the Fetch left unselected keep
+// their remote streams.
+func retireFetchRemoteStreams(ctx context.Context, tx *sql.Tx, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan) error {
+	for _, item := range plan.Items {
+		if item.Action != "cache_hit" && item.Action != "cache_download" {
 			continue
 		}
+		sourceID := item.RemoteSourceID
+		if sourceID <= 0 {
+			sourceID = manifest.RemoteSourceID
+		}
+		if sourceID <= 0 {
+			continue
+		}
+		remotePath := firstNonEmpty(item.RemotePath, item.Path)
 		if _, err := tx.ExecContext(ctx, `
 			DELETE FROM media_file_location
 			WHERE file_source_id = ? AND location_type = 'remote_stream'
 				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
-		`, remoteSourceID, workID); err != nil {
+				AND (
+					path = ? OR media_item_id = ?
+					OR media_item_id IN (
+						SELECT media_item_id FROM media_file_location
+						WHERE file_source_id = ? AND location_type = 'local' AND path = ?
+					)
+				)
+		`, sourceID, manifest.WorkID, remotePath, item.MediaItemID, manifest.LocalSourceID, item.TargetPath); err != nil {
 			return err
 		}
 	}

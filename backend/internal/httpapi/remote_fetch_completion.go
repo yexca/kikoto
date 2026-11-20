@@ -79,7 +79,7 @@ func (s *Server) finishPublishedRemoteFetch(ctx context.Context, manifest remote
 	if err != nil {
 		return fail("cleanup", err)
 	}
-	if err := s.insertFetchCleanupCandidate(ctx, manifest.WorkflowRunID, manifest.WorkID, manifest.LocalSourceID, manifest.EditionCode, plan.Items); err != nil {
+	if err := s.insertFetchCleanupCandidate(ctx, manifest.WorkflowRunID, manifest.WorkID, manifest.LocalSourceID, manifest.EditionCode, manifest.TargetRoot, plan.Items); err != nil {
 		return fail("cleanup", err)
 	}
 	recovered := counts == nil
@@ -147,7 +147,26 @@ func finishRemoteFetchWorkflowTx(ctx context.Context, tx *sql.Tx, manifest remot
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET checkpoint_json = ? WHERE id = ?`, checkpoint, manifest.WorkflowJobID); err != nil {
 		return err
 	}
-	return finishWorkflowRunResultTx(ctx, tx, manifest.WorkflowRunID, manifest.WorkflowJobID, "succeeded", "", progress, progress, mustJSON(summary))
+	// Completion follows publication, and a published Fetch succeeds: a
+	// cancellation that arrived after its swap started does not keep the run
+	// cancelled.
+	return finishPublishedWorkflowRunTx(ctx, tx, manifest.WorkflowRunID, manifest.WorkflowJobID, progress, mustJSON(summary))
+}
+
+func finishPublishedWorkflowRunTx(ctx context.Context, tx *sql.Tx, runID, jobID int64, progress int, summaryJSON string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'succeeded', progress_current = ?, progress_total = ?, error_message = '',
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, progress, progress, jobID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, summaryJSON, runID)
+	return err
 }
 
 func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan, summary any, locations, removedCache int) error {
@@ -156,7 +175,7 @@ func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remot
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := retireFetchRemoteStreams(ctx, tx, manifest.WorkID, remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID)); err != nil {
+	if err := retireFetchRemoteStreams(ctx, tx, manifest, plan); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `

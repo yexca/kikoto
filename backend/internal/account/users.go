@@ -157,6 +157,10 @@ func (s *Store) commitManagedUserUpdate(ctx context.Context, tx *sql.Tx, input U
 		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, passwordHash, input.ID); err != nil {
 			return ManagedUser{}, err
 		}
+	}
+	// A password reset or a disabled account revokes every session, so
+	// enabling the account again does not revive a token issued before.
+	if input.Password != "" || !input.Enabled {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
 			return ManagedUser{}, err
 		}

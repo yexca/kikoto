@@ -265,6 +265,8 @@ export type RemoteWorkSavePlan = {
   fetchRoot: RemoteFetchRootReview;
   localFiles: RemoteWorkSaveLocalFile[];
   items: RemoteWorkSavePlanItem[];
+  /** Folders archived for review once the Fetch is published: those its copied local files came from. */
+  archiveRoots?: string[];
   summary: RemoteWorkSaveSummary;
   preparation: RemoteFetchPreparation;
 };

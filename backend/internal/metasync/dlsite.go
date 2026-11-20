@@ -45,6 +45,15 @@ type DLsiteSyncer struct {
 	purchaseBonusAutoLink bool
 	purchaseBonusRecheck  bool
 	unavailableHandler    func(context.Context, int64, string) (bool, error)
+	familyStored          func(context.Context, int64)
+}
+
+// WithFamilyStoredHandler composes a step that runs after a product's family
+// is stored, with the logical work id, such as moving personal state to the
+// family's canonical work. It must not fail the sync.
+func (s *DLsiteSyncer) WithFamilyStoredHandler(handler func(context.Context, int64)) *DLsiteSyncer {
+	s.familyStored = handler
+	return s
 }
 
 // WithUnavailableHandler composes an optional fallback for explicitly missing
@@ -167,6 +176,13 @@ func (s *DLsiteSyncer) FetchProduct(ctx context.Context, workno string) (dlsite.
 	return fetchVerifiedProduct(ctx, strings.ToUpper(strings.TrimSpace(workno)), s.fetchProduct)
 }
 
+// FetchProductForEdition reads a product in the locale of its own edition, as
+// a metadata sync stores it, so a preview shows and applies what a refresh
+// would write.
+func (s *DLsiteSyncer) FetchProductForEdition(ctx context.Context, workno string) (dlsite.Product, error) {
+	return fetchVerifiedProduct(ctx, strings.ToUpper(strings.TrimSpace(workno)), s.fetchProductForEdition)
+}
+
 // SyncProductOnly stores exactly the supplied product. Unlike SyncProduct, it
 // does not fetch related editions or download a cover, which makes it suitable
 // for callers that have already applied their own admission policy.
@@ -272,7 +288,7 @@ func (s *DLsiteSyncer) SyncScopeWithoutWorkflow(ctx context.Context, scope DLsit
 func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTargetResult {
 	family, err := s.SyncFamily(ctx, target.PrimaryCode)
 	if err != nil {
-		if dlsite.IsTimeout(err) || ctx.Err() != nil {
+		if stopsMetadataRun(ctx, err) {
 			return syncTargetResult{err: err, failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
 		}
 		if family.RequestedUnavailable {
@@ -291,6 +307,14 @@ func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTa
 		return syncTargetResult{failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
 	}
 	return syncTargetResult{synced: len(family.SyncedCodes) > 0, failures: family.Failures}
+}
+
+// stopsMetadataRun reports an error that ends a metadata run rather than one
+// work: a cancellation, or rate limiting that bounded retries did not clear.
+// A timeout or any other error of one work skips that work, and the run
+// continues and finishes partial.
+func stopsMetadataRun(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || dlsite.IsRateLimited(err)
 }
 
 func syncResultStatus(result DLsiteSyncResult) string {

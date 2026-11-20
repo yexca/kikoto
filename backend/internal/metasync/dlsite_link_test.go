@@ -137,3 +137,40 @@ func TestSyncFamilyMarksLinkedWorkUnavailableWhenTheSourceIsGone(t *testing.T) {
 		t.Fatalf("linked work state = %q, title %q; want not_found with retained metadata", status, title)
 	}
 }
+
+// The source product's bundle fields describe the source, so a linked sync
+// records no bundle membership for the linked work.
+func TestSyncFamilyKeepsTheLinkedSourceBundlesOffTheLinkedWork(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite') ON CONFLICT(code) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000045', 'Example Work')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work_metadata_link (work_id, provider_id, source_code)
+		SELECT work.id, provider.id, 'RJ00000046' FROM work, metadata_provider AS provider
+		WHERE work.primary_code = 'RJ00000045' AND provider.code = 'dlsite'`); err != nil {
+		t.Fatal(err)
+	}
+	productRaw := json.RawMessage(`{"workno":"RJ00000046","product_name":"Example Work",` +
+		`"work_pack_children":["RJ00000047"],"work_pack_parent":[{"workno":"RJ00000048"}]}`)
+	source := dlsite.Product{
+		WorkNo: "RJ00000046", ProductName: "Example Work",
+		ProductRaw: productRaw,
+		Raw:        json.RawMessage(`{"product":` + string(productRaw) + `,"dynamic":{}}`),
+	}
+	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{
+		"RJ00000046": {"": source, "ja-jp": source},
+	}}
+	if _, err := NewDLsiteSyncer(db, client).SyncFamily(context.Background(), "RJ00000045"); err != nil {
+		t.Fatalf("SyncFamily() error = %v", err)
+	}
+	var members int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_bundle_member`).Scan(&members); err != nil {
+		t.Fatal(err)
+	}
+	if members != 0 {
+		t.Fatalf("bundle members = %d, want none from the linked source", members)
+	}
+}

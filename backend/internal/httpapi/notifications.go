@@ -219,6 +219,9 @@ func (s *Server) clearSucceededNotifications(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dismissed": affected})
 }
 
+// createRemoteFetchNotification records a Fetch run's outcome for the accounts
+// that follow it. A changed outcome is shown again even where the earlier one
+// was dismissed, so a retry that succeeds after a dismissed failure notifies.
 func (s *Server) createRemoteFetchNotification(ctx context.Context, runID int64, status string, payload remoteWorkFetchJobPayload) error {
 	if runID <= 0 {
 		return nil
@@ -249,9 +252,10 @@ func (s *Server) createRemoteFetchNotification(ctx context.Context, runID int64,
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE workflow_notification
-		SET status = ?, work_id = COALESCE(?, work_id), work_code = ?, message = ?
+		SET dismissed_at = CASE WHEN status IS NOT ? THEN NULL ELSE dismissed_at END,
+			status = ?, work_id = COALESCE(?, work_id), work_code = ?, message = ?
 		WHERE workflow_run_id = ? AND notification_type = 'remote_fetch'
-	`, status, nullableSQLInt64(workID), code, message, runID); err != nil {
+	`, status, status, nullableSQLInt64(workID), code, message, runID); err != nil {
 		return err
 	}
 	if payload.RequestedByUserID <= 0 {
@@ -263,6 +267,7 @@ func (s *Server) createRemoteFetchNotification(ctx context.Context, runID int64,
 		)
 		VALUES (?, ?, 'remote_fetch', ?, ?, ?, ?)
 		ON CONFLICT(user_id, workflow_run_id, notification_type) DO UPDATE SET
+			dismissed_at = CASE WHEN workflow_notification.status IS NOT excluded.status THEN NULL ELSE workflow_notification.dismissed_at END,
 			status = excluded.status,
 			work_id = excluded.work_id,
 			work_code = excluded.work_code,
@@ -326,9 +331,10 @@ func (s *Server) createRemoteTrackNotification(ctx context.Context, runID int64,
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE workflow_notification
-		SET status = ?, work_id = COALESCE(?, work_id), work_code = ?, message = ?
+		SET dismissed_at = CASE WHEN status IS NOT ? THEN NULL ELSE dismissed_at END,
+			status = ?, work_id = COALESCE(?, work_id), work_code = ?, message = ?
 		WHERE workflow_run_id = ? AND notification_type = 'remote_track'
-	`, status, nullableSQLInt64(workID), code, message, runID); err != nil {
+	`, status, status, nullableSQLInt64(workID), code, message, runID); err != nil {
 		return err
 	}
 	if payload.RequestedByUserID <= 0 {
@@ -340,6 +346,7 @@ func (s *Server) createRemoteTrackNotification(ctx context.Context, runID int64,
 		)
 		VALUES (?, ?, 'remote_track', ?, ?, ?, ?)
 		ON CONFLICT(user_id, workflow_run_id, notification_type) DO UPDATE SET
+			dismissed_at = CASE WHEN workflow_notification.status IS NOT excluded.status THEN NULL ELSE workflow_notification.dismissed_at END,
 			status = excluded.status,
 			work_id = excluded.work_id,
 			work_code = excluded.work_code,

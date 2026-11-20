@@ -14,12 +14,12 @@ import (
 	"github.com/yexca/kikoto/backend/internal/auththrottle"
 )
 
-// Sign-in failures are throttled on three keys. The client+username key stops
-// focused guessing, the client key stops one client spraying many usernames,
-// and the looser username key slows a guess distributed across many clients;
-// a single client locks on its own keys long before it can trip that shared
-// username key and lock the real user out. Unknown usernames are
-// charged the same way as known ones, so a lockout reveals nothing about which
+// Sign-in failures lock only keys of the client: its address, or its IPv6
+// /64. The client+username key stops focused guessing and the client key
+// stops one client spraying many usernames. A username shared by every client
+// is never locked, so no one can lock its owner out; its failures only delay
+// the next attempts on it, from any client. Unknown usernames are charged
+// the same way as known ones, so neither a lockout nor a delay reveals which
 // accounts exist.
 var (
 	loginClientAccountPolicy = auththrottle.Policy{
@@ -30,21 +30,23 @@ var (
 		MaxFailures: 20, BaseLockout: time.Minute, MaxLockout: 30 * time.Minute,
 		ResetAfter: time.Hour,
 	}
-	loginAccountPolicy = auththrottle.Policy{
-		MaxFailures: 50, BaseLockout: time.Minute, MaxLockout: 30 * time.Minute,
-		ResetAfter: time.Hour, ResetOnSuccess: true,
+	loginAccountDelayPolicy = auththrottle.DelayPolicy{
+		FreeFailures: 5, BaseDelay: time.Second, MaxDelay: 8 * time.Second, ResetAfter: time.Hour,
 	}
 )
 
-func loginThrottleKeys(client string, username string) []auththrottle.Key {
-	// Hash the username so an arbitrarily long submitted name cannot inflate
-	// the limiter's memory.
+// loginAccountKey hashes the username so an arbitrarily long submitted name
+// cannot inflate the throttle's memory.
+func loginAccountKey(username string) string {
 	sum := sha256.Sum256([]byte(username))
-	account := hex.EncodeToString(sum[:16])
+	return hex.EncodeToString(sum[:16])
+}
+
+func loginThrottleKeys(client string, username string) []auththrottle.Key {
+	account := loginAccountKey(username)
 	return []auththrottle.Key{
 		{Name: "client-account:" + client + "|" + account, Policy: loginClientAccountPolicy},
 		{Name: "client:" + client, Policy: loginClientPolicy},
-		{Name: "account:" + account, Policy: loginAccountPolicy},
 	}
 }
 

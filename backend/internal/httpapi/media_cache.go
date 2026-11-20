@@ -294,7 +294,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
 	}
-	if info, statErr := os.Stat(targetPath); statErr == nil && existingFileMatches(targetPath, sqlutil.Int64(target.SizeBytes)) {
+	if info, statErr := os.Stat(targetPath); statErr == nil && fileMatchesKnownSize(targetPath, sqlutil.Int64(target.SizeBytes), s.recordedFileSize(ctx, "cache", target.SourceID, target.CachePath)) {
 		cacheLocationID, upsertErr := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, sqlutil.Int64(target.SizeBytes), sqlutil.Int64(target.DurationSeconds), info.Size())
 		if upsertErr != nil {
 			_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, upsertErr.Error(), 0)
@@ -363,15 +363,16 @@ func mediaCacheDefinition() map[string]any {
 func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int64, sourceID int64, cacheRelPath string, expectedSize *int64) (int64, bool, error) {
 	var id int64
 	var path string
+	var recorded sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT id, path
+		SELECT id, path, size_bytes
 		FROM media_file_location
 		WHERE media_item_id = ?
 			AND file_source_id = ?
 			AND location_type = 'cache'
 			AND path = ?
 			AND availability = 'available'
-	`, mediaItemID, sourceID, cacheRelPath).Scan(&id, &path); err != nil {
+	`, mediaItemID, sourceID, cacheRelPath).Scan(&id, &path, &recorded); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, false, nil
 		}
@@ -381,7 +382,7 @@ func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int
 	if err != nil {
 		return 0, false, err
 	}
-	if !existingFileMatches(cachePath, expectedSize) {
+	if !fileMatchesKnownSize(cachePath, expectedSize, nullInt64Pointer(recorded)) {
 		return 0, false, nil
 	}
 	s.execBestEffort(ctx, "touch cache location check time", `

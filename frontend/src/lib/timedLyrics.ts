@@ -15,40 +15,121 @@ export type ParsedLyrics = {
 const lrcTimestampSource = String.raw`\[(?:(\d+):(\d{1,2}):(\d{2})\.(\d{1,3})|(\d+):(\d{2})(?:[.:](\d{1,3}))?)\]`;
 const lrcTimestampPattern = new RegExp(lrcTimestampSource, "g");
 const lrcLineStartPattern = new RegExp(`^${lrcTimestampSource}`);
+// The run of timestamp tags a timed LRC line starts with; header tags such as
+// `[ar:...]` or `[offset:...]` are not timestamps, so their lines carry no time.
+const lrcLeadingTimestampsPattern = new RegExp(`^(?:${lrcTimestampSource}\\s*)+`);
+// The LRC `[offset:+/-ms]` header tag, in milliseconds.
+const lrcOffsetPattern = /^\[offset:\s*([+-]?\d+)\s*\]/i;
 
 /** Whether a line begins with an LRC timestamp tag. */
 export function startsWithLrcTimestamp(line: string) {
   return lrcLineStartPattern.test(line);
 }
 
+/**
+ * Reads LRC, WebVTT, SRT, and ASS or SSA text as timed lines. A `WEBVTT`
+ * header makes the text a cue file. Otherwise it is a cue file when its
+ * complete cue timing lines (`start --> end`) are at least as many as its lines
+ * that start with LRC timestamp tags, so a stray line of either kind does not
+ * decide the format; else LRC tags make it LRC.
+ */
 export function parseTimedLyrics(text: string): ParsedLyrics {
-  const lrcLines: TimedLyricLine[] = [];
-  const sourceLines = text.split(/\r?\n/);
+  const sourceLines = text.replace(/^﻿/, "").split(/\r?\n/);
+  const cueFile = /^WEBVTT(?:[ \t]|$)/.test(sourceLines[0] ?? "") || cueTimingOutnumbersLrc(sourceLines);
+  if (!cueFile) {
+    const lrcLines = parseLrcLines(sourceLines);
+    if (lrcLines.length > 0) {
+      return { timed: true, lines: lrcLines.sort((left, right) => left.time - right.time) };
+    }
+
+    const assLines = parseAssDialogue(sourceLines);
+    if (assLines.length > 0) {
+      return { timed: true, lines: assLines.sort((left, right) => left.time - right.time) };
+    }
+  }
+
+  const cueLines = parseCueBlocks(sourceLines).map((cue) => ({
+    time: cue.start,
+    text: cue.lines.map(cueTextToPlainText).join(" ").replace(/\s+/g, " ").trim(),
+  }));
+  return cueLines.length > 0
+    ? { timed: true, lines: cueLines.sort((left, right) => left.time - right.time) }
+    : { timed: false, lines: [] };
+}
+
+/**
+ * The timed lines of an LRC file. Only the timestamp tags a line starts with
+ * time it; other bracketed text stays in the lyric, and enhanced-LRC word
+ * stamps such as `<00:12.25>` are dropped.
+ *
+ * An `[offset:ms]` header tag moves every line as LRC defines it: a positive
+ * offset shows each line earlier, so it is subtracted from the timestamps. This
+ * is the reverse sign of the listener's own offset in `offsetTimedLyrics`,
+ * which applies on top of the file's. A line moved before the start keeps its
+ * negative time, as a listener's offset leaves it.
+ */
+function parseLrcLines(sourceLines: string[]): TimedLyricLine[] {
+  const lines: TimedLyricLine[] = [];
+  let offsetMs = 0;
   for (const rawLine of sourceLines) {
-    const timestamps = Array.from(rawLine.matchAll(lrcTimestampPattern));
-    if (timestamps.length === 0) continue;
-    const lineText = rawLine.replace(/\[[^\]]+\]/g, "").trim();
-    for (const match of timestamps) {
+    const offset = lrcOffsetPattern.exec(rawLine.trim());
+    if (offset) offsetMs = Number(offset[1]);
+  }
+  for (const rawLine of sourceLines) {
+    const line = rawLine.trim();
+    const leading = lrcLeadingTimestampsPattern.exec(line);
+    if (!leading) continue;
+    const lineText = line.slice(leading[0].length).replace(inlineTimestampTagPattern, "").replace(/\s+/g, " ").trim();
+    for (const match of leading[0].matchAll(lrcTimestampPattern)) {
       const time =
         match[1] !== undefined
           ? Number(match[1]) * 3600 + timestampToSeconds(match[2], match[3], match[4])
           : timestampToSeconds(match[5], match[6], match[7]);
-      lrcLines.push({ time, text: lineText });
+      // Timestamps are whole milliseconds, so the move is made in them to keep the times exact.
+      lines.push({ time: offsetMs ? Math.round(time * 1000 - offsetMs) / 1000 : time, text: lineText });
     }
   }
-  if (lrcLines.length > 0) {
-    return { timed: true, lines: lrcLines.sort((left, right) => left.time - right.time) };
-  }
+  return lines;
+}
 
-  const assLines = parseAssDialogue(sourceLines);
-  if (assLines.length > 0) {
-    return { timed: true, lines: assLines.sort((left, right) => left.time - right.time) };
-  }
+// An inline timestamp tag: a WebVTT `<00:00:01.000>` karaoke stamp or an
+// enhanced-LRC `<00:12.25>` word stamp.
+const inlineTimestampTagSource = String.raw`\d+(?:[:]\d{2}){1,2}(?:[.:]\d{1,3})?`;
+const inlineTimestampTagPattern = new RegExp(`<${inlineTimestampTagSource}>`, "g");
 
-  const cueLines = parseCueBlocks(sourceLines).map((cue) => ({ time: cue.start, text: cue.lines.join(" ") }));
-  return cueLines.length > 0
-    ? { timed: true, lines: cueLines.sort((left, right) => left.time - right.time) }
-    : { timed: false, lines: [] };
+/**
+ * A tag in WebVTT or SRT cue text, captured so that `split` puts tags at odd
+ * indexes: a span such as `<i>`, `</b>`, `<font color="...">`, `<v Speaker>`,
+ * or `<c.class>`, or an inline timestamp.
+ */
+export const cueTextTagPattern = new RegExp(String.raw`(<\/?(?:[a-zA-Z][^<>]*|${inlineTimestampTagSource})>)`);
+
+const namedCharacterReferences: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  lrm: "‎",
+  rlm: "‏",
+};
+
+/**
+ * One line of WebVTT or SRT cue text as the plain text a viewer reads: tags
+ * are dropped, so a voice span keeps its text but not its speaker, and
+ * character references such as `&amp;` or `&#39;` are decoded.
+ */
+export function cueTextToPlainText(line: string) {
+  return line
+    .split(cueTextTagPattern)
+    .filter((_, index) => index % 2 === 0)
+    .join("")
+    .replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([a-zA-Z]+));/g, (reference, decimal, hex, name) => {
+      if (name !== undefined) return namedCharacterReferences[name] ?? reference;
+      const codePoint = decimal !== undefined ? Number(decimal) : Number.parseInt(hex, 16);
+      return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : reference;
+    });
 }
 
 /** A WebVTT or SRT cue: its start, its end when the timing line gives one, and its text lines. */
@@ -58,8 +139,21 @@ export type TimedCue = {
   lines: string[];
 };
 
-const cueTimestampSource = String.raw`(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[,.]\d{1,3})?`;
-const cueTimingPattern = new RegExp(`(${cueTimestampSource})\\s*-->(?:\\s*(${cueTimestampSource}))?`);
+// A cue timestamp has an hour field of any width, two-digit minutes and
+// seconds, and an optional fraction; a timing line starts with the cue's start.
+// A timestamp only matches whole, so `100:00:00.000` is 100 hours.
+const cueTimestampSource = String.raw`(?:\d+:)?\d{1,2}:\d{2}(?:[,.]\d{1,3})?`;
+const cueTimingPattern = new RegExp(`^\\s*(${cueTimestampSource})\\s*-->(?:\\s*(${cueTimestampSource})(?![\\d:,.]))?`);
+
+function cueTimingOutnumbersLrc(sourceLines: string[]): boolean {
+  let cueTimings = 0;
+  let lrcLines = 0;
+  for (const line of sourceLines) {
+    if (cueTimingPattern.exec(line)?.[2] !== undefined) cueTimings++;
+    else if (lrcLineStartPattern.test(line.trim())) lrcLines++;
+  }
+  return cueTimings > 0 && cueTimings >= lrcLines;
+}
 
 /** The cues of a WebVTT or SRT file in file order. */
 export function parseTimedCues(text: string): TimedCue[] {

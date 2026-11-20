@@ -287,9 +287,30 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeLoginRateLimited(w, retryAfter)
 		return
 	}
+	accountKey := loginAccountKey(username)
+	// Attempts on one username take turns, each waiting out the delay its
+	// failures earned, so the delay limits how fast a username can be
+	// guessed from any number of clients. Nothing locks the username.
+	release, err := s.loginDelay.Acquire(r.Context(), accountKey)
+	if err != nil {
+		attempt.Cancel()
+		return
+	}
+	defer release()
+	if delay := s.loginDelay.Delay(accountKey); delay > 0 {
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-r.Context().Done():
+			timer.Stop()
+			attempt.Cancel()
+			return
+		}
+	}
 	session, err := s.accountStore.Authenticate(r.Context(), username, password, time.Now())
 	if errors.Is(err, sql.ErrNoRows) {
 		attempt.Fail()
+		s.loginDelay.Fail(accountKey)
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
 		return
 	}
@@ -303,6 +324,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attempt.Succeed()
+	s.loginDelay.Succeed(accountKey)
 
 	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,

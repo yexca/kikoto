@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/personal"
 )
 
 // maxFavoriteMembershipBatchWorks bounds one bulk membership request. The
@@ -45,6 +46,15 @@ func (s *Server) summarizeFavoriteListMembership(w http.ResponseWriter, r *http.
 	workIDs, err := normalizeFavoriteMembershipWorkIDs(payload.WorkIDs)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	// Membership belongs to each family's canonical work.
+	if _, workIDs, err = s.canonicalWorkIDs(r.Context(), workIDs); err != nil {
+		writeError(w, err)
+		return
+	}
+	if len(workIDs) == 0 {
+		writeJSON(w, http.StatusOK, favoriteListMembershipSummary{Lists: []favoriteListMembershipCount{}})
 		return
 	}
 	query, args := favoriteMembershipCountQuery(user.ID, workIDs)
@@ -126,6 +136,25 @@ type workMemberList struct {
 // holds the work only through its rule has no time of addition, so those
 // follow in list order.
 func (s *Server) loadWorkMemberListsBatch(ctx context.Context, userID int64, workIDs []int64) (map[int64][]workMemberList, error) {
+	canonical, unique, err := s.canonicalWorkIDs(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	lists, err := s.loadStoredWorkMemberLists(ctx, userID, unique)
+	if err != nil {
+		return nil, err
+	}
+	result := byRequestedWork(workIDs, canonical, lists, func() []workMemberList { return nil })
+	for id, value := range result {
+		if value == nil {
+			delete(result, id)
+		}
+	}
+	return result, nil
+}
+
+// loadStoredWorkMemberLists reads the lists of the given canonical works.
+func (s *Server) loadStoredWorkMemberLists(ctx context.Context, userID int64, workIDs []int64) (map[int64][]workMemberList, error) {
 	result := make(map[int64][]workMemberList, len(workIDs))
 	if userID <= 0 || len(workIDs) == 0 {
 		return result, nil
@@ -291,9 +320,14 @@ func applyFavoriteListMembershipChanges(ctx context.Context, tx *sql.Tx, userID 
 			}
 		}
 	}
-	for _, workID := range workIDs {
+	for _, requestedID := range workIDs {
 		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM work WHERE id = ?", workID).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM work WHERE id = ?", requestedID).Scan(&exists); err != nil {
+			return err
+		}
+		// Membership belongs to the family's canonical work.
+		workID, err := personal.CanonicalWorkID(ctx, tx, requestedID)
+		if err != nil {
 			return err
 		}
 		for _, changes := range []struct {
@@ -382,6 +416,10 @@ func (s *Server) getWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if workID, err = s.canonicalWorkID(r.Context(), workID); err != nil {
+		writeError(w, err)
+		return
+	}
 	lists, err := s.loadFavoriteLists(r.Context(), user.ID, &workID)
 	if err != nil {
 		writeError(w, err)
@@ -405,6 +443,11 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 			return
 		}
+		writeError(w, err)
+		return
+	}
+	requestedID := workID
+	if workID, err = s.canonicalWorkID(r.Context(), workID); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -449,7 +492,7 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workId": workID, "favorite": favorite, "lists": lists})
+	writeJSON(w, http.StatusOK, map[string]any{"workId": requestedID, "favorite": favorite, "lists": lists})
 }
 
 // applyWorkFavoriteListSelection makes the work belong to exactly the selected

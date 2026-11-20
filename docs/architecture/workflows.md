@@ -92,7 +92,11 @@ Media, cleanup, and database:
 - `cache_maintenance`: remove unreferenced managed cache files after a safety
   grace period and prune empty directories.
 - `media_location_cleanup`: delete selected cache or local files and mark their
-  locations unavailable. `media_cleanup_forget_work` also removes the then
+  locations unavailable. A local file whose location no longer records the
+  queued path, media item, work, and source when the run reaches it, such as
+  after a folder edit renamed it, is left alone: the run records a
+  `media_cleanup.location_changed` event, lists it in `changed_locations`,
+  and finishes `partial`. `media_cleanup_forget_work` also removes the then
   unlinked work families and their personal state. A removed work folder takes
   the sidecars a NAS or operating system keeps beside its files (`._` files,
   `.DS_Store`, `Thumbs.db`, `@eaDir`, `__MACOSX`) with it. A run queued from
@@ -119,17 +123,24 @@ Media, cleanup, and database:
   remote editions to one local folder of a work, arrange its files and
   folders, remove the files taken out of it, and delete the local folders
   merged into it. It collects and size-checks every added file in
-  `.kikoto-staging` on the folder's pool, removes the files taken out, takes
-  each moved file into the same staging directory, moves each collected and
-  moved file to its path, removes the folders it emptied, creates the
-  requested ones, indexes the folder, and then deletes the merged folders. A
-  retried or resumed run continues from its checkpoint. A Fetch into a new
+  `.kikoto-staging` on the folder's pool, moves the files taken out into the
+  same staging directory and marks their locations unavailable, takes each
+  moved file into it too, moves each collected and moved file to its path,
+  removes the folders it emptied, creates the requested ones, indexes the
+  folder, and then deletes the merged folders. The files taken out are deleted
+  with the staging directory only once the edit succeeds; a failed or
+  cancelled edit, including one that waits for a retry, puts them back and
+  makes their locations available again, except a file whose path a file the
+  edit placed now holds: that one is dropped. A retried or resumed run
+  continues from its checkpoint. A Fetch into a new
   folder queues one as its follow-up once it completes. Lyrics track bindings
   that an edit or a Fetch follow-up recorded are not stored: the edit run
   counts them in its summary and Activity, and a Fetch follow-up's run notes
   them, with any lyrics language it chose, once its edit is queued.
 - `local_media_delete`: delete one local media file and mark only that location
-  unavailable. `local_symlink_review` notifies users when such a request
+  unavailable. A queued deletion whose location no longer records the queued
+  file is `skipped` with a `media_delete.location_changed` event and deletes
+  nothing. `local_symlink_review` notifies users when such a request
   targets a symlink.
 - `local_location_cleanup`: mark reviewed local locations unavailable and
   optionally delete the files.
@@ -194,7 +205,10 @@ numeric-keyed object, including sparse objects returned by the provider. The
 object keys are ordering hints; each edition's `display_order` remains the
 relationship order. Provider responses that join several language tokens with
 commas are normalized for edition matching and availability checks, so a
-combined language value does not prevent the family from synchronizing.
+combined language value does not prevent the family from synchronizing. A
+response with neither `translation_info` nor `language_editions` declares no
+family; an edition that is already classified keeps its family and canonical
+state, and only its descriptive fields follow the response.
 
 The source tabs show only DLsite for a circle, and only enabled metadata-capable
 remote sources for a voice actor. Voice actor scope is disabled until such a
@@ -399,10 +413,12 @@ work cannot permanently block startup backfill or an otherwise valid tag edit.
 
 Core workflow definitions, startup triggers, and changed-snapshot projections
 run before independent server-lifetime background repairs: shared-tag backfill,
-moving flat cover files into the nested cover layout, and removing unreferenced
-manual cover assets. No repair delays or prevents these core steps. Protected
-logs keep repair errors; durable `startup_cover_migration`,
-`startup_manual_asset_cleanup`, and `startup_metadata_tag_backfill` settings
+moving flat cover files into the nested cover layout, removing unreferenced
+manual cover assets, and moving personal state an edition holds to its
+family's canonical work (see [User State](data-model.md#user-state)). No
+repair delays or prevents these core steps. Protected logs keep repair errors;
+durable `startup_cover_migration`, `startup_manual_asset_cleanup`,
+`startup_family_personal_state`, and `startup_metadata_tag_backfill` settings
 record running/failed/complete status and whether another startup should retry.
 Committed backfill batches remain consistent; the next startup retries an
 incomplete pass idempotently. A bad cover file leaves its
@@ -480,8 +496,9 @@ A manual scan always walks the complete data tree, so Scan has no Full and
 requests no follow-up metadata run. The run control follows the uniqueness
 the backend enforces. Starting it marks the card as starting at once, and the
 card follows the run through queued and running. The local scan and the file
-index are exclusive: one run of each is queued or running, so their run
-control returns when the run ends. Metadata sync runs per scope, so its run
+index are exclusive: a scan request while a complete scan is queued, or an
+index request while an index run is queued or running, returns
+that run, so their run control returns when the run ends. Metadata sync runs per scope, so its run
 control returns as soon as the requested run is listed and another scope can
 queue behind the active run. The card then follows the running run, ahead of a
 queued one, and counts its other active runs; a request that queued behind
@@ -544,10 +561,9 @@ the backend.
   only to its owner or requester, and `system:admin`
   sees every run.
 - Starting, configuring, and scheduling: a kind of run requires every
-  permission its steps use. Track steps (`track_works`, a bulk Track,
-  including one of watched works) require `remote:track`; Fetch steps
-  (`fetch_works`, Fetch, a bulk Fetch, including one of watched works)
-  require both `remote:fetch` and
+  permission its steps use. Track steps (a bulk Track, including one of
+  watched works) require `remote:track`; Fetch steps (Fetch, a bulk Fetch,
+  including one of watched works) require both `remote:fetch` and
   `metadata:sync`; scans, the local file index, metadata sync, presets, and
   the ranking pulls require `metadata:sync`, as do configuring rankings and
   requesting a pull; the source presence check requires `sources:write`; tags
@@ -753,7 +769,8 @@ is queued or running, only its lists due later count. Completion, failure,
 cancellation, orphan recovery, and changes to a list replan the dispatcher
 from the lists' current settings. Cancelling a pull consumes that run's
 request and keeps an enabled automatic list's next pull in the future;
-a later manual request remains due. A run that fails before it takes its
+a later manual request remains due. A run that fails, or is interrupted by a
+restart, before it takes its
 lists consumes no request or due pull, and its target is dispatched again
 five minutes after the failure. The dispatcher is
 configured only through the lists: no page edits, pauses, or deletes its
@@ -885,7 +902,15 @@ joins that run. Demo refuses both.
 Preset workflows are system definitions whose graph is composed by the server
 from a small validated parameter set. The typed workflow graph runtime
 (`workflow_graph*.go`; persisted as `custom_workflow` jobs with checkpoints and
-retry) executes the node kinds the presets compose. `circle_catalog_sync`,
+retry) executes the node kinds the presets and the circle and voice actor
+detail refreshes compose. One job runs the nodes in topological order, each to
+completion before the next, and checkpoints every completed node with its
+outputs; a retried or resumed job continues after the last completed node,
+which keeps its recorded result. A queued or running graph run whose stored
+graph names a node kind the runtime does not have fails at startup: the node
+of that kind fails with a public reason, the unfinished nodes are skipped, and
+the job is not recoverable, so the run is neither claimed nor retried.
+`circle_catalog_sync`,
 `series_catalog_sync`, and `voice_catalog_sync` share one input, filter, and
 actions shape:
 
@@ -990,9 +1015,10 @@ new work roots, walks each affected work's complete media tree, and reconciles
 its locations. It does not walk unaffected media trees. A watcher error, path
 batch overflow, invalid or unavailable path batch, watch-root invalidation, a
 work whose code lies in several folders, or an affected work folder whose
-files cannot be read switches that run to full mode. An invalidated root keeps
-the recovery request across watcher restarts and dispatches it only after the
-replacement watcher has settled.
+files cannot be read switches that run to full mode. A watch-root invalidation,
+or a watch configuration change that replaces the watcher while changes wait
+to be dispatched, keeps a full-scan recovery request across watcher restarts
+and dispatches it only after the replacement watcher has settled.
 
 Kikoto's `.kikoto-staging`, `.kikoto-backup`, and `.kikoto-trash` transaction
 trees are excluded. Claimed per-source Fetch roots are also excluded because
@@ -1001,8 +1027,15 @@ Fetch registers final publication directly. A Fetch root without its
 Fetch history explains its complete visible structure and at least one exact
 historical target exists on disk; watcher configuration does not write the
 missing marker.
-Startup, interval, and manual workflows always run the complete local scan. If a
-filesystem scan is already queued or running, later changes remain pending and
+Startup, interval, and manual workflows always run the complete local scan. A
+request for a complete scan, from Run, Startup, an interval, a retry, a library
+layout change, or the folder watcher, while a complete scan is queued and not
+yet running returns that run; the run takes on the request's follow-up
+metadata run, and its result is recorded on the request's trigger too. While
+a complete scan runs, a request queues its own, because the running scan may
+already have passed the folders that changed. Folder changes and a new custom
+work queue their own incremental scan. If a filesystem
+scan is already queued or running, later changes remain pending and
 are coalesced into at most one follow-up run. Events while the trigger is paused
 are discarded. Changes made while Kikoto is stopped are covered by the default
 Startup scan; they cannot be recovered by the native event stream alone.
@@ -1035,6 +1068,8 @@ its timestamps record its last change. A work whose code is found in several
 folders keeps every one of them as an active folder (see
 [File Availability](data-model.md#file-availability)): none of their locations
 is invalidated in favour of another, and the scan raises nothing for review.
+A recorded folder of such a work that the scan observes but does not find
+becomes `missing` with the file locations below it.
 Neither mode rewrites `managed_fetch` ownership records.
 
 Local scan and metadata sync have separate definitions, jobs, resource labels,
@@ -1103,6 +1138,20 @@ any other exit, including an error or panic that recorded nothing, is marked
 failed and its run records a `job.result_missing` event, so one faulty exit
 path cannot hold the single-executor queue.
 
+A short operation an API request queues, such as a local file deletion or a
+cache-limit cleanup, runs within the request only while its job is at the head
+of the queue, and otherwise waits for the executor. When the request ends
+before the operation records a result, as when its client disconnects, the job
+returns to the queue without spending a resume and its run records a
+`job.requeued_after_disconnect` event; the executor then runs it.
+
+The coordinator dispatches the earliest due interval trigger and moves its
+next run one interval ahead as it queues the run. An occurrence whose run
+cannot be queued is retried five minutes later, and one whose run a service
+stop prevented stays due for the next start. A trigger whose dispatch fails
+before its next run moves waits five minutes and records the failure as its
+last error, so it never holds back the other due triggers.
+
 The executor is single-instance, so the process records every job lease it
 holds and that record decides whether a running job still has an executor.
 Heartbeats show recent activity but never expire a lease: a busy database or a
@@ -1141,8 +1190,7 @@ checkpoint fails with the stop reason. Its run records a
 `media:cleanup` resource while another job, scan, or Fetch publication changes
 library folders stops waiting when the service stops or its run is cancelled.
 Fetch publication does not start once a stop has begun, and a publication that
-already started finishes its directory swap and records it before the job
-stops.
+already started places its files and records it before the job stops.
 
 Startup recovery is the path for crashes, forced kills, and a stop that
 exceeds its deadline. No lease from an earlier process is live, so every
@@ -1150,9 +1198,8 @@ running job is settled by the orphan rule under
 [Queue Ordering](#queue-ordering): it is requeued from its checkpoint and
 spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
-interrupted Fetch publications are reconciled from the staging, target, and
-backup directories. Which of them exist decides the outcome, not what they
-hold. While the target's pool is offline, recovery leaves the publication as
+interrupted Fetch publications finish placing their files, as described under
+[Fetch Publication](#fetch-publication). While the target's pool is offline, recovery leaves the publication as
 it is, and a retry of the run finishes it once the pool is back.
 
 Fetch retries and startup recovery share the same publication reconciliation
@@ -1165,7 +1212,37 @@ lease release, and run result commit together. Rollback backups are removed
 only after that commit. Startup also repairs a completed manifest whose job or
 run result was left unfinished. Simple workflow result writes likewise commit
 their node, job, and run states in one transaction, so an interrupted write
-keeps the lease for the runner's settlement path.
+keeps the lease for the runner's settlement path. A run cancelled before its
+job records a result keeps its cancellation, as do its job and nodes. A Fetch
+is cancelled only until its publication starts placing files; a cancellation
+that arrives later leaves it to publish, register its files, succeed, and
+queue its follow-up.
+
+### Fetch Publication
+
+Fetch publishes file by file. Staging holds only the files the Fetch writes:
+each new or replacing file is copied into `.kikoto-staging/<run>/work` on the
+target's pool and verified there. Publication then renames each staged file
+into the target folder. A file it replaces first moves to the same relative
+path under `.kikoto-backup/<run>/work`, so the replaced file stays
+recoverable until the Fetch completes. Files the Fetch does not write are
+never copied, moved, or rewritten: they keep their content, modification
+times, and hard links, a change made to them while the Fetch runs is kept,
+and a linked subfolder the Fetch does not write into does not stop it. New
+files appear one at a time rather than all at once.
+
+Each planned file's staged, target, and backup entries decide how its
+placement finishes, not what else the folder holds, so an interrupted
+publication finishes by placing the remaining files again: a file already
+placed has left staging and is skipped, and a replaced file whose staged copy
+is still there is placed. A replaced file whose staged copy is gone returns
+from the backup to its place, and the Fetch stages again. A target that already
+has a backup from an earlier attempt counts as placed when it holds the staged
+content, and is otherwise never replaced again until that backup is settled.
+A placement that fails for any other reason puts back what that attempt
+placed: each placed file returns to staging and the file it replaced returns
+from the backup, and the Fetch returns to verified, so it never stays half
+published and a retry places the same staged files again.
 
 ## Library Layout and Onboarding
 
@@ -1174,6 +1251,9 @@ pools (first-level folders of the data root). `app_setting` holds
 `library_mode`, `storage_pools` (path and marker ID), `fetch_pool`, and the
 standard pool's marker ID; paths in the database stay relative to the data
 root, so a pool is the first path segment in pool mode and no schema changes.
+A work folder, one whose name carries a work code or that the library records
+as a work's folder, is never offered as a pool, and registering or migrating
+to one is refused with `storage_pool_is_work_folder`.
 `GET/PUT /api/library/layout`, `POST /api/library/pools/reconnect`, and
 `POST /api/library/onboarding/complete` require `sources:write`.
 
@@ -1210,6 +1290,11 @@ the current scan depth. A folder below that depth remains outside the scan's
 scope until the administrator increases the depth and scans it.
 
 Each scan computes its scope from the online pools and the effective depth.
+The data root may be reached through a symbolic link: discovery, the custom
+work picker, and the folder watcher walk its target and report paths under the
+configured root, and deletion and cleanup work below it. Below the data root,
+every destructive path still refuses a link. A registered pool is a real directory: a pool folder that is a link is
+offline, and a discovery walk does not follow one.
 Depth counts inside a pool and is at least the deepest Fetch save template or
 active `managed_fetch` root. Discovery walks only online pools; missing-marking
 of folders and presences applies only to recorded roots inside that scope.
@@ -1275,6 +1360,15 @@ with the default options and the trigger type `source_change`; renaming or
 reordering an enabled source queues nothing, and a source that cannot answer
 work checks is skipped.
 
+A check reports a work `not_found` only when the source answered that it has no
+such work: its lookup returned 404 and its listing, read in full, holds no such
+code. A lookup answered 404 whose listing cannot be read, a timeout, or any
+other failure is an `error`, whatever the error text says. Only an answer
+changes the work's stored `source` presence: `available` or `missing`. An
+`error` keeps the presence the source last reported and only advances when the
+work was last asked, recording `unknown` for a work the source never answered
+for.
+
 ## Source Presence Check
 
 `source_presence_check` asks one remote source whether library works exist
@@ -1300,8 +1394,9 @@ the manual **Check health** action in source settings and records its
 `health_status`. An unavailable source fails the run before any work is
 checked, so an outage never marks works missing. Each selected work is then
 looked up once through the source's paced crawl lane, as a per-work
-[source availability](#source-availability) check does, and recorded as that
-work's `source` presence (`available`, `missing`, or `unavailable`). The run
+[source availability](#source-availability) check does, and an answer is
+recorded as that work's `source` presence (`available` or `missing`). A
+failed lookup changes no stored presence. The run
 never creates works. After five failed lookups in a row it stops and leaves
 the remaining works for a later run.
 
@@ -1555,8 +1650,14 @@ synthetic names and reserved codes. It stores, refreshes, and links nothing.
 ## Review Candidates
 
 Fetch honors an explicit Replace decision even when the target has the same
-size or the source does not declare a size. A file copied from the existing
-target into staging is not evidence that the selected replacement was staged.
+size or the source does not declare a size. When the source declares no size,
+an existing target or cache file counts as present only when it has the size
+Kikoto recorded for that location, as indexing records a local file and a
+completed download records a cache file. Any other existing cache file is
+downloaded again. Any other existing target is a target conflict, since
+nothing confirms it is the remote file, so the user keeps or replaces it as
+with a target of another size. A file that is already in the target is not
+evidence that the selected replacement was staged.
 After an interruption, only a staged file matching a previously verified
 manifest hash may be reused; other selected files are copied from their chosen
 local or cache source again before verification and publication.
@@ -1572,8 +1673,22 @@ is listed, planned, cached, and stored under: path separators and `.` or `..`
 components are dropped, and a title with nothing left is named after its
 position in its folder.
 
+Once a Fetch is published, it archives for review only the folders of the work
+its `copy_local` items came from, the files the user consolidated in the Fetch
+dialog, into the `.kikoto-trash` of that folder's pool, and records a
+`local_fetch_merge_cleanup` candidate for them. The plan lists those folders as
+`archiveRoots`, and the dialog's After Fetch pane shows them. A Fetch without
+`copy_local` items, such as a remote-only selection, a bulk or Availability
+Watch Fetch, or the Fetch composed by folder management, archives and
+removes nothing: it registers its folder and leaves every other folder of the
+work, including the ones a composed Fetch's follow-up folder edit adds files
+from, in place. The Fetch removes the cache and retires the remote streams of
+the files it promoted; files it left unselected keep both. Untracking a source
+while a queued or running Fetch still needs one of its cache files keeps that
+file, as cache trimming does.
+
 Workflow candidates capture user-reviewable outcomes such as unavailable
-DLsite products and old local locations left after remote fetches. A Fetch from a source with restricted outbound hosts also creates a
+DLsite products and the folders a Fetch consolidated. A Fetch from a source with restricted outbound hosts also creates a
 `remote_origin_blocked` candidate when a media origin is outside that source's
 boundary. The run and active node become partial, the recoverable job is not
 automatically retried, and its run records only the normalized origin rather
@@ -1646,11 +1761,15 @@ Submission and execution both validate the source's capability and enabled
 state. Repeated requests for the same work and source reuse the active run;
 The run records source codes and fixed outcomes without endpoint details.
 
-When enabled in the DLsite run options, bulk and scheduled metadata sync ask
-the selected sources after DLsite reports the requested product
-as not found. Timeouts, rate limits and other retryable DLsite failures fail or
-retry the job without contacting any remote source, so a DLsite outage cannot
-fan out to remote sources. Fallback-enabled runs revisit unavailable works
+Bulk and scheduled metadata sync decide by error type. A DLsite request
+answered with 429, or with 503 and `Retry-After`, waits the bounded backoff
+and retries; rate limiting that persists through those retries stops the run,
+which fails so it can be retried later. A timeout or any other error of one
+work skips that work: the run continues with the others and finishes
+`partial`. When enabled in the DLsite run options, these runs ask the
+selected sources after DLsite reports the requested product as not found.
+Timeouts, rate limits and other retryable DLsite failures never contact a
+remote source, so a DLsite outage cannot fan out to remote sources. Fallback-enabled runs revisit unavailable works
 within their scope. A DLsite `metadata_family_sync` job, used by work detail
 and Metadata recovery, snapshots the instance remote metadata fallback and
 purchase bonus settings when it is queued.

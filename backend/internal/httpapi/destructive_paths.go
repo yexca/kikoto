@@ -30,15 +30,18 @@ func validateDestructivePath(storageRoot string, relativePath string, allowMissi
 		return "", fmt.Errorf("path escapes configured storage root")
 	}
 
-	rootInfo, err := os.Lstat(absRoot)
+	// The configured root is trusted configuration and may be reached through
+	// a link, such as a data root mounted as one; a scan walks it the same
+	// way. Every component below it must be a real directory or file.
+	rootInfo, err := os.Stat(absRoot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) && allowMissingLeaf {
 			return absTarget, nil
 		}
 		return "", err
 	}
-	if unsafeFetchStagingEntry(rootInfo) || !rootInfo.IsDir() {
-		return "", fmt.Errorf("configured storage root is not a regular directory")
+	if !rootInfo.IsDir() {
+		return "", fmt.Errorf("configured storage root is not a directory")
 	}
 
 	current := absRoot

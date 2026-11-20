@@ -252,6 +252,9 @@ func (s *Server) buildLibraryMigrationPlan(ctx context.Context, requested librar
 				return layoutMigrationPlan{}, invalidLibraryLayout("storage_pool_invalid", "Choose existing, distinct storage pool folders.")
 			}
 			seen[strings.ToLower(name)] = true
+			if err := s.refuseWorkFolderAsStoragePool(ctx, name); err != nil {
+				return layoutMigrationPlan{}, err
+			}
 			if err := storagepool.ProbeRename(filepath.Join(s.cfg.DataRoot, name)); err != nil {
 				return layoutMigrationPlan{}, invalidLibraryLayout("storage_pool_not_writable", "A selected storage pool is not writable.")
 			}

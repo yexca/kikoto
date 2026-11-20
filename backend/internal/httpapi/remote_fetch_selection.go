@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,10 +117,52 @@ func existingFileMatches(path string, expectedSize *int64) bool {
 	return expectedSize == nil || info.Size() == *expectedSize
 }
 
+// fileMatchesKnownSize reports whether path is a file of the size the source
+// declares or, when the source declares none, of the size Kikoto recorded
+// when it wrote or indexed the file. A file with neither cannot be told apart
+// from a partial or different copy, so it does not count as present and is
+// downloaded again.
+func fileMatchesKnownSize(path string, expectedSize *int64, recordedSize *int64) bool {
+	known := expectedSize
+	if known == nil {
+		known = recordedSize
+	}
+	if known == nil || *known < 0 {
+		return false
+	}
+	return existingFileMatches(path, known)
+}
+
+func nullInt64Pointer(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
+}
+
+// recordedFileSize is the size recorded for an available location of the
+// given type and path, or nil when none records one.
+func (s *Server) recordedFileSize(ctx context.Context, locationType string, sourceID int64, relativePath string) *int64 {
+	var size sql.NullInt64
+	query := `
+		SELECT size_bytes FROM media_file_location
+		WHERE location_type = ? AND path = ? AND availability = 'available' AND size_bytes IS NOT NULL`
+	args := []any{locationType, relativePath}
+	if sourceID > 0 {
+		query += ` AND file_source_id = ?`
+		args = append(args, sourceID)
+	}
+	query += ` ORDER BY id DESC LIMIT 1`
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&size); err != nil {
+		return nil
+	}
+	return nullInt64Pointer(size)
+}
+
 func (s *Server) findRemoteCacheFile(ctx context.Context, sourceID int64, sourceCode string, workCode string, remotePath string, expectedSize *int64) (string, bool) {
 	cacheRelPath := cacheMediaRelPath(sourceCode, workCode, remotePath)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT path
+		SELECT path, size_bytes
 		FROM media_file_location
 		WHERE file_source_id = ?
 			AND location_type = 'cache'
@@ -132,14 +175,15 @@ func (s *Server) findRemoteCacheFile(ctx context.Context, sourceID int64, source
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var path string
-		if err := rows.Scan(&path); err != nil {
+		var recorded sql.NullInt64
+		if err := rows.Scan(&path, &recorded); err != nil {
 			continue
 		}
 		cachePath, err := safeCachePath(s.cfg.CacheRoot, path)
 		if err != nil {
 			continue
 		}
-		if existingFileMatches(cachePath, expectedSize) {
+		if fileMatchesKnownSize(cachePath, expectedSize, nullInt64Pointer(recorded)) {
 			return path, true
 		}
 	}

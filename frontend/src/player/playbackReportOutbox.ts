@@ -77,8 +77,7 @@ function validatedState(value: unknown): ReportOutboxState {
         r.order <= 0 ||
         !Number.isSafeInteger(r.mediaItemId) ||
         r.mediaItemId <= 0 ||
-        !Number.isSafeInteger(r.locationId) ||
-        r.locationId <= 0 ||
+        (r.locationId !== null && (!Number.isSafeInteger(r.locationId) || r.locationId <= 0)) ||
         !finite(r.positionSeconds) ||
         (r.durationSeconds !== null && !finite(r.durationSeconds)) ||
         typeof r.completed !== "boolean",

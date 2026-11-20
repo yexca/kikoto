@@ -4,10 +4,7 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -85,65 +82,6 @@ func graphPortValuesSummary(values map[string]graphPortValue) map[string]any {
 		result[handle] = summary
 	}
 	return result
-}
-
-func graphExtensionSet(values []string) map[string]bool {
-	result := map[string]bool{}
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(value), "."))
-		if value != "" && len(value) <= 16 {
-			result[value] = true
-		}
-	}
-	return result
-}
-
-func graphFetchRequestID(runID int64, nodeID, code string) string {
-	nodeID = regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(nodeID, "_")
-	return fmt.Sprintf("cw:%d:%s:%s", runID, nodeID, strings.ToUpper(strings.TrimSpace(code)))
-}
-
-func graphTrackRequestID(runID int64, nodeID string, sourceID int64, code string) string {
-	nodeID = regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(nodeID, "_")
-	return fmt.Sprintf("cw-track:%d:%s:%d:%s", runID, nodeID, sourceID, strings.ToUpper(strings.TrimSpace(code)))
-}
-
-func (s *Server) graphTrackRequestResult(ctx context.Context, requestID string, sourceID int64, code string) (remoteWorkSyncResult, bool, error) {
-	var result remoteWorkSyncResult
-	err := s.db.QueryRowContext(ctx, `
-		SELECT child.id,
-			COALESCE(job.id, 0),
-			COALESCE(CAST(json_extract(match_node.output_json, '$.work_id') AS INTEGER), 0),
-			COALESCE(CAST(json_extract(child.input_json, '$.work_code') AS TEXT), '')
-		FROM workflow_run AS child
-		LEFT JOIN workflow_node_run AS match_node
-			ON match_node.workflow_run_id = child.id AND match_node.node_id = 'match'
-		LEFT JOIN workflow_job AS job ON job.workflow_run_id = child.id
-		WHERE child.workflow_code = 'remote_source_sync'
-			AND child.status IN ('succeeded', 'partial')
-			AND child.trigger_reason = ?
-			AND CAST(json_extract(child.input_json, '$.file_source_id') AS INTEGER) = ?
-			AND UPPER(COALESCE(
-				CAST(json_extract(child.input_json, '$.requested_work_code') AS TEXT),
-				CAST(json_extract(child.input_json, '$.work_code') AS TEXT),
-				''
-			)) = ?
-		ORDER BY child.id DESC, job.id
-		LIMIT 1
-	`, requestID, sourceID, strings.ToUpper(strings.TrimSpace(code))).Scan(&result.RunID, &result.JobID, &result.WorkID, &result.PrimaryCode)
-	if errors.Is(err, sql.ErrNoRows) {
-		return remoteWorkSyncResult{}, false, nil
-	}
-	if err != nil {
-		return remoteWorkSyncResult{}, false, err
-	}
-	if result.RunID <= 0 || result.WorkID <= 0 || strings.TrimSpace(result.PrimaryCode) == "" {
-		return remoteWorkSyncResult{}, false, fmt.Errorf("completed track request result is incomplete")
-	}
-	result.Status = "succeeded"
-	result.Tracked = true
-	result.TriggerReason = requestID
-	return result, true, nil
 }
 
 func normalizeGraphWorkCodes(values []string, limit int) ([]string, error) {

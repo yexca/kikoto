@@ -6,6 +6,7 @@ import {
   createTrackLocationFailureState,
   recordTrackLocationFailure,
   resetTrackLocationFailures,
+  switchTrackLocation,
 } from "./trackLocations";
 
 const locations: PlayerTrackLocation[] = [
@@ -88,5 +89,18 @@ describe("track location fallback", () => {
 
     expect(recordTrackLocationFailure(track, state, { allowFallback: false })).toEqual({ kind: "terminal" });
     expect(recordTrackLocationFailure(track, state, { allowFallback: false })).toEqual({ kind: "ignored" });
+  });
+});
+
+describe("manual source selection", () => {
+  it("switches to another listed location as the listener's choice, which an automatic move drops", () => {
+    const chosen = switchTrackLocation(track, 12);
+    expect(chosen).toMatchObject({ locationId: 12, locationType: "cache", locationChosen: true });
+    expect(applyTrackLocation(chosen!, locations[0]).locationChosen).toBeUndefined();
+  });
+
+  it("changes nothing when the chosen source is already playing or not listed", () => {
+    expect(switchTrackLocation(track, 11)).toBeNull();
+    expect(switchTrackLocation(track, 99)).toBeNull();
   });
 });

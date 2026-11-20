@@ -109,9 +109,20 @@ export class PlaybackReportScheduler {
     const reportId = this.deps.createId();
     void this.write((s) => {
       const existing = s.progress.find((entry) => entry.workId === workId);
+      // A blocked checkpoint is never sent again, so a new work's checkpoint
+      // takes the place of the oldest one instead of being refused for room.
       if (!existing && s.progress.length >= MAX_OUTBOX_PROGRESS) {
-        this.deps.warn();
-        return;
+        const blocked = s.progress
+          .filter((entry) => entry.blocked)
+          .reduce<(typeof s.progress)[number] | null>(
+            (oldest, entry) => (!oldest || entry.report.order < oldest.report.order ? entry : oldest),
+            null,
+          );
+        if (!blocked) {
+          this.deps.warn();
+          return;
+        }
+        s.progress = s.progress.filter((entry) => entry !== blocked);
       }
       s.order = Math.max(s.order + 1, at);
       const entry = { workId, report: { ...checkpoint, reportId, order: s.order } };
@@ -224,6 +235,7 @@ export class PlaybackReportScheduler {
       this.nextPeriodic = this.deps.now() + PLAYBACK_REPORT_INTERVAL_MS;
       if (!batch.progress.length && !batch.history.length) return;
       const sent = batch;
+      let locationsCleared = false;
       const sentWorkIds = new Map(this.state.progress.map((entry) => [entry.report.reportId, entry.workId]));
       const result = await this.deps.send(sent, this.controller.signal, keepalive);
       if (!this.current()) return;
@@ -252,7 +264,12 @@ export class PlaybackReportScheduler {
           const entry = s.progress.find((e) => e.report.reportId === ack.reportId);
           if (!entry) continue;
           if (ack.status === "recorded" || ack.status === "stale") s.progress = s.progress.filter((e) => e !== entry);
-          else entry.blocked = true;
+          else if (ack.status === "invalid" && entry.report.locationId !== null) {
+            // An older server refuses a checkpoint whose location is gone, such
+            // as a deleted copy; it is kept and sent again for the media item alone.
+            entry.report = { ...entry.report, locationId: null };
+            locationsCleared = true;
+          } else entry.blocked = true;
         }
         s.failures = 0;
         s.retryAt = 0;
@@ -262,6 +279,7 @@ export class PlaybackReportScheduler {
         }
       });
       if (!this.current()) return;
+      if (locationsCleared) this.followup = true;
       if (epoch === this.epoch && (this.generation === null || result.generation >= this.generation))
         this.setGeneration(result.generation, true);
       // Learn the entire batch's ownership before comparing confirmations. Family
@@ -305,7 +323,12 @@ export class PlaybackReportScheduler {
       while (this.workIdentities.size > 128) this.workIdentities.delete(this.workIdentities.keys().next().value!);
       if (
         result.history.some((a) => a.status !== "recorded") ||
-        result.progress.some((a) => a.status !== "recorded" && a.status !== "stale")
+        result.progress.some(
+          (a) =>
+            a.status !== "recorded" &&
+            a.status !== "stale" &&
+            !(a.status === "invalid" && sent.progress.find((r) => r.reportId === a.reportId)!.locationId !== null),
+        )
       )
         this.deps.warn();
     } catch (error) {

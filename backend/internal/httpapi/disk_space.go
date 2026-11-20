@@ -81,8 +81,10 @@ func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFre
 }
 
 // remoteWorkSaveDiskNeeds returns the bytes the Fetch still has to write to
-// the data and cache filesystems. Staging copies from the cache, so until the
-// promoted cache is cleaned up the work occupies both.
+// the data and cache filesystems. Staging copies the planned files from the
+// cache, so until the promoted cache is cleaned up the work occupies both. The
+// existing folder is never copied: publication renames each file into place,
+// and a replaced file moves to the run backup on the same filesystem.
 //
 // Files already on disk are not charged twice: a cached file with the planned
 // size becomes a cache hit, and everything in the run's staging directory is
@@ -94,17 +96,8 @@ func (s *Server) remoteWorkSaveDiskNeeds(plan remoteWorkSavePlan, stagingRoot st
 	if err != nil {
 		return 0, 0, err
 	}
-	targetRoot, err := safeDataPath(s.cfg.DataRoot, plan.SaveRoot)
-	if err != nil {
+	if _, err := safeDataPath(s.cfg.DataRoot, plan.SaveRoot); err != nil {
 		return 0, 0, errors.New("fetch data target is invalid")
-	}
-	existingBytes, err := directoryTreeSize(targetRoot)
-	if err != nil {
-		return 0, 0, errors.New("fetch data usage could not be measured")
-	}
-	dataRequired, ok := checkedAddUint64(dataRequired, existingBytes)
-	if !ok {
-		return 0, 0, errors.New("fetch disk requirement exceeds supported range")
 	}
 	var largestItem uint64
 	for _, item := range plan.Items {
@@ -133,6 +126,7 @@ func (s *Server) remoteWorkSaveDiskNeeds(plan remoteWorkSavePlan, stagingRoot st
 	}
 	if stagedBytes > 0 {
 		dataRequired -= min(dataRequired, stagedBytes)
+		var ok bool
 		if dataRequired, ok = checkedAddUint64(dataRequired, min(stagedBytes, largestItem)); !ok {
 			return 0, 0, errors.New("fetch disk requirement exceeds supported range")
 		}

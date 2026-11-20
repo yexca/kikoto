@@ -149,7 +149,10 @@ export function RecordMediaPlayer({
     if (!canSaveProgress) return;
     void api
       .updateRecordProgress(asset.id, progress)
-      .then(() => onProgressSaved(asset.id, progress))
+      .then((result) => {
+        // A save the server did not store leaves the tile on the later one.
+        if (result?.stored !== false) onProgressSaved(asset.id, progress);
+      })
       .catch(() => {
         // Progress is best effort; playback continues without it.
       });

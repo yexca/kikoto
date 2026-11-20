@@ -218,6 +218,7 @@ export type VideoHardwareStatus = {
 
 export type RuntimeSettings = {
   anonymousAccessEnabled: boolean;
+  anonymousRemoteBrowsingEnabled?: boolean;
   cacheEnabled: boolean;
   mode: "development" | "production" | "demo";
   demoMode: boolean;
@@ -239,6 +240,7 @@ export type AppUpdate = {
 
 export type AppSettings = {
   anonymousAccessEnabled: boolean;
+  anonymousRemoteBrowsingEnabled?: boolean;
   localScanDepth: number;
   /** Shallowest scan depth that still reaches every Fetch folder. */
   localScanDepthMinimum?: number;

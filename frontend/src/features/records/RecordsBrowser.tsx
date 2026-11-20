@@ -65,7 +65,8 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const { location, historyState, navigate } = useRecordsLocation();
   const { state: rootState, reload: reloadRoot } = useRecordRoot(enabled);
   const root: RecordRoot | null = rootState.status === "ready" ? rootState.root : null;
-  const online = root?.state === "online";
+  // A root that lost its marker keeps its catalog and is browsed as usual.
+  const online = root?.state === "online" || root?.state === "marker_missing";
   const {
     tree,
     trail,
@@ -213,7 +214,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     const administrator = auth.user?.role === "admin" || auth.user?.role === "super_admin";
     return <RecordSetupNotice settingsPath={administrator ? librarySettingsPath : null} />;
   }
-  if (root.state !== "online") {
+  if (root.state !== "online" && root.state !== "marker_missing") {
     const offline = root.state === "offline";
     return (
       <RecordRetryNotice
@@ -288,6 +289,14 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
 
   return (
     <div className="space-y-4">
+      {root.state === "marker_missing" && (
+        <p
+          role="status"
+          className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground"
+        >
+          {t("records.markerMissingNotice")}
+        </p>
+      )}
       <RecordsToolbar
         trail={trail}
         root={root}

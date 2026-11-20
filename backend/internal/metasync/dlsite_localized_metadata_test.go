@@ -249,3 +249,28 @@ func workIDForTest(t *testing.T, db *sqlutil.DB, code string) int64 {
 	}
 	return id
 }
+
+// A metadata preview of a translated edition reads the edition in its own
+// locale, as the sync it previews stores it, not the Japanese discovery
+// response.
+func TestFetchProductForEditionReadsTheEditionLocale(t *testing.T) {
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ00000027", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ00000028", DisplayOrder: 2, Label: "Traditional Chinese", Lang: "CHI_HANT"},
+	}
+	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{
+		"RJ00000028": {
+			"ja-jp": {WorkNo: "RJ00000028", ProductName: "Mixed discovery title", LanguageEditions: editions},
+			"zh-tw": {WorkNo: "RJ00000028", ProductName: "Traditional title", LanguageEditions: editions},
+		},
+	}}
+	syncer := NewDLsiteSyncer(openTestDB(t), client).WithLanguages([]string{"ja-jp"}).WithRequestPacing(0, 0, 0)
+
+	product, err := syncer.FetchProductForEdition(context.Background(), "RJ00000028")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if product.ProductName != "Traditional title" {
+		t.Fatalf("preview product = %q, want the edition-locale response", product.ProductName)
+	}
+}

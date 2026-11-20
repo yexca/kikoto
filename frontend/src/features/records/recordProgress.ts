@@ -20,6 +20,7 @@ function finiteDuration(duration: number | undefined) {
 export class RecordProgressTracker {
   private lastSavedAt: number;
   private lastSavedPosition: number;
+  private lastOrder = 0;
 
   constructor(
     private readonly save: (progress: RecordProgress) => void,
@@ -33,7 +34,15 @@ export class RecordProgressTracker {
   private write(position: number, duration: number | undefined, completed: boolean) {
     this.lastSavedAt = this.now();
     this.lastSavedPosition = position;
-    this.save({ positionSeconds: Math.max(0, position), durationSeconds: finiteDuration(duration), completed });
+    // The server keeps the save captured last, so one that arrives late
+    // never replaces a later position.
+    this.lastOrder = Math.max(this.lastOrder + 1, this.lastSavedAt);
+    this.save({
+      positionSeconds: Math.max(0, position),
+      durationSeconds: finiteDuration(duration),
+      completed,
+      order: this.lastOrder,
+    });
   }
 
   private moved(position: number) {

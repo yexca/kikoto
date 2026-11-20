@@ -109,3 +109,27 @@ func TestProbeRenameLeavesNoFiles(t *testing.T) {
 		t.Fatalf("probe left %d entries, err = %v", len(entries), err)
 	}
 }
+
+// Scans do not follow a pool replaced by a link, so such a pool is offline and
+// its works keep their state. The data root itself may be reached through one.
+func TestCheckRefusesLinkedPoolButFollowsLinkedDataRoot(t *testing.T) {
+	target := t.TempDir()
+	if err := WriteMarker(target, "pool-one"); err != nil {
+		t.Fatal(err)
+	}
+	dataRoot := t.TempDir()
+	pool := Pool{Path: "disk1", ID: "pool-one"}
+	if err := os.Symlink(target, Root(dataRoot, pool)); err != nil {
+		t.Skipf("directory symlink is not available on this system: %v", err)
+	}
+	if online, reason := Check(dataRoot, pool, pool.ID); online || reason != ReasonNotDirectory {
+		t.Fatalf("linked pool = %v %q, want offline %q", online, reason, ReasonNotDirectory)
+	}
+	linkedRoot := filepath.Join(t.TempDir(), "data")
+	if err := os.Symlink(target, linkedRoot); err != nil {
+		t.Fatal(err)
+	}
+	if online, reason := Check(linkedRoot, Pool{ID: "pool-one"}, "pool-one"); !online || reason != "" {
+		t.Fatalf("linked data root = %v %q, want online", online, reason)
+	}
+}

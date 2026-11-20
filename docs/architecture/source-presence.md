@@ -22,4 +22,6 @@ or concrete locations.
 
 If a source is offline during a batch check, Kikoto updates source health and
 skips per-work checks for that source. A source outage should not mark every
-candidate work as missing.
+candidate work as missing. A single lookup that fails, times out, or hits a
+program error changes no stored presence either: only a source that answers
+whether it has the work changes it.

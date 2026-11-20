@@ -1028,6 +1028,9 @@ export const surfaceHant = {
     access: {
       instance: "執行個體存取權",
       anonymous: "無需帳戶即可瀏覽和播放",
+      anonymousRemote: "無需帳戶即可瀏覽遠端來源",
+      anonymousRemoteDescription:
+        "在開啟無需帳戶即可瀏覽時生效。開啟後，任何能存取此伺服器的人都可能看到你的遠端來源設定。",
       enableTitle: "允許匿名存取？",
       enableDescription: "能連到此伺服器的任何人都將無需帳戶即可瀏覽媒體庫並播放作品。",
       enable: "允許",
@@ -2975,6 +2978,7 @@ export const surfaceHant = {
     previewScheduled: "已排程預覽",
     previewRequired: "需要預覽",
     fetchFolderReview: "Fetch 資料夾需要檢閱",
+    archivedAfterFetch: "封存待審核",
     refreshComparison: "重新整理比較結果以建立檔案樹。",
     cancel: "取消",
     publishFetch: "發佈 Fetch",

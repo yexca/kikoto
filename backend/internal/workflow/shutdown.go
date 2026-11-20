@@ -58,3 +58,35 @@ func (s *Store) ReleaseInterruptedJob(ctx context.Context, lease JobLease, reaso
 	}
 	return true, tx.Commit()
 }
+
+// ReleaseDisconnectedJob returns a job that an API request ran inline to the
+// queue when the request's client went away before the job finished, so the
+// background worker runs it. A disconnect is not a failure: the job keeps its
+// resume budget. A cancelled run keeps its cancellation.
+func (s *Store) ReleaseDisconnectedJob(ctx context.Context, lease JobLease) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var active bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT 1 FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.id = ? AND job.status = 'running' AND job.locked_by = ? AND run.status <> 'cancelled'
+	`, lease.JobID, lease.LockedBy).Scan(&active)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	settled, err := settleLeaseTx(ctx, tx, lease, leaseSettlement{
+		requeue: true, reason: "request ended before the job finished", eventType: "job.requeued_after_disconnect",
+		message: "Job returned to the queue when its request ended before it finished",
+	})
+	if err != nil || !settled {
+		return false, err
+	}
+	return true, tx.Commit()
+}

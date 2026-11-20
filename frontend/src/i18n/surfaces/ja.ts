@@ -1062,6 +1062,9 @@ export const surfaceJapanese = {
     access: {
       instance: "インスタンスアクセス",
       anonymous: "アカウントなしで閲覧・再生",
+      anonymousRemote: "アカウントなしでリモートソースを閲覧",
+      anonymousRemoteDescription:
+        "アカウントなしの閲覧がオンのときに適用されます。オンにすると、このサーバーにアクセスできる誰にでもリモートソースの設定が知られるおそれがあります。",
       enableTitle: "匿名アクセスを許可しますか？",
       enableDescription:
         "このサーバーに接続できる人なら誰でも、アカウントなしでライブラリを閲覧し、作品を再生できるようになります。",
@@ -3111,6 +3114,7 @@ export const surfaceJapanese = {
     previewScheduled: "プレビューを予約済み",
     previewRequired: "プレビューが必要",
     fetchFolderReview: "Fetch フォルダーの確認が必要です",
+    archivedAfterFetch: "レビュー用にアーカイブ",
     refreshComparison: "比較を更新して結果ツリーを作成します。",
     cancel: "キャンセル",
     publishFetch: "Fetch を公開",

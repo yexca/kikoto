@@ -28,7 +28,7 @@ var audioHLSProfile = hlsEncodeProfile{
 	// A 192 kbit/s six-second segment is about 170 KiB in MPEG-TS.
 	reservation: fixedHLSSegmentReservation(300+100, 256<<10),
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return audioHLSFFmpegArgs(source.Path, outputDir, startIndex)
+		return paddedAudioHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
 	},
 }
 
@@ -45,15 +45,20 @@ var videoAudioHLSProfile = hlsEncodeProfile{
 	segmentMaximumBytes: audioHLSProfile.segmentMaximumBytes,
 	reservation:         audioHLSProfile.reservation,
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoAudioHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
+		return paddedAudioHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
 	},
 }
 
-// videoAudioHLSFFmpegArgs pads the audio with silence to the published
-// duration of the video, so an audio stream that ends before the video still
-// produces every segment of the playlist.
-func videoAudioHLSFFmpegArgs(input string, outputDir string, startIndex int, durationSeconds float64) []string {
+// paddedAudioHLSFFmpegArgs pads the audio with silence to the published
+// duration, the playlist's length. The container duration a probe reports can
+// run past the audio stream, as with the picture of a video or a longer
+// subtitle or cover stream, and the playlist must not list a last segment the
+// encode never writes.
+func paddedAudioHLSFFmpegArgs(input string, outputDir string, startIndex int, durationSeconds float64) []string {
 	start := float64(startIndex) * hlsSegmentDurationSeconds
+	if durationSeconds <= start {
+		return audioHLSFFmpegArgs(input, outputDir, startIndex)
+	}
 	return audioHLSFFmpegArgs(input, outputDir, startIndex,
 		"-af", "apad", "-t", strconv.FormatFloat(durationSeconds-start, 'f', 3, 64))
 }

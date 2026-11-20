@@ -23,10 +23,23 @@ disk mounted at the path, forgets the folders, files, progress, and states
 recorded for the earlier identity in the same transaction, so the new disk's
 files never take over earlier assets by path. The root is
 online only while its marker carries the identity the database keeps. A
-missing marker, a marker without an identity, or a database that never
-initialized the root leaves it unconfigured; a marker of another identity,
-such as another initialized disk mounted at the same path, and a marker that
-is a link, oversized, or unreadable leave it offline. An unavailable root
+database that never initialized the root leaves it unconfigured. Once the
+database keeps an identity, a missing path is offline, and a path that exists
+without a marker, or with a marker without an identity, is `marker_missing`:
+the catalog is never re-initialized or forgotten for it. Users browse and play
+it as usual, a scan adds and updates the files it finds without marking any
+missing, and deletions are refused. `POST /api/records/root/restore-marker`
+writes the marker again with the identity the database keeps and brings the
+root online with its catalog. It needs at least one recorded folder or file
+on the root, so an empty mount point of an unmounted disk is refused with
+`record_root_not_recognized`. A marker of another identity, such as another
+initialized disk mounted at the same path, and a marker that is a link,
+oversized, or unreadable leave the root offline. Once the database keeps an
+identity, only a fresh initialization forgets its catalog: initializing a root
+whose marker does not carry that identity, whether the marker or the path is
+gone or another disk is mounted there, is refused with
+`record_fresh_initialization_required`, and a fresh initialization of a path
+that is gone is refused with `record_root_path_missing`. An unavailable root
 leaves existing record rows unchanged; it never marks the whole library
 missing, and deletions are refused.
 
@@ -127,7 +140,10 @@ image previews and never exposes an absolute filesystem path.
 The HTTP surface is under `/api/records`:
 
 - `GET /api/records` reports root state; `POST /api/records/root/initialize`
-  creates the marker for an administrator with `sources:write`.
+  creates the marker for an administrator with `sources:write`, and takes
+  `{"fresh": true}` to start a new catalog in place of one whose marker is
+  missing or names another disk. `POST /api/records/root/restore-marker` restores that marker with
+  the same permission.
 - `GET /api/records/tree?folderId=<id>&offset=<n>` returns one page of up to
   200 children of a folder, subfolders first and then available files, each
   by name, with their artwork, stream, thumbnail, subtitle, and download URLs
@@ -160,9 +176,14 @@ The HTTP surface is under `/api/records`:
 - `GET /api/records/folders/{id}/artwork/{poster|backdrop}` serves recognized
   sidecar artwork after signature validation.
 - `POST /api/records/scans` queues the coalesced durable scan for
-  `library:write` users after the root is online.
+  `library:write` users while the root is online or `marker_missing`.
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
-  video and audio progress; writing it needs `playback:use`.
+  video and audio progress; writing it needs `playback:use`. A write carries
+  the client's `order`, when it captured the save in Unix milliseconds and
+  increasing for each save, and replaces the stored progress only when that
+  order is later, so a save that arrives late never replaces a later position.
+  A write without an order, or with one more than five minutes ahead of the
+  server's clock, is ordered by when the server receives it.
 - `DELETE /api/records/assets/{id}` moves an available record file to the
   trash for `downloads:manage` users and answers its `trashPath` relative to
   the record root; `DELETE /api/records/folders/{id}` moves a folder with

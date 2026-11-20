@@ -1006,6 +1006,9 @@ export const surfaceEnglish = {
     access: {
       instance: "Instance access",
       anonymous: "Browse and play without an account",
+      anonymousRemote: "Browse remote sources without an account",
+      anonymousRemoteDescription:
+        "Applies while browsing without an account is on. Turning it on may expose your remote source configuration to anyone who can reach this server.",
       enableTitle: "Allow anonymous access?",
       enableDescription:
         "Anyone who can reach this server could then browse the library and play its works without an account.",
@@ -3155,6 +3158,7 @@ export const surfaceEnglish = {
     previewScheduled: "Preview scheduled",
     previewRequired: "Preview required",
     fetchFolderReview: "Fetch folder requires review",
+    archivedAfterFetch: "Archived for review",
     refreshComparison: "Refresh the comparison to build the result tree.",
     cancel: "Cancel",
     publishFetch: "Publish Fetch",

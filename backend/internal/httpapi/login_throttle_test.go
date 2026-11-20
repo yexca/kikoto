@@ -4,9 +4,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/yexca/kikoto/backend/internal/auththrottle"
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
@@ -71,5 +74,34 @@ func TestLoginClientKeyTrustsForwardedForOnlyFromConfiguredProxy(t *testing.T) {
 				t.Fatalf("loginClientKey() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// Failures for one username spread across many clients never lock that
+// username: they only delay the next attempts on it, and its owner still
+// signs in.
+func TestLoginNeverLocksAUsernameOutAcrossClients(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "synthetic-root-password")
+	server.loginDelay = auththrottle.NewDelayer(auththrottle.DelayPolicy{
+		FreeFailures: 5, BaseDelay: time.Millisecond, MaxDelay: 2 * time.Millisecond, ResetAfter: time.Hour,
+	})
+	handler := server.Routes()
+
+	for client := 1; client <= 60; client++ {
+		address := "203.0.113." + strconv.Itoa(client) + ":40000"
+		if response := postLogin(handler, address, "root", "synthetic-wrong-password"); response.Code != http.StatusUnauthorized {
+			t.Fatalf("failure from client %d status = %d, body = %s", client, response.Code, response.Body.String())
+		}
+	}
+	if delay := server.loginDelay.Delay(loginAccountKey("root")); delay <= 0 {
+		t.Fatal("failures across clients did not delay the next attempt on the username")
+	}
+	if response := postLogin(handler, "198.51.100.20:40000", "root", "synthetic-root-password"); response.Code != http.StatusOK {
+		t.Fatalf("owner login status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if delay := server.loginDelay.Delay(loginAccountKey("root")); delay != 0 {
+		t.Fatalf("delay after a successful sign-in = %v", delay)
 	}
 }

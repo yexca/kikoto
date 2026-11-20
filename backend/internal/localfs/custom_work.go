@@ -285,7 +285,7 @@ func discoverCustomWork(absRoot string, starts []string, scanDepth int) (CustomW
 		return nil
 	}
 	for _, start := range starts {
-		if err := filepath.WalkDir(start, visit); err != nil {
+		if err := walkFollowingDataRoot(absRoot, start, visit); err != nil {
 			return CustomWorkDiscovery{}, err
 		}
 	}

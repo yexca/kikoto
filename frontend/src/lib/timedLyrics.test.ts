@@ -33,7 +33,7 @@ describe("parseTimedLyrics", () => {
   });
 
   it("ignores metadata tags and reports untimed text", () => {
-    expect(times("[ar:Example Voice]\n[offset:500]\n[00:01.00]line")).toEqual([[1, "line"]]);
+    expect(times("[ar:Example Voice]\n[al:Example Work]\n[00:01.00]line")).toEqual([[1, "line"]]);
     expect(parseTimedLyrics("plain text\nwithout tags")).toEqual({ timed: false, lines: [] });
   });
 
@@ -64,6 +64,82 @@ describe("parseTimedLyrics", () => {
     ]);
     expect(times("1\n00:00:05,250 --> 00:00:06,000\ncue")).toEqual([[5.25, "cue"]]);
   });
+
+  it("strips only the leading LRC timestamps and keeps other bracketed text", () => {
+    const lrc = [
+      "[ti:Example Title]",
+      "[offset:+120]",
+      "[00:01.00]Example [chorus] line 1",
+      "[00:02.00] [00:04.00] Example line 2 [x]",
+      "[00:03.00]<00:03.00>Example <00:03.50>line 3",
+      "Example line [00:09.00] without a leading stamp",
+    ].join("\n");
+    expect(times(lrc)).toEqual([
+      [0.88, "Example [chorus] line 1"],
+      [1.88, "Example line 2 [x]"],
+      [2.88, "Example line 3"],
+      [3.88, "Example line 2 [x]"],
+    ]);
+  });
+
+  it("reads a cue file as cues even when its text holds an LRC timestamp", () => {
+    expect(times("﻿WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n[00:30.00] Example line 1")).toEqual([
+      [1, "[00:30.00] Example line 1"],
+    ]);
+    expect(times("1\n00:00:03,000 --> 00:00:04,000\nExample line 2 [00:40.00]\n")).toEqual([
+      [3, "Example line 2 [00:40.00]"],
+    ]);
+    expect(parseTimedLyrics("WEBVTT\n\n[00:30.00] Example line 1")).toEqual({ timed: false, lines: [] });
+  });
+
+  it("reads an LRC file as LRC when one line looks like a cue timing", () => {
+    expect(
+      times("[00:01.00] Example line 1\n0:05 --> 0:06\n[00:10.00] Example line 2\n[00:20.00] Example line 3"),
+    ).toEqual([
+      [1, "Example line 1"],
+      [10, "Example line 2"],
+      [20, "Example line 3"],
+    ]);
+    expect(times("1\n00:00:03,000 --> 00:00:04,000\n[00:40.00] Example line 2\n")).toEqual([
+      [3, "[00:40.00] Example line 2"],
+    ]);
+  });
+
+  it("reads cue text without its markup and with character references decoded", () => {
+    const vtt = [
+      "WEBVTT",
+      "",
+      "00:00:01.000 --> 00:00:02.000",
+      "<v Example Voice>Example</v> <i>line</i> <c.loud>one</c>",
+      "",
+      "00:00:03.000 --> 00:00:04.000",
+      "<00:00:03.000>Example <00:00:03.500><b>line</b> <u>two</u>",
+      "",
+      "00:00:05.000 --> 00:00:06.000",
+      "Example &amp; line &lt;3&gt; &#39;three&#x27;&nbsp;&lt;i&gt;",
+    ].join("\n");
+    expect(times(vtt)).toEqual([
+      [1, "Example line one"],
+      [3, "Example line two"],
+      [5, "Example & line <3> 'three' <i>"],
+    ]);
+    expect(times('1\n00:00:07,000 --> 00:00:08,000\n<font color="#ffffff">Example line four</font>')).toEqual([
+      [7, "Example line four"],
+    ]);
+  });
+
+  it("reads cue hours past 99 and skips a timing line that only partly matches", () => {
+    const vtt = [
+      "WEBVTT",
+      "",
+      "100:00:00.000 --> 100:00:01.000",
+      "Example line 1",
+      "",
+      "1:000:00.000 --> 1:000:01.000",
+      "Example line 2",
+    ].join("\n");
+    expect(times(vtt)).toEqual([[360000, "Example line 1"]]);
+  });
 });
 
 describe("offsetTimedLyrics", () => {
@@ -85,6 +161,16 @@ describe("offsetTimedLyrics", () => {
     expect(activeTimedLyricIndex(earlier.lines, 1)).toBe(3);
     expect(activeTimedLyricIndex(earlier.lines, 3)).toBe(4);
     expect(firstReachableLyricIndex(opening.lines)).toBe(0);
+  });
+
+  it("applies the file's LRC offset tag, where positive shows lines earlier, beneath the listener's offset", () => {
+    expect(times("[offset:+500]\n[00:01.00]first\n[00:05.00]second")).toEqual([
+      [0.5, "first"],
+      [4.5, "second"],
+    ]);
+    expect(times("[00:01.00]first\n[OFFSET: -250]")).toEqual([[1.25, "first"]]);
+    const withFileOffset = parseTimedLyrics("[offset:500]\n[00:01.00]first");
+    expect(offsetTimedLyrics(withFileOffset, 1500).lines.map((line) => line.time)).toEqual([2]);
   });
 
   it("leaves untimed text and a zero offset alone", () => {

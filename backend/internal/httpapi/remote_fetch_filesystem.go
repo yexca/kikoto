@@ -117,26 +117,6 @@ func fetchStagingCopyTempPath(stageRoot string) string {
 	return filepath.Join(filepath.Dir(stageRoot), "copy.partial")
 }
 
-func copyFetchDirectory(root *os.Root, source, target string) error {
-	tempPath := fetchStagingCopyTempPath(target)
-	return walkFetchDirectory(root, source, func(name string, info fs.FileInfo) error {
-		relative, err := filepath.Rel(source, name)
-		if err != nil {
-			return err
-		}
-		destination := filepath.Join(target, relative)
-		if info.IsDir() {
-			return root.MkdirAll(destination, 0o755)
-		}
-		file, err := root.Open(name)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = file.Close() }()
-		return copyFetchFile(root, destination, tempPath, file)
-	})
-}
-
 func copyFetchFile(root *os.Root, targetPath string, tempPath string, source io.Reader) error {
 	if err := validateFetchDirectoryPath(root, filepath.Dir(targetPath)); err != nil {
 		return err

@@ -47,6 +47,9 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	pageItems := summaries[start:end]
 	for index := range pageItems {
 		s.presentVoiceCover(r.Context(), &pageItems[index])
+		if localOnlyRequest(r.Context()) {
+			pageItems[index].SourceSummaries = localSourceStats(pageItems[index].SourceSummaries)
+		}
 	}
 	writeJSON(w, http.StatusOK, voiceSummaryPage{
 		Voices: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(summaries), TagOptions: tagOptions,
@@ -83,6 +86,17 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	summary.Aliases = aliasNames(aliases)
+	if localOnlyRequest(r.Context()) {
+		summary.SourceSummaries = localSourceStats(summary.SourceSummaries)
+		kept := works[:0]
+		for index := range works {
+			if works[index].Local {
+				localVoiceKnownWork(&works[index])
+				kept = append(kept, works[index])
+			}
+		}
+		works = kept
+	}
 	missing, err := s.loadVoiceCatalogMetadataTargets(r.Context(), personID, "incremental")
 	if err != nil {
 		writeError(w, err)
@@ -103,10 +117,26 @@ func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	page, err := s.loadVoiceWorksPage(r.Context(), userID, personID, parseVoiceWorksQuery(r))
+	query := parseVoiceWorksQuery(r)
+	if localOnlyRequest(r.Context()) {
+		query.Availability = "local"
+	}
+	page, err := s.loadVoiceWorksPage(r.Context(), userID, personID, query)
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if localOnlyRequest(r.Context()) {
+		works := page.Works[:0]
+		for _, view := range page.Works {
+			if view.Known == nil {
+				continue
+			}
+			localVoiceKnownWork(view.Known)
+			view.RemoteObservations = nil
+			works = append(works, view)
+		}
+		page.Works = works
 	}
 	writeJSON(w, http.StatusOK, page)
 }

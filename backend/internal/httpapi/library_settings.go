@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
@@ -250,6 +251,14 @@ func (s *Server) libraryLayoutResponse(ctx context.Context) (libraryLayoutRespon
 	}
 	for _, name := range candidates {
 		if _, registered := layout.pool(name); !registered || !layout.poolsMode() {
+			// A work folder is never offered as a pool.
+			if err := s.refuseWorkFolderAsStoragePool(ctx, name); err != nil {
+				var layoutErr libraryLayoutError
+				if errors.As(err, &layoutErr) {
+					continue
+				}
+				return libraryLayoutResponse{}, err
+			}
 			response.Candidates = append(response.Candidates, name)
 		}
 	}
@@ -385,6 +394,9 @@ func (s *Server) registerStoragePools(ctx context.Context, current libraryLayout
 			pools = append(pools, existing)
 			continue
 		}
+		if err := s.refuseWorkFolderAsStoragePool(ctx, name); err != nil {
+			return nil, err
+		}
 		pool, err := s.registerStoragePool(name)
 		if err != nil {
 			return nil, err
@@ -392,6 +404,31 @@ func (s *Server) registerStoragePools(ctx context.Context, current libraryLayout
 		pools = append(pools, pool)
 	}
 	return pools, nil
+}
+
+// refuseWorkFolderAsStoragePool refuses a folder that is a work folder: one
+// whose name carries a work code, or one the library records as a work's
+// folder. A pool holds works; a work folder made a pool would split one
+// work's files into a pool and the works a scan finds inside it.
+func (s *Server) refuseWorkFolderAsStoragePool(ctx context.Context, name string) error {
+	refused := invalidLibraryLayout("storage_pool_is_work_folder", "A work folder cannot be a storage pool. Choose a folder that holds work folders.")
+	if code, _ := localfs.ExtractWorkCode(name); code != "" {
+		return refused
+	}
+	var recorded bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM work_folder_location AS folder
+			INNER JOIN file_source AS source ON source.id = folder.file_source_id
+			WHERE source.source_type = 'local_folder' AND folder.root_path = ?
+		)
+	`, name).Scan(&recorded); err != nil {
+		return err
+	}
+	if recorded {
+		return refused
+	}
+	return nil
 }
 
 func (s *Server) registerStoragePool(name string) (storagepool.Pool, error) {

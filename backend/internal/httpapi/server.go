@@ -45,6 +45,7 @@ type Server struct {
 	accessPolicy                   *accesspolicy.Store
 	initialSetup                   initialSetupState
 	loginThrottle                  *auththrottle.Limiter
+	loginDelay                     *auththrottle.Delayer
 	libraryStore                   *library.Store
 	recordStore                    *record.Store
 	recordThumbnails               *record.Thumbnailer
@@ -133,6 +134,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		statistics:      storage.NewStatisticsMaintainer(db),
 		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot, record.WithProber(record.FFprobe)), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
+		loginDelay:                     auththrottle.NewDelayer(loginAccountDelayPolicy),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
 		metadataPreviews:               map[string]metadataPreviewRecord{},
@@ -368,6 +370,7 @@ func (s *Server) Routes() http.Handler {
 	recordRoute := s.whenRecordLibraryEnabled
 	mux.HandleFunc("GET /api/records", recordRoute(s.getRecordRoot))
 	mux.HandleFunc("POST /api/records/root/initialize", recordRoute(s.initializeRecordRoot))
+	mux.HandleFunc("POST /api/records/root/restore-marker", recordRoute(s.restoreRecordMarker))
 	mux.HandleFunc("GET /api/records/tree", recordRoute(s.listRecordTree))
 	mux.HandleFunc("GET /api/records/assets/{id}", recordRoute(s.getRecordAsset))
 	mux.HandleFunc("DELETE /api/records/assets/{id}", recordRoute(s.deleteRecordAsset))
@@ -656,6 +659,9 @@ func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.settleInterruptedWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
+		return err
+	}
+	if err := s.failUnrunnableWorkflowGraphRuns(ctx); err != nil {
 		return err
 	}
 	if err := s.reconcileRemoteFetchManifests(ctx); err != nil {

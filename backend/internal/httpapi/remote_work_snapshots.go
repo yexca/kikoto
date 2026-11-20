@@ -471,11 +471,3 @@ func remoteWorkLookupError(err error) error {
 	}
 	return err
 }
-
-func isNotFoundLikeError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "404") || strings.Contains(message, "not found") || strings.Contains(message, "no rows")
-}

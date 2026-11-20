@@ -2,6 +2,7 @@ package personal
 
 import (
 	"context"
+	"database/sql"
 	"reflect"
 	"testing"
 	"time"
@@ -163,5 +164,34 @@ func TestPlaybackReportIdentifiesRecordedAndStaleFamiliesWithoutReturningStaleCu
 	result, err = s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{a}})
 	if err != nil || result.Progress[0].Status != "stale" || result.Progress[0].Cursor != nil || !reflect.DeepEqual(result.Progress[0].Identity, first.Identity) {
 		t.Fatalf("stale edition identity = %+v %v", result, err)
+	}
+}
+
+// A checkpoint whose location vanished, such as one a rescan replaced, is
+// saved without a location; a location of another file stays invalid.
+func TestPlaybackReportKeepsACheckpointWhoseLocationVanished(t *testing.T) {
+	s := reportFixture(t)
+	ctx := context.Background()
+	vanished := progressFixture(1000, 30)
+	missing := int64(999)
+	vanished.LocationID = &missing
+	result, err := s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{vanished}})
+	if err != nil || result.Progress[0].Status != "recorded" {
+		t.Fatalf("vanished location = %+v, %v", result, err)
+	}
+	var location sql.NullInt64
+	var position float64
+	if err := s.DB.QueryRow(`SELECT location_id, position_seconds FROM user_work_playback_cursor WHERE user_id=1`).Scan(&location, &position); err != nil || location.Valid || position != 30 {
+		t.Fatalf("cursor location = %v position = %v, %v; want no location", location, position, err)
+	}
+	execFixture(t, s.DB, `INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Other')`)
+	execFixture(t, s.DB, `INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path) VALUES (2, 2, 1, 'local', 'other.mp3')`)
+	other := progressFixture(2000, 40)
+	elsewhere := int64(2)
+	other.LocationID = &elsewhere
+	other.ReportID = "synthetic-progress-b"
+	result, err = s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{other}})
+	if err != nil || result.Progress[0].Status != "invalid" {
+		t.Fatalf("location of another file = %+v, %v", result, err)
 	}
 }

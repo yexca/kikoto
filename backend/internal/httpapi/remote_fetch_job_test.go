@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -209,15 +210,74 @@ func TestRecoveryRepairsLegacyCompletedFetchResult(t *testing.T) {
 	assertCompletedFetch(t, server, db)
 }
 
+// consolidateIntoExecutableFetch adds to the Fetch a local file copied from
+// another folder of the work, as the Fetch dialog does when files are
+// consolidated, and returns that folder.
+func consolidateIntoExecutableFetch(t *testing.T, server *Server, db *sqlutil.DB, plan remoteWorkSavePlan) string {
+	t.Helper()
+	oldRoot := "Old/" + plan.PrimaryCode
+	writeFetchTestFile(t, server.cfg.DataRoot, oldRoot+"/earlier.mp3", "earlier")
+	// The fixture's Fetch is already published, so its copy is in place.
+	writeFetchTestFile(t, server.cfg.DataRoot, plan.SaveRoot+"/earlier.mp3", "earlier")
+	execFetchTestStatements(t, db,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Earlier')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 2, 'local', '`+oldRoot+`/earlier.mp3', 'available')`,
+		`INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state) VALUES (1, 2, '`+oldRoot+`', 'external', 'active')`,
+	)
+	plan.Items = append(plan.Items, remoteWorkSavePlanItem{
+		ItemKey: "local:" + oldRoot + "/earlier.mp3", Path: "earlier.mp3", Kind: "audio", SourceKind: "local",
+		Action: "copy_local", Status: "copy_local", LocalSourcePath: oldRoot + "/earlier.mp3", MediaItemID: 2,
+		TargetPath: plan.SaveRoot + "/earlier.mp3", OriginalTargetPath: plan.SaveRoot + "/earlier.mp3",
+	})
+	plan.Summary = summarizeRemoteSavePlan(plan.Items)
+	if _, err := db.Exec(`UPDATE remote_fetch_manifest SET plan_json = ? WHERE workflow_run_id = 1`, mustJSON(plan)); err != nil {
+		t.Fatal(err)
+	}
+	return oldRoot
+}
+
+// addUntouchedFetchSibling gives the work another folder the Fetch neither
+// reads nor writes.
+func addUntouchedFetchSibling(t *testing.T, server *Server, db *sqlutil.DB, code string) string {
+	t.Helper()
+	root := "Other/" + code
+	writeFetchTestFile(t, server.cfg.DataRoot, root+"/other.mp3", "other")
+	execFetchTestStatements(t, db, `INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state) VALUES (1, 2, '`+root+`', 'external', 'active')`)
+	return root
+}
+
+func assertFetchFolderKept(t *testing.T, server *Server, db *sqlutil.DB, root string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(server.cfg.DataRoot, filepath.FromSlash(root))); err != nil {
+		t.Fatalf("folder %s was moved: %v", root, err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM work_folder_location WHERE root_path = ?`, root).Scan(&state); err != nil || state != "active" {
+		t.Fatalf("folder %s state = %q, %v", root, state, err)
+	}
+}
+
+func TestFetchWithoutLocalFilesKeepsEveryExistingFolder(t *testing.T) {
+	server, db := newFetchRecoveryServer(t)
+	plan := seedExecutableFetch(t, server, db, "https://source.example.invalid")
+	sibling := addUntouchedFetchSibling(t, server, db, plan.PrimaryCode)
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertCompletedFetch(t, server, db)
+	assertFetchFolderKept(t, server, db, sibling)
+	var candidates int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_candidate WHERE candidate_type = 'local_fetch_merge_cleanup'`).Scan(&candidates); err != nil || candidates != 0 {
+		t.Fatalf("cleanup review candidates = %d, %v", candidates, err)
+	}
+}
+
 func TestFetchRecoveryRetainsArchiveReviewAfterCandidateWriteFailure(t *testing.T) {
 	ctx := context.Background()
 	server, db := newFetchRecoveryServer(t)
 	plan := seedExecutableFetch(t, server, db, "https://source.example.invalid")
-	oldRoot := "Old/" + plan.PrimaryCode
-	writeFetchTestFile(t, server.cfg.DataRoot, oldRoot+"/earlier.mp3", "earlier")
-	if _, err := db.Exec(`INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state) VALUES (1, 2, ?, 'external', 'active')`, oldRoot); err != nil {
-		t.Fatal(err)
-	}
+	oldRoot := consolidateIntoExecutableFetch(t, server, db, plan)
+	sibling := addUntouchedFetchSibling(t, server, db, plan.PrimaryCode)
 	execFetchTestStatements(t, db, `CREATE TRIGGER fail_fetch_candidate BEFORE INSERT ON workflow_candidate
 		WHEN NEW.candidate_type = 'local_fetch_merge_cleanup' BEGIN SELECT RAISE(ABORT, 'synthetic candidate write failure'); END`)
 	if err := server.runNextQueuedWorkflowJob(ctx); err == nil || !strings.Contains(err.Error(), "synthetic candidate write failure") {
@@ -239,16 +299,170 @@ func TestFetchRecoveryRetainsArchiveReviewAfterCandidateWriteFailure(t *testing.
 		t.Fatal(err)
 	}
 	assertCompletedFetch(t, server, db)
-	var count int
-	var archive string
-	if err := db.QueryRow(`SELECT COUNT(*), json_extract(payload_json, '$.archived_roots[0].archive_path') FROM workflow_candidate WHERE workflow_run_id = 1 AND candidate_type = 'local_fetch_merge_cleanup'`).Scan(&count, &archive); err != nil {
+	assertFetchFolderKept(t, server, db, sibling)
+	var count, archivedCount int
+	var archive, original string
+	if err := db.QueryRow(`SELECT COUNT(*), json_array_length(payload_json, '$.archived_roots'), json_extract(payload_json, '$.archived_roots[0].archive_path'), json_extract(payload_json, '$.archived_roots[0].original_path') FROM workflow_candidate WHERE workflow_run_id = 1 AND candidate_type = 'local_fetch_merge_cleanup'`).Scan(&count, &archivedCount, &archive, &original); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("review candidates=%d, want one", count)
+	if count != 1 || archivedCount != 1 || original != oldRoot {
+		t.Fatalf("review candidates=%d archived=%d original=%q, want one archive of %s", count, archivedCount, original, oldRoot)
 	}
 	data, err := os.ReadFile(filepath.Join(server.cfg.DataRoot, filepath.FromSlash(archive), "earlier.mp3"))
 	if err != nil || string(data) != "earlier" {
 		t.Fatalf("reviewable archive=%q, %v", data, err)
+	}
+}
+
+// A Fetch composed by folder management copies no local file itself; its
+// follow-up adds files from the work's other folders once the Fetch has
+// finished, so finishing the Fetch must leave those folders in place.
+func TestFetchFinishLeavesTheFollowUpSourcesInPlace(t *testing.T) {
+	server, db := newFetchRecoveryServer(t)
+	plan := seedPublishedFetch(t, server, db, 0, true)
+	sourceRoot := addUntouchedFetchSibling(t, server, db, plan.PrimaryCode)
+	execFetchTestStatements(t, db,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Other')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 2, 'local', '`+sourceRoot+`/other.mp3', 'available')`,
+	)
+	var folderID int64
+	if err := db.QueryRow(`SELECT id FROM work_folder_location WHERE root_path = ?`, sourceRoot).Scan(&folderID); err != nil {
+		t.Fatal(err)
+	}
+	payload := remoteWorkFetchJobPayload{SourceID: 1, WorkCode: plan.PrimaryCode, FollowUp: &remoteFetchFollowUp{
+		Additions: []workFolderEditAdditionRequest{{Kind: "local", FolderID: folderID, Path: "other.mp3"}},
+	}}
+	if _, err := db.Exec(`UPDATE workflow_run SET input_json = ? WHERE id = 1`, mustJSON(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.RecoverInterruptedWorkflows(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertFetchFolderKept(t, server, db, sourceRoot)
+	var followUpRunID sql.NullInt64
+	var followUpError sql.NullString
+	if err := db.QueryRow(`SELECT CAST(json_extract(summary_json, '$.follow_up_run_id') AS INTEGER), json_extract(summary_json, '$.follow_up_error') FROM workflow_run WHERE id = 1`).Scan(&followUpRunID, &followUpError); err != nil {
+		t.Fatal(err)
+	}
+	if !followUpRunID.Valid || followUpRunID.Int64 <= 0 || followUpError.Valid {
+		t.Fatalf("follow-up run = %v, error = %v", followUpRunID, followUpError)
+	}
+}
+
+// A partial Fetch promotes only the selected files. The work's unselected
+// files keep their cache and their remote streams.
+func TestPartialFetchKeepsUnselectedCacheAndRemoteStreams(t *testing.T) {
+	server, db := newFetchRecoveryServer(t)
+	plan := seedPublishedFetch(t, server, db, 0, true)
+	unselectedCache := "remote/" + plan.PrimaryCode + "/other.mp3"
+	writeFetchTestFile(t, server.cfg.CacheRoot, unselectedCache, "other")
+	execFetchTestStatements(t, db,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Other')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 1, 'remote_stream', 'other.mp3', 'available')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 1, 'cache', '`+unselectedCache+`', 'available')`,
+	)
+	if err := server.RecoverInterruptedWorkflows(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var promotedStreams, unselectedStreams, unselectedCaches int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'remote_stream'`).Scan(&promotedStreams); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 2 AND location_type = 'remote_stream'`).Scan(&unselectedStreams); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 2 AND location_type = 'cache' AND availability = 'available'`).Scan(&unselectedCaches); err != nil {
+		t.Fatal(err)
+	}
+	if promotedStreams != 0 || unselectedStreams != 1 || unselectedCaches != 1 {
+		t.Fatalf("promoted streams=%d unselected streams=%d unselected caches=%d", promotedStreams, unselectedStreams, unselectedCaches)
+	}
+	if _, err := os.Stat(filepath.Join(server.cfg.CacheRoot, filepath.FromSlash(unselectedCache))); err != nil {
+		t.Fatalf("unselected cache file: %v", err)
+	}
+}
+
+// A cancellation that arrives after a Fetch's publication swap started does not
+// keep the run cancelled: the published Fetch registers its files, succeeds,
+// and queues its follow-up.
+func TestPublishedFetchSucceedsAfterALateCancel(t *testing.T) {
+	server, db := newFetchRecoveryServer(t)
+	plan := seedPublishedFetch(t, server, db, 0, true)
+	sourceRoot := addUntouchedFetchSibling(t, server, db, plan.PrimaryCode)
+	execFetchTestStatements(t, db,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Other')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 2, 'local', '`+sourceRoot+`/other.mp3', 'available')`,
+		`UPDATE workflow_run SET status = 'cancelled' WHERE id = 1`,
+		`UPDATE workflow_job SET status = 'cancelled' WHERE id = 1`,
+	)
+	var folderID int64
+	if err := db.QueryRow(`SELECT id FROM work_folder_location WHERE root_path = ?`, sourceRoot).Scan(&folderID); err != nil {
+		t.Fatal(err)
+	}
+	payload := remoteWorkFetchJobPayload{SourceID: 1, WorkCode: plan.PrimaryCode, FollowUp: &remoteFetchFollowUp{
+		Additions: []workFolderEditAdditionRequest{{Kind: "local", FolderID: folderID, Path: "other.mp3"}},
+	}}
+	if _, err := db.Exec(`UPDATE workflow_run SET input_json = ? WHERE id = 1`, mustJSON(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.RecoverInterruptedWorkflows(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	jobStatus, runStatus, _, _, _ := loadJobState(t, db, 1)
+	if jobStatus != "succeeded" || runStatus != "succeeded" {
+		t.Fatalf("job=%s run=%s, want the published Fetch to succeed", jobStatus, runStatus)
+	}
+	var followUpRunID sql.NullInt64
+	if err := db.QueryRow(`SELECT CAST(json_extract(summary_json, '$.follow_up_run_id') AS INTEGER) FROM workflow_run WHERE id = 1`).Scan(&followUpRunID); err != nil {
+		t.Fatal(err)
+	}
+	if !followUpRunID.Valid || followUpRunID.Int64 <= 0 {
+		t.Fatalf("follow-up run = %v, want it queued", followUpRunID)
+	}
+}
+
+// In the running job, a cancellation that arrives once the publication swap
+// has started, cancelling the job's context and the run, does not stop the
+// Fetch: it registers its files, succeeds, and queues its follow-up.
+func TestRunningFetchSucceedsAfterALateCancel(t *testing.T) {
+	server, db := newFetchRecoveryServer(t)
+	plan := seedPublishedFetch(t, server, db, 0, true)
+	sourceRoot := addUntouchedFetchSibling(t, server, db, plan.PrimaryCode)
+	execFetchTestStatements(t, db,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (2, 1, 'audio', 'Other')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (2, 2, 'local', '`+sourceRoot+`/other.mp3', 'available')`,
+		`UPDATE workflow_run SET status = 'cancelled' WHERE id = 1`,
+		`UPDATE workflow_job SET status = 'cancelled' WHERE id = 1`,
+	)
+	var folderID int64
+	if err := db.QueryRow(`SELECT id FROM work_folder_location WHERE root_path = ?`, sourceRoot).Scan(&folderID); err != nil {
+		t.Fatal(err)
+	}
+	payload := remoteWorkFetchJobPayload{SourceID: 1, WorkCode: plan.PrimaryCode, FollowUp: &remoteFetchFollowUp{
+		Additions: []workFolderEditAdditionRequest{{Kind: "local", FolderID: folderID, Path: "other.mp3"}},
+	}}
+	if _, err := db.Exec(`UPDATE workflow_run SET input_json = ? WHERE id = 1`, mustJSON(payload)); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := server.loadRemoteFetchManifest(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := server.finishRemoteFetchAfterPublication(cancelled, 1, remoteWorkFetchExecution{manifest: manifest, plan: plan}, manifest, 1, remoteFetchMaterializeCounts{})
+	if err != nil || result.Status != "succeeded" {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+	jobStatus, runStatus, _, _, _ := loadJobState(t, db, 1)
+	if jobStatus != "succeeded" || runStatus != "succeeded" {
+		t.Fatalf("job=%s run=%s, want the published Fetch to succeed", jobStatus, runStatus)
+	}
+	var followUpRunID sql.NullInt64
+	if err := db.QueryRow(`SELECT CAST(json_extract(summary_json, '$.follow_up_run_id') AS INTEGER) FROM workflow_run WHERE id = 1`).Scan(&followUpRunID); err != nil {
+		t.Fatal(err)
+	}
+	if !followUpRunID.Valid || followUpRunID.Int64 <= 0 {
+		t.Fatalf("follow-up run = %v, want it queued", followUpRunID)
 	}
 }

@@ -141,7 +141,7 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 		return nil, Summary{}, err
 	}
 	for _, start := range starts {
-		if err := filepath.WalkDir(start, visit); err != nil {
+		if err := walkDiscoveryStart(absRoot, start, visit, &unreadable); err != nil {
 			return nil, Summary{}, err
 		}
 	}
@@ -149,7 +149,7 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 	candidates = unreadable.withoutCandidatesInside(candidates)
 	summary.UnreadableFolders = unreadable.list()
 	summary.CandidateFolders = len(candidates)
-	workFolders := chooseDeepest(candidates)
+	workFolders := chooseOutermost(candidates)
 	summary.DuplicateGroups = duplicateGroups(workFolders)
 
 	sort.Slice(workFolders, func(i, j int) bool {
@@ -157,6 +157,38 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 	})
 	summary.DetectedWorks = len(workFolders)
 	return workFolders, summary, nil
+}
+
+// walkDiscoveryStart walks one discovery start. filepath.WalkDir does not
+// descend into a start that is a link, so a link would hide everything below
+// it. The configured data root may be reached through a link: the walk reads
+// its target and reports paths below the configured root. Any other start that
+// is not itself a directory, such as a storage pool replaced by a link, is not
+// followed; it is recorded unreadable, so nothing below it is marked missing.
+func walkDiscoveryStart(absRoot string, start string, visit fs.WalkDirFunc, unreadable *unreadableFolders) error {
+	info, err := os.Lstat(start)
+	if err != nil || info.IsDir() {
+		return filepath.WalkDir(start, visit)
+	}
+	if !sameFilesystemPath(start, absRoot) {
+		unreadable.add(start)
+		return nil
+	}
+	return walkFollowingDataRoot(absRoot, start, visit)
+}
+
+// walkFollowingDataRoot walks start like filepath.WalkDir, except that a start
+// that is the configured data root reached through a link is walked through
+// that link, with paths reported below the configured root. os.DirFS opens its
+// root by following the link, including a Windows junction, and reads every
+// entry below it without following links.
+func walkFollowingDataRoot(absRoot string, start string, visit fs.WalkDirFunc) error {
+	if info, err := os.Lstat(start); err == nil && !info.IsDir() && sameFilesystemPath(start, absRoot) {
+		return fs.WalkDir(os.DirFS(start), ".", func(name string, entry fs.DirEntry, walkErr error) error {
+			return visit(filepath.Join(start, filepath.FromSlash(name)), entry, walkErr)
+		})
+	}
+	return filepath.WalkDir(start, visit)
 }
 
 func discoveryStarts(absRoot string, subRoots []string) ([]string, error) {
@@ -313,7 +345,7 @@ func minimalChangedScopes(scopes map[string]string) []string {
 }
 
 func (discovery *changedFolderDiscovery) walkScope(scope string) error {
-	return filepath.WalkDir(scope, func(path string, entry fs.DirEntry, walkErr error) error {
+	return walkFollowingDataRoot(discovery.absRoot, scope, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if entry == nil && errors.Is(walkErr, fs.ErrNotExist) {
 				// The changed directory was removed again; its ancestors were
@@ -382,7 +414,7 @@ func (discovery *changedFolderDiscovery) result() ([]WorkFolder, Summary, error)
 		candidateList = append(candidateList, candidate)
 	}
 	candidateList = discovery.unreadable.withoutCandidatesInside(candidateList)
-	workFolders := chooseDeepest(candidateList)
+	workFolders := chooseOutermost(candidateList)
 	sort.Slice(workFolders, func(i, j int) bool { return workFolders[i].RelPath < workFolders[j].RelPath })
 	ambiguousFolders := make([]string, 0, len(discovery.ambiguous))
 	for rel := range discovery.ambiguous {
@@ -510,6 +542,12 @@ func duplicateGroups(folders []WorkFolder) []DuplicateGroup {
 // "Lyrics - CHI_HANS - RJ00000001 - 20261008-153012".
 var downloadedLyricsFolderPattern = regexp.MustCompile(`^Lyrics(?: - [A-Z0-9_-]+)* - [0-9]{8}-[0-9]{6}(?: \([0-9]+\))?$`)
 
+// isASCIIAlphanumeric reports an ASCII letter or digit, the characters that
+// join a code to a longer word.
+func isASCIIAlphanumeric(value byte) bool {
+	return value >= '0' && value <= '9' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
+}
+
 // ExtractWorkCode returns the work code a folder name carries and whether the
 // name carries more than one. A downloaded lyrics folder carries the code of
 // the edition its lyrics came from, but it is part of the work folder that
@@ -524,7 +562,12 @@ func ExtractWorkCode(name string) (string, bool) {
 	}
 	matches := []found{}
 	for _, match := range catalogCodePattern.FindAllStringSubmatchIndex(name, -1) {
+		// A code is a word of its own: a digit right after it, or a letter or
+		// digit right before it, makes it part of a longer word or number.
 		if match[1] < len(name) && name[match[1]] >= '0' && name[match[1]] <= '9' {
+			continue
+		}
+		if match[0] > 0 && isASCIIAlphanumeric(name[match[0]-1]) {
 			continue
 		}
 		matches = append(matches, found{at: match[0], code: strings.ToUpper(name[match[2]:match[3]]) + name[match[4]:match[5]]})
@@ -544,12 +587,16 @@ func ExtractWorkCode(name string) (string, bool) {
 	return codes[0], len(codes) > 1
 }
 
-func chooseDeepest(candidates []WorkFolder) []WorkFolder {
+// chooseOutermost keeps the outermost code-carrying folder of each branch as
+// the work folder. A code-carrying folder inside it, such as a bonus or a
+// disc folder named after its own product, holds files of that work and is
+// not a work of its own.
+func chooseOutermost(candidates []WorkFolder) []WorkFolder {
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].Depth == candidates[j].Depth {
-			return len(candidates[i].RelPath) > len(candidates[j].RelPath)
+			return len(candidates[i].RelPath) < len(candidates[j].RelPath)
 		}
-		return candidates[i].Depth > candidates[j].Depth
+		return candidates[i].Depth < candidates[j].Depth
 	})
 
 	chosen := make([]WorkFolder, 0, len(candidates))

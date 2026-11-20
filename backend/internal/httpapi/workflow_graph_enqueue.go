@@ -26,10 +26,7 @@ type workflowGraphJobPayload struct {
 type workflowGraphCheckpoint struct {
 	CompletedNodeIDs []string                             `json:"completedNodeIds"`
 	Outputs          map[string]map[string]graphPortValue `json:"outputs"`
-	ChildRunIDs      []int64                              `json:"childRunIds"`
-	Pending          *graphPendingExecution               `json:"pending,omitempty"`
 	Partial          bool                                 `json:"partial"`
-	BasePriority     int                                  `json:"basePriority"`
 }
 
 type workflowGraphEnqueueOptions struct {
@@ -54,7 +51,7 @@ func (s *Server) enqueueWorkflowGraph(ctx context.Context, definition workflowDe
 	}
 	triggerReason := strings.TrimSpace(options.TriggerReason)
 	if triggerReason == "" {
-		triggerReason = "custom_definition"
+		triggerReason = "workflow_preset"
 	}
 	runInput := map[string]any{"inputs": inputs, "definition_schema_version": workflowGraphSchemaVersion, "requested_by_user_id": userID}
 	runID, err := workflow.InsertRun(ctx, tx, definition.ID, definition.Code, definition.DisplayName, "queued", triggerType, triggerReason, runInput, map[string]any{"nodes": len(graph.TopologicalOrder)})
@@ -86,7 +83,7 @@ func (s *Server) enqueueWorkflowGraph(ctx context.Context, definition workflowDe
 	}
 	payload := workflowGraphJobPayload{DefinitionJSON: definitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	jobPriority := workflowJobPriorityForTrigger(triggerType)
-	checkpoint := workflowGraphCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]graphPortValue{}, ChildRunIDs: []int64{}, BasePriority: jobPriority}
+	checkpoint := workflowGraphCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]graphPortValue{}}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Priority: jobPriority, Payload: payload,
 		Checkpoint: checkpoint, Recoverable: true, MaxRetries: 3, ProgressTotal: len(graph.TopologicalOrder),

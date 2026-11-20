@@ -81,9 +81,10 @@ func TestFinishFetchPresenceKeepsSourceWithoutCreatingTracked(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'cache' AND availability = 'available'`).Scan(&caches); err != nil {
 		t.Fatal(err)
 	}
-	// Completion, not presence sync, retires remote_stream rows: recovery of an
-	// interrupted Fetch resolves its media items through them.
-	if tracked != 0 || source != 1 || remoteStreams != 1 || caches != 0 {
+	// Completion, not presence sync, retires remote_stream rows and removes the
+	// promoted files' cache: recovery of an interrupted Fetch resolves its
+	// media items through them.
+	if tracked != 0 || source != 1 || remoteStreams != 1 || caches != 1 {
 		t.Fatalf("tracked=%d source=%d remoteStreams=%d caches=%d", tracked, source, remoteStreams, caches)
 	}
 }

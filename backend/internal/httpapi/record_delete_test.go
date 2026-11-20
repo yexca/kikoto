@@ -47,7 +47,7 @@ func TestRecordDeleteRefusesAPathOtherThanTheConfirmedOne(t *testing.T) {
 func TestRecordDeleteMovesTheFileToTheRecordTrashWithItsCaches(t *testing.T) {
 	server := newRecordTestServer(t)
 	id := server.ids["Day 1.mp4"]
-	if err := server.server.recordStore.SaveProgress(context.Background(), 1, id, record.Progress{PositionSeconds: 30}); err != nil {
+	if _, err := server.server.recordStore.SaveProgress(context.Background(), 1, id, record.Progress{PositionSeconds: 30}); err != nil {
 		t.Fatal(err)
 	}
 	server.getThumbnail(t, "Day 1.mp4")
@@ -159,7 +159,7 @@ func (s recordTestServer) deleteFolder(t *testing.T, relativePath string) *httpt
 func TestRecordFolderDeleteMovesTheFolderWithEverythingInItToTheTrash(t *testing.T) {
 	server := newRecordTestServer(t)
 	video := server.ids["Day 1.mp4"]
-	if err := server.server.recordStore.SaveProgress(context.Background(), 1, video, record.Progress{PositionSeconds: 30}); err != nil {
+	if _, err := server.server.recordStore.SaveProgress(context.Background(), 1, video, record.Progress{PositionSeconds: 30}); err != nil {
 		t.Fatal(err)
 	}
 	server.getThumbnail(t, "Day 1.mp4")

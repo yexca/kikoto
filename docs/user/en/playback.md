@@ -30,7 +30,9 @@ Playback is handled by a global browser audio player.
   there. A confirmed missing file does not
   offer conversion: with **Switch sources on failure** enabled in Settings it
   continues through the normal source fallback order, and otherwise playback
-  stops with a Retry action.
+  stops with a Retry action. A file whose library or storage pool goes offline
+  while it plays pauses with a notice that the disk holding it is offline and a
+  Retry action, without switching to another source.
 - Local and cached video plays directly, with HTTP range support, when the
   browser decodes the file as stored. The player reports the containers,
   codecs, profiles, levels, and bit depths the browser plays, and the server
@@ -174,7 +176,9 @@ Playback is handled by a global browser audio player.
   sent serially; a transient database-busy response receives one short jittered
   retry.
 - Browser queue persistence does not retain per-track progress. Reloaded queue
-  metadata is refreshed from the server. When the durable work cursor still
+  metadata is refreshed from the server, and each restored item plays from its
+  local copy unless you picked another source for it in the player; an item
+  you have already started keeps playing from where it is. When the durable work cursor still
   points at the restored current track and is unfinished, that track continues
   from the saved position.
 - The player dock supports Mini, Compact, and full Now Playing states, queue
@@ -260,8 +264,9 @@ Playback is handled by a global browser audio player.
   disabled.
 - The timing buttons beside timed lyrics move every line 0.5 seconds earlier or
   later, up to 30 seconds either way, and a reset button returns to the file's
-  own timing. The offset applies to the active line, line seeking, and screen
-  lyrics. It belongs to the listener and the audio file, is saved for library
+  own timing. An LRC file's own `[offset:]` tag applies first, a positive
+  value showing lines earlier, and your offset applies on top. The offset
+  applies to the active line, line seeking, and screen lyrics. It belongs to the listener and the audio file, is saved for library
   audio and kept for the session elsewhere, and never changes the lyrics file.
 - **Loudness normalization** in Settings evens out loudness between local
   tracks. It is off by default. **Turn loud tracks down** lowers a track whose

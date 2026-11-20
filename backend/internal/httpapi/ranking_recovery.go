@@ -105,15 +105,24 @@ func (s *Server) claimRankingPullLists(ctx context.Context, job workflowJobRecor
 // transaction as its cancellation. A started run has already consumed them,
 // so any remaining request is retained for the next run.
 func (s *Server) cancelRankingPullTx(ctx context.Context, tx *sql.Tx, runID int64) error {
-	return s.settleInterruptedRankingPullTx(ctx, tx, runID, time.Now().UTC())
+	return s.settleRankingPullTx(ctx, tx, runID, time.Now().UTC(), true)
 }
 
+// settleInterruptedRankingPullTx settles a pull that ended without settling
+// its schedule. A cancelled pull that never took its lists consumes their
+// requests as its cancellation does; one that failed or was interrupted before
+// it took them consumed nothing, so its requests and due pulls stay and the
+// dispatcher retries its target after rankingDispatchRetryDelay.
 func (s *Server) settleInterruptedRankingPullTx(ctx context.Context, tx *sql.Tx, runID int64, now time.Time) error {
+	return s.settleRankingPullTx(ctx, tx, runID, now, false)
+}
+
+func (s *Server) settleRankingPullTx(ctx context.Context, tx *sql.Tx, runID int64, now time.Time, cancelling bool) error {
 	var jobID int64
-	var payloadJSON, checkpointJSON string
-	err := tx.QueryRowContext(ctx, `SELECT id, payload_json, checkpoint_json FROM workflow_job
+	var payloadJSON, checkpointJSON, jobStatus string
+	err := tx.QueryRowContext(ctx, `SELECT id, payload_json, checkpoint_json, status FROM workflow_job
 		WHERE workflow_run_id = ? AND worker_type = ? ORDER BY id DESC LIMIT 1`, runID, rankingPullWorkerType).
-		Scan(&jobID, &payloadJSON, &checkpointJSON)
+		Scan(&jobID, &payloadJSON, &checkpointJSON, &jobStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -143,8 +152,8 @@ func (s *Server) settleInterruptedRankingPullTx(ctx context.Context, tx *sql.Tx,
 	if err := tx.QueryRowContext(ctx, newerQuery+")", args...).Scan(&newer); err != nil {
 		return err
 	}
-	if !newer {
-		claimed := checkpoint.Detail.ListIDs != nil
+	claimed := checkpoint.Detail.ListIDs != nil
+	if !newer && (claimed || cancelling || jobStatus == "cancelled") {
 		var lists []rankingList
 		if claimed {
 			lists, err = rankingListsByID(ctx, tx, checkpoint.Detail.ListIDs)

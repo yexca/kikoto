@@ -16,6 +16,22 @@ function isNotFoundError(error: unknown) {
   return typeof error === "object" && error !== null && "status" in error && error.status === 404;
 }
 
+/**
+ * Keeps the item the listener is already playing on the location it plays
+ * from, when that location is still available, so a refreshed queue does not
+ * reload it from another location and restart it from the beginning.
+ */
+export function keepPlayingTrackLocation(tracks: PlayerTrack[], playing: PlayerTrack | undefined): PlayerTrack[] {
+  if (!playing?.queueItemId) return tracks;
+  return tracks.map((track) => {
+    if (track.queueItemId !== playing.queueItemId || track.locationId === playing.locationId) return track;
+    const location = track.locations?.find((candidate) => candidate.locationId === playing.locationId);
+    if (!location) return track;
+    const kept = applyTrackLocation(track, location);
+    return track.locationChosen ? { ...kept, locationChosen: true } : kept;
+  });
+}
+
 export async function revalidatePersistedQueue(
   tracks: PlayerTrack[],
   loadWorkMedia: (workId: number) => Promise<MediaItem[]>,
@@ -80,8 +96,13 @@ export async function revalidatePersistedQueue(
       voiceActors: presentation?.voiceActors ?? track.voiceActors,
       displayTitle: mediaItemDisplayTitle(mediaItem, track.locationId),
     };
-    const selected =
-      locations.find((location) => location.locationId === track.locationId) ?? preferredTrackLocation(updated);
+    // A restored item plays from its best location, local first, unless the
+    // listener picked its location in the player. The saved location also stays
+    // when it is as good as the best one, such as another local folder.
+    const saved = locations.find((location) => location.locationId === track.locationId);
+    const preferred = preferredTrackLocation(updated);
+    if (saved && track.locationChosen) return [{ ...applyTrackLocation(updated, saved), locationChosen: true }];
+    const selected = saved && saved.locationType === preferred?.locationType ? saved : preferred;
     return [selected ? applyTrackLocation(updated, selected) : updated];
   });
 }

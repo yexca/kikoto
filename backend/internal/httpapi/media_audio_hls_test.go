@@ -241,7 +241,7 @@ func TestHLSPlaybackProfileSelectsTheAudioOfAVideoOnRequest(t *testing.T) {
 }
 
 func TestVideoAudioHLSFFmpegArgsPadTheAudioToTheVideo(t *testing.T) {
-	args := videoAudioHLSFFmpegArgs("input.mkv", "cache", 2, 40)
+	args := paddedAudioHLSFFmpegArgs("input.mkv", "cache", 2, 40)
 	joined := strings.Join(args, " ")
 	for _, expected := range []string{"-ss 12.000", "-map 0:a:0", "-vn", "-af apad", "-t 28.000", "-output_ts_offset 12.000", "-c:a aac"} {
 		if !strings.Contains(joined, expected) {
@@ -362,5 +362,68 @@ func TestHLSPlaysTheAudioOfAVideoSeparatelyFromItsVideo(t *testing.T) {
 	}
 	if response := serve("844", "index.m3u8", "?profile=lyrics"); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown profile = %d", response.Code)
+	}
+}
+
+// A file whose container runs past its audio, here through a later subtitle
+// cue, still serves every segment its playlist lists: the encode pads the
+// audio to the published duration.
+func TestAudioHLSServesTheLastListedSegmentOfAShortAudioStream(t *testing.T) {
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe is not installed")
+	}
+	dataRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	relativePath := filepath.ToSlash(filepath.Join("RJ00000000", "short.mka"))
+	mediaPath := filepath.Join(dataRoot, filepath.FromSlash(relativePath))
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	subtitlePath := filepath.Join(t.TempDir(), "cue.srt")
+	if err := os.WriteFile(subtitlePath, []byte("1\n00:00:06,000 --> 00:00:07,500\nExample line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(ffmpegPath,
+		"-nostdin", "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=5", "-i", subtitlePath,
+		"-map", "0", "-map", "1", "-c:a", "aac", "-c:s", "srt", "-y", mediaPath,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create audio fixture: %v (%s)", err, output)
+	}
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (811, 'RJ00000000', 'Synthetic HLS audio');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (812, 'synthetic_local', 'Synthetic Local', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint, has_audio)
+		VALUES (813, 811, 'audio', 'short.mka', 'synthetic-hls-short-audio', 1);
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+		VALUES (814, 813, 812, 'local', ?, 'available');
+	`, relativePath); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
+	serve := func(file string, query string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodGet, "/api/media/814/hls/"+file+query, nil)
+		request.SetPathValue("id", "814")
+		request.SetPathValue("file", file)
+		response := httptest.NewRecorder()
+		server.serveMediaHLS(response, request)
+		return response
+	}
+
+	playlist := serve("index.m3u8", "")
+	match := regexp.MustCompile(`segment-000001\.ts\?v=([0-9a-f]+)`).FindStringSubmatch(playlist.Body.String())
+	if playlist.Code != http.StatusOK || match == nil {
+		t.Fatalf("playlist response = %d:\n%s", playlist.Code, playlist.Body.String())
+	}
+	last := serve("segment-000001.ts", "?v="+match[1])
+	if last.Code != http.StatusOK || last.Body.Len() == 0 || last.Body.Bytes()[0] != 0x47 {
+		t.Fatalf("last listed segment response = %d, %d bytes: %s", last.Code, last.Body.Len(), last.Body.String())
 	}
 }

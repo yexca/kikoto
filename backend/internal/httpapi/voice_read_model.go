@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"net"
 	"strconv"
@@ -663,7 +664,7 @@ func (s *Server) loadVoiceWorkRows(ctx context.Context, userID int64, personID i
 			), '') AS series_title_id
 		FROM work_credit AS credit
 		INNER JOIN work ON work.id = credit.work_id
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+		LEFT JOIN user_work_state ON user_work_state.work_id = `+personal.CanonicalWorkIDSQL("work.id")+`
 			AND user_work_state.user_id = ?
 		WHERE credit.person_id = ?
 			AND credit.role = 'voice_actor'

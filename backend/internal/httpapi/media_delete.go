@@ -54,7 +54,51 @@ type mediaCacheCleanupJobPayload struct {
 
 type localMediaDeleteJobPayload struct {
 	LocalLocationID int64  `json:"local_location_id"`
+	MediaItemID     int64  `json:"media_item_id"`
+	WorkID          int64  `json:"work_id"`
+	SourceID        int64  `json:"source_id"`
 	Path            string `json:"path"`
+}
+
+// queuedLocalMediaFile is what a queued deletion recorded about the local file
+// it deletes. A zero id was not recorded and is not compared.
+type queuedLocalMediaFile struct {
+	LocationID, MediaItemID, WorkID, SourceID int64
+	Path                                      string
+}
+
+// errLocalMediaLocationChanged reports that a location no longer records the
+// file a queued deletion named.
+var errLocalMediaLocationChanged = errors.New("the file moved or left the index after the deletion was queued; it was not deleted")
+
+// checkQueuedLocalMediaFile returns errLocalMediaLocationChanged unless the
+// location still records the file the deletion was queued for: the same path,
+// and the same media item, work, and source where they were recorded. A folder
+// edit rewrites a location's path in place, so by the time a queued deletion
+// runs its path can name another file, or nothing the index knows. The current
+// path, empty when the location is gone, is returned for the run's report.
+func (s *Server) checkQueuedLocalMediaFile(ctx context.Context, file queuedLocalMediaFile) (string, error) {
+	var mediaItemID, workID, sourceID int64
+	var locationType, path string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT location.media_item_id, item.work_id, location.file_source_id, location.location_type, location.path
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.id = ?
+	`, file.LocationID).Scan(&mediaItemID, &workID, &sourceID, &locationType, &path)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errLocalMediaLocationChanged
+	}
+	if err != nil {
+		return "", err
+	}
+	if locationType != "local" || filepath.ToSlash(path) != filepath.ToSlash(file.Path) ||
+		(file.MediaItemID != 0 && mediaItemID != file.MediaItemID) ||
+		(file.WorkID != 0 && workID != file.WorkID) ||
+		(file.SourceID != 0 && sourceID != file.SourceID) {
+		return path, errLocalMediaLocationChanged
+	}
+	return path, nil
 }
 
 func (s *Server) clearCacheLocation(ctx context.Context, cacheLocationID int64, cachePath string) (int64, bool, error) {
@@ -267,8 +311,13 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 	}
 	defer stopHeartbeat()
 
+	queued := mediaLocalDeleteResult{RunID: runID, LocationID: target.LocationID, WorkID: target.WorkID, Status: "queued"}
 	deleted, err := s.removeLibraryFile(jobCtx, target.RelPath)
 	if err != nil {
+		if ctx.Err() != nil {
+			// The request ended first; the deletion returns to the queue.
+			return queued, nil
+		}
 		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
 		return mediaLocalDeleteResult{}, err
 	}
@@ -279,10 +328,16 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 		WHERE id = ?
 			AND location_type = 'local'
 	`, target.LocationID); err != nil {
+		if ctx.Err() != nil {
+			return queued, nil
+		}
 		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
 		return mediaLocalDeleteResult{}, err
 	}
 	if err := s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "succeeded", target.LocationID, target.RelPath, deleted, ""); err != nil {
+		if ctx.Err() != nil {
+			return queued, nil
+		}
 		return mediaLocalDeleteResult{}, err
 	}
 	return mediaLocalDeleteResult{
@@ -303,8 +358,17 @@ func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJob
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	currentPath, err := s.checkQueuedLocalMediaFile(ctx, queuedLocalMediaFile{
+		LocationID: payload.LocalLocationID, MediaItemID: payload.MediaItemID,
+		WorkID: payload.WorkID, SourceID: payload.SourceID, Path: payload.Path,
+	})
+	if errors.Is(err, errLocalMediaLocationChanged) {
+		return s.skipChangedLocalMediaDelete(ctx, job, payload, currentPath)
+	}
 	deleted := false
-	deleted, err := s.removeLibraryFile(ctx, payload.Path)
+	if err == nil {
+		deleted, err = s.removeLibraryFile(ctx, payload.Path)
+	}
 	if err == nil {
 		_, err = s.db.ExecContext(ctx, `
 			UPDATE media_file_location
@@ -320,6 +384,18 @@ func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJob
 		return finishErr
 	}
 	return err
+}
+
+// skipChangedLocalMediaDelete finishes a queued deletion whose location no
+// longer records the queued file. Nothing is deleted or marked, and the run
+// reports the file as skipped.
+func (s *Server) skipChangedLocalMediaDelete(ctx context.Context, job workflowJobRecord, payload localMediaDeleteJobPayload, currentPath string) error {
+	if err := s.recordWorkflowRunEvent(ctx, job.RunID, "warn", "media_delete.location_changed", errLocalMediaLocationChanged.Error(), map[string]any{
+		"location_id": payload.LocalLocationID, "path": payload.Path, "current_path": currentPath,
+	}); err != nil {
+		return err
+	}
+	return s.finishLocalMediaDelete(ctx, job.RunID, job.NodeRunID, job.ID, "skipped", payload.LocalLocationID, payload.Path, false, "")
 }
 
 func isSymlinkPath(path string) bool {
@@ -422,69 +498,46 @@ func symlinkMediaReviewExternalKey(localLocationID int64, relPath string) string
 	return fmt.Sprintf("location:%d:%s", localLocationID, filepath.ToSlash(relPath))
 }
 
+// finishLocalMediaDelete records the outcome of one local media deletion. A
+// skipped deletion finished its job without deleting the file.
 func (s *Server) finishLocalMediaDelete(ctx context.Context, runID int64, deleteNodeID int64, jobID int64, status string, locationID int64, relPath string, deleted bool, errorMessage string) error {
-	output := mustJSON(map[string]any{
+	summary := map[string]any{
 		"location_id":          locationID,
 		"path":                 relPath,
 		"deleted":              deleted,
 		"preserved_user_state": true,
 		"error":                errorMessage,
-	})
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, deleteNodeID); err != nil {
-		return err
 	}
+	jobStatus := status
+	if status == "skipped" {
+		summary["skipped_reason"] = "location_changed"
+		jobStatus = "succeeded"
+	}
+	output := mustJSON(summary)
 	progress := 1
-	if status != "succeeded" {
+	if jobStatus != "succeeded" {
 		progress = 0
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, progress_current = ?, progress_total = 1, error_message = ?,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, progress, errorMessage, jobID); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)
-	return err
+	return finishWorkflowJobResult(ctx, s.db, workflowJobResult{
+		RunID: runID, NodeRunID: deleteNodeID, JobID: jobID, Status: status, JobStatus: jobStatus, ErrorMessage: errorMessage,
+		Current: progress, Total: 1, NodeOutputJSON: output, SummaryJSON: output,
+	})
 }
 
 func (s *Server) finishMediaCacheCleanup(ctx context.Context, runID int64, nodeID int64, jobID int64, status string, cacheLocationID int64, cachePath string, deleted bool, errorMessage string) error {
 	output := mustJSON(map[string]any{"cache_location_id": cacheLocationID, "cache_path": cachePath, "deleted": deleted, "error": errorMessage})
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_node_run
-		SET status = ?,
-			output_json = ?,
-			error_message = ?,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, output, errorMessage, nodeID); err != nil {
-		return err
-	}
+	return finishSingleFileWorkflowJob(ctx, s.db, runID, nodeID, jobID, status, errorMessage, output)
+}
+
+// finishSingleFileWorkflowJob records the result of a job that acts on one
+// file: its progress is 1 of 1 when it succeeded.
+func finishSingleFileWorkflowJob(ctx context.Context, db *sqlutil.DB, runID, nodeID, jobID int64, status, errorMessage, output string) error {
 	progress := 1
 	if status != "succeeded" {
 		progress = 0
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?,
-			progress_current = ?,
-			progress_total = 1,
-			error_message = ?,
-			locked_by = '',
-			locked_at = NULL,
-			heartbeat_at = NULL,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, progress, errorMessage, jobID); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_run
-		SET status = ?,
-			summary_json = ?,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, output, runID)
-	return err
+	return finishWorkflowJobResult(ctx, db, workflowJobResult{
+		RunID: runID, NodeRunID: nodeID, JobID: jobID, Status: status, ErrorMessage: errorMessage,
+		Current: progress, Total: 1, NodeOutputJSON: output, SummaryJSON: output,
+	})
 }

@@ -34,22 +34,28 @@ describe("RecordProgressTracker", () => {
     expect(saved).toEqual([]);
     advance(RECORD_PROGRESS_SAVE_INTERVAL_MS - 4_000);
     tracker.timeUpdate(10, 120);
-    expect(saved).toEqual([{ positionSeconds: 10, durationSeconds: 120, completed: false }]);
+    expect(saved).toEqual([{ positionSeconds: 10, durationSeconds: 120, completed: false, order: 11_000 }]);
     advance(5_000);
     tracker.timeUpdate(15, 120);
     expect(saved).toHaveLength(1);
     advance(5_000);
     tracker.timeUpdate(20, 120);
-    expect(saved[saved.length - 1]).toEqual({ positionSeconds: 20, durationSeconds: 120, completed: false });
+    expect(saved[saved.length - 1]).toEqual({
+      positionSeconds: 20,
+      durationSeconds: 120,
+      completed: false,
+      order: 21_000,
+    });
   });
 
   it("saves on pause and when the player closes", () => {
     const { tracker, saved } = trackerAt();
     tracker.pause(33.5, 120);
     tracker.close(48, 120);
+    // Saves in the same millisecond still order one after the other.
     expect(saved).toEqual([
-      { positionSeconds: 33.5, durationSeconds: 120, completed: false },
-      { positionSeconds: 48, durationSeconds: 120, completed: false },
+      { positionSeconds: 33.5, durationSeconds: 120, completed: false, order: 1_000 },
+      { positionSeconds: 48, durationSeconds: 120, completed: false, order: 1_001 },
     ]);
   });
 
@@ -57,7 +63,7 @@ describe("RecordProgressTracker", () => {
     const { tracker, saved } = trackerAt(90);
     tracker.ended(120);
     tracker.close(120, 120);
-    expect(saved).toEqual([{ positionSeconds: 120, durationSeconds: 120, completed: true }]);
+    expect(saved).toEqual([{ positionSeconds: 120, durationSeconds: 120, completed: true, order: 1_000 }]);
   });
 
   it("does not write a video closed where it started", () => {

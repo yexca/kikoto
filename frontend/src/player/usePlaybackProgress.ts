@@ -16,7 +16,9 @@ import type { PlaybackEngine } from "./usePlaybackEngine";
 function writeRecordProgress(assetId: number, progress: RecordProgress) {
   void api
     .updateRecordProgress(assetId, progress)
-    .then(() => {
+    .then((result) => {
+      // A save the server did not store leaves the tiles on the later one.
+      if (result?.stored === false) return;
       const detail: RecordProgressSavedDetail = { assetId, progress };
       window.dispatchEvent(new CustomEvent(RECORD_PROGRESS_SAVED_EVENT, { detail }));
     })

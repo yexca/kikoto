@@ -196,7 +196,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		markProgress()
 		return remoteFetchItemOutcome{cacheHit: true}, nil
 	}
-	if info, statErr := os.Stat(cacheAbsPath); statErr == nil && existingFileMatches(cacheAbsPath, item.SizeBytes) {
+	if info, statErr := os.Stat(cacheAbsPath); statErr == nil && fileMatchesKnownSize(cacheAbsPath, item.SizeBytes, s.recordedFileSize(ctx, "cache", remoteFetchItemSourceID(item, execution.source.ID), item.CachePath)) {
 		if item.Action == "cache_download" {
 			item.Action, item.Status = "cache_hit", "cache_hit"
 			execution.plan.Items[index] = item
@@ -346,6 +346,15 @@ func (s *Server) finalizeRemoteWorkFetch(
 	if err != nil {
 		return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, s.remoteFetchPublicationFailureNode(ctx, runID, execution.promoteNodeID), jobID, len(execution.plan.Items), len(execution.plan.Items)*2, execution.plan.Summary, err)
 	}
+	return s.finishRemoteFetchAfterPublication(ctx, jobID, execution, manifest, promoted, counts)
+}
+
+// finishRemoteFetchAfterPublication registers a published Fetch and records
+// its success. Once the swap started, a cancellation no longer stops the
+// Fetch: its files are in place, so it registers them, succeeds, and queues
+// its follow-up.
+func (s *Server) finishRemoteFetchAfterPublication(ctx context.Context, jobID int64, execution remoteWorkFetchExecution, manifest remoteFetchManifestRecord, promoted int, counts remoteFetchMaterializeCounts) (remoteWorkSaveResult, error) {
+	ctx = context.WithoutCancel(ctx)
 	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "published", map[string]any{"targetRoot": execution.plan.SaveRoot, "promoted": promoted}, len(execution.plan.Items), len(execution.plan.Items)*2)
 	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
 	if err := s.markRemoteFetchPublished(ctx, jobID, execution.promoteNodeID, execution.plan, promoted); err != nil {

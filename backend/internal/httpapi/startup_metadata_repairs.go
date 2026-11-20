@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
@@ -21,6 +22,9 @@ func (s *Server) startStartupMetadataRepairs() {
 		}{
 			{"startup_cover_migration", s.migrateFlatCoverCache},
 			{"startup_manual_asset_cleanup", s.cleanupUnreferencedManualAssets},
+			{"startup_family_personal_state", func(ctx context.Context) error {
+				return personal.ConsolidateSplitFamilies(ctx, s.db)
+			}},
 			{"startup_metadata_tag_backfill", func(ctx context.Context) error {
 				if err := retireInstanceMetadataLanguage(ctx, s.db); err != nil {
 					return err

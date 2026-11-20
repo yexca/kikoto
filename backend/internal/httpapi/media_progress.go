@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
@@ -139,6 +140,9 @@ func decodeMediaProgressUpdate(r *http.Request) (mediaProgressUpdateRequest, err
 	return payload, nil
 }
 
+// persistMediaProgress records a legacy progress write as a checkpoint that
+// occurred when the server received it. Like a checkpoint report, it replaces
+// only an earlier cursor, so it never undoes a later report.
 func (s *Server) persistMediaProgress(
 	ctx context.Context,
 	userID, workID, mediaItemID int64,
@@ -171,7 +175,9 @@ func (s *Server) persistMediaProgress(
 			completed = excluded.completed,
 			last_played_at = excluded.last_played_at,
 			updated_at = excluded.last_played_at,
-			report_order = MAX(report_order + 1, excluded.report_order), report_id = ''
+			report_order = excluded.report_order, report_id = ''
+		WHERE excluded.report_order > user_work_playback_cursor.report_order
+			OR (excluded.report_order = user_work_playback_cursor.report_order AND user_work_playback_cursor.report_id = '')
 	`, userID, workID, mediaItemID, fileSourceID, locationID, locationType,
 		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt, time.Now().UnixMilli())
 	if err != nil {
@@ -221,23 +227,10 @@ func (s *Server) progressTarget(ctx context.Context, mediaItemID int64, requeste
 	return workID, sqlutil.Int64(fileSourceID), sqlutil.Int64(locationID), locationType.String, nil
 }
 
+// canonicalWorkID is the work that holds the personal state of a work's
+// family; see personal.CanonicalWorkIDSQL.
 func (s *Server) canonicalWorkID(ctx context.Context, workID int64) (int64, error) {
-	var canonicalWorkID int64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(logical.canonical_work_id, canonical_edition.work_id, work.id)
-		FROM work
-		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
-		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-		LEFT JOIN work_edition AS canonical_edition
-			ON canonical_edition.logical_work_id = edition.logical_work_id
-			AND canonical_edition.is_canonical = 1
-		WHERE work.id = ?
-		ORDER BY canonical_edition.work_id ASC
-		LIMIT 1
-	`, workID).Scan(&canonicalWorkID); err != nil {
-		return 0, err
-	}
-	return canonicalWorkID, nil
+	return personal.CanonicalWorkID(ctx, s.db, workID)
 }
 
 func validSeconds(value float64) bool {

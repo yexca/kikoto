@@ -230,8 +230,6 @@ var workflowGraphNodeConfigValidators = map[string]workflowGraphNodeConfigValida
 	"voice_metadata":  validateGraphVoiceMetadataConfig,
 	"filter_works":    validateGraphFilterWorksConfig,
 	"metadata_sync":   validateGraphMetadataSyncConfig,
-	"track_works":     validateGraphTrackWorksConfig,
-	"fetch_works":     validateGraphFetchWorksConfig,
 	"tag_works":       validateGraphTagWorksConfig,
 }
 
@@ -374,33 +372,6 @@ func validateGraphMetadataSyncConfig(node workflowGraphNode, requiresPreview boo
 	return validateWorkflowGraphBound(node, "maxWorks", 25, presetWorkflowMaxCatalogSize, !requiresPreview)
 }
 
-func validateGraphTrackWorksConfig(node workflowGraphNode, requiresPreview bool) error {
-	return validateWorkflowGraphBound(node, "maxWorks", 25, 500, !requiresPreview)
-}
-
-func validateGraphFetchWorksConfig(node workflowGraphNode, requiresPreview bool) error {
-	requireBound := !requiresPreview
-	if err := validateWorkflowGraphBound(node, "maxWorks", 25, 100, requireBound); err != nil {
-		return err
-	}
-	if err := validateWorkflowGraphBound(node, "maxFiles", 10000, 50000, requireBound); err != nil {
-		return err
-	}
-	if err := validateWorkflowGraphBound(node, "maxBytes", 100*1024*1024*1024, 2*1024*1024*1024*1024, requireBound); err != nil {
-		return err
-	}
-	if _, configured := node.Config["minFreeBytes"]; configured || requireBound {
-		if err := validateWorkflowGraphBound(node, "minFreeBytes", 2*1024*1024*1024, 1024*1024*1024*1024, requireBound); err != nil {
-			return err
-		}
-	}
-	_, unknownSizePolicySet := node.Config["allowUnknownSizes"]
-	if !requiresPreview && (!unknownSizePolicySet || configBool(node.Config, "allowUnknownSizes", false)) {
-		return fmt.Errorf("node %s requires allowUnknownSizes=false when preview is disabled", node.ID)
-	}
-	return nil
-}
-
 func validateGraphTagWorksConfig(node workflowGraphNode, _ bool) error {
 	if tagName := configString(node.Config, "tagName"); len([]rune(tagName)) > 40 {
 		return fmt.Errorf("node %s tagName is too long", node.ID)
@@ -419,24 +390,18 @@ const (
 )
 
 var workflowGraphConfigKinds = map[string]workflowGraphConfigKind{
-	"sourceId":          workflowGraphIntegerConfig,
-	"personId":          workflowGraphIntegerConfig,
-	"sourceIds":         workflowGraphIntegerArrayConfig,
-	"definitionId":      workflowGraphIntegerConfig,
-	"pageSize":          workflowGraphIntegerConfig,
-	"maxPages":          workflowGraphIntegerConfig,
-	"maxWorks":          workflowGraphIntegerConfig,
-	"limit":             workflowGraphIntegerConfig,
-	"maxFiles":          workflowGraphIntegerConfig,
-	"maxBytes":          workflowGraphIntegerConfig,
-	"minFreeBytes":      workflowGraphIntegerConfig,
-	"year":              workflowGraphIntegerConfig,
-	"codes":             workflowGraphStringArrayConfig,
-	"excludeExtensions": workflowGraphStringArrayConfig,
-	"voiceNames":        workflowGraphStringArrayConfig,
-	"metadataTags":      workflowGraphStringArrayConfig,
-	"userTags":          workflowGraphStringArrayConfig,
-	"allowUnknownSizes": workflowGraphBooleanConfig,
+	"personId":     workflowGraphIntegerConfig,
+	"sourceIds":    workflowGraphIntegerArrayConfig,
+	"definitionId": workflowGraphIntegerConfig,
+	"pageSize":     workflowGraphIntegerConfig,
+	"maxPages":     workflowGraphIntegerConfig,
+	"maxWorks":     workflowGraphIntegerConfig,
+	"limit":        workflowGraphIntegerConfig,
+	"year":         workflowGraphIntegerConfig,
+	"codes":        workflowGraphStringArrayConfig,
+	"voiceNames":   workflowGraphStringArrayConfig,
+	"metadataTags": workflowGraphStringArrayConfig,
+	"userTags":     workflowGraphStringArrayConfig,
 }
 
 func validateWorkflowGraphConfigTypes(node workflowGraphNode) error {
@@ -445,7 +410,7 @@ func validateWorkflowGraphConfigTypes(node workflowGraphNode) error {
 			return err
 		}
 	}
-	return validateWorkflowGraphExcludedExtensions(node)
+	return nil
 }
 
 func validateWorkflowGraphConfigType(nodeID, key string, value any) error {
@@ -508,16 +473,6 @@ func workflowGraphStringArray(value any) bool {
 	default:
 		return false
 	}
-}
-
-func validateWorkflowGraphExcludedExtensions(node workflowGraphNode) error {
-	for _, extension := range configStringSlice(node.Config, "excludeExtensions") {
-		extension = strings.TrimPrefix(strings.TrimSpace(extension), ".")
-		if extension == "" || len(extension) > 16 || strings.ContainsAny(extension, `/\\`) {
-			return fmt.Errorf("node %s has invalid excluded extension", node.ID)
-		}
-	}
-	return nil
 }
 
 func validateGraphWorkFilterConfig(node workflowGraphNode) error {

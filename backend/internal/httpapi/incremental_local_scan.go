@@ -307,11 +307,7 @@ func (persistence *incrementalLocalScanPersistence) markMissingWorks() error {
 		if persistence.state.seenWorkIDs[workID] {
 			continue
 		}
-		if _, err := persistence.tx.ExecContext(persistence.ctx, `
-			UPDATE work_source_presence
-			SET availability = 'missing', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-			WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-		`, workID, persistence.fileSourceID); err != nil {
+		if err := persistence.markPresenceMissing(workID); err != nil {
 			return err
 		}
 		missing, err := markAvailableLocalLocationsMissingForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, persistence.state.scope)
@@ -321,6 +317,34 @@ func (persistence *incrementalLocalScanPersistence) markMissingWorks() error {
 		persistence.state.missingLocations += missing
 	}
 	return nil
+}
+
+// markPresenceMissing marks an affected work's presence missing only when this
+// scan observes the root the presence records, as the full scan does. A work
+// can be affected through a folder inside the scope while its presence names
+// another folder in an offline pool or deeper than the scan depth; that
+// presence keeps its state.
+func (persistence *incrementalLocalScanPersistence) markPresenceMissing(workID int64) error {
+	var root string
+	err := persistence.tx.QueryRowContext(persistence.ctx, `
+		SELECT source_url FROM work_source_presence
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+	`, workID, persistence.fileSourceID).Scan(&root)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if normalizeFolderRootPath(root) != "" && !persistence.state.scope.observes(root) {
+		return nil
+	}
+	_, err = persistence.tx.ExecContext(persistence.ctx, `
+		UPDATE work_source_presence
+		SET availability = 'missing', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+	`, workID, persistence.fileSourceID)
+	return err
 }
 
 func incrementalLocalScanRunSummary(payload localScanJobPayload, scanSummary localfs.Summary, persistence *incrementalLocalScanPersistence) map[string]any {

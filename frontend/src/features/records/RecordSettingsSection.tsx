@@ -7,6 +7,7 @@ import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/Autosav
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { api, type RecordRoot } from "@/lib/api";
 
@@ -17,6 +18,7 @@ const rootBadge: Record<RecordRoot["state"], "secondary" | "success" | "warning"
   online: "success",
   offline: "warning",
   unreadable: "warning",
+  marker_missing: "warning",
 };
 
 /**
@@ -45,6 +47,8 @@ export function RecordSettingsSection({
   const showRoot = enabled && savedEnabled && !auth.demoMode;
   const { state: rootState, reload, setRoot } = useRecordRoot(showRoot);
   const [initializing, setInitializing] = useState<"idle" | "busy" | "failed">("idle");
+  const [restoring, setRestoring] = useState<"idle" | "busy" | "failed">("idle");
+  const [confirmingFresh, setConfirmingFresh] = useState(false);
 
   const change = (next: boolean) =>
     void status.track(
@@ -55,14 +59,27 @@ export function RecordSettingsSection({
       }),
     );
 
-  const initialize = async () => {
+  const initialize = async (fresh = false) => {
     setInitializing("busy");
     try {
-      const result = await api.initializeRecordRoot();
+      const result = await api.initializeRecordRoot({ fresh });
       setRoot(result.root);
       setInitializing("idle");
+      setConfirmingFresh(false);
     } catch {
       setInitializing("failed");
+      setConfirmingFresh(false);
+    }
+  };
+
+  const restoreMarker = async () => {
+    setRestoring("busy");
+    try {
+      const result = await api.restoreRecordMarker();
+      setRoot(result.root);
+      setRestoring("idle");
+    } catch {
+      setRestoring("failed");
     }
   };
 
@@ -95,6 +112,11 @@ export function RecordSettingsSection({
                 {t("records.initializeFailed")}
               </p>
             )}
+            {restoring === "failed" && (
+              <p role="alert" className="text-sm text-error-foreground">
+                {t("records.restoreMarkerFailed")}
+              </p>
+            )}
             {rootState.status === "loading" && (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t("records.loading")} />
             )}
@@ -110,8 +132,47 @@ export function RecordSettingsSection({
                 {initializing === "busy" ? t("records.initializing") : t("records.initialize")}
               </Button>
             )}
+            {/* Another disk at the root, like one that lost its marker, keeps the
+                catalog until an administrator starts a new one. */}
+            {(root?.state === "marker_missing" || root?.state === "offline") && !readOnly && (
+              <>
+                {root.state === "marker_missing" && (
+                  <Button size="sm" disabled={restoring === "busy"} onClick={() => void restoreMarker()}>
+                    {restoring === "busy" && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {t("records.restoreMarker")}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={restoring === "busy" || initializing === "busy"}
+                  onClick={() => setConfirmingFresh(true)}
+                >
+                  {t("records.startNewCatalog")}
+                </Button>
+              </>
+            )}
           </div>
         </SettingsRow>
+      )}
+      {confirmingFresh && (
+        <Dialog onClose={() => setConfirmingFresh(false)} size="md" dismissible={initializing !== "busy"}>
+          <DialogHeader
+            title={t("records.startNewCatalog")}
+            onClose={() => setConfirmingFresh(false)}
+            closeLabel={t("content.close")}
+          />
+          <DialogBody className="text-sm">{t("records.startNewCatalogWarning")}</DialogBody>
+          <DialogFooter>
+            <Button variant="outline" disabled={initializing === "busy"} onClick={() => setConfirmingFresh(false)}>
+              {t("content.cancel")}
+            </Button>
+            <Button variant="destructive" disabled={initializing === "busy"} onClick={() => void initialize(true)}>
+              {initializing === "busy" && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("records.startNewCatalog")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </SettingsSection>
   );

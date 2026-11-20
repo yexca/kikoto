@@ -257,8 +257,9 @@ type requestedMetadataWorks struct {
 // addRequestedMetadataWorks synchronizes the DLsite family of each selected code
 // that has no work, which adds its edition works. A code DLsite does not list
 // adds nothing and has no remote fallback, since remote results never add works.
-// A custom code without a work is not a DLsite product and is skipped. A
-// timeout or cancellation stops the step so the job retries it.
+// A custom code without a work is not a DLsite product and is skipped.
+// Persistent rate limiting or cancellation stops the step so the job retries
+// it; a timeout or another error of one code skips that code.
 func (s *Server) addRequestedMetadataWorks(ctx context.Context, syncer dlsiteFamilyMetadataSyncer, codes []string) (requestedMetadataWorks, error) {
 	added := requestedMetadataWorks{Failures: []string{}}
 	for _, code := range codes {
@@ -282,7 +283,7 @@ func (s *Server) addRequestedMetadataWorks(ctx context.Context, syncer dlsiteFam
 			return added, ctxErr
 		}
 		switch {
-		case err != nil && dlsite.IsTimeout(err):
+		case err != nil && dlsite.IsRateLimited(err):
 			added.Failures = append(added.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
 			return added, err
 		case family.RequestedUnavailable:

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -262,4 +263,35 @@ func patchMediaProgress(t *testing.T, server *Server, user account.User, mediaIt
 	response := httptest.NewRecorder()
 	server.updateMediaProgress(response, request)
 	return response
+}
+
+// A legacy progress write keeps to the checkpoint order: it does not replace a
+// cursor whose report occurred later.
+func TestUpdateMediaProgressKeepsALaterReportedCursor(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	later := time.Now().Add(time.Hour).UnixMilli()
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'progress-user', 'user')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Track', 'progress-order')`,
+		fmt.Sprintf(`INSERT INTO user_work_playback_cursor (user_id, work_id, media_item_id, position_seconds, last_played_at, report_order, report_id)
+			VALUES (1, 1, 1, 30, '2026-01-01 00:00:00', %d, 'synthetic-report')`, later),
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	user := account.User{ID: 1, Username: "progress-user", Role: "user", Permissions: account.PermissionsForRole("user")}
+	if response := patchMediaProgress(t, server, user, 1, `{"positionSeconds":90}`); response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var position float64
+	var order int64
+	if err := db.QueryRow(`SELECT position_seconds, report_order FROM user_work_playback_cursor WHERE user_id = 1`).Scan(&position, &order); err != nil {
+		t.Fatal(err)
+	}
+	if position != 30 || order != later {
+		t.Fatalf("cursor = %v at order %d, want the later report kept", position, order)
+	}
 }

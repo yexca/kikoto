@@ -18,6 +18,7 @@ const minimumPositionChangeSeconds = 1;
  */
 export class RecordTrackProgressSaver {
   private last: { assetId: number; at: number; position: number } | null = null;
+  private lastOrder = 0;
 
   constructor(
     private readonly write: (assetId: number, progress: RecordProgress) => void,
@@ -32,10 +33,14 @@ export class RecordTrackProgressSaver {
       if (Math.abs(position - last.position) < minimumPositionChangeSeconds) return;
     }
     this.last = { assetId, at: now, position };
+    // The server keeps the save captured last, so one that arrives late
+    // never replaces a later position.
+    this.lastOrder = Math.max(this.lastOrder + 1, now);
     this.write(assetId, {
       positionSeconds: Math.max(0, position),
       durationSeconds: duration ?? undefined,
       completed,
+      order: this.lastOrder,
     });
   }
 }

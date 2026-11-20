@@ -175,7 +175,7 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 	if err := s.verifyRemoteFetchItems(ctx, manifest, plan, paths); err != nil {
 		return 0, err
 	}
-	if err := s.publishRemoteFetchRoot(ctx, manifest, paths); err != nil {
+	if err := s.publishRemoteFetchFiles(ctx, manifest, paths); err != nil {
 		return 0, err
 	}
 	return countPromotedFetchItems(plan.Items), nil
@@ -315,18 +315,13 @@ func (s *Server) initializeRemoteFetchStaging(ctx context.Context, manifest remo
 		return err
 	}
 	defer func() { _ = root.Close() }()
+	// Staging holds only the files this Fetch writes. The existing folder is
+	// never copied, so a file the Fetch does not select is never rewritten,
+	// and a change made to it while the Fetch runs is kept.
 	if err := removeFetchDirectory(root, scoped.stageRoot); err != nil {
 		return err
 	}
-	if info, err := root.Stat(scoped.targetRoot); err == nil && info.IsDir() {
-		if err := copyFetchDirectory(root, scoped.targetRoot, scoped.stageRoot); err != nil {
-			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-		}
-	} else if errors.Is(err, os.ErrNotExist) {
-		if err := root.MkdirAll(scoped.stageRoot, 0o755); err != nil {
-			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-		}
-	} else if err != nil {
+	if err := root.MkdirAll(scoped.stageRoot, 0o755); err != nil {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 	}
 	return s.updateRemoteFetchManifestState(ctx, manifest.ID, "staging", "")
@@ -405,13 +400,16 @@ func (files distinctFetchFiles) claim(info os.FileInfo, relativePath string) str
 	return ""
 }
 
-func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {
-	// Publication swaps directories and then records the result. Cancellation
-	// may prevent it from starting, but once started it must record where the
-	// roots are, so a service stop cannot leave a finished swap marked as still
-	// publishing. No custom work renames a folder while the swap places the
-	// target root; a scan or cleanup may hold the lock for a long time, so the
-	// wait stays cancellable and the time limit covers only the swap.
+// publishRemoteFetchFiles renames each staged file into the target folder.
+// Files the Fetch does not write are never touched, and a file it replaces
+// moves into the run's backup directory on the same pool first, so the
+// replaced file stays recoverable until the Fetch completes. Cancellation may
+// prevent publication from starting, but once started it must record where
+// the files are, so a service stop cannot leave finished renames marked as
+// still publishing. No custom work renames a folder while files are placed;
+// a scan or cleanup may hold the lock for a long time, so the wait stays
+// cancellable and the time limit covers only the placement.
+func (s *Server) publishRemoteFetchFiles(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {
 	if err := s.mediaCleanupMu.LockContext(ctx); err != nil {
 		return err
 	}
@@ -424,49 +422,223 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	if err := walkFetchDirectory(root, scoped.stageRoot, nil); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteFetchPublishTimeout)
-	defer cancel()
-	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "promote", "running", nil)
-	// Once a publication rename has happened, the backup is the only copy of
-	// the previous root. Never replace it; recovery must settle it first.
-	if _, err := root.Lstat(scoped.backupRoot); err == nil {
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, errRemoteFetchBackupPending)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-	}
-	if err := s.updateRemoteFetchManifestState(ctx, manifest.ID, "publishing", ""); err != nil {
+	// The last point a cancellation stops the Fetch: once placement starts,
+	// the Fetch publishes, registers, and succeeds.
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := root.MkdirAll(filepath.Dir(scoped.backupRoot), 0o755); err != nil {
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+	ctx = context.WithoutCancel(ctx)
+	stateCtx, cancel := context.WithTimeout(ctx, remoteFetchPublishTimeout)
+	defer cancel()
+	_ = s.updateRemoteFetchPhaseNode(stateCtx, manifest.WorkflowRunID, "promote", "running", nil)
+	if err := s.updateRemoteFetchManifestState(stateCtx, manifest.ID, "publishing", ""); err != nil {
+		return err
 	}
-	targetExisted := false
-	if _, err := root.Stat(scoped.targetRoot); err == nil {
-		targetExisted = true
-		if err := root.Rename(scoped.targetRoot, scoped.backupRoot); err != nil {
-			return s.recordRemoteFetchManifestError(ctx, manifest.ID, fmt.Errorf("backup current fetch root: %w", err))
+	return s.placeStagedRemoteFetchFiles(ctx, manifest, root, scoped)
+}
+
+// placeStagedRemoteFetchFiles places every staged file and records the
+// manifest published. It is safe to repeat: a file already renamed into
+// place has left staging, so a resumed publication skips it.
+//
+// Placement can take longer than the state writes' time limit, so each write
+// gets its own. A placement that fails puts back what this attempt placed:
+// each placed file returns to staging and the file it replaced to its place,
+// and the manifest goes back to verified, so the Fetch never stays half
+// published and its retry publishes the same staged files again.
+func (s *Server) placeStagedRemoteFetchFiles(ctx context.Context, manifest remoteFetchManifestRecord, root *os.Root, scoped remoteFetchPublishPaths) error {
+	stateCtx, cancel := context.WithTimeout(ctx, remoteFetchPublishTimeout)
+	relativePaths, err := s.remoteFetchPromotedRelativePaths(stateCtx, manifest.ID)
+	cancel()
+	if err != nil {
+		return err
+	}
+	type placedFile struct {
+		relative  string
+		placement fetchPlacement
+	}
+	placed := []placedFile{}
+	for _, relative := range relativePaths {
+		placement, err := placeStagedFetchFile(root, scoped, relative)
+		if err == nil {
+			if placement.moved {
+				placed = append(placed, placedFile{relative, placement})
+			}
+			continue
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-	}
-	if err := root.MkdirAll(filepath.Dir(scoped.targetRoot), 0o755); err != nil {
-		if targetExisted {
-			_ = root.Rename(scoped.backupRoot, scoped.targetRoot)
+		state := ""
+		switch {
+		case errors.Is(err, errRemoteFetchStagedFileMissing):
+			state = "planned"
+		default:
+			undone := true
+			for index := len(placed) - 1; index >= 0; index-- {
+				if undoErr := undoFetchPlacement(root, scoped, placed[index].relative, placed[index].placement); undoErr != nil {
+					slog.Error("undo Fetch placement", "run_id", manifest.WorkflowRunID, "error", undoErr)
+					undone = false
+					break
+				}
+			}
+			if undone {
+				state = "verified"
+			}
 		}
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-	}
-	if err := root.Rename(scoped.stageRoot, scoped.targetRoot); err != nil {
-		if targetExisted {
-			_ = root.Rename(scoped.backupRoot, scoped.targetRoot)
+		stateCtx, cancel := context.WithTimeout(ctx, remoteFetchPublishTimeout)
+		defer cancel()
+		if state != "" {
+			if stateErr := s.updateRemoteFetchManifestState(stateCtx, manifest.ID, state, err.Error()); stateErr != nil {
+				return stateErr
+			}
 		}
-		return s.recordRemoteFetchManifestError(ctx, manifest.ID, fmt.Errorf("publish staged fetch root: %w", err))
+		return s.recordRemoteFetchManifestError(stateCtx, manifest.ID, err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	if err := removeFetchDirectory(root, scoped.stageRoot); err != nil {
+		slog.Warn("Fetch staging cleanup blocked", "run_id", manifest.WorkflowRunID, "error", err)
+	}
+	stateCtx, cancel = context.WithTimeout(ctx, remoteFetchPublishTimeout)
+	defer cancel()
+	_, err = s.db.ExecContext(stateCtx, `
 		UPDATE remote_fetch_manifest
-		SET state = 'published', error_message = '', published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, manifest.ID)
 	return err
+}
+
+func (s *Server) remoteFetchPromotedRelativePaths(ctx context.Context, manifestID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT relative_path FROM remote_fetch_manifest_item
+		WHERE manifest_id = ? AND action NOT IN ('skip', 'exclude')
+		ORDER BY id
+	`, manifestID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	paths := []string{}
+	for rows.Next() {
+		var relative string
+		if err := rows.Scan(&relative); err != nil {
+			return nil, err
+		}
+		paths = append(paths, relative)
+	}
+	return paths, rows.Err()
+}
+
+// sameFetchFileContent reports whether two files hold the same bytes.
+func sameFetchFileContent(root *os.Root, first, second string) (bool, error) {
+	firstHash, firstSize, err := hashFetchFile(root, first)
+	if err != nil {
+		return false, err
+	}
+	secondHash, secondSize, err := hashFetchFile(root, second)
+	if err != nil {
+		return false, err
+	}
+	return firstSize == secondSize && firstHash == secondHash, nil
+}
+
+var errRemoteFetchStagedFileMissing = errors.New("a staged Fetch file is missing; the Fetch stages its files again")
+
+// placeStagedFetchFile renames one staged file to its target. Which of the
+// staged, target, and backup files exist decides each step, so a placement
+// interrupted at any point is finished by placing the file again.
+// fetchPlacement is what one placement did: whether it moved the staged file
+// into place, and whether a replaced file went to the backup first.
+type fetchPlacement struct {
+	moved    bool
+	replaced bool
+}
+
+func placeStagedFetchFile(root *os.Root, scoped remoteFetchPublishPaths, relative string) (fetchPlacement, error) {
+	name := filepath.FromSlash(relative)
+	staged := filepath.Join(scoped.stageRoot, name)
+	target := filepath.Join(scoped.targetRoot, name)
+	backup := filepath.Join(scoped.backupRoot, name)
+	for _, directory := range []string{filepath.Dir(target), filepath.Dir(backup)} {
+		if err := validateFetchDirectoryPath(root, directory); err != nil {
+			return fetchPlacement{}, err
+		}
+	}
+	targetInfo, err := root.Lstat(target)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fetchPlacement{}, err
+	}
+	targetExists := err == nil
+	if _, err := root.Lstat(staged); errors.Is(err, os.ErrNotExist) {
+		if targetExists {
+			// Placed by an earlier attempt.
+			return fetchPlacement{}, nil
+		}
+		// Only a file removed from staging by hand ends here. A replaced
+		// file goes back to its place before the Fetch stages again.
+		if _, err := root.Lstat(backup); err == nil {
+			if err := root.Rename(backup, target); err != nil {
+				return fetchPlacement{}, err
+			}
+		}
+		return fetchPlacement{}, errRemoteFetchStagedFileMissing
+	} else if err != nil {
+		return fetchPlacement{}, err
+	}
+	movedToBackup := false
+	if targetExists {
+		if unsafeFetchStagingEntry(targetInfo) || !targetInfo.Mode().IsRegular() {
+			return fetchPlacement{}, fmt.Errorf("fetch target %s is not a regular file", relative)
+		}
+		// A backup is the only copy of a file an earlier attempt replaced.
+		// Never replace it. A target that already holds the staged content
+		// was placed by that attempt; anything else must be settled first.
+		if _, err := root.Lstat(backup); err == nil {
+			if placed, err := sameFetchFileContent(root, staged, target); err != nil {
+				return fetchPlacement{}, err
+			} else if placed {
+				return fetchPlacement{}, root.Remove(staged)
+			}
+			return fetchPlacement{}, errRemoteFetchBackupPending
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fetchPlacement{}, err
+		}
+		if err := root.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
+			return fetchPlacement{}, err
+		}
+		if err := root.Rename(target, backup); err != nil {
+			return fetchPlacement{}, fmt.Errorf("back up replaced fetch file: %w", err)
+		}
+		movedToBackup = true
+	}
+	if err := root.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if movedToBackup {
+			_ = root.Rename(backup, target)
+		}
+		return fetchPlacement{}, err
+	}
+	if err := root.Rename(staged, target); err != nil {
+		if movedToBackup {
+			_ = root.Rename(backup, target)
+		}
+		return fetchPlacement{}, fmt.Errorf("publish staged fetch file: %w", err)
+	}
+	return fetchPlacement{moved: true, replaced: movedToBackup}, nil
+}
+
+// undoFetchPlacement returns a file a failed publication placed to staging,
+// and the file it replaced from the backup to its place.
+func undoFetchPlacement(root *os.Root, scoped remoteFetchPublishPaths, relative string, placement fetchPlacement) error {
+	name := filepath.FromSlash(relative)
+	staged := filepath.Join(scoped.stageRoot, name)
+	target := filepath.Join(scoped.targetRoot, name)
+	if err := root.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
+		return err
+	}
+	if err := root.Rename(target, staged); err != nil {
+		return err
+	}
+	if placement.replaced {
+		return root.Rename(filepath.Join(scoped.backupRoot, name), target)
+	}
+	return nil
 }
 
 func (s *Server) updateRemoteFetchManifestState(ctx context.Context, manifestID int64, state string, message string) error {
@@ -635,9 +807,8 @@ func workflowRunCanResume(status string) bool {
 	return status == "queued" || status == "running"
 }
 
-// A publication interrupted after its renames leaves the staging root already
-// promoted. Settle the manifest from filesystem evidence before any retry
-// stages again, or the retry would publish only the newly selected files.
+// A publication interrupted part way has placed some files and not others.
+// Finish it from filesystem evidence before any retry stages again.
 func (s *Server) settleInterruptedRemoteFetchPublication(ctx context.Context, manifest remoteFetchManifestRecord) (remoteFetchManifestRecord, error) {
 	if manifest.State != "publishing" {
 		return manifest, nil
@@ -664,42 +835,16 @@ func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest re
 	}
 	defer func() { _ = root.Close() }()
 	// Opening the paths refused a root, or a folder above one, that is a link
-	// or not a directory. Which roots exist decides the outcome; what they hold
-	// does not, and a rename moves a directory without following links inside
-	// it, so a link or special file the user keeps in the target cannot stall
-	// recovery.
-	exists := make(map[string]bool, 3)
-	for _, name := range []string{scoped.targetRoot, scoped.stageRoot, scoped.backupRoot} {
-		_, err := root.Lstat(name)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		exists[name] = err == nil
+	// or not a directory. Each planned file's staged, target, and backup
+	// entries decide how its placement finishes; what else the target holds
+	// does not, so a link or special file the user keeps in the target
+	// cannot stall recovery.
+	err = s.placeStagedRemoteFetchFiles(ctx, manifest, root, scoped)
+	if errors.Is(err, errRemoteFetchStagedFileMissing) {
+		// The manifest is planned again; the retry stages and publishes anew.
+		return nil
 	}
-	targetExists, stageExists, backupExists := exists[scoped.targetRoot], exists[scoped.stageRoot], exists[scoped.backupRoot]
-	switch {
-	case targetExists && !stageExists:
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
-		return err
-	case !targetExists && stageExists:
-		if err := root.MkdirAll(filepath.Dir(scoped.targetRoot), 0o755); err != nil {
-			return err
-		}
-		if err := root.Rename(scoped.stageRoot, scoped.targetRoot); err != nil {
-			return err
-		}
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
-		return err
-	case !targetExists && !stageExists && backupExists:
-		if err := root.Rename(scoped.backupRoot, scoped.targetRoot); err != nil {
-			return err
-		}
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'planned', error_message = 'publication rolled back during recovery', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
-		return err
-	default:
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'verified', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
-		return err
-	}
+	return err
 }
 
 func nullablePositiveInt64(value int64) any {

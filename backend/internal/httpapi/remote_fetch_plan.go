@@ -135,7 +135,7 @@ func (s *Server) buildRemoteFetchPlanRemoteItem(
 	if state, ok := inputs.locationState.localForRemotePath(file.Path); ok {
 		item.LocalPaths = append(item.LocalPaths, state.Path)
 	}
-	if err := applyRemoteFetchRemoteTargetState(s.cfg.DataRoot, &item, seenTargets); err != nil {
+	if err := applyRemoteFetchRemoteTargetState(s.cfg.DataRoot, &item, seenTargets, s.recordedFileSize(ctx, "local", 0, item.TargetPath)); err != nil {
 		return remoteWorkSavePlanItem{}, err
 	}
 	if err := s.applyRemoteFetchConflictDecision(&item, decision, inputs.saveRoot, seenTargets); err != nil {
@@ -188,7 +188,11 @@ func applyRemoteFetchTargetState(item *remoteWorkSavePlanItem, seenTargets map[s
 	seenTargets[key] = item.Path
 }
 
-func applyRemoteFetchRemoteTargetState(root string, item *remoteWorkSavePlanItem, seenTargets map[string]string) error {
+// applyRemoteFetchRemoteTargetState classifies an existing target. When the
+// source declares no size, the target counts as present only if it has the
+// size recorded for it; any other existing file is a target conflict the user
+// resolves, as a file of another declared size is.
+func applyRemoteFetchRemoteTargetState(root string, item *remoteWorkSavePlanItem, seenTargets map[string]string, recordedSize *int64) error {
 	absolute, err := safeDataPath(root, item.TargetPath)
 	if err != nil {
 		return err
@@ -202,7 +206,17 @@ func applyRemoteFetchRemoteTargetState(root string, item *remoteWorkSavePlanItem
 		} else {
 			size := info.Size()
 			item.TargetSizeBytes = &size
-			if item.SizeBytes == nil || size == *item.SizeBytes {
+			if item.SizeBytes == nil {
+				if fileMatchesKnownSize(absolute, nil, recordedSize) {
+					item.Action, item.Status = "skip", "local_exists"
+				} else {
+					// Nothing confirms the file is the remote one, so the
+					// user decides rather than the Fetch replacing it.
+					item.TargetConflict = true
+					item.TargetConflictReason = "target exists and its size cannot be confirmed"
+					item.Action, item.Status = "conflict", "target_conflict"
+				}
+			} else if size == *item.SizeBytes {
 				item.Action, item.Status = "skip", "local_exists"
 			} else {
 				item.TargetConflict = true
@@ -224,7 +238,7 @@ func (s *Server) defaultRemoteFetchAction(ctx context.Context, item *remoteWorkS
 	if err != nil {
 		return err
 	}
-	if item.Resolution != "replace" && existingFileMatches(targetPath, item.SizeBytes) {
+	if item.Resolution != "replace" && fileMatchesKnownSize(targetPath, item.SizeBytes, s.recordedFileSize(ctx, "local", 0, item.TargetPath)) {
 		item.Action, item.Status = "skip", "local_exists"
 		return nil
 	}
@@ -341,8 +355,11 @@ type remoteWorkSavePlan struct {
 	FetchRoot       remoteFetchRootReview     `json:"fetchRoot"`
 	LocalFiles      []remoteWorkSaveLocalFile `json:"localFiles"`
 	Items           []remoteWorkSavePlanItem  `json:"items"`
-	Summary         remoteWorkSaveSummary     `json:"summary"`
-	Preparation     remoteFetchPreparation    `json:"preparation"`
+	// ArchiveRoots are the folders archived for review once the Fetch is
+	// published: those its copy_local items came from.
+	ArchiveRoots []string               `json:"archiveRoots"`
+	Summary      remoteWorkSaveSummary  `json:"summary"`
+	Preparation  remoteFetchPreparation `json:"preparation"`
 }
 
 type remoteWorkSaveLocalFile struct {
@@ -454,6 +471,9 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	}
 	validateResolvedFetchTargets(plan.Items)
 	plan.Summary = summarizeRemoteSavePlan(plan.Items)
+	if plan.ArchiveRoots, err = s.fetchPlanArchiveRoots(ctx, plan); err != nil {
+		return remoteWorkSavePlan{}, err
+	}
 	if err := s.attachRemoteFetchRootReview(ctx, source, &plan); err != nil {
 		return remoteWorkSavePlan{}, err
 	}

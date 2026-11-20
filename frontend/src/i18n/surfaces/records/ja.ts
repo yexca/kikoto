@@ -12,6 +12,13 @@ export const recordsJapanese = {
     initializing: "初期化中…",
     initializeFailed: "記録ルートを初期化できませんでした。",
     setupNeedsAdmin: "記録ルートの初期化は管理者が行う必要があります。",
+    restoreMarker: "マーカーを復元",
+    restoreMarkerFailed: "記録ルートのマーカーを復元できませんでした。",
+    startNewCatalog: "新しいカタログを始める",
+    startNewCatalogWarning:
+      "記録済みのフォルダーとファイル、およびそれらに対する全員の進行状況とマークを破棄し、次のスキャンでこのディレクトリを新しいライブラリとして登録します。同じディスクであれば、代わりにマーカーを復元してください。",
+    markerMissingNotice:
+      "記録ルートのマーカーが見つかりません。閲覧と再生は引き続きできます。管理者はライブラリ設定でマーカーを復元できます。",
     rootErrorTitle: "記録を読み込めませんでした",
     rootErrorMessage: "このサーバーへの接続を確認して、もう一度お試しください。",
     offlineTitle: "記録ルートがオフラインです",
@@ -31,6 +38,7 @@ export const recordsJapanese = {
         online: "オンライン",
         offline: "オフライン",
         unreadable: "読み取り不可",
+        marker_missing: "マーカーなし",
       },
     },
     folderErrorTitle: "このフォルダーを読み取れませんでした",

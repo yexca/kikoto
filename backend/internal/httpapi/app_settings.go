@@ -19,7 +19,10 @@ var defaultDLsiteMetadataLanguages = []string{dlsite.OriginMetadataLanguage}
 
 type appSettingsResponse struct {
 	AnonymousAccessEnabled bool `json:"anonymousAccessEnabled"`
-	LocalScanDepth         int  `json:"localScanDepth"`
+	// AnonymousRemoteBrowsingEnabled lets visitors without an account browse
+	// remote sources while anonymous access is on.
+	AnonymousRemoteBrowsingEnabled bool `json:"anonymousRemoteBrowsingEnabled"`
+	LocalScanDepth                 int  `json:"localScanDepth"`
 	// LocalScanDepthMinimum is the shallowest depth that still reaches every
 	// Fetch folder; scans use at least this depth.
 	LocalScanDepthMinimum int  `json:"localScanDepthMinimum"`
@@ -153,9 +156,10 @@ func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 	configuredAnonymousAccessEnabled := s.configuredAnonymousAccessEnabled()
 	effectiveAnonymousAccessEnabled := s.anonymousAccessEnabled()
 	response := map[string]any{
-		"anonymousAccessEnabled": configuredAnonymousAccessEnabled,
-		"mode":                   s.cfg.RuntimeMode(),
-		"demoMode":               s.cfg.IsDemo(),
+		"anonymousAccessEnabled":         configuredAnonymousAccessEnabled,
+		"anonymousRemoteBrowsingEnabled": s.accessPolicy.Current().AnonymousRemoteBrowsingEnabled,
+		"mode":                           s.cfg.RuntimeMode(),
+		"demoMode":                       s.cfg.IsDemo(),
 	}
 	if _, authenticated := userFromContext(r.Context()); !authenticated && !effectiveAnonymousAccessEnabled && !s.cfg.IsDevelopment() && !s.cfg.IsDemo() {
 		writeJSON(w, http.StatusOK, response)
@@ -445,38 +449,39 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	}
 	videoHardwareMode, videoHardwareDevice := s.videoHardwareSettings(r.Context())
 	return appSettingsResponse{
-		AnonymousAccessEnabled:        s.configuredAnonymousAccessEnabled(),
-		LocalScanDepth:                s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		LocalScanDepthMinimum:         minimumScanDepth,
-		CacheEnabled:                  s.settingBool(r, "remote_cache_enabled", false),
-		CacheLimitGB:                  s.settingInt(r, "remote_cache_limit_gb", 20),
-		TranscodeCacheLimitGB:         s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
-		TranscodeSlots:                s.configuredRealtimeTranscodeSlots(r.Context()),
-		VideoHardwareAcceleration:     videoHardwareMode,
-		VideoHardwareDevice:           videoHardwareDevice,
-		VideoHardwareStatus:           s.videoHardwareStatusFor(videoHardwareMode, videoHardwareDevice),
-		RemoteDownloadLimitGB:         int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
-		FetchStagingRetentionDays:     s.configuredFetchStagingRetentionDays(r.Context()),
-		RemoteSaveTemplate:            s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),
-		RemoteDelayBase:               s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
-		RemoteDelayRandom:             s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
-		RemoteBackoff:                 s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
-		RemoteMaxBackoff:              s.settingFloat(r, "remote_max_backoff_seconds", 300),
-		CatalogFreshnessDays:          s.catalogFreshnessDays(r.Context()),
-		RemoteMetadataFallback:        remoteMetadataFallback,
-		PurchaseBonusAutoLink:         s.settingBool(r, purchaseBonusAutoLinkSetting, true),
-		Proxy:                         s.proxySettingsResponse(proxyConfig),
-		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
-		HideRemoteSourceAddresses:     s.settingBool(r, hideRemoteSourceAddressesSetting, true),
-		FolderLyricsMode:              s.folderLyricsMode(r.Context()),
-		RecordLibraryEnabled:          s.recordLibraryEnabled(r.Context()),
-		DirectoryRoutingRules:         s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		RecommendationThreshold:       s.settingInt(r, "recommendation_threshold", 50),
-		RecommendationConfig:          s.libraryStore.LoadRecommendationConfig(r.Context()),
-		RecommendationDefaults:        library.DefaultRecommendationConfig(),
-		DataRoot:                      s.cfg.DataRoot,
-		CacheRoot:                     s.cfg.CacheRoot,
-		FileSources:                   sources,
+		AnonymousAccessEnabled:         s.configuredAnonymousAccessEnabled(),
+		AnonymousRemoteBrowsingEnabled: s.accessPolicy.Current().AnonymousRemoteBrowsingEnabled,
+		LocalScanDepth:                 s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		LocalScanDepthMinimum:          minimumScanDepth,
+		CacheEnabled:                   s.settingBool(r, "remote_cache_enabled", false),
+		CacheLimitGB:                   s.settingInt(r, "remote_cache_limit_gb", 20),
+		TranscodeCacheLimitGB:          s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
+		TranscodeSlots:                 s.configuredRealtimeTranscodeSlots(r.Context()),
+		VideoHardwareAcceleration:      videoHardwareMode,
+		VideoHardwareDevice:            videoHardwareDevice,
+		VideoHardwareStatus:            s.videoHardwareStatusFor(videoHardwareMode, videoHardwareDevice),
+		RemoteDownloadLimitGB:          int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
+		FetchStagingRetentionDays:      s.configuredFetchStagingRetentionDays(r.Context()),
+		RemoteSaveTemplate:             s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),
+		RemoteDelayBase:                s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:              s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:                  s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:               s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		CatalogFreshnessDays:           s.catalogFreshnessDays(r.Context()),
+		RemoteMetadataFallback:         remoteMetadataFallback,
+		PurchaseBonusAutoLink:          s.settingBool(r, purchaseBonusAutoLinkSetting, true),
+		Proxy:                          s.proxySettingsResponse(proxyConfig),
+		KikoeruImportPrivateAddresses:  s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
+		HideRemoteSourceAddresses:      s.settingBool(r, hideRemoteSourceAddressesSetting, true),
+		FolderLyricsMode:               s.folderLyricsMode(r.Context()),
+		RecordLibraryEnabled:           s.recordLibraryEnabled(r.Context()),
+		DirectoryRoutingRules:          s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		RecommendationThreshold:        s.settingInt(r, "recommendation_threshold", 50),
+		RecommendationConfig:           s.libraryStore.LoadRecommendationConfig(r.Context()),
+		RecommendationDefaults:         library.DefaultRecommendationConfig(),
+		DataRoot:                       s.cfg.DataRoot,
+		CacheRoot:                      s.cfg.CacheRoot,
+		FileSources:                    sources,
 	}, nil
 }
 

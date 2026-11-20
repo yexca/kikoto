@@ -209,7 +209,7 @@ describe("unified playback reports", () => {
     expect(h.cursors).toEqual([]);
   });
 
-  const rejectedStatuses: ReportStatus[] = ["stale", "not_found", "invalid", "conflict", "history_cleared"];
+  const rejectedStatuses: ReportStatus[] = ["stale", "not_found", "conflict", "history_cleared"];
   it.each(rejectedStatuses.flatMap((status) => [false, true].map((reversed) => ({ status, reversed }))))(
     "isolates another work's $status acknowledgement (reversed: $reversed)",
     async ({ status, reversed }) => {
@@ -261,7 +261,7 @@ describe("unified playback reports", () => {
     expect(h.cursors[0]).toMatchObject({ workId: 1, positionSeconds: 120 });
   });
 
-  it.each(["not_found", "invalid", "conflict", "history_cleared"] as const)(
+  it.each(["not_found", "conflict", "history_cleared"] as const)(
     "a quarantined %s edition cannot block its own family's valid confirmation",
     async (status) => {
       const h = await harness();
@@ -532,5 +532,60 @@ describe("unified playback reports", () => {
     await h.tick(90_000);
     expect(h.requests[1].report.history).toEqual([]);
     expect(h.requests[1].report.progress).toHaveLength(1);
+  });
+
+  // The current server records a vanished location itself; an older server
+  // answers invalid, and the client sends the checkpoint again without it.
+  it("resends a checkpoint an older server refuses for a vanished location without the location", async () => {
+    const h = await harness();
+    h.progress(20, 2);
+    h.transport((report) =>
+      Promise.resolve({
+        ...ack(report),
+        progress: report.progress.map((r) => ({
+          reportId: r.reportId,
+          status: r.locationId === null ? ("recorded" as const) : ("invalid" as const),
+        })),
+      }),
+    );
+    await h.tick(30_000);
+    expect(h.requests[0].report.progress[0].locationId).toBe(2);
+    expect(h.store.read().progress[0]).toMatchObject({ workId: 2, report: { locationId: null, positionSeconds: 20 } });
+    expect(h.store.read().progress[0].blocked).toBeFalsy();
+    await h.tick(30_200);
+    expect(h.requests[1].report.progress[0]).toMatchObject({ locationId: null, positionSeconds: 20 });
+    expect(h.store.read().progress).toEqual([]);
+  });
+
+  it("blocks an invalid checkpoint once it names no location", async () => {
+    const h = await harness();
+    h.progress(20, 2);
+    h.transport((report) =>
+      Promise.resolve({
+        ...ack(report),
+        progress: report.progress.map((r) => ({ reportId: r.reportId, status: "invalid" as const })),
+      }),
+    );
+    await h.tick(30_000);
+    await h.tick(30_200);
+    expect(h.store.read().progress[0]).toMatchObject({ workId: 2, blocked: true, report: { locationId: null } });
+    await h.tick(90_000);
+    expect(h.requests).toHaveLength(2);
+  });
+
+  it("lets a new work's checkpoint replace the oldest blocked one at capacity", async () => {
+    const h = await harness();
+    for (let n = 1; n <= MAX_OUTBOX_PROGRESS; n++) h.progress(20, n);
+    await settle();
+    h.transport(() => Promise.reject("permanent"));
+    await h.tick(30_000);
+    expect(h.store.read().progress.every((e) => e.blocked)).toBe(true);
+    h.transport((r) => Promise.resolve(ack(r)));
+    h.progress(10, MAX_OUTBOX_PROGRESS + 1);
+    await settle();
+    const pending = h.store.read().progress;
+    expect(pending).toHaveLength(MAX_OUTBOX_PROGRESS);
+    expect(pending.some((e) => e.workId === 1)).toBe(false);
+    expect(pending.find((e) => e.workId === MAX_OUTBOX_PROGRESS + 1)?.blocked).toBeFalsy();
   });
 });

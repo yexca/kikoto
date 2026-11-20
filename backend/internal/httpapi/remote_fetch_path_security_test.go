@@ -160,7 +160,7 @@ func TestFetchPublicationRejectsLinkedBackupNamespace(t *testing.T) {
 	outside := t.TempDir()
 	linkFetchTestDirectory(t, outside, filepath.Join(server.cfg.DataRoot, ".kikoto-backup"))
 
-	if err := server.publishRemoteFetchRoot(ctx, manifest, paths); err == nil {
+	if err := server.publishRemoteFetchFiles(ctx, manifest, paths); err == nil {
 		t.Error("Fetch published through a linked backup namespace")
 	}
 	assertFetchTestFile(t, filepath.Join(paths.targetRoot, "earlier.mp3"), "earlier")

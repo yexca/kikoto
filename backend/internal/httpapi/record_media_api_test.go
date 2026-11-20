@@ -53,7 +53,7 @@ func newRecordTestServer(t *testing.T) recordTestServer {
 		ffmpegCalls.Add(1)
 		return os.WriteFile(strings.TrimPrefix(args[len(args)-1], "file:"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644)
 	})
-	if _, err := server.recordStore.InitializeRoot(context.Background()); err != nil {
+	if _, err := server.recordStore.InitializeRoot(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := server.recordStore.Scan(context.Background()); err != nil {

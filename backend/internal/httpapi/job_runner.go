@@ -440,8 +440,29 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 			s.releaseShutdownInterruptedJob(jobCtx, job)
 			return
 		}
+		// The request ended, such as its client disconnecting, before the
+		// operation recorded a result: the background worker runs it.
+		if ctx.Err() != nil && s.releaseDisconnectedInlineJob(jobCtx, job) {
+			return
+		}
 		s.settleUnfinishedWorkflowJob(jobCtx, jobCtx, job, nil)
 	}, nil
+}
+
+func (s *Server) releaseDisconnectedInlineJob(ctx context.Context, job workflowJobRecord) bool {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workflowJobSettleTimeout)
+	defer cancel()
+	released, err := s.workflowStore.ReleaseDisconnectedJob(releaseCtx, workflow.JobLease{
+		JobID: job.ID, RunID: job.RunID, NodeRunID: job.NodeRunID, LockedBy: job.LockedBy,
+	})
+	if err != nil {
+		slog.Error("requeue workflow job after its request ended", "run_id", job.RunID, "job_id", job.ID, "error", err)
+		return false
+	}
+	if released {
+		slog.Info("workflow job requeued after its request ended", "run_id", job.RunID, "job_id", job.ID, "worker_type", job.WorkerType)
+	}
+	return released
 }
 
 // cancelActiveWorkflowJob stops the executor working on the run and reports
@@ -665,18 +686,26 @@ func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord
 		return err
 	}
 	nodeStatuses := []string{"failed", "running", "queued", "partial"}
+	// A graph run resumes from its checkpoint and never runs a node the
+	// checkpoint completed again, so such a node keeps its recorded result.
+	completedNodeIDs := []string{}
 	if job.WorkerType == "custom_workflow" {
 		nodeStatuses = append(nodeStatuses, "skipped")
+		if completedNodeIDs, err = workflowGraphCheckpointCompletedNodeIDsTx(ctx, tx, job.ID); err != nil {
+			return err
+		}
 	}
 	statusPlaceholders := strings.TrimRight(strings.Repeat("?,", len(nodeStatuses)), ",")
 	nodeArgs := []any{job.RunID}
 	for _, status := range nodeStatuses {
 		nodeArgs = append(nodeArgs, status)
 	}
+	nodeArgs = append(nodeArgs, mustJSON(completedNodeIDs))
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_node_run
 		SET status = 'queued', error_message = '', finished_at = NULL
 		WHERE workflow_run_id = ? AND status IN (`+statusPlaceholders+`)
+			AND node_id NOT IN (SELECT value FROM json_each(?))
 	`, nodeArgs...); err != nil {
 		return err
 	}
@@ -694,6 +723,21 @@ func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord
 		return err
 	}
 	return nil
+}
+
+// workflowGraphCheckpointCompletedNodeIDsTx returns the node ids a graph job's
+// stored checkpoint lists as completed. An unreadable checkpoint lists none, so
+// a retry queues every unfinished node and the runtime reports the checkpoint.
+func workflowGraphCheckpointCompletedNodeIDsTx(ctx context.Context, tx *sql.Tx, jobID int64) ([]string, error) {
+	var raw string
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(checkpoint_json, '') FROM workflow_job WHERE id = ?", jobID).Scan(&raw); err != nil {
+		return nil, err
+	}
+	var checkpoint workflowGraphCheckpoint
+	if err := decodeWorkflowJobCheckpointDetail(raw, &checkpoint); err != nil || checkpoint.CompletedNodeIDs == nil {
+		return []string{}, nil
+	}
+	return checkpoint.CompletedNodeIDs, nil
 }
 
 func (s *Server) updateWorkflowJobCheckpoint(ctx context.Context, jobID int64, phase string, detail any, current int, total int) error {

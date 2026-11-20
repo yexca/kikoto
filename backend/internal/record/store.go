@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -121,6 +120,9 @@ type Progress struct {
 	DurationSeconds *float64 `json:"durationSeconds,omitempty"`
 	Completed       bool     `json:"completed"`
 	LastPlayedAt    string   `json:"lastPlayedAt,omitempty"`
+	// Order is when the client captured the progress, in Unix milliseconds,
+	// increasing for each save; it is written, never read back.
+	Order int64 `json:"-"`
 }
 
 func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
@@ -128,9 +130,15 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 	if path == "." || path == "" {
 		return Root{ID: 1, DisplayName: "Records", State: "unconfigured"}, nil
 	}
+	var expectedMarker string
+	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&expectedMarker); err != nil {
+		return Root{}, err
+	}
 	if info, err := os.Stat(path); err != nil {
+		// A root the database initialized is unmounted while its path is
+		// gone; only a root never initialized waits for initialization.
 		state := "offline"
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) && expectedMarker == "" {
 			state = "unconfigured"
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state)
@@ -138,10 +146,6 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 	} else if !info.IsDir() {
 		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='unreadable', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
 		return s.rootRecord(ctx)
-	}
-	var expectedMarker string
-	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&expectedMarker); err != nil {
-		return Root{}, err
 	}
 	setState := func(state string) (Root, error) {
 		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state)
@@ -152,13 +156,19 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 	case errors.Is(err, errInvalidMarker):
 		return setState("offline")
 	case err != nil:
-		return Root{}, fmt.Errorf("read record marker: %w", err)
-	case !found:
+		// A marker that cannot be read proves nothing about the disk.
+		return setState("offline")
+	case expectedMarker == "":
+		// A database that never initialized this root waits for an explicit
+		// initialization.
 		return setState("unconfigured")
-	case markerID == "" || expectedMarker == "":
-		// A marker without an identity, or a database that never initialized
-		// this root, waits for an explicit initialization.
-		return setState("unconfigured")
+	case !found || markerID == "":
+		// The path is there but its marker, or the marker's identity, is not.
+		// Nothing proves the disk is the one the catalog describes, but
+		// nothing proves it is another either: the catalog is kept, users
+		// browse and play it, a scan adds files without marking any missing,
+		// and an administrator restores the marker.
+		return setState(RootStateMarkerMissing)
 	case markerID != expectedMarker:
 		// Another initialized disk mounted at the same path is not this root.
 		return setState("offline")
@@ -226,6 +236,82 @@ func newMarkerID() (string, error) {
 	return hex.EncodeToString(value[:]), nil
 }
 
+// RootStateMarkerMissing is a root whose path exists without the marker, or
+// the marker identity, of the catalog the database keeps.
+const RootStateMarkerMissing = "marker_missing"
+
+// ErrRootFreshRequired refuses to initialize a root whose database keeps a
+// catalog the root's marker does not name, as when the marker is gone, the
+// path is gone, or another disk is mounted there: only an explicit fresh
+// initialization forgets a known catalog.
+var ErrRootFreshRequired = errors.New("record root keeps a catalog; restore its marker or start a new catalog")
+
+// ErrRootNotRecognized refuses to restore the marker of a root none of whose
+// recorded folders or files is on disk, such as an unmounted, empty mount
+// point.
+var ErrRootNotRecognized = errors.New("record root holds none of the catalog's folders or files")
+
+// ErrRootPathMissing refuses a fresh initialization while the database keeps
+// a catalog and the root's path is gone, as when its disk is unmounted: the
+// new catalog would be made where the disk is not.
+var ErrRootPathMissing = errors.New("record root path is missing")
+
+// RestoreMarker writes the marker again with the identity of the catalog the
+// database keeps, for a root whose marker is missing. The catalog is kept.
+func (s *Store) RestoreMarker(ctx context.Context) (Root, error) {
+	root, err := s.EnsureRoot(ctx)
+	if err != nil {
+		return Root{}, err
+	}
+	if root.State != RootStateMarkerMissing {
+		return Root{}, errors.New("record root marker is not missing")
+	}
+	if recognized, err := s.rootHoldsCatalog(ctx); err != nil {
+		return Root{}, err
+	} else if !recognized {
+		return Root{}, ErrRootNotRecognized
+	}
+	var id string
+	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&id); err != nil {
+		return Root{}, err
+	}
+	if err := writeMarker(filepath.Clean(strings.TrimSpace(s.root)), id); err != nil {
+		return Root{}, err
+	}
+	return s.EnsureRoot(ctx)
+}
+
+// rootHoldsCatalog reports whether some recorded folder or file of the
+// catalog is on disk at the root, or the catalog records none.
+func (s *Store) rootHoldsCatalog(ctx context.Context) (bool, error) {
+	base := filepath.Clean(strings.TrimSpace(s.root))
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT relative_path FROM record_folder WHERE root_id=1 AND depth > 0 AND state='active'
+		UNION ALL
+		SELECT relative_path FROM record_asset WHERE root_id=1 AND availability='available'
+		LIMIT 200
+	`)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	recorded := false
+	for rows.Next() {
+		var relative string
+		if err := rows.Scan(&relative); err != nil {
+			return false, err
+		}
+		recorded = true
+		if _, err := os.Lstat(filepath.Join(base, filepath.FromSlash(relative))); err == nil {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return !recorded, nil
+}
+
 // InitializeRoot is an explicit administrator action. Scanning never creates
 // a marker because an empty mount point must not be mistaken for a library.
 // A new marker carries an identity of its own, so another initialized disk
@@ -234,11 +320,33 @@ func newMarkerID() (string, error) {
 // marker without one is given one. Adopting an identity other than the one the
 // database keeps starts a new catalog: the folders, files, progress, and
 // states recorded for the earlier identity describe another disk, so they are
-// forgotten rather than matched to this root's files by path.
-func (s *Store) InitializeRoot(ctx context.Context) (Root, error) {
+// forgotten rather than matched to this root's files by path. Forgetting a
+// catalog the database keeps takes an explicit fresh initialization: without
+// fresh, a root whose marker does not name the kept catalog, whether the
+// marker or the path is gone or another disk is mounted there, is refused
+// with ErrRootFreshRequired. A fresh initialization still needs the path to
+// exist while a catalog is kept, or it is refused with ErrRootPathMissing.
+func (s *Store) InitializeRoot(ctx context.Context, fresh bool) (Root, error) {
 	path := filepath.Clean(strings.TrimSpace(s.root))
 	if path == "." || path == "" {
 		return Root{}, errors.New("record root is not configured")
+	}
+	var kept string
+	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&kept); err != nil {
+		return Root{}, err
+	}
+	if fresh && kept != "" {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			return Root{}, ErrRootPathMissing
+		}
+	}
+	if !fresh {
+		if kept != "" {
+			marker, _, err := readMarker(path)
+			if err != nil && !errors.Is(err, os.ErrNotExist) || marker != kept {
+				return Root{}, ErrRootFreshRequired
+			}
+		}
 	}
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return Root{}, err
@@ -317,7 +425,7 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 	if err != nil {
 		return ScanResult{}, err
 	}
-	if root.State != "online" {
+	if root.State != "online" && root.State != RootStateMarkerMissing {
 		return ScanResult{RootID: root.ID, State: root.State}, nil
 	}
 	base := filepath.Clean(s.root)
@@ -405,10 +513,13 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 		unreadable++
 	}
 	complete := walkErr == nil && unreadable == 0
+	// Without its marker the root may not be the disk the catalog describes,
+	// so the scan adds and updates what it finds and marks nothing missing.
+	markMissing := complete && root.State == "online"
 	if errors.Is(walkErr, context.Canceled) || errors.Is(walkErr, context.DeadlineExceeded) {
 		return ScanResult{}, walkErr
 	}
-	if complete {
+	if markMissing {
 		if _, err := s.db.ExecContext(ctx, `UPDATE record_folder SET state=CASE WHEN last_seen_generation=? THEN 'active' ELSE 'missing' END, updated_at=CURRENT_TIMESTAMP WHERE root_id=1`, generation); err != nil {
 			return ScanResult{}, err
 		}
@@ -420,7 +531,7 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 	if !complete {
 		state = "partial"
 	}
-	result := ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: complete}
+	result := ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: markMissing}
 	// The probe runs before the scan is recorded as finished, so a client that
 	// waits for the last-scanned time sees durations and dimensions.
 	if s.probe != nil {
@@ -430,7 +541,7 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 		}
 		result.Probe = &probe
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET state='online', last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
 		return ScanResult{}, err
 	}
 	return result, nil
@@ -824,9 +935,16 @@ func (s *Store) Progress(ctx context.Context, userID, assetID int64) (Progress, 
 	return p, err
 }
 
-func (s *Store) SaveProgress(ctx context.Context, userID, assetID int64, p Progress) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO record_asset_progress(user_id,asset_id,position_seconds,duration_seconds,completed,last_played_at,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT(user_id,asset_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,last_played_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`, userID, assetID, p.PositionSeconds, p.DurationSeconds, p.Completed)
-	return err
+// SaveProgress stores a progress save unless the stored one is later in the
+// client's order, so a save that arrives late never replaces a later
+// position. It reports whether the save was stored.
+func (s *Store) SaveProgress(ctx context.Context, userID, assetID int64, p Progress) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `INSERT INTO record_asset_progress(user_id,asset_id,position_seconds,duration_seconds,completed,last_played_at,updated_at,report_order) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?) ON CONFLICT(user_id,asset_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,last_played_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,report_order=excluded.report_order WHERE excluded.report_order>record_asset_progress.report_order`, userID, assetID, p.PositionSeconds, p.DurationSeconds, p.Completed, p.Order)
+	if err != nil {
+		return false, err
+	}
+	stored, err := result.RowsAffected()
+	return stored > 0, err
 }
 
 func ServeContent(w http.ResponseWriter, r *http.Request, path string, modTime time.Time) error {

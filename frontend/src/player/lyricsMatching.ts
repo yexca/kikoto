@@ -3,8 +3,9 @@ import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 // The server reports a work's lyrics status with a copy of this name matching in
 // backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
-// lyrics pairs, so change them together.
-const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".ssa", ".txt", ".cue"];
+// lyrics pairs, so change them together. A .cue file is a CUE sheet, the track
+// layout of a disc image, never lyrics.
+const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".ssa", ".txt"];
 // The same list as audioFileExtensions in backend/internal/httpapi/media_items.go.
 export const audioExtensions = [
   ".mp3",

@@ -175,7 +175,7 @@ func TestVoiceWorksEndpointPagesKnownAndRemoteCatalogWorks(t *testing.T) {
 		"INSERT INTO work_credit (work_id, person_id, role, source) VALUES (2, 1, 'voice_actor', 'test')",
 		"INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (11, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible', 1)",
 		"INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (11, 'https://source.example.invalid', 'https://source.example.invalid/api')",
-		`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`,
+		`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true'), ('anonymous_remote_browsing_enabled', 'true')`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -272,6 +272,20 @@ func TestVoiceWorksEndpointPagesKnownAndRemoteCatalogWorks(t *testing.T) {
 	get("/api/voices/1/remote-matches?includeWorks=false", &matches)
 	if len(matches.RemoteMatches) != 1 || matches.RemoteMatches[0].Total != 3 || len(matches.RemoteMatches[0].Works) != 0 {
 		t.Fatalf("remote matches = %+v, want the source state and total without its works", matches.RemoteMatches)
+	}
+
+	// Without anonymous remote browsing the page keeps local works only, and
+	// none of these works has a local folder.
+	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'example-admin', 'super_admin')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.accessPolicy.UpdateRemoteBrowsing(context.Background(), 1, false); err != nil {
+		t.Fatal(err)
+	}
+	var localOnly worksPage
+	get("/api/voices/1/works", &localOnly)
+	if localOnly.Total != 0 || len(localOnly.Works) != 0 {
+		t.Fatalf("anonymous local-only voice works = %+v, want none", localOnly)
 	}
 }
 

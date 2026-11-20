@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/personal"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/workcode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -377,10 +378,10 @@ func (s *Server) finishWorkMetadataSyncJob(ctx context.Context, job workflowJobR
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = 1, progress_total = 1,
-		locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, mustJSON(map[string]any{"phase": "completed", "detail": summary, "progressCurrent": 1, "progressTotal": 1}), job.ID); err != nil {
+		locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'`, mustJSON(map[string]any{"phase": "completed", "detail": summary, "progressCurrent": 1, "progressTotal": 1}), job.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, mustJSON(summary), job.RunID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'cancelled'`, status, mustJSON(summary), job.RunID); err != nil {
 		return err
 	}
 	eventType, message := "metadata.family_synced", fmt.Sprintf("Refreshed metadata for %d family editions", syncedCodes)
@@ -438,11 +439,21 @@ func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSy
 		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
 		WithPurchaseBonusLinking(s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true), false).
+		WithFamilyStoredHandler(s.consolidateFamilyPersonalState).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
 		)
+}
+
+// consolidateFamilyPersonalState moves personal state onto the family's
+// canonical work after metadata sync stored the family. A failure is logged
+// and repaired at the next start.
+func (s *Server) consolidateFamilyPersonalState(ctx context.Context, logicalWorkID int64) {
+	if err := personal.ConsolidateFamily(ctx, s.db, logicalWorkID); err != nil {
+		slog.Error("move personal state to the canonical work", "logical_work_id", logicalWorkID, "error", err)
+	}
 }
 
 func durationFromSettingSeconds(value float64) time.Duration {

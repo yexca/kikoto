@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -25,7 +26,13 @@ func (s *Server) loadMediaStreamTarget(ctx context.Context, locationID int64) (m
 	if cached, ok := s.mediaStreamCache.Load(locationID); ok {
 		target := cached.(mediaStreamTarget)
 		if time.Now().Before(target.ExpiresAt) {
-			return target, true, nil
+			current, err := s.mediaStreamTargetStillCurrent(ctx, locationID, target)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return mediaStreamTarget{}, false, err
+			}
+			if current {
+				return target, true, nil
+			}
 		}
 		s.mediaStreamCache.Delete(locationID)
 	}
@@ -68,4 +75,22 @@ func (s *Server) loadMediaStreamTarget(ctx context.Context, locationID int64) (m
 	target.ExpiresAt = time.Now().Add(mediaStreamTargetTTL)
 	s.mediaStreamCache.Store(locationID, target)
 	return target, false, nil
+}
+
+// mediaStreamTargetStillCurrent checks a cached target against its location
+// row. A folder edit, scan, cleanup, or delete can move a location to another
+// file or retire it in place; the cache then must not serve the earlier path.
+func (s *Server) mediaStreamTargetStillCurrent(ctx context.Context, locationID int64, target mediaStreamTarget) (bool, error) {
+	var locationType, path, availability, streamURL, downloadURL string
+	var fileSourceID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT location_type, path, availability, file_source_id,
+			COALESCE(stream_url, ''), COALESCE(download_url, '')
+		FROM media_file_location
+		WHERE id = ?
+	`, locationID).Scan(&locationType, &path, &availability, &fileSourceID, &streamURL, &downloadURL); err != nil {
+		return false, err
+	}
+	return locationType == target.LocationType && path == target.RelativePath && availability == target.Availability &&
+		fileSourceID == target.FileSourceID && streamURL == target.StreamURL && downloadURL == target.DownloadURL, nil
 }

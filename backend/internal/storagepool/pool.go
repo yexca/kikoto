@@ -153,7 +153,10 @@ func WriteMarker(dir string, id string) error {
 }
 
 // Check reports whether pool is online. A registered pool must carry its own
-// marker; wantID is compared only when it is not empty.
+// marker; wantID is compared only when it is not empty. The standard pool, the
+// configured data root, may be reached through a link. A registered pool must
+// be a real directory, as registration requires: scans do not follow a linked
+// pool, so its works would look deleted.
 func Check(dataRoot string, pool Pool, wantID string) (bool, string) {
 	root := Root(dataRoot, pool)
 	info, err := os.Stat(root)
@@ -163,7 +166,7 @@ func Check(dataRoot string, pool Pool, wantID string) (bool, string) {
 	if err != nil {
 		return false, ReasonUnreadable
 	}
-	if !info.IsDir() {
+	if !info.IsDir() || (pool.Path != "" && !IsDirectory(root)) {
 		return false, ReasonNotDirectory
 	}
 	id, exists, err := ReadMarker(root)

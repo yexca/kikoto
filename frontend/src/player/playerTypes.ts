@@ -41,6 +41,8 @@ export type PlayerTrack = {
   remotePath?: string;
   playbackKey?: string;
   locations?: PlayerTrackLocation[];
+  /** The listener picked the current location in the player, so a restored queue keeps it over a local copy. */
+  locationChosen?: boolean;
   /** The app page the track was queued from; the player leads back to it. */
   originPage?: string;
   /** The work detail location the track was queued from, when it was queued from one. */

@@ -13,6 +13,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/personal"
 )
 
 type remoteWorksResponse struct {
@@ -690,8 +691,8 @@ func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID in
 		if err := s.db.QueryRowContext(ctx, `
 			SELECT COALESCE(favorite, 0), COALESCE(listening_status, 'none')
 			FROM user_work_state
-			WHERE user_id = ? AND work_id = ?
-		`, userID, *workID).Scan(&favoriteInt, &listeningStatus); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			WHERE user_id = ? AND work_id = `+personal.CanonicalWorkIDSQL("?")+`
+		`, userID, *workID, *workID).Scan(&favoriteInt, &listeningStatus); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return remoteWorkSummary{}, err
 		} else if err == nil {
 			favorite = favoriteInt != 0

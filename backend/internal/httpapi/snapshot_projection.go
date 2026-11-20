@@ -30,7 +30,7 @@ const (
 	// Voice credits have their own version, which is also part of their
 	// projection input, so a change to that projection rewrites only voice
 	// credits.
-	voiceCreditProjectionVersion = 3
+	voiceCreditProjectionVersion = 4
 	snapshotProjectionBatch      = 200
 )
 

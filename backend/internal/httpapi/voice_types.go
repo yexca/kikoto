@@ -89,6 +89,9 @@ type personMergeSnapshot struct {
 	SourceSubscriptions   []personSubscriptionSnapshot `json:"sourceSubscriptions,omitempty"`
 	TargetSubscriptions   []personSubscriptionSnapshot `json:"targetSubscriptions,omitempty"`
 	SourceReleaseSeen     []string                     `json:"sourceReleaseSeen,omitempty"`
+	// ManualVoiceOverrides are the manual voice actor lists that named the
+	// source person before the merge pointed them at the target.
+	ManualVoiceOverrides []manualVoiceOverrideSnapshot `json:"manualVoiceOverrides,omitempty"`
 }
 
 type personSnapshot struct {

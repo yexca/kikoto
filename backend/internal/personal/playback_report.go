@@ -155,7 +155,16 @@ func recordProgress(ctx context.Context, tx *sql.Tx, user int64, p ProgressInput
 		return nil, "", err
 	}
 	if p.LocationID != nil && !location.Valid {
-		return nil, "invalid", nil
+		// A location that no longer exists, such as one a rescan or a move
+		// replaced, leaves the checkpoint without a location; one that names
+		// another file is invalid.
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM media_file_location WHERE id = ?)`, *p.LocationID).Scan(&exists); err != nil {
+			return nil, "", err
+		}
+		if exists {
+			return nil, "invalid", nil
+		}
 	}
 	if source.Valid {
 		cursor.FileSourceID = &source.Int64

@@ -43,7 +43,11 @@ type Product struct {
 	IsDiscount        *bool             `json:"is_discount"`
 	IsSale            *bool             `json:"is_sale"`
 	IsFree            *bool             `json:"is_free"`
-	Language          string            `json:"-"`
+	// DynamicUnavailable is set when the dynamic request for rating, sales,
+	// and price failed. Those fields then hold only what the product response
+	// itself declared, and a nil one is unknown rather than absent.
+	DynamicUnavailable bool   `json:"-"`
+	Language           string `json:"-"`
 	// RequestLocale records the locale sent to DLsite. It is deliberately
 	// separate from the edition language, which is provider metadata.
 	RequestLocale string `json:"-"`

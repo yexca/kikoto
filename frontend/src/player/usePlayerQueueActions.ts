@@ -18,8 +18,8 @@ import {
 import { normalizePlaybackStartPosition } from "./playbackStart";
 import { withQueueIdentity } from "./playbackIdentity";
 import type { LyricsPreferenceTarget, PlayerTrack, PlayMode } from "./playerTypes";
-import { moveQueueItemToIndex, stepQueueIndex } from "./queueOrder";
-import { applyTrackLocation } from "./trackLocations";
+import { moveQueueItemToIndex, removeQueueItemsById, stepQueueIndex } from "./queueOrder";
+import { switchTrackLocation } from "./trackLocations";
 import type { PlaybackEngine } from "./usePlaybackEngine";
 
 const LYRICS_OFFSET_SAVE_DELAY_MS = 700;
@@ -152,27 +152,37 @@ export function usePlayerQueueActions({
     moveQueueItemTo(queueItemId, to);
   });
 
-  const removeQueueItem = useStableCallback((queueItemId: string) => {
-    if (queue[currentIndex]?.queueItemId === queueItemId) {
+  // The queue as the last removal left it. A render resets it to the
+  // committed queue, so removals made before the next render, such as one per
+  // deleted file, build on each other instead of on the same stale queue.
+  const removalBaseRef = useRef({ queue, currentIndex });
+  removalBaseRef.current = { queue, currentIndex };
+
+  const removeQueueItems = useStableCallback((queueItemIds: Iterable<string>) => {
+    const base = removalBaseRef.current;
+    const ids = Array.from(queueItemIds);
+    const removal = removeQueueItemsById(base.queue, base.currentIndex, ids);
+    if (!removal) return;
+    if (removal.removedCurrent) {
       flushProgress();
       invalidatePlaybackRequests();
     }
-    setQueue((items) => {
-      const removedIndex = items.findIndex((item) => item.queueItemId === queueItemId);
-      if (removedIndex < 0) return items;
-      const removingCurrent = removedIndex === currentIndex;
-      const nextItems = items.filter((item) => item.queueItemId !== queueItemId);
-      if (nextItems.length === 0) {
-        setCurrentIndex(0);
-        updatePlayingState(false);
-      } else if (removedIndex < currentIndex) {
-        setCurrentIndex((index) => Math.max(0, index - 1));
-      } else if (removingCurrent) {
-        setCurrentIndex(Math.min(removedIndex, nextItems.length - 1));
-      }
-      return nextItems;
-    });
+    removalBaseRef.current = { queue: removal.items, currentIndex: removal.currentIndex };
+    const removedIds = new Set(ids);
+    // A change queued in the same tick, such as an added item, is kept: the
+    // removal applies to whatever queue that change left.
+    setQueue((current) =>
+      current === base.queue
+        ? removal.items
+        : current.filter((item) => !item.queueItemId || !removedIds.has(item.queueItemId)),
+    );
+    setCurrentIndex(removal.currentIndex);
+    // Removing the playing item when it is last stops playback; the player
+    // keeps showing the items that remain, with the new last one current.
+    if (removal.stop) updatePlayingState(false);
   });
+
+  const removeQueueItem = useStableCallback((queueItemId: string) => removeQueueItems([queueItemId]));
 
   const clearQueue = useStableCallback(() => {
     flushProgress();
@@ -185,11 +195,11 @@ export function usePlayerQueueActions({
   });
 
   const selectLocation = useStableCallback((locationId: number) => {
-    if (currentTrack?.locationId !== locationId) {
-      flushProgress();
-      invalidatePlaybackRequests();
-    }
-    if (currentTrack?.queueItemId) {
+    // Only a real switch reloads the source and consumes a start position.
+    if (!currentTrack || !switchTrackLocation(currentTrack, locationId)) return;
+    flushProgress();
+    invalidatePlaybackRequests();
+    if (currentTrack.queueItemId) {
       refs.pendingPlaybackStartRef.current = {
         queueItemId: currentTrack.queueItemId,
         positionSeconds: carriedPlaybackPosition(),
@@ -197,11 +207,7 @@ export function usePlayerQueueActions({
     }
     resetLocationFailures();
     setQueue((items) =>
-      items.map((item, index) => {
-        if (index !== currentIndex) return item;
-        const location = item.locations?.find((candidate) => candidate.locationId === locationId);
-        return location ? applyTrackLocation(item, location) : item;
-      }),
+      items.map((item, index) => (index === currentIndex ? (switchTrackLocation(item, locationId) ?? item) : item)),
     );
   });
 
@@ -287,6 +293,7 @@ export function usePlayerQueueActions({
     moveQueueItemTo,
     moveQueueItem,
     removeQueueItem,
+    removeQueueItems,
     clearQueue,
     selectLocation,
   };

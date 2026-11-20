@@ -66,6 +66,8 @@ export type InitialSetupPayload = {
 
 export type AccessPolicy = {
   anonymousAccessEnabled: boolean;
+  /** Visitors without an account may also browse remote sources; off by default. */
+  anonymousRemoteBrowsingEnabled: boolean;
 };
 
 export type HealthStatus = {
@@ -171,5 +173,5 @@ export const accountApi = {
   getUserPreferences: (signal?: AbortSignal) => getJSON<UserPreferences>("/api/auth/me/preferences", signal),
   updateUserPreferences: (payload: Partial<Omit<UserPreferences, "recommendationDefaults">>) =>
     patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
-  updateAccessPolicy: (payload: AccessPolicy) => patchJSONBody<AccessPolicy>("/api/access-policy", payload),
+  updateAccessPolicy: (payload: Partial<AccessPolicy>) => patchJSONBody<AccessPolicy>("/api/access-policy", payload),
 };

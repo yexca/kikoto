@@ -93,8 +93,8 @@
   `.kikoto-pool` marker. A standard data root without one is adopted only when
   it visibly holds media or the library has no local works yet; an empty root
   of a library with works is an unmounted volume, so the scan fails without
-  marking anything missing. In pool mode an unmarked or foreign-marked pool is
-  offline: its works keep their state, the scan finishes as partial, and the
+  marking anything missing. In pool mode an unmarked, foreign-marked, or linked
+  pool is offline: its works keep their state, the scan finishes as partial, and the
   watcher ignores unregistered first-level folders. Works deeper than the scan
   depth are never marked missing either, and scans always reach at least the
   deepest Fetch folder level. Disk-verified database cleanup confirms absence

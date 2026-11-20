@@ -30,7 +30,7 @@ func scannedStore(t *testing.T, files map[string]string, options ...Option) (*St
 	}
 	db := storagetest.Open(t)
 	store := NewStore(db, root, options...)
-	if _, err := store.InitializeRoot(context.Background()); err != nil {
+	if _, err := store.InitializeRoot(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Scan(context.Background()); err != nil {
@@ -171,7 +171,7 @@ func TestTreeCarriesProgressAndContinueListsUnfinishedVideos(t *testing.T) {
 	duration := 120.0
 	save := func(user int64, name string, position float64, completed bool) {
 		t.Helper()
-		if err := store.SaveProgress(ctx, user, assetID(t, db, name), Progress{PositionSeconds: position, DurationSeconds: &duration, Completed: completed}); err != nil {
+		if _, err := store.SaveProgress(ctx, user, assetID(t, db, name), Progress{PositionSeconds: position, DurationSeconds: &duration, Completed: completed}); err != nil {
 			t.Fatal(err)
 		}
 	}

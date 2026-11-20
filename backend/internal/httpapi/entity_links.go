@@ -123,7 +123,20 @@ type workEntityLinkResolution struct {
 	Fetched bool
 }
 
+// errAmbiguousWorkEntityLink is a name several credited voice actors of the
+// work share. It links to none of them, and a provider request cannot settle
+// it, so none is made.
+var errAmbiguousWorkEntityLink = errors.New("several credited voice actors share the name")
+
 func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, request workEntityLinkRequest, canFetch bool) (workEntityLinkResolution, string, error) {
+	resolution, stage, err := s.resolveWorkEntityLinkRouteSteps(ctx, code, request, canFetch)
+	if errors.Is(err, errAmbiguousWorkEntityLink) {
+		return workEntityLinkResolution{}, "", nil
+	}
+	return resolution, stage, err
+}
+
+func (s *Server) resolveWorkEntityLinkRouteSteps(ctx context.Context, code string, request workEntityLinkRequest, canFetch bool) (workEntityLinkResolution, string, error) {
 	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
 		return workEntityLinkResolution{}, "", err
 	} else if route != "" {
@@ -277,13 +290,29 @@ func (s *Server) findWorkEntityRoute(ctx context.Context, code string, request w
 			))`
 			args = append(args, request.Name, request.Name)
 		}
-		query += " ORDER BY person.id ASC LIMIT 1"
-		err := s.db.QueryRowContext(ctx, query, args...).Scan(&routeKey)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
+		// Two credited voice actors may share a name; a name that matches
+		// several of them links to none rather than to a guess.
+		query += " GROUP BY person.id ORDER BY person.id ASC LIMIT 2"
+		rows, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return "", err
+		}
+		defer func() { _ = rows.Close() }()
+		matches := 0
+		for rows.Next() {
+			if err := rows.Scan(&routeKey); err != nil {
+				return "", err
+			}
+			matches++
+		}
+		if err := rows.Err(); err != nil {
+			return "", err
+		}
+		if matches > 1 {
+			return "", errAmbiguousWorkEntityLink
+		}
+		if matches == 0 {
+			return "", nil
 		}
 		return "/voices/" + url.PathEscape(routeKey), nil
 	}

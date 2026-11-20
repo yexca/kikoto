@@ -31,8 +31,9 @@ bypass list, and every dialog.
   for personal data; see [Personal data](personal-data.md).
 
 Changing a password preserves the current session and revokes the user's other
-sessions. An administrator password reset from System -> Users revokes every
-session for the target user. Role, enabled state, username, and user lifecycle
+sessions. An administrator password reset or disabling a user from System ->
+Users revokes every session for the target user, so enabling the user again
+requires a new sign-in. Role, enabled state, username, and user lifecycle
 management are not self-service account settings.
 
 Every account, including the initial administrator, changes its own password
@@ -140,7 +141,9 @@ privacy**, and read-only storage paths.
   choose the other.
 - **Record** turns the [Record](record-library.md) library on or off for the
   instance; it is off by default. While it is on, the section shows the record
-  root's state and, until the root is initialized, **Initialize root**.
+  root's state and, until the root is initialized, **Initialize root**. When
+  the root has lost its marker, it offers **Restore marker** and **Start a new
+  catalog**.
 - **Creator catalogs** holds **Mark Attention after no refresh for** (1 to
   365 days, default 30). A circle or voice actor catalog is marked Attention
   once its last refresh is older than that.
@@ -313,6 +316,11 @@ Each role has a fixed set of permissions:
 
 In **Instance access**, **Browse and play without an account** (off by
 default) allows Library browsing and playback without an account. Turning it on is confirmed first.
+Those visitors see only works with a local folder and play only local files.
+**Browse remote sources without an account** (off by default, available
+while the first setting is on, and turned off with it) also lets them browse and play remote sources,
+cached copies, and works without a local folder; turning it on may expose your
+remote source configuration to anyone who can reach the server.
 The change applies to the production access boundary and creates an audit
 entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an

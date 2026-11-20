@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MediaItem } from "../lib/api";
 import type { PlayerTrack } from "./playerTypes";
-import { revalidatePersistedQueue } from "./playerQueueRestore";
+import { keepPlayingTrackLocation, revalidatePersistedQueue } from "./playerQueueRestore";
 
 const persistedTrack = {
   queueItemId: "queue-1",
@@ -173,6 +173,61 @@ describe("revalidatePersistedQueue", () => {
     );
 
     expect(result[0].streamUrl).toBe("/api/media/102/stream");
+  });
+
+  it("restores the local copy unless the listener picked another location in the player", async () => {
+    const location = (id: number, locationType: string, fileSourceId: number) => ({
+      id,
+      fileSourceId,
+      fileSourceCode: locationType,
+      fileSourceName: locationType,
+      locationType,
+      path: "track.mp3",
+      streamUrl: `/api/media/${id}/stream`,
+      downloadUrl: "",
+      remoteHash: "",
+      sizeBytes: 1000,
+      durationSeconds: 60,
+      availability: locationType === "remote_stream" ? "remote" : "available",
+      lastCheckedAt: null,
+    });
+    const mediaItems = [
+      {
+        id: 10,
+        parentId: null,
+        kind: "audio",
+        title: "Track",
+        discNo: null,
+        trackNo: null,
+        durationSeconds: 60,
+        sizeBytes: 1000,
+        fingerprint: "",
+        progress: null,
+        locations: [location(100, "local", 1), location(200, "cache", 2), location(300, "remote_stream", 3)],
+      },
+    ] satisfies MediaItem[];
+    const savedOnCache = {
+      ...persistedTrack,
+      locationId: 200,
+      locationType: "cache",
+      streamUrl: "/api/media/200/stream",
+    };
+
+    const [automatic] = await revalidatePersistedQueue([savedOnCache], async () => mediaItems);
+    expect(automatic.locationId).toBe(100);
+
+    const [chosen] = await revalidatePersistedQueue(
+      [{ ...savedOnCache, locationChosen: true }],
+      async () => mediaItems,
+    );
+    expect(chosen).toMatchObject({ locationId: 200, locationChosen: true });
+
+    // An item already playing from the cache stays there, rather than reload
+    // from the local copy and start again from 0:00.
+    const [playing] = keepPlayingTrackLocation([automatic], savedOnCache);
+    expect(playing).toMatchObject({ locationId: 200, streamUrl: "/api/media/200/stream" });
+    expect(playing.playbackKey).not.toBe(automatic.playbackKey);
+    expect(keepPlayingTrackLocation([automatic], { ...savedOnCache, locationId: 999 })).toEqual([automatic]);
   });
 
   it("removes a queue item whose media no longer exists", async () => {

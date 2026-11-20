@@ -275,7 +275,7 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshQueuesOneFollowRun(t *testing
 		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')",
 		"INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (11, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)",
 		"INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (11, 'https://example.invalid', 'https://example.invalid/api')",
-		`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`,
+		`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true'), ('anonymous_remote_browsing_enabled', 'true')`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)

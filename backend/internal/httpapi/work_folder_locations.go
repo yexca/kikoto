@@ -69,43 +69,74 @@ func normalizeFolderRootPath(value string) string {
 }
 
 // markMissingExternalWorkFolderLocations marks folders the scan could observe
-// but did not find. inScope limits that to folders the scan reached.
-func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenRoots map[string]bool, inScope func(string) bool) error {
+// but did not find, together with the available file locations recorded below
+// each of them, and returns how many file locations it marked. inScope limits
+// that to folders the scan reached. A file below a folder the scan found, such
+// as a deeper work root that replaced the missing one, keeps its state.
+func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenRoots map[string]bool, inScope func(string) bool) (int, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, root_path
+		SELECT id, work_id, root_path
 		FROM work_folder_location
 		WHERE file_source_id = ? AND role != 'managed_fetch' AND state = 'active'
 	`, fileSourceID)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	missingIDs := []int64{}
+	type missingFolder struct {
+		id, workID int64
+		root       string
+	}
+	missingFolders := []missingFolder{}
 	for rows.Next() {
-		var id int64
-		var rootPath string
-		if err := rows.Scan(&id, &rootPath); err != nil {
+		var folder missingFolder
+		if err := rows.Scan(&folder.id, &folder.workID, &folder.root); err != nil {
 			_ = rows.Close()
-			return err
+			return 0, err
 		}
-		if !seenRoots[normalizeFolderRootPath(rootPath)] && inScope(rootPath) {
-			missingIDs = append(missingIDs, id)
+		if !seenRoots[normalizeFolderRootPath(folder.root)] && inScope(folder.root) {
+			missingFolders = append(missingFolders, folder)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return err
+		return 0, err
 	}
 	if err := rows.Close(); err != nil {
-		return err
+		return 0, err
 	}
-	for _, id := range missingIDs {
+	missingLocations := 0
+	for _, folder := range missingFolders {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE work_folder_location
 			SET state = 'missing', is_primary = 0, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND role != 'managed_fetch' AND state = 'active'
-		`, id); err != nil {
-			return err
+		`, folder.id); err != nil {
+			return 0, err
+		}
+		locations, err := availableLocalLocationsForWork(ctx, tx, folder.workID, fileSourceID)
+		if err != nil {
+			return 0, err
+		}
+		below := locations[:0]
+		for _, location := range locations {
+			if localLocationWithinRoot(location.path, folder.root) && !localLocationWithinSeenRoot(location.path, seenRoots) {
+				below = append(below, location)
+			}
+		}
+		marked, err := markLocalLocationsMissing(ctx, tx, below)
+		if err != nil {
+			return 0, err
+		}
+		missingLocations += marked
+	}
+	return missingLocations, nil
+}
+
+func localLocationWithinSeenRoot(locationPath string, seenRoots map[string]bool) bool {
+	for root := range seenRoots {
+		if localLocationWithinRoot(locationPath, root) {
+			return true
 		}
 	}
-	return nil
+	return false
 }

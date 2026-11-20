@@ -189,7 +189,7 @@ func (s *DLsiteSyncer) detectPurchaseBonusParent(ctx context.Context, hint dlsit
 	for _, code := range nearestPurchaseBonusCodes(hint.Code, profile.WorkCodes, checked, purchaseBonusParentFetchLimit) {
 		product, err := s.fetchProductInLocale(ctx, code, locale)
 		if err != nil {
-			if ctx.Err() != nil || dlsite.IsTimeout(err) {
+			if stopsMetadataRun(ctx, err) {
 				return purchaseBonusDetection{}, err
 			}
 			continue

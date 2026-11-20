@@ -12,6 +12,13 @@ export const recordsEnglish = {
     initializing: "Initializing…",
     initializeFailed: "The record root could not be initialized.",
     setupNeedsAdmin: "An administrator must initialize the record root.",
+    restoreMarker: "Restore marker",
+    restoreMarkerFailed: "The record root marker could not be restored.",
+    startNewCatalog: "Start a new catalog",
+    startNewCatalogWarning:
+      "Kikoto forgets every recorded folder and file, with everyone's progress and marks on them, and indexes this directory as a new library on the next scan. Restore the marker instead if this is the same disk.",
+    markerMissingNotice:
+      "The record root has lost its marker. You can still browse and play it; an administrator can restore the marker in Library settings.",
     rootErrorTitle: "Record could not be loaded",
     rootErrorMessage: "Check the connection to this server and try again.",
     offlineTitle: "Record root is offline",
@@ -31,6 +38,7 @@ export const recordsEnglish = {
         online: "Online",
         offline: "Offline",
         unreadable: "Unreadable",
+        marker_missing: "Marker missing",
       },
     },
     folderErrorTitle: "This folder could not be read",

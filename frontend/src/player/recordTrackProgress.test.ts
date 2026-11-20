@@ -34,9 +34,19 @@ describe("Record track progress", () => {
     saver.save(21, 60, 60, true, true);
     saver.save(22, 0.5, null, false, true);
     expect(writes).toEqual([
-      [21, { positionSeconds: 30, durationSeconds: 60, completed: false }],
-      [21, { positionSeconds: 60, durationSeconds: 60, completed: true }],
-      [22, { positionSeconds: 0.5, durationSeconds: undefined, completed: false }],
+      [21, { positionSeconds: 30, durationSeconds: 60, completed: false, order: 1 }],
+      [21, { positionSeconds: 60, durationSeconds: 60, completed: true, order: 2 }],
+      [22, { positionSeconds: 0.5, durationSeconds: undefined, completed: false, order: 3 }],
     ]);
+  });
+
+  it("orders each save after the one before by the client clock", () => {
+    const { saver, writes, advance } = harness();
+    advance(5_000);
+    saver.save(21, 3, 60, false, true);
+    saver.save(21, 8, 60, false, true);
+    advance(20_000);
+    saver.save(21, 30, 60, false, true);
+    expect(writes.map(([, progress]) => progress.order)).toEqual([5_000, 5_001, 25_000]);
   });
 });

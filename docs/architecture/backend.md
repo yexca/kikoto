@@ -470,6 +470,12 @@ state, minimal mode/access runtime settings, the public library migration
 status, and CORS preflight remain available for bootstrap. Operational runtime settings are omitted while production sign-in is
 required. Every other unauthenticated request is rejected unless the stored
 anonymous-access policy is enabled, in which case only `GET` and `HEAD` continue.
+While anonymous remote browsing is off, the middleware also refuses remote
+routes and remote or cache media for those requests and marks the rest
+local-only; handlers then refuse a work without a local folder in its family
+and keep only local works, locations, and source counts in what they return.
+The rule and the routes it covers are in
+[Authentication and Cookies](../operations/security.md#authentication-and-cookies).
 The cached effective value is loaded before the server starts and updated only
 after the SQLite setting and audit entry commit.
 

@@ -62,9 +62,10 @@ func withoutRedundantUnknownVoiceActor(first, second []voiceActorIdentity) ([]vo
 
 // writeVoiceCredits adds the credits without removing ones the snapshot no
 // longer names, except an earlier credit of the same provider voice actor
-// under another person (see upsertPersonIdentity). A credit that already
-// matches is left untouched, so it does not advance the recommendation
-// revision.
+// under another person (see upsertPersonIdentity) and the unknown voice actor,
+// whose snapshot credit goes once the work credits a real voice actor. A
+// credit that already matches is left untouched, so it does not advance the
+// recommendation revision.
 func writeVoiceCredits(ctx context.Context, tx *sql.Tx, workID int64, providerID sql.NullInt64, actors []voiceActorIdentity) error {
 	var provider any
 	if providerID.Valid {
@@ -73,6 +74,17 @@ func writeVoiceCredits(ctx context.Context, tx *sql.Tx, workID int64, providerID
 	translation, err := workIsTranslationEdition(ctx, tx, workID)
 	if err != nil {
 		return err
+	}
+	// A snapshot naming no voice actor adds the unknown voice actor only to a
+	// work that credits no real one, rather than adding it to remove it again.
+	if len(actors) == 1 && isUnknownVoiceActorName(actors[0].Name) {
+		credited, err := creditsRealVoiceActor(ctx, tx, workID)
+		if err != nil {
+			return err
+		}
+		if credited {
+			return nil
+		}
 	}
 	for _, actor := range actors {
 		personID, err := upsertPersonIdentity(ctx, tx, voiceCreditTarget{WorkID: workID, Translation: translation}, actor.Name, providerID, actor.ExternalID)
@@ -92,7 +104,47 @@ func writeVoiceCredits(ctx context.Context, tx *sql.Tx, workID int64, providerID
 			return err
 		}
 	}
-	return nil
+	return dropUnknownVoiceCreditBesideKnown(ctx, tx, workID)
+}
+
+// dropUnknownVoiceCreditBesideKnown removes the unknown voice actor's snapshot
+// credit from a work that credits a real voice actor, as an earlier snapshot
+// that named none leaves it.
+// Both lookups read only the work's own credits, so neither scans every
+// person.
+func dropUnknownVoiceCreditBesideKnown(ctx context.Context, tx *sql.Tx, workID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		DELETE FROM work_credit
+		WHERE work_id = ? AND role = 'voice_actor' AND source <> 'manual_override'
+			AND person_id IN (
+				SELECT credit.person_id FROM work_credit AS credit
+				INNER JOIN person ON person.id = credit.person_id
+				WHERE credit.work_id = ? AND credit.role = 'voice_actor'
+					AND LOWER(TRIM(person.display_name)) = LOWER(?)
+			)
+			AND EXISTS (
+				SELECT 1 FROM work_credit AS known
+				INNER JOIN person ON person.id = known.person_id
+				WHERE known.work_id = ? AND known.role = 'voice_actor'
+					AND LOWER(TRIM(person.display_name)) <> LOWER(?)
+			)
+	`, workID, workID, unknownVoiceActorName, workID, unknownVoiceActorName)
+	return err
+}
+
+// creditsRealVoiceActor reports whether the work credits a voice actor other
+// than the unknown voice actor.
+func creditsRealVoiceActor(ctx context.Context, tx *sql.Tx, workID int64) (bool, error) {
+	var credited bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM work_credit AS credit
+			INNER JOIN person ON person.id = credit.person_id
+			WHERE credit.work_id = ? AND credit.role = 'voice_actor'
+				AND LOWER(TRIM(person.display_name)) <> LOWER(?)
+		)
+	`, workID, unknownVoiceActorName).Scan(&credited)
+	return credited, err
 }
 
 type voiceActorIdentity struct {
@@ -124,19 +176,25 @@ func workIsTranslationEdition(ctx context.Context, tx *sql.Tx, workID int64) (bo
 }
 
 // upsertPersonIdentity resolves the person a snapshot credits. A provider
-// voice actor id resolves to the person that carries it. A person whose
-// display name is the snapshot's spelling of that id is the same voice actor
-// credited by name before the id was known, so it is merged into one person
-// through a recorded, undoable merge; one that carries another id of the
-// provider, was separated again by undoing such a merge, or is named by a
-// manual override stays a separate person, and the latter only loses its
-// metadata credit on this work. The person follows the provider's spelling on
-// an original edition, and on a translated edition only while no original
-// edition credits them, so a translation's spelling becomes an alias. A name
-// an administrator merged into the person never replaces the display name
-// they kept.
+// voice actor id resolves to the person that carries it; the id, not the
+// name, is the voice actor's identity, and two people may share a name. An id
+// seen for the first time binds to the one person of that name who carries no
+// id of the provider, the voice actor credited by name before the id was
+// known; with no such person, or several, it gets a new person with the
+// plain name, so it never binds to a namesake who carries another id of the
+// provider. A known id's person absorbs the one person of its spelling that
+// is the same voice actor credited by name, through a recorded, undoable
+// merge; one that carries another id of the provider, was separated again by
+// undoing such a merge, or is named by a manual override stays a separate
+// person, and the latter only loses its metadata credit on this work. Several
+// such candidates are ambiguous and none is merged. The person follows the
+// provider's spelling on an original edition, and on a translated edition
+// only while no original edition credits them, so a translation's spelling
+// becomes an alias. A name an administrator merged into the person never
+// replaces the display name they kept.
 func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTarget, name string, providerID sql.NullInt64, externalID string) (int64, error) {
 	externalID = strings.TrimSpace(externalID)
+	name = strings.TrimSpace(name)
 	if !providerID.Valid || externalID == "" {
 		return upsertPerson(ctx, tx, name)
 	}
@@ -146,7 +204,7 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTar
 		WHERE provider_id = ? AND id_type = 'voice_actor_id' AND external_id = ?
 	`, providerID.Int64, externalID).Scan(&personID)
 	if errors.Is(err, sql.ErrNoRows) {
-		personID, err = upsertPerson(ctx, tx, name)
+		personID, err = personForNewProviderID(ctx, tx, name, providerID.Int64)
 		if err != nil {
 			return 0, err
 		}
@@ -161,49 +219,72 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTar
 		return 0, err
 	}
 
-	var otherID int64
-	if err := tx.QueryRowContext(ctx, "SELECT id FROM person WHERE display_name = ? AND id <> ?", name, personID).Scan(&otherID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	namesakes, err := personsNamed(ctx, tx, name, providerID.Int64)
+	if err != nil {
 		return 0, err
+	}
+	var mergeID int64
+	mergeCandidates := 0
+	// Another namesake this provider identifies makes the spelling ambiguous:
+	// a person credited by that name may be either voice actor.
+	identifiedNamesake := false
+	dropCredits := []int64{}
+	for _, other := range namesakes {
+		if other.id == personID {
+			continue
+		}
+		if other.carriesProvider {
+			identifiedNamesake = true
+		}
+		merge, dropCredit, err := identityMergeAllowed(ctx, tx, providerID.Int64, personID, other.id)
+		if err != nil {
+			return 0, err
+		}
+		// A person made for an ambiguous name never absorbs an id.
+		if merge && !other.ambiguous {
+			mergeID = other.id
+			mergeCandidates++
+		}
+		if dropCredit {
+			dropCredits = append(dropCredits, other.id)
+		}
+	}
+	if mergeCandidates != 1 || identifiedNamesake {
+		mergeID = 0
 	}
 	names := true
 	if target.Translation {
-		credited, err := creditedOnOriginalEdition(ctx, tx, providerID.Int64, personID, otherID)
+		credited, err := creditedOnOriginalEdition(ctx, tx, providerID.Int64, personID, mergeID)
 		if err != nil {
 			return 0, err
 		}
 		names = !credited
 	}
-	if otherID != 0 {
-		merge, dropCredit, err := identityMergeAllowed(ctx, tx, providerID.Int64, personID, otherID)
-		if err != nil {
+	if mergeID != 0 {
+		// The person keeping the snapshot's spelling survives when that
+		// spelling names the voice actor, unless an administrator merged that
+		// name into the person carrying the id.
+		keep, merged := personID, mergeID
+		if names {
+			adminKept, err := personHasAdministratorMergedName(ctx, tx, personID, name)
+			if err != nil {
+				return 0, err
+			}
+			if !adminKept {
+				keep, merged = mergeID, personID
+			}
+		}
+		if _, _, _, err := mergeVoicePeopleInTx(ctx, tx, keep, merged, identityVoiceMergeAliases); err != nil {
 			return 0, err
 		}
-		switch {
-		case merge:
-			// The person keeping the snapshot's spelling survives when that
-			// spelling names the voice actor, unless an administrator merged
-			// that name into the person carrying the id.
-			keep, merged := personID, otherID
-			if names {
-				adminKept, err := personHasAdministratorMergedName(ctx, tx, personID, name)
-				if err != nil {
-					return 0, err
-				}
-				if !adminKept {
-					keep, merged = otherID, personID
-				}
-			}
-			if _, _, _, err := mergeVoicePeopleInTx(ctx, tx, keep, merged, identityVoiceMergeAliases); err != nil {
-				return 0, err
-			}
-			personID = keep
-		case dropCredit:
-			if _, err := tx.ExecContext(ctx, `
-				DELETE FROM work_credit
-				WHERE work_id = ? AND person_id = ? AND role = 'voice_actor' AND source <> 'manual_override'
-			`, target.WorkID, otherID); err != nil {
-				return 0, err
-			}
+		personID = keep
+	}
+	for _, otherID := range dropCredits {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM work_credit
+			WHERE work_id = ? AND person_id = ? AND role = 'voice_actor' AND source <> 'manual_override'
+		`, target.WorkID, otherID); err != nil {
+			return 0, err
 		}
 	}
 	if names {
@@ -211,13 +292,11 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTar
 			UPDATE person
 			SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?) AND NOT EXISTS (
-				SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
-			) AND NOT EXISTS (
 				SELECT 1 FROM person_alias AS merged
 				WHERE merged.person_id = ? AND merged.alias = ?
 					AND merged.source IN ('merged_name', 'merged_primary_name', 'merged_alias')
 			)
-		`, name, strings.ToLower(name), personID, name, strings.ToLower(name), personID, name, personID, name); err != nil {
+		`, name, strings.ToLower(name), personID, name, strings.ToLower(name), personID, name); err != nil {
 			return 0, err
 		}
 	}
@@ -229,6 +308,96 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTar
 		return 0, err
 	}
 	return personID, nil
+}
+
+// namedPerson is a person whose display name is a credited name, whether it
+// carries a voice actor id of the crediting provider or of any provider, and
+// whether it was made for a name several identified people hold.
+type namedPerson struct {
+	id              int64
+	carriesProvider bool
+	carriesAnyID    bool
+	ambiguous       bool
+}
+
+func personsNamed(ctx context.Context, tx *sql.Tx, name string, providerID int64) ([]namedPerson, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT person.id,
+			EXISTS (SELECT 1 FROM person_external_id AS external
+				WHERE external.person_id = person.id AND external.id_type = 'voice_actor_id' AND external.provider_id = ?),
+			EXISTS (SELECT 1 FROM person_external_id AS external
+				WHERE external.person_id = person.id AND external.id_type = 'voice_actor_id'),
+			person.ambiguous_name
+		FROM person WHERE person.display_name = ?
+		ORDER BY person.id ASC
+	`, providerID, name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	people := []namedPerson{}
+	for rows.Next() {
+		var person namedPerson
+		if err := rows.Scan(&person.id, &person.carriesProvider, &person.carriesAnyID, &person.ambiguous); err != nil {
+			return nil, err
+		}
+		people = append(people, person)
+	}
+	return people, rows.Err()
+}
+
+// onlyOne returns the id of the single person the filter keeps, or 0 when it
+// keeps none or several.
+func onlyOne(people []namedPerson, keep func(namedPerson) bool) int64 {
+	var id int64
+	count := 0
+	for _, person := range people {
+		if keep(person) {
+			id = person.id
+			count++
+		}
+	}
+	if count != 1 {
+		return 0
+	}
+	return id
+}
+
+// personForNewProviderID chooses the person a provider voice actor id seen
+// for the first time binds to: the one person of that name, or else of that
+// confirmed alias, who carries no id of the provider, preferring among several
+// the one person who carries no id at all. A person made for an ambiguous name
+// never takes an id. Anything else gets a new person with the plain name.
+func personForNewProviderID(ctx context.Context, tx *sql.Tx, name string, providerID int64) (int64, error) {
+	namesakes, err := personsNamed(ctx, tx, name, providerID)
+	if err != nil {
+		return 0, err
+	}
+	if len(namesakes) == 0 {
+		id, found, err := personForConfirmedAlias(ctx, tx, name)
+		if err != nil {
+			return 0, err
+		}
+		if found {
+			var carries, ambiguous bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM person_external_id
+				WHERE person_id = ? AND provider_id = ? AND id_type = 'voice_actor_id'),
+				(SELECT ambiguous_name FROM person WHERE id = ?)`, id, providerID, id).Scan(&carries, &ambiguous); err != nil {
+				return 0, err
+			}
+			if !carries && !ambiguous {
+				return id, nil
+			}
+		}
+		return insertPerson(ctx, tx, name, false)
+	}
+	if id := onlyOne(namesakes, func(person namedPerson) bool { return !person.carriesProvider && !person.ambiguous }); id != 0 {
+		return id, nil
+	}
+	if id := onlyOne(namesakes, func(person namedPerson) bool { return !person.carriesAnyID && !person.ambiguous }); id != 0 {
+		return id, nil
+	}
+	return insertPerson(ctx, tx, name, false)
 }
 
 // creditedOnOriginalEdition reports whether a snapshot of the provider
@@ -292,21 +461,48 @@ func isUnknownVoiceActorName(value string) bool {
 	return strings.EqualFold(strings.TrimSpace(value), unknownVoiceActorName)
 }
 
+// upsertPerson resolves a credit without a provider id, which only a name
+// identifies. One person of that name is that person. Of several, the name
+// stands for a voice actor credited by name, never for a namesake identified
+// by a provider id: it is the person among them who carries no voice actor
+// id (the earliest when several do not), and when every one carries an id, a
+// new person with the plain name, marked as made for an ambiguous name so no
+// provider id or merge ever lands on it, which later credits of the name
+// reuse. A name no person displays resolves through a confirmed alias only an
+// undisputed one person holds, and is otherwise a new person.
 func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	name = strings.TrimSpace(name)
+	namesakes, err := personsNamed(ctx, tx, name, 0)
+	if err != nil {
+		return 0, err
+	}
+	switch {
+	case len(namesakes) == 1:
+		return namesakes[0].id, nil
+	case len(namesakes) > 1:
+		for _, person := range namesakes {
+			if !person.carriesAnyID {
+				return person.id, nil
+			}
+		}
+		return insertPerson(ctx, tx, name, true)
+	}
 	if id, found, err := personForConfirmedAlias(ctx, tx, name); err != nil || found {
 		return id, err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO person (display_name, sort_name)
-		VALUES (?, ?)
-		ON CONFLICT(display_name) DO UPDATE SET
-			updated_at = CURRENT_TIMESTAMP
-	`, name, strings.ToLower(name)); err != nil {
+	return insertPerson(ctx, tx, name, false)
+}
+
+// insertPerson creates a person displayed under name, with that name as its
+// primary alias. ambiguous marks a person made for a name several identified
+// people hold.
+func insertPerson(ctx context.Context, tx *sql.Tx, name string, ambiguous bool) (int64, error) {
+	result, err := tx.ExecContext(ctx, `INSERT INTO person (display_name, sort_name, ambiguous_name) VALUES (?, ?, ?)`, name, strings.ToLower(name), ambiguous)
+	if err != nil {
 		return 0, err
 	}
-	var id int64
-	if err := tx.QueryRowContext(ctx, "SELECT id FROM person WHERE display_name = ?", name).Scan(&id); err != nil {
+	id, err := result.LastInsertId()
+	if err != nil {
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -323,8 +519,8 @@ func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 // person's display name but is still a confirmed alias, such as the former
 // name of a merged or renamed voice actor. Without it, the next metadata
 // projection would recreate the merged-away person and split the credits
-// again. An exact display name always wins, and an alias shared by several
-// people is ambiguous, so both fall through to the normal upsert.
+// again. An exact display name always wins, and an alias several people hold
+// is ambiguous, so both fall through to a new person.
 func personForConfirmedAlias(ctx context.Context, tx *sql.Tx, name string) (int64, bool, error) {
 	if name == "" || isUnknownVoiceActorName(name) {
 		return 0, false, nil

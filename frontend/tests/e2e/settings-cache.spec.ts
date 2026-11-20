@@ -853,6 +853,9 @@ test("development super administrator can configure production anonymous access"
   const accessSection = page.getByRole("region", { name: "Instance access" });
   await expect(accessSection.getByText("Browse and play without an account", { exact: true })).toBeVisible();
   await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
+  // Remote browsing only widens anonymous access, so it waits for it.
+  const remoteSwitch = page.getByRole("switch", { name: "Browse remote sources without an account", exact: true });
+  await expect(remoteSwitch).toBeDisabled();
   // Opening the library to visitors is confirmed first; cancelling changes nothing.
   await accessSwitch.click();
   const confirm = page.getByRole("alertdialog", { name: "Allow anonymous access?" });
@@ -866,6 +869,7 @@ test("development super administrator can configure production anonymous access"
   await expect.poll(() => runtimeRequests).toBeGreaterThanOrEqual(2);
   await expect(accessSwitch).toHaveAttribute("aria-checked", "true");
   await expect(accessSection.getByRole("status")).toHaveText("Saved");
+  await expect(remoteSwitch).toBeEnabled();
 
   // Turning it off needs no confirmation.
   await accessSwitch.click();
@@ -1388,6 +1392,37 @@ test("@desktop administrators turn Record on in Library settings and initialize 
   await section.getByRole("button", { name: "Initialize root", exact: true }).click();
   await expect(section.getByText("Online", { exact: true })).toBeVisible();
   await expect(section.getByRole("button", { name: "Initialize root", exact: true })).toHaveCount(0);
+});
+
+test("@desktop administrators start a new catalog when another disk is at the record root", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  let recordRoot: RecordRoot = { id: 1, displayName: "Record", state: "offline", scanGeneration: 0 };
+  const initializations: unknown[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/records" || url.pathname.startsWith("/api/records/root"),
+    async (route) => {
+      if (route.request().method() === "POST") {
+        initializations.push(route.request().postDataJSON());
+        recordRoot = { ...recordRoot, state: "online" };
+      }
+      await route.fulfill({ json: { root: recordRoot } });
+    },
+  );
+
+  await page.goto("/system?tab=library");
+  const section = page.getByRole("region", { name: "Record", exact: true });
+  await section.getByRole("switch", { name: "Record library", exact: true }).click();
+  await expect(section.getByText("Offline", { exact: true })).toBeVisible();
+  // The marker belongs to another disk, so only a new catalog is offered.
+  await expect(section.getByRole("button", { name: "Restore marker", exact: true })).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Initialize root", exact: true })).toHaveCount(0);
+  await section.getByRole("button", { name: "Start a new catalog", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Start a new catalog" })
+    .getByRole("button", { name: "Start a new catalog", exact: true })
+    .click();
+  await expect.poll(() => initializations).toEqual([{ fresh: true }]);
+  await expect(section.getByText("Online", { exact: true })).toBeVisible();
 });
 
 test("administrators add proxies by priority and choose where they apply", async ({ page }) => {

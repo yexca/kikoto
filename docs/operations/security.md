@@ -146,6 +146,18 @@ presents the sign-in page. That unauthenticated runtime response contains only
 the deployment mode and access-policy state, not operational settings. When enabled,
 unauthenticated `GET` and `HEAD` requests may browse and play Library content;
 state-changing methods still require an authenticated account and permission.
+They reach local content only until the separate **Browse remote sources
+without an account** setting, off by default and audited like the first, is
+turned on, because remote reads can reveal the remote source configuration.
+Until then `/api/remote-sources/`, `/api/remote-track-runs/`,
+`/api/library-sources`, a work's source availability, a voice actor's
+`/api/voices/{id}/remote-matches`, and streams and files of remote or cache
+locations answer `401`; a work without a local folder in its family answers
+`401` as well; and work, voice actor, and circle lists and details show only
+works with a local folder, their local locations, and local source counts.
+The remote-browsing setting applies only while anonymous browsing is on, and
+Settings offers it only then. Turning anonymous browsing off also turns remote
+browsing off, and a change to both settings is saved together or not at all.
 Development exposes the same control for production-feature debugging, but its
 automatic root identity means every development request remains authenticated.
 Demo mode neither exposes nor uses the setting.
@@ -153,15 +165,23 @@ Demo mode neither exposes nor uses the setting.
 ### Sign-in Throttling
 
 Failed sign-ins are throttled in memory and reset when the process restarts.
-After 5 failures for one username from one client, 20 failures from one client
-across any usernames, or 50 failures for one username across all clients, that
-client or username receives `429 Too Many Requests` with a `Retry-After`
-header. The first lockout lasts one minute and doubles with each further
-failure, up to 15 minutes for one client and username or 30 minutes otherwise.
-A locked sign-in is rejected without checking the password, even when the
-password is correct. A successful sign-in clears the username counters but not
-the client counter. Unknown usernames are counted and timed like real ones, so
-neither a lockout nor the response time reveals whether an account exists.
+Lockouts apply only to clients: an IPv4 address, or an IPv6 /64. After 5
+failures for one username from one client, or 20 failures from one client
+across any usernames, that client receives `429 Too Many Requests` with a
+`Retry-After` header. The first lockout lasts one minute and doubles with
+each further failure, up to 15 minutes for one client and username or 30
+minutes for the client. A locked sign-in is rejected without checking the
+password, even when the password is correct. A username is never locked, so
+failures from other clients cannot lock its owner out. After 5 failures for
+one username across all clients, each later attempt on it waits before its
+password is checked: one second, doubling with each further failure up to
+eight seconds, and forgotten after an hour without failures. Attempts on one
+username take turns, so parallel attempts each wait out their delay in order
+rather than all at once; the username is still never refused. A successful
+sign-in clears the username's delay and its client-and-username counter, but
+not the client counter. Unknown usernames are counted, delayed, and timed like
+real ones, so neither a lockout, a delay, nor the response time reveals
+whether an account exists.
 
 Passwords are hashed with Argon2id using 19 MiB of memory and two passes per
 check. By default at most eight checks run at once, about 152 MiB in total;

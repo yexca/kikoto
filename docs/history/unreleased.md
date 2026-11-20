@@ -13,6 +13,15 @@
 > either are not stored. Activity names each such run; bind those lyrics again
 > in **Lyrics files**.
 
+> [!IMPORTANT]
+> A folder whose name carries a work code inside another such folder, such as
+> a bonus or disc folder named after its own product, is part of the outer
+> folder's work. If your library has such nested folders, the first scan after
+> the upgrade makes the outer folder the work: the inner folder's files are
+> indexed as files of the outer work, and the work the inner folder held reads
+> missing, keeping its metadata, marks, and progress. To keep the inner folder
+> a work of its own, move it beside the outer folder before scanning.
+
 <details>
 <summary><strong>Record</strong></summary>
 
@@ -57,6 +66,16 @@
   again the next time a folder shows it.
 - Record scans are listed in Workflows as **Scan Record**, and History narrowed
   to them links to the Record page, where **Scan** starts them.
+- When the record directory is there but its marker is gone, Record keeps its
+  library: it is browsed and played as usual, a scan adds new files without
+  marking any missing, and nothing can be deleted. **Restore marker** under
+  **Record** in **System → Library** brings the library back once the disk
+  that holds it is mounted, and **Start a new catalog** starts afresh only
+  after a confirmation. Another disk mounted there is offline and keeps the
+  library until **Start a new catalog**.
+- A Record position saved late, such as one sent after a later save, never
+  replaces the later position, and a device whose clock runs ahead cannot hold
+  a file's position.
 - An account with file management access deletes a Record file or folder
   from a **More actions** menu, at the top right of the video player, in the
   photo viewer, on a row under **Files**, or beside a video's or folder's
@@ -264,6 +283,20 @@
   workflow's triggers link to where they are set up. **History** lists the
   runs that ended, narrows to failed runs or one workflow, and searches runs.
   A run opens on the page, and earlier Activity links open it there.
+- One bad interval trigger no longer holds back the others: it waits five
+  minutes, and an occurrence a stop interrupted stays due. A run cancelled
+  before its job finishes stays cancelled, except a Fetch that has started
+  publishing, which finishes; a retried preset run keeps the
+  steps that already finished, and an administrator can retry any preset run.
+  A second complete scan request returns the one already queued, the run
+  event stream sends a run's last events before it closes, and a ranking pull
+  that fails before it starts keeps your **Pull now** request and retries in
+  five minutes. A queued run of a workflow step that no longer exists fails at
+  startup.
+- A Fetch or Track that succeeds on retry notifies you again, even after you
+  dismissed its failure.
+- A file deletion or cache cleanup whose request ends before it finishes, as
+  when the page closes, returns to the queue and runs in the background.
 
 </details>
 
@@ -408,6 +441,62 @@
   longer reports a file as a copy of itself. The upgrade merges the second
   records earlier scans made, keeping each file's listening progress, lyrics,
   and display names.
+- A Fetch archives for review only the folders whose files you copied into it
+  in the Fetch dialog, and **After Fetch** lists them before you start it. A
+  Fetch of remote files alone, including a bulk, Availability Watch, or
+  **Manage files** Fetch, leaves every other folder of the work in place, and
+  files left unselected keep their cache and remote streams. Untracking a
+  source during a Fetch keeps the cache files that Fetch still needs.
+- A source check reports a work as not on the source only when the source
+  answers so; a timeout or a failed lookup keeps what the source last said.
+- A scan marks the files of a vanished folder missing when the work has
+  another folder, and an incremental scan leaves works outside its folders
+  alone. A pool registered as a link reads as offline, so a scan never marks
+  its works missing, and a data root reached through a link is scanned and
+  watched, its folders can become custom works, and files below it can be
+  deleted and cleaned up.
+- Merging voice actors keeps manual voice actor lists naming the merged
+  person, and Undo restores them. A metadata refresh whose rating and price
+  request fails keeps the stored rating, sales, and prices; a linked work no
+  longer takes the linked product's bundles; an older refresh finishing late
+  leaves the newer title and description; and the metadata preview of a
+  translated edition reads the edition's own language.
+- A queued file deletion or cleanup skips a file that a folder edit moved
+  since, instead of deleting what is now at its old path.
+- A Fetch into an existing folder places only its own files, one at a time:
+  every other file keeps its content, date, and links, a change made to the
+  folder while the Fetch runs is kept, and a linked subfolder no longer stops
+  the Fetch. A file it replaces stays in the Fetch's backup on the same disk
+  until the Fetch completes, and a Fetch that fails while placing its files
+  puts back what it placed.
+- A folder edit keeps the files it takes out until it succeeds, and puts them
+  back when it fails or is cancelled, apart from a file whose place a file the
+  edit added has taken.
+- A remote file of unknown size is no longer taken as already present from an
+  existing file of another size. An existing cache file is downloaded again,
+  and an existing file in the target folder is a conflict for you to keep or
+  replace.
+- The outermost folder whose name carries a work code is the work, and a code
+  needs a word of its own in a folder name, so `XRJ00000001` names no work.
+- A work folder cannot be registered as a storage pool.
+- Marks, ratings, notes, personal tags, list membership, Resume, and listening
+  history set through an edition belong to its family's canonical work, and state an
+  edition already holds moves there when the family's canonical work changes
+  and at startup. Lists, circles, voice actors, and workflow filters show an
+  edition with its family's tags and ratings, and a cleared mark or rating
+  stays cleared.
+- Metadata sync runs past a work that times out or fails, finishing partial,
+  and stops only when DLsite keeps rate limiting it, on any of the sites it
+  asks, so a retry later resumes.
+- Two voice actors may share a name: a voice actor id seen for the first time
+  gets its own person under the plain name when a person of that name already
+  carries another id of the same source, and a credit without an id never
+  goes to a namesake a source id identifies. A person made for a name several
+  identified voice actors share never takes over one of their ids or credits,
+  and a work's link for that name opens none of them.
+- A DLsite answer without edition information keeps an edition in its family,
+  and a work that credits a real voice actor no longer also credits the
+  unknown voice actor.
 
 </details>
 
@@ -416,6 +505,27 @@
 
 - The player, its queue, and the lock screen name a work's voice actors under
   the track title, and its circle only when it credits no voice actor.
+- Lyrics read more files as they are written: WebVTT and SRT cues with a
+  bracketed time in the text stay cues, cue markup and character references
+  are cleaned, LRC keeps bracketed lyric text, and WebVTT times of 100 hours
+  and more are read.
+- Choosing the source already playing does nothing, and removing a queue item
+  moves the current track only once.
+- Audio whose file runs longer than its sound plays to the end instead of
+  failing on the last part, and a file a folder edit moved plays its new file
+  at once.
+- A legacy progress write no longer replaces a later checkpoint.
+- A file whose library or storage pool goes offline while it plays pauses with
+  a notice that says so, instead of moving to another source.
+- A restored queue plays each item from its local copy unless you picked
+  another source for it in the player; an item you have already started keeps
+  playing from where it is.
+- A Resume position whose file location vanished is saved without it, and
+  positions that cannot be saved no longer fill the waiting list.
+- An LRC file's `[offset:]` tag applies under your own lyrics offset, and a
+  `.cue` sheet is never taken for lyrics.
+- Removing the playing item when it is last in the queue stops playback and
+  keeps the player showing the items that remain.
 
 </details>
 
@@ -425,5 +535,18 @@
 - The Go toolchain is updated to 1.26.11, which fixes an HTTP/1 server crash
   caused by a race on request headers when a request body is size-limited
   (GO-2026-6859).
+- Disabling an account signs it out everywhere, a deleted account's id is
+  never given to a new account, and Demo lists works by their effective age
+  rating.
+- Repeated failed sign-ins lock out only the client address that makes them.
+  A username is never locked, so no one can lock its owner out; failures for
+  it from anywhere only delay the next attempts on it by up to eight seconds,
+  and attempts on it take turns, so parallel attempts cannot share one delay.
+- Visitors without an account see only works with a local folder and play
+  only local files. **Browse remote sources without an account**, off by
+  default, offered while **Browse and play without an account** is on, and
+  turned off with it, also lets them browse and play remote sources, cached copies, and works
+  without a local folder, since those reads can reveal your remote source
+  configuration.
 
 </details>

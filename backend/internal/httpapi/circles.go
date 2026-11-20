@@ -301,6 +301,11 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if localOnlyRequest(r.Context()) {
+		for index := range page.Circles {
+			page.Circles[index].SourceSummaries = localSourceStats(page.Circles[index].SourceSummaries)
+		}
+	}
 	writeJSON(w, http.StatusOK, page)
 }
 
@@ -311,7 +316,11 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	detail, err := s.loadCircleDetailWithWorksQuery(r.Context(), userID, externalID, parseCircleWorksQuery(r))
+	worksQuery := parseCircleWorksQuery(r)
+	if localOnlyRequest(r.Context()) {
+		worksQuery.Availability, worksQuery.Legacy = "local", false
+	}
+	detail, err := s.loadCircleDetailWithWorksQuery(r.Context(), userID, externalID, worksQuery)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeCircleLookupError(w, err)
@@ -321,6 +330,12 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 		}
 		return
+	}
+	if localOnlyRequest(r.Context()) {
+		detail.SourceSummaries = localSourceStats(detail.SourceSummaries)
+		for index := range detail.Works {
+			localCircleWork(&detail.Works[index])
+		}
 	}
 	writeJSON(w, http.StatusOK, detail)
 }

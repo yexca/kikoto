@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 
 import { restoredCursorStartPosition } from "./playbackStart";
 import { discardObsoletePlayerState, loadPersistedQueue } from "./playerPersistence";
-import { revalidatePersistedQueue } from "./playerQueueRestore";
+import { keepPlayingTrackLocation, revalidatePersistedQueue } from "./playerQueueRestore";
 import type { PlayerTrack, PlayMode, SleepTimerState } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
 
@@ -56,7 +56,7 @@ export function useRestoredQueueRevalidation(
           voiceActors: work.voiceActors,
         };
       },
-    ).then((validated) => {
+    ).then((refreshed) => {
       if (cancelled) return;
       const current = refs.queueRef.current;
       if (
@@ -65,6 +65,14 @@ export function useRestoredQueueRevalidation(
       )
         return;
       const currentQueueItemID = current[refs.currentIndexRef.current]?.queueItemId;
+      // An item the listener has started keeps playing from where it is.
+      const playbackStarted =
+        refs.isPlayingRef.current ||
+        (refs.listenerIntentInstanceRef.current !== null &&
+          refs.listenerIntentInstanceRef.current === refs.currentPlaybackInstanceKeyRef.current);
+      const validated = playbackStarted
+        ? keepPlayingTrackLocation(refreshed, current[refs.currentIndexRef.current])
+        : refreshed;
       const validatedIndex = Math.max(
         0,
         validated.findIndex((track) => track.queueItemId === currentQueueItemID),

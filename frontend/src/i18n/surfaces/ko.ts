@@ -1059,6 +1059,9 @@ export const surfaceKorean = {
     access: {
       instance: "인스턴스 접근",
       anonymous: "계정 없이 탐색 및 재생",
+      anonymousRemote: "계정 없이 원격 소스 탐색",
+      anonymousRemoteDescription:
+        "계정 없이 탐색이 켜져 있을 때 적용됩니다. 켜면 이 서버에 접속할 수 있는 누구에게나 원격 소스 구성이 노출될 수 있습니다.",
       enableTitle: "익명 접근을 허용할까요?",
       enableDescription:
         "이 서버에 접속할 수 있는 누구나 계정 없이 라이브러리를 탐색하고 작품을 재생할 수 있게 됩니다.",
@@ -3089,6 +3092,7 @@ export const surfaceKorean = {
     previewScheduled: "미리보기 예약됨",
     previewRequired: "미리보기 필요",
     fetchFolderReview: "Fetch 폴더를 검토해야 합니다",
+    archivedAfterFetch: "검토용으로 보관",
     refreshComparison: "비교를 새로 고쳐 결과 트리를 만드세요.",
     cancel: "취소",
     publishFetch: "Fetch 게시",

@@ -126,9 +126,10 @@ func TestStageAndPublishRetryAfterLostPublishedStateKeepsExistingFiles(t *testin
 	if err != nil || manifest.State != "published" {
 		t.Fatalf("manifest state=%q error=%v", manifest.State, err)
 	}
+	// The Fetch added a file and replaced none, so nothing was backed up.
 	backupRoot := filepath.Join(server.cfg.DataRoot, filepath.FromSlash(manifest.BackupRoot))
-	if files := fetchTestDirectoryFiles(t, backupRoot); strings.Join(files, ",") != "earlier.mp3" {
-		t.Fatalf("rollback backup = %v, want the previous root until completion", files)
+	if _, err := os.Stat(filepath.Join(backupRoot, "earlier.mp3")); !os.IsNotExist(err) {
+		t.Fatalf("an unselected file was backed up: %v", err)
 	}
 }
 
@@ -139,19 +140,19 @@ func TestPublishRemoteFetchRefusesToReplaceExistingBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFetchTestFile(t, server.cfg.DataRoot, manifest.BackupRoot+"/original.mp3", "original")
+	// An earlier attempt replaced track.mp3; its backup is the only copy of
+	// the original.
+	writeFetchTestFile(t, server.cfg.DataRoot, plan.SaveRoot+"/track.mp3", "earlier attempt")
+	writeFetchTestFile(t, server.cfg.DataRoot, manifest.BackupRoot+"/track.mp3", "original")
 
 	if _, err := server.stageAndPublishRemoteFetch(ctx, manifest, plan); !errors.Is(err, errRemoteFetchBackupPending) {
 		t.Fatalf("publish error = %v, want pending backup refusal", err)
 	}
 	backupRoot := filepath.Join(server.cfg.DataRoot, filepath.FromSlash(manifest.BackupRoot))
-	if files := fetchTestDirectoryFiles(t, backupRoot); strings.Join(files, ",") != "original.mp3" {
-		t.Fatalf("backup files = %v", files)
-	}
+	assertFetchTestFile(t, filepath.Join(backupRoot, "track.mp3"), "original")
 	targetRoot := filepath.Join(server.cfg.DataRoot, filepath.FromSlash(plan.SaveRoot))
-	if files := fetchTestDirectoryFiles(t, targetRoot); strings.Join(files, ",") != "earlier.mp3" {
-		t.Fatalf("target files = %v", files)
-	}
+	assertFetchTestFile(t, filepath.Join(targetRoot, "track.mp3"), "earlier attempt")
+	assertFetchTestFile(t, filepath.Join(targetRoot, "earlier.mp3"), "earlier")
 }
 
 // seedPublishedFetch records a Fetch whose files are published but whose
@@ -289,8 +290,9 @@ func TestRecoverInterruptedWorkflowsContinuesPastUnrecoverableFetch(t *testing.T
 }
 
 // interruptFetchPublication leaves the fixture's Fetch as a crash between the
-// two publication renames leaves it: the old target moved to the backup, the
-// complete staged root not yet moved into its place.
+// two renames that replace track.mp3 leaves it: the old file moved to the
+// backup, the staged file not yet moved into its place. earlier.mp3, which the
+// Fetch does not write, stays in the target throughout.
 func interruptFetchPublication(t *testing.T, server *Server, db *sqlutil.DB) remoteFetchPublishPaths {
 	t.Helper()
 	manifest, err := server.loadRemoteFetchManifest(context.Background(), 1)
@@ -301,14 +303,8 @@ func interruptFetchPublication(t *testing.T, server *Server, db *sqlutil.DB) rem
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFetchTestFile(t, paths.stageRoot, "earlier.mp3", "earlier")
 	writeFetchTestFile(t, paths.stageRoot, "track.mp3", "track")
-	if err := os.MkdirAll(filepath.Dir(paths.backupRoot), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(paths.targetRoot, paths.backupRoot); err != nil {
-		t.Fatal(err)
-	}
+	writeFetchTestFile(t, paths.backupRoot, "track.mp3", "older")
 	execFetchTestStatements(t, db, `UPDATE remote_fetch_manifest SET state = 'publishing' WHERE id = 1`)
 	return paths
 }
@@ -365,7 +361,7 @@ func TestFetchRecoverySettlesAPublishedTargetHoldingALink(t *testing.T) {
 	ctx := context.Background()
 	server, db, _ := newFetchPublishFixture(t)
 	paths := interruptFetchPublication(t, server, db)
-	if err := os.Rename(paths.stageRoot, paths.targetRoot); err != nil {
+	if err := os.Rename(filepath.Join(paths.stageRoot, "track.mp3"), filepath.Join(paths.targetRoot, "track.mp3")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("earlier.mp3", filepath.Join(paths.targetRoot, "shortcut.mp3")); err != nil {
@@ -383,8 +379,8 @@ func TestFetchRecoverySettlesAPublishedTargetHoldingALink(t *testing.T) {
 	}
 }
 
-// Staging copies the existing folder and then writes the Fetch's files. A
-// user's file named like a temporary copy of one of them is kept.
+// A user's file named like a temporary copy of one of the Fetch's files is
+// kept.
 func TestFetchKeepsAUserFileNamedLikeATemporaryCopy(t *testing.T) {
 	ctx := context.Background()
 	server, _, plan := newFetchPublishFixture(t)

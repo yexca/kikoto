@@ -154,6 +154,12 @@ func (session *filesystemWatcherSession) run(ctx context.Context) error {
 			session.scheduleFullScan(session.settleDelay)
 		case <-session.server.filesystemTriggerConfigChanged:
 			if err := session.reload(ctx); err != nil {
+				// The session ends with its unsent changes, such as when a new
+				// watch configuration replaces the watcher; a full scan from
+				// the next session covers them.
+				if session.pending {
+					session.retainFullScanRecovery()
+				}
 				return err
 			}
 		case <-session.timerC:

@@ -14,7 +14,8 @@ export type ProgressReport = {
   reportId: string;
   order: number;
   mediaItemId: number;
-  locationId: number;
+  /** The file location played, or null when it no longer exists and the checkpoint is saved for the media item alone. */
+  locationId: number | null;
   positionSeconds: number;
   durationSeconds: number | null;
   completed: boolean;

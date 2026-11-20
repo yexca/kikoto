@@ -743,11 +743,15 @@ func (s *Server) dispatchSubscriptionAvailabilityWatch(ctx context.Context, runI
 
 func (s *Server) finishCreatorSubscriptionJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, execution *creatorSubscriptionExecution) error {
 	result := execution.result
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	cancelled, err := workflowRunCancelledTx(ctx, tx, job.RunID)
+	if err != nil {
+		return err
+	}
 	catalogStatus, metadataStatus, watchStatus := "succeeded", "succeeded", "succeeded"
 	catalogFailures, metadataFailures, watchFailures := execution.failures["catalogs"], execution.failures["metadata"], execution.failures["watch"]
 	if len(catalogFailures) > 0 {
@@ -773,28 +777,17 @@ func (s *Server) finishCreatorSubscriptionJob(ctx context.Context, job workflowJ
 		{"watch", watchStatus, map[string]any{"state": execution.watch, "run_id": result.WatchRunID}, watchFailures},
 	}
 	for _, update := range updates {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
-		`, update.status, mustJSON(update.output), strings.Join(update.failures, "\n"), nodeIDs[update.node]); err != nil {
+		if err := finishWorkflowNodeRunTx(ctx, tx, nodeIDs[update.node], update.status, mustJSON(update.output), strings.Join(update.failures, "\n")); err != nil {
 			return err
 		}
 	}
 	errorMessage := strings.Join(result.Failures, "\n")
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, error_message = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, errorMessage, job.ID); err != nil {
+	if err := finishWorkflowRunResultTx(ctx, tx, job.RunID, job.ID, result.Status, errorMessage, 0, 0, mustJSON(result)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(result), job.RunID); err != nil {
-		return err
-	}
-	if result.Status == "succeeded" {
-		if err := updateWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
-			return err
-		}
-	} else if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, "Subscription refresh completed with some failures"); err != nil {
+	// A cancelled run keeps its result; the feeds below still receive the
+	// works the refresh found.
+	if err := updateWorkflowTriggerResultTx(ctx, tx, job.RunID, cancelled, result.Status, "Subscription refresh completed with some failures"); err != nil {
 		return err
 	}
 	for userID, codes := range execution.feed {
