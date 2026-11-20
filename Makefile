@@ -1,7 +1,7 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures dependency-audit frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: backend-race-shard backend-race-durations go-test-shard-test
-.PHONY: frontend-e2e-container playwright-image-check
+.PHONY: frontend-e2e-container frontend-e2e-linux playwright-image-check
 .PHONY: pr-description-check pr-description-test
 .PHONY: actionlint ci-metrics ci-metrics-test
 .PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
@@ -204,6 +204,32 @@ frontend-e2e: frontend-playwright-install
 # package. It runs the host's node_modules, so the host must be Linux.
 frontend-e2e-container: frontend-install
 	$(DOCKER) run --rm --ipc=host --user "$$(id -u):$$(id -g)" -e CI -e HOME=/tmp -v "$(CURDIR):/src" -w /src/frontend $(PLAYWRIGHT_IMAGE) npm run test:e2e -- $(E2E_ARGS)
+
+# The browser suite in the pinned Playwright image with DejaVu Sans, the
+# default sans font of the hosted ubuntu runners, as the only Latin sans font,
+# so text that wraps or overflows only with its wider metrics fails locally. It
+# streams VERSION and frontend/ into the container instead of mounting them,
+# runs npm ci there, and copies test-results back, so it also works from Git
+# Bash on Windows.
+# It needs a POSIX shell and network access for apt-get and npm.
+E2E_LINUX_CONTAINER ?= kikoto-e2e-linux
+E2E_LINUX_EXCLUDES := node_modules test-results playwright-report .vite dist coverage android ios
+frontend-e2e-linux: export MSYS_NO_PATHCONV := 1
+frontend-e2e-linux:
+	@$(DOCKER) rm -f $(E2E_LINUX_CONTAINER) >/dev/null 2>&1 || true
+	@rm -rf frontend/test-results
+	tar $(addprefix --exclude=frontend/,$(E2E_LINUX_EXCLUDES)) -cf - VERSION frontend | \
+	$(DOCKER) run -i --ipc=host --name $(E2E_LINUX_CONTAINER) -e CI=1 -v kikoto-e2e-linux-npm:/root/.npm $(PLAYWRIGHT_IMAGE) \
+	  bash -euc 'mkdir /work && tar -xf - -C /work && cd /work/frontend; \
+	    apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core >/dev/null; \
+	    rm -rf /usr/share/fonts/truetype/liberation* /usr/share/fonts/truetype/freefont; \
+	    fc-cache -f; fc-match sans-serif | grep -q "DejaVu Sans" || { echo "sans-serif is not DejaVu Sans: $$(fc-match sans-serif)" >&2; exit 1; }; \
+	    npm ci --engine-strict=false --no-audit; \
+	    npm run test:e2e -- "$$@"' frontend-e2e-linux $(E2E_ARGS); \
+	status=$$?; \
+	$(DOCKER) cp $(E2E_LINUX_CONTAINER):/work/frontend/test-results frontend/test-results >/dev/null 2>&1 || true; \
+	$(DOCKER) rm -f $(E2E_LINUX_CONTAINER) >/dev/null; \
+	exit $$status
 
 android-sync: frontend-build
 	cd frontend && $(NPX) cap sync android

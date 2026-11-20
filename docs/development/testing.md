@@ -528,6 +528,22 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
   beside another run's Vite server replaces `node_modules` under it and spoils
   that run. Stop the dev server first, or call the npm scripts directly while
   it runs.
+- Text metrics differ by platform font, so a title that overflows or an empty
+  state that wraps one more line can pass on Windows or macOS and fail on
+  Linux. The hosted ubuntu runners resolve the default sans font to DejaVu
+  Sans, which is wider than the Windows and macOS system fonts. The Playwright
+  image ships no DejaVu and resolves it to another font, so
+  `make frontend-e2e-container` does not show these failures either.
+  `make frontend-e2e-linux` runs the suite in the image that `PLAYWRIGHT_IMAGE`
+  pins with DejaVu Sans as its only Latin sans font; pass a spec or project
+  through `E2E_ARGS`, for example
+  `make frontend-e2e-linux E2E_ARGS="tests/e2e/route-error-boundary.spec.ts --project=mobile-chromium"`.
+  It streams `VERSION` and `frontend/` into a container, runs `npm ci` there
+  with `--engine-strict=false` because the image's Node is not the version
+  `engines` pins, and copies `frontend/test-results` back. It needs Docker, a
+  POSIX shell such as Git Bash, and network access for `apt-get` and `npm`, so
+  it is not part of `make ci-local`. Run it after changing text, spacing, or
+  sizing that a spec asserts on.
 - In a checkout without `frontend/node_modules`, `npx prettier` downloads the
   latest Prettier instead of the pinned one and `npx tsc` resolves to an
   unrelated package. Run `npm ci` in `frontend/` first.
