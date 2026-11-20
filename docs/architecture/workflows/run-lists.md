@@ -13,7 +13,10 @@ AI runs and items through `/api/translation/runs` and
 `POST /api/translation/runs/{id}/cancel` cancels a queued or running
 `ai_translation` run under the [ownership rule](workflows-page.md#workflow-permissions).
 Each returned translation run carries `canCancel`, which controls whether
-the Translation page offers the action.
+the Translation page offers the action. Each language of a run carries its
+`stage` (queued, translating, review, stopped, or done), the `done` items that
+have settled out of its `total`, and the `count` the stage names, so the page
+states a language's progress as the server worked it out from the item states.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
 Two tabs choose the list. **Now**, the default, shows from top to bottom the
@@ -53,8 +56,9 @@ latest run in one line: never run, queued or running, or how and when the run
 ended, with a link to that run. Every run of the workflow counts,
 whoever or whatever started it, so the Watch's line includes the checks a
 subscription refresh queued. The line shows for every account that can open
-the settings. The time and the link need `workflows:run`, which the run list
-and the run lists require; an account without it sees the run's status as the
+the settings. The time and the link need `workflows:run`, which the workflow
+status (`GET /api/workflow-status`, whose `latestRun` states the line) and the
+run lists require; an account without it sees the run's status as the
 settings endpoint reports it, without a time or link. A failed run is named
 as failed with its link always visible. The line never repeats the run's error
 text; the reason is in the run's details. A manual run from these settings

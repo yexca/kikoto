@@ -34,7 +34,6 @@ import { cn } from "@/lib/tailwindClassNames";
 type Tab = "updates" | "attention";
 
 const NOTIFICATION_PAGE_SIZE = 50;
-const ATTENTION_PREVIEW_SIZE = 5;
 const IDLE_POLL_MS = 30_000;
 // While the panel shows a running job, its progress refreshes at the Activity cadence.
 const RUNNING_POLL_MS = 5_000;
@@ -70,19 +69,28 @@ export function NotificationCenter({
   const [attentionRuns, setAttentionRuns] = useState<WorkflowRun[]>([]);
   const [attentionCount, setAttentionCount] = useState(0);
   const [runningCount, setRunningCount] = useState(0);
-  const [runningRuns, setRunningRuns] = useState<WorkflowRun[]>([]);
+  const [runningRun, setRunningRun] = useState<WorkflowRun | null>(null);
+  // The badge, as the server counts it.
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Stable so the polling effect re-subscribes only when its inputs change,
   // while each poll reads the current page and open state.
   const refresh = useStableCallback((requestedPage: number = notificationPage) => {
     api
-      .listNotifications(requestedPage, NOTIFICATION_PAGE_SIZE)
-      .then((page) => {
-        setNotifications(page.notifications);
-        setNotificationCount(page.total);
-        setNotificationPage(page.page);
-        setNotificationTotalPages(page.totalPages);
-        setClearableCount(page.clearableTotal);
+      .getNotificationSummary(requestedPage, NOTIFICATION_PAGE_SIZE)
+      .then((summary) => {
+        const page = summary.notifications;
+        setNotifications(page?.notifications ?? []);
+        setNotificationCount(page?.total ?? 0);
+        setNotificationPage(page?.page ?? 1);
+        setNotificationTotalPages(page?.totalPages ?? 1);
+        setClearableCount(page?.clearableTotal ?? 0);
+        const attention = summary.attention;
+        setAttentionRuns(attention?.runs ?? []);
+        setAttentionCount(attention?.total ?? 0);
+        setRunningCount(attention?.running ?? 0);
+        setRunningRun(attention?.runningRun ?? null);
+        setUnreadCount(summary.unreadCount);
       })
       .catch(() => {
         setNotifications([]);
@@ -90,34 +98,11 @@ export function NotificationCenter({
         setNotificationPage(1);
         setNotificationTotalPages(1);
         setClearableCount(0);
-      });
-    if (!canViewWorkflows) {
-      setAttentionRuns([]);
-      setAttentionCount(0);
-      setRunningCount(0);
-      setRunningRuns([]);
-      return;
-    }
-    api
-      .listWorkflowRuns(1, ATTENTION_PREVIEW_SIZE, "attention")
-      .then((page) => {
-        setAttentionRuns(page.runs);
-        setAttentionCount(page.total);
-        const running = page.viewTotals.running;
-        setRunningCount(running);
-        if (running === 0) {
-          setRunningRuns([]);
-          return;
-        }
-        // The running row only renders inside the open panel.
-        if (!open) return;
-        return api.listWorkflowRuns(1, 1, "running").then((runningPage) => setRunningRuns(runningPage.runs));
-      })
-      .catch(() => {
         setAttentionRuns([]);
         setAttentionCount(0);
         setRunningCount(0);
-        setRunningRuns([]);
+        setRunningRun(null);
+        setUnreadCount(0);
       });
   });
 
@@ -142,8 +127,6 @@ export function NotificationCenter({
     };
   }, [canViewWorkflows, notificationPage, pollFast, refresh, userId]);
 
-  const unreadCount = notificationCount + attentionCount;
-
   const openChange = (next: boolean) => {
     setOpen(next);
     if (!next) return;
@@ -151,7 +134,7 @@ export function NotificationCenter({
     setTab(notificationCount === 0 && attentionCount > 0 ? "attention" : "updates");
   };
 
-  // Refresh after the open state commits so the running row is fetched too.
+  // Opening the panel reads the current state at once.
   useEffect(() => {
     if (open) refresh();
   }, [open, refresh]);
@@ -167,12 +150,14 @@ export function NotificationCenter({
     const dismissed = notifications.find((item) => item.id === id);
     setNotifications((items) => items.filter((item) => item.id !== id));
     setNotificationCount((count) => Math.max(0, count - 1));
+    setUnreadCount((count) => Math.max(0, count - 1));
     if (dismissed?.status === "succeeded") setClearableCount((count) => Math.max(0, count - 1));
     try {
       await api.dismissNotification(id);
     } catch {
       setNotifications(previous);
       setNotificationCount(previousCount);
+      setUnreadCount((count) => count + 1);
       if (dismissed?.status === "succeeded") setClearableCount((count) => count + 1);
     }
   };
@@ -293,7 +278,7 @@ export function NotificationCenter({
               </span>
               <ChevronRight className="h-3.5 w-3.5" />
             </span>
-            {runningRuns[0] && <ActivityRunSummary run={runningRuns[0]} />}
+            {runningRun && <ActivityRunSummary run={runningRun} />}
           </button>
         )}
 

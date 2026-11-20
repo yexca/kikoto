@@ -25,10 +25,12 @@ import {
   currentUserFixture,
   fixtureTimestamp,
   librarySourceFixture,
+  notificationSummaryFixture,
   runtimeSettingsFixture,
   workflowRunDetailFixture,
   workflowRunFixture,
   workflowRunsPageFixture,
+  workflowStatusFixture,
   type ApiErrorBody,
   type ApiResponse,
 } from "./fixtures/api";
@@ -342,7 +344,7 @@ async function mockWorkflows(
       });
       return;
     }
-    if (url.pathname === "/api/notifications") {
+    if (url.pathname === "/api/notifications" || url.pathname === "/api/notifications/summary") {
       const requestedPage = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
       const requestedPageSize = Math.max(1, Number(url.searchParams.get("pageSize") ?? "50"));
       const response =
@@ -354,14 +356,46 @@ async function mockWorkflows(
             notification.type === "remote_track" ||
             notification.type === "availability_watch_ready"),
       ).length;
+      const notifications = {
+        page: requestedPage,
+        pageSize: requestedPageSize,
+        totalPages: 1,
+        clearableTotal,
+        ...response,
+      } satisfies WorkflowNotificationsPage;
+      const attentionRuns = runsPage.runs.filter((run) => runInView(run, "attention"));
+      await route.fulfill({
+        json: notificationSummaryFixture(notifications, {
+          total: attentionRuns.length,
+          runs: attentionRuns.slice(0, 5),
+          running: runsPage.viewTotals.running,
+          runningRun: runsPage.runs.find((run) => runInView(run, "running")) ?? null,
+        }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-status") {
+      const codes = url.searchParams.getAll("code");
       await route.fulfill({
         json: {
-          page: requestedPage,
-          pageSize: requestedPageSize,
-          totalPages: 1,
-          clearableTotal,
-          ...response,
-        } satisfies WorkflowNotificationsPage,
+          workflows: systemDefinitions
+            .filter((definition) => codes.length === 0 || codes.includes(definition.code))
+            .map((definition) =>
+              workflowStatusFixture(
+                definition,
+                // The mock's run history stands for every operation's, but only a run of the operation itself
+                // is active on it, and Metadata has only ever run what is active.
+                runsPage.runs
+                  .filter((run) =>
+                    runInView(run, "running")
+                      ? run.workflowCode === definition.code
+                      : definition.code !== "metadata_sync",
+                  )
+                  .map((run) => ({ ...run, workflowCode: definition.code })),
+                activeTriggers,
+              ),
+            ),
+        },
       });
       return;
     }
@@ -744,6 +778,20 @@ function operation(page: Page, name: string) {
 /** The part of Now that lists what runs on its own next. */
 function nextTriggers(page: Page) {
   return page.getByRole("region", { name: "Next", exact: true });
+}
+
+/** Answers each operation's workflow status from the runs a test holds for it. */
+async function mockWorkflowStatuses(page: Page, runsOf: (code: string) => WorkflowRun[]) {
+  await page.route("**/api/workflow-status*", async (route) => {
+    const codes = new URL(route.request().url()).searchParams.getAll("code");
+    await route.fulfill({
+      json: {
+        workflows: systemDefinitions
+          .filter((definition) => codes.length === 0 || codes.includes(definition.code))
+          .map((definition) => workflowStatusFixture(definition, runsOf(definition.code), workflowTriggers)),
+      },
+    });
+  });
 }
 
 async function mockMetadataRun(page: Page) {
@@ -1495,6 +1543,7 @@ test("a hidden tab pauses operation status polling and refreshes when shown agai
     finishedAt: "",
   };
   let queueRequests = 0;
+  await mockWorkflowStatuses(page, (code) => (code === "local_library_scan" ? [running] : []));
   await page.route("**/api/workflow-runs?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     // The Workflows page reads the whole active queue; the notification panel reads a shorter one.
@@ -2192,6 +2241,7 @@ test("an operation runs from its card, shows the run, and cannot start again unt
     completedNodeRuns: 0,
     ...overrides,
   });
+  await mockWorkflowStatuses(page, (code) => (code === "local_library_scan" && scan ? [scan] : []));
   await page.route("**/api/workflow-runs?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     const active = scan !== null && ["queued", "running"].includes(scan.status);

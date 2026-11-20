@@ -52,9 +52,19 @@ control returns as soon as the requested run is listed and another scope can
 queue behind the active run. The card then follows the running run, ahead of a
 queued one, and counts its other active runs; a request that queued behind
 another active run of the operation says so with a link to the new run. A
-repeat of the same metadata scope joins the active run on the backend. The
-page reads the active queue every few seconds while work is active and every
-15 seconds otherwise, and reloads each operation's latest run and the triggers
+repeat of the same metadata scope joins the active run on the backend.
+
+`GET /api/workflow-status` states each card's status from every run the
+viewer may see, so it holds however many runs are active. It takes the
+workflow codes to answer for (`code`, repeatable; every system workflow when
+none is named) and returns, per workflow, the `latestRun`, the `currentRun`
+that states the card (the newest running run, else the newest queued run, else
+the latest), `activeRuns` (queued plus running), `needsReview` (the current
+run ended with a candidate decision or a retryable metadata failure waiting),
+`nextRunAt` (the soonest next run among the enabled interval schedules), and
+`stageCount`. It needs `workflows:run`. The page reads the status of its
+cards together with the active queue that feeds Running, every few seconds
+while work is active and every 15 seconds otherwise, and reloads the triggers
 when the queue changes, so a run started by a trigger, at startup, or from
 another browser shows on its card and, for an exclusive operation, holds its
 run control the same way. Demo reads both once. A hidden tab skips the poll

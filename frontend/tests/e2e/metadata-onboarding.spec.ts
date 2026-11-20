@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { MaintenanceWorkPage, MetadataOnboarding, WorkflowNotificationsPage } from "../../src/lib/api";
-import { fixtureTimestamp, type ApiErrorBody } from "./fixtures/api";
+import { fixtureTimestamp, notificationSummaryFixture, type ApiErrorBody } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
 
 for (const layout of ["mobile", "@desktop"]) {
@@ -96,28 +96,31 @@ for (const canViewActivity of [true, false]) {
     await page.route("**/api/metadata/onboarding**", (route) =>
       route.fulfill({ json: { status: "partial", missingWorks: 1, runId: 42 } satisfies MetadataOnboarding }),
     );
-    await page.route("**/api/notifications?*", (route) =>
+    await page.route("**/api/notifications/summary?*", (route) =>
       route.fulfill({
-        json: {
-          notifications: [
-            {
-              id: 1,
-              workflowRunId: 42,
-              type: "metadata_onboarding",
-              status: "failed",
-              workId: null,
-              fileSourceId: null,
-              workCode: "",
-              message: "",
-              createdAt: fixtureTimestamp,
-            },
-          ],
-          page: 1,
-          pageSize: 20,
-          total: 1,
-          totalPages: 1,
-          clearableTotal: 0,
-        } satisfies WorkflowNotificationsPage,
+        json: notificationSummaryFixture(
+          {
+            notifications: [
+              {
+                id: 1,
+                workflowRunId: 42,
+                type: "metadata_onboarding",
+                status: "failed",
+                workId: null,
+                fileSourceId: null,
+                workCode: "",
+                message: "",
+                createdAt: fixtureTimestamp,
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            total: 1,
+            totalPages: 1,
+            clearableTotal: 0,
+          } satisfies WorkflowNotificationsPage,
+          null,
+        ),
       }),
     );
     let lastRunFilter: string | null = null;

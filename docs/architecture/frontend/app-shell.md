@@ -67,9 +67,15 @@ server and Demo user, and the API client sends it with authenticated requests
 The notification panel (`app/header/NotificationCenter`) splits personal workflow
 notifications (**Updates**) from the global **Needs attention** runs for
 workflow operators, shows the newest running job above both, and ends in an
-**Open Workflows** button. Its badge counts unread notifications plus runs needing attention,
-and a dot marks running work. It polls every 30 seconds, every 5 seconds while
-open over a running job, and skips hidden documents.
+**Open Workflows** button. One request, `GET /api/notifications/summary`,
+returns what the panel shows: `unreadCount` (the badge, the account's
+undismissed notifications plus the runs needing attention it may see), one
+notifications page (`page` and `pageSize`, as the notification list takes
+them; null without `library:read`), and the workflow attention state (the
+newest five runs needing attention with their total, the count of queued and
+running runs, and the newest of them; null without `workflows:run`). A dot
+marks running work. It polls every 30 seconds, every 5 seconds while open over
+a running job, and skips hidden documents.
 
 The header owns the desktop page title and carries no description, so page
 content owns any additional context it needs. Mobile browsing destinations use

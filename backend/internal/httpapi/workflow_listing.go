@@ -47,6 +47,48 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, visible)
 }
 
+// maxWorkflowStatusCodes bounds how many workflows one status request names.
+const maxWorkflowStatusCodes = 50
+
+// listWorkflowStatuses answers where each system workflow stands: its latest
+// and current run, how many runs are active, whether it needs review, its next
+// scheduled run, and its stage count. The answer comes from every run the
+// viewer may see, so it does not depend on how many runs are active.
+func (s *Server) listWorkflowStatuses(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
+		return
+	}
+	codes := []string{}
+	for _, code := range r.URL.Query()["code"] {
+		if code = strings.TrimSpace(code); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	if len(codes) > maxWorkflowStatusCodes {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many workflow codes"})
+		return
+	}
+	statuses, err := s.workflowStore.ListDefinitionStatuses(r.Context(), workflow.StatusOptions{
+		Codes: codes, ViewerUserID: actor.ID, CanViewAll: canViewAllWorkflowRuns(actor), DemoShowcase: s.cfg.IsDemo(),
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	visible := statuses[:0]
+	redactor := s.remoteAddressRedactorFor(r.Context())
+	for _, status := range statuses {
+		if status.Code == "remote_work_save" {
+			continue
+		}
+		redactor.run(status.LatestRun)
+		redactor.run(status.CurrentRun)
+		visible = append(visible, status)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflows": visible})
+}
+
 func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
 	if !ok {

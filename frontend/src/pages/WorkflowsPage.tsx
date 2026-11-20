@@ -33,7 +33,7 @@ import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/trigge
 import { OperationTriggersDialog } from "@/features/workflows/triggers/OperationTriggersDialog";
 import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation";
 import { openWorkflowPath } from "@/features/workflows/workflowLinks";
-import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
+import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
 import { pageManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
@@ -158,7 +158,7 @@ export function WorkflowsPage({
    */
   const startRun = async (operation: Operation, request: () => Promise<{ runId: number }>, failure: string) => {
     const code = operation.definition.code;
-    const active = runs.activeRunsOf(code);
+    const before = runs.statusOf(code);
     setPending((current) => ({ ...current, [code]: { runId: null } }));
     // Full applies to the run it was chosen for.
     setFullChoices((current) => ({ ...current, [code]: false }));
@@ -166,7 +166,7 @@ export function WorkflowsPage({
       const result = await request();
       setPending((current) => ({ ...current, [code]: { runId: result.runId } }));
       setRevision((value) => value + 1);
-      if (!operation.exclusive && active.length > 0 && !active.some((run) => run.id === result.runId))
+      if (!operation.exclusive && (before?.activeRuns ?? 0) > 0 && before?.currentRun?.id !== result.runId)
         toast.notify({
           kind: "info",
           message: t("workflowPage.operations.queuedBehind", { id: result.runId }),
@@ -215,6 +215,8 @@ export function WorkflowsPage({
         nextRunAt: null,
       });
       setTriggers((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      // The operation's next run moves with its triggers.
+      setRevision((value) => value + 1);
     } catch (error) {
       setTriggers((current) => current.map((item) => (item.id === trigger.id ? trigger : item)));
       toast.notify(
@@ -265,12 +267,11 @@ export function WorkflowsPage({
   const renderCard = (operation: Operation) => {
     const { definition } = operation;
     const code = definition.code;
-    const run = runs.runOf(code);
-    const active = runs.activeRunsOf(code);
-    // A requested run is listed once it is active, even while the card follows an older running one.
+    const status = runs.statusOf(code);
+    // A requested run is listed once it is the newest run, even while the card follows an older running one.
     const requested = pending[code];
-    const listed = requested?.runId != null && active.some((item) => item.id >= (requested.runId ?? 0));
-    const state = operationState(run, listed ? undefined : requested);
+    const listed = requested?.runId != null && (status?.latestRun?.id ?? 0) >= requested.runId;
+    const state = operationState(status, listed ? undefined : requested);
     const locked = operationLocked(operation, state);
     const full = fullChoices[code] ?? false;
     return (
@@ -279,10 +280,13 @@ export function WorkflowsPage({
         code={code}
         icon={workflowIcon(code)}
         name={cardName(operation)}
-        schedule={workflowTriggerSummary(triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id))}
+        schedule={workflowTriggerSummary(
+          triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id),
+          status?.nextRunAt ?? null,
+        )}
         state={state}
-        moreActive={Math.max(0, active.length - 1)}
-        stageCount={parseNodes(definition.definitionJson).length}
+        moreActive={Math.max(0, (status?.activeRuns ?? 0) - 1)}
+        stageCount={status?.stageCount ?? 0}
         locked={locked}
         runAllowed={permitted}
         runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
@@ -496,7 +500,10 @@ export function WorkflowsPage({
           readOnly={readOnly}
           metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
           onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
-          onChanged={refresh}
+          onChanged={() => {
+            refresh();
+            setRevision((value) => value + 1);
+          }}
           onClose={() => setTriggerDialog(null)}
         />
       )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
+import type { WorkflowDefinition, WorkflowRun, WorkflowStatus } from "@/lib/api";
 
 import {
   activeRunProgress,
@@ -24,6 +24,13 @@ function definition(id: number, code: string): WorkflowDefinition {
     createdAt: "",
     updatedAt: "",
   };
+}
+
+function status(
+  currentRun: WorkflowRun | null,
+  needsReview = false,
+): Pick<WorkflowStatus, "currentRun" | "needsReview"> {
+  return { currentRun, needsReview };
 }
 
 function run(overrides: Partial<WorkflowRun>): WorkflowRun {
@@ -86,24 +93,27 @@ describe("operations", () => {
 describe("operationState", () => {
   it("waits for the latest run before saying an operation never ran", () => {
     expect(operationState(undefined, undefined).phase).toBe("loading");
-    expect(operationState(null, undefined).phase).toBe("never");
+    expect(operationState(status(null), undefined).phase).toBe("never");
   });
 
   it("holds an operation from the request until the run it created ends", () => {
     const previous = run({ id: 7, status: "failed" });
     // Requested, not answered yet; then answered, with the list still showing the previous run.
-    expect(operationBusy(operationState(previous, { runId: null }))).toBe(true);
-    expect(operationState(previous, { runId: 8 }).phase).toBe("starting");
-    expect(operationState(run({ id: 8, status: "queued" }), { runId: 8 }).phase).toBe("queued");
-    expect(operationBusy(operationState(run({ id: 8, status: "running" }), { runId: 8 }))).toBe(true);
-    const finished = operationState(run({ id: 8, status: "succeeded" }), { runId: 8 });
+    expect(operationBusy(operationState(status(previous), { runId: null }))).toBe(true);
+    expect(operationState(status(previous), { runId: 8 }).phase).toBe("starting");
+    expect(operationState(status(run({ id: 8, status: "queued" })), { runId: 8 }).phase).toBe("queued");
+    expect(operationBusy(operationState(status(run({ id: 8, status: "running" })), { runId: 8 }))).toBe(true);
+    const finished = operationState(status(run({ id: 8, status: "succeeded" })), { runId: 8 });
     expect(finished.phase).toBe("finished");
     expect(operationBusy(finished)).toBe(false);
   });
 
   it("keeps a failure and an outcome that waits for review on the operation", () => {
-    expect(operationState(run({ status: "failed" }), undefined)).toMatchObject({ tone: "error", review: false });
-    expect(operationState(run({ status: "partial", pendingCandidates: 2 }), undefined)).toMatchObject({
+    expect(operationState(status(run({ status: "failed" })), undefined)).toMatchObject({
+      tone: "error",
+      review: false,
+    });
+    expect(operationState(status(run({ status: "partial" }), true), undefined)).toMatchObject({
       tone: "warning",
       review: true,
     });
@@ -117,22 +127,22 @@ describe("operationLocked", () => {
     definition(3, "metadata_sync"),
   ]);
   const byCode = (code: string) => operations.find((item) => item.definition.code === code)!;
-  const running = operationState(run({ id: 8, status: "running" }), undefined);
+  const running = operationState(status(run({ id: 8, status: "running" })), undefined);
 
   it("holds a library-wide operation until its run ends", () => {
     expect(operationLocked(byCode("local_library_scan"), running)).toBe(true);
-    expect(operationLocked(byCode("local_media_index"), operationState(run({ status: "queued" }), undefined))).toBe(
-      true,
-    );
+    expect(
+      operationLocked(byCode("local_media_index"), operationState(status(run({ status: "queued" })), undefined)),
+    ).toBe(true);
   });
 
   it("lets an operation that runs per target start another target while one runs", () => {
     const metadataSync = byCode("metadata_sync");
     expect(operationLocked(metadataSync, running)).toBe(false);
     // A click holds it only until the run it requested is listed.
-    expect(operationLocked(metadataSync, operationState(run({ id: 8, status: "running" }), { runId: null }))).toBe(
-      true,
-    );
+    expect(
+      operationLocked(metadataSync, operationState(status(run({ id: 8, status: "running" })), { runId: null })),
+    ).toBe(true);
   });
 });
 

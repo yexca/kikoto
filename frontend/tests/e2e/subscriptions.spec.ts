@@ -17,6 +17,7 @@ import {
   workFixture,
   workflowRunDetailFixture,
   workflowRunFixture,
+  workflowStatusFixture,
   type ApiErrorBody,
 } from "./fixtures/api";
 import type {
@@ -295,11 +296,15 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       );
       return;
     }
-    if (url.pathname === "/api/workflow-runs") {
-      const latest = server.workflowRuns?.[url.searchParams.get("workflowCode") ?? ""];
-      await route.fulfill({
-        json: { runs: latest ? [latest] : [], page: 1, pageSize: 1, total: latest ? 1 : 0, viewTotals: { running: 0 } },
+    if (url.pathname === "/api/workflow-status") {
+      const workflows = url.searchParams.getAll("code").map((code) => {
+        const latest = server.workflowRuns?.[code];
+        return workflowStatusFixture(
+          { id: 0, code, definitionJson: "{}" },
+          latest ? [{ ...latest, workflowCode: code }] : [],
+        );
       });
+      await route.fulfill({ json: { workflows } });
       return;
     }
     if (url.pathname === "/api/subscriptions/refresh") {

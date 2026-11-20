@@ -10,7 +10,7 @@ const idlePollMs = 20_000;
 
 /**
  * A workflow's newest run, for a settings panel that states it in one line.
- * The run list answers for accounts that may open Activity (`enabled`); it
+ * The workflow status answers for accounts that may open Activity (`enabled`); it
  * reads again while a run is active and on a slow timer otherwise, so a run
  * started by a schedule or in another browser shows. `known` is what the
  * panel's own endpoint reports; it states the run alone for an account that
@@ -41,8 +41,8 @@ export function useLatestRun({
       if (fetching || document.hidden || controller.signal.aborted) return;
       fetching = true;
       try {
-        const page = await api.listWorkflowRuns(1, 1, "", "", code, controller.signal);
-        if (!controller.signal.aborted) setListed(page.runs[0] ?? null);
+        const [status] = await api.listWorkflowStatuses([code], controller.signal);
+        if (!controller.signal.aborted) setListed(status?.latestRun ?? null);
       } catch {
         // Keep the last answer; Activity reports load failures where they block a task.
       } finally {

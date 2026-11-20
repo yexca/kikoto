@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { TranslationRun, TranslationRunLanguage } from "@/lib/translationApi";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
-import { runLanguageStage, runStatusBadge } from "./translationCenterModel";
+import { runStatusBadge } from "./translationCenterModel";
 
 /**
  * Translate with AI runs by work: one row per language with its stage and
@@ -81,12 +81,17 @@ export function TranslationRunList({
 
 function LanguageRow({ language, name }: { language: TranslationRunLanguage; name: string }) {
   const { t } = useTranslation();
-  const stage = runLanguageStage(language);
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2 pl-9 sm:px-4 sm:pl-10">
       <span className="min-w-0 flex-1">{name}</span>
-      <span className="tabular-nums text-muted-foreground">{t(`translationCenter.stages.${stage.stage}`, stage)}</span>
-      {stage.stage === "translating" && language.chunks > 0 && (
+      <span className="tabular-nums text-muted-foreground">
+        {t(`translationCenter.stages.${language.stage}`, {
+          done: language.done,
+          total: language.total,
+          count: language.count,
+        })}
+      </span>
+      {language.stage === "translating" && language.chunks > 0 && (
         <ProgressBar value={language.chunksDone} total={language.chunks} />
       )}
     </div>

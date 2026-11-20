@@ -101,14 +101,17 @@ export type TriggerSummary = {
   watching: boolean;
   /** Interval schedules, as a count of days, hours, or minutes, shortest first. */
   intervals: IntervalParts[];
-  /** The soonest next run among the interval schedules. */
+  /** The soonest next run among the interval schedules, as the server states it. */
   nextRunAt: string | null;
   /** Every trigger is switched off. */
   paused: boolean;
 };
 
-/** What an operation's enabled triggers start it on, or null when it has none and runs only by hand. */
-export function workflowTriggerSummary(triggers: WorkflowTrigger[]): TriggerSummary | null {
+/**
+ * What an operation's enabled triggers start it on, or null when it has none
+ * and runs only by hand. `nextRunAt` is the server's soonest next run.
+ */
+export function workflowTriggerSummary(triggers: WorkflowTrigger[], nextRunAt: string | null): TriggerSummary | null {
   if (triggers.length === 0) return null;
   const enabled = triggers.filter((trigger) => trigger.enabled);
   const schedules = enabled.filter((trigger) => trigger.triggerType === "schedule");
@@ -119,11 +122,6 @@ export function workflowTriggerSummary(triggers: WorkflowTrigger[]): TriggerSumm
         .filter((value): value is number => typeof value === "number" && value > 0),
     ),
   ].sort((left, right) => left - right);
-  const nextRunAt =
-    schedules
-      .map((trigger) => trigger.nextRunAt)
-      .filter((value): value is string => Boolean(value))
-      .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? null;
   return {
     startup: enabled.some((trigger) => trigger.triggerType === "startup"),
     watching: enabled.some((trigger) => trigger.triggerType === "filesystem_event"),

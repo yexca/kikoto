@@ -42,9 +42,15 @@ import type {
   VoiceWorksPage,
   Work,
   WorkDetail,
+  WorkflowDefinition,
+  WorkflowNotificationsPage,
+  NotificationAttention,
+  NotificationSummary,
   WorkflowRun,
   WorkflowRunDetail,
   WorkflowRunsPage,
+  WorkflowStatus,
+  WorkflowTrigger,
   WorkProgressSummary,
   WorkResolveResponse,
   WorksPage,
@@ -943,6 +949,64 @@ export function workflowRunsPageFixture(
     total: runs.length,
     viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
     ...overrides,
+  };
+}
+
+/**
+ * The status the server states for a workflow, from the runs and triggers a
+ * mock holds: the running run, else the newest queued one, else the newest run
+ * is current; a run that ended with something to decide needs review.
+ */
+export function workflowStatusFixture(
+  definition: Pick<WorkflowDefinition, "id" | "code" | "definitionJson">,
+  runs: readonly WorkflowRun[],
+  triggers: readonly WorkflowTrigger[] = [],
+): WorkflowStatus {
+  const own = runs.filter((run) => run.workflowCode === definition.code).sort((left, right) => right.id - left.id);
+  const active = own.filter((run) => run.status === "queued" || run.status === "running");
+  const currentRun = active.find((run) => run.status === "running") ?? active[0] ?? own[0] ?? null;
+  const nextRuns = triggers
+    .filter(
+      (trigger) =>
+        trigger.workflowDefinitionId === definition.id &&
+        trigger.enabled &&
+        trigger.triggerType === "schedule" &&
+        trigger.nextRunAt,
+    )
+    .map((trigger) => trigger.nextRunAt as string)
+    .sort();
+  let stageCount = 0;
+  try {
+    const nodes = (JSON.parse(definition.definitionJson) as { nodes?: unknown }).nodes;
+    stageCount = Array.isArray(nodes) ? nodes.length : 0;
+  } catch {
+    stageCount = 0;
+  }
+  return {
+    definitionId: definition.id,
+    code: definition.code,
+    stageCount,
+    latestRun: own[0] ?? null,
+    currentRun,
+    activeRuns: active.length,
+    needsReview:
+      currentRun !== null &&
+      currentRun.status !== "queued" &&
+      currentRun.status !== "running" &&
+      (currentRun.pendingCandidates > 0 || (currentRun.pendingFailedMetadata ?? 0) > 0),
+    nextRunAt: nextRuns[0] ?? null,
+  };
+}
+
+/** The header bell's summary: the server adds the notifications total and the attention total into the badge. */
+export function notificationSummaryFixture(
+  notifications: WorkflowNotificationsPage | null,
+  attention: NotificationAttention | null,
+): NotificationSummary {
+  return {
+    unreadCount: (notifications?.total ?? 0) + (attention?.total ?? 0),
+    notifications,
+    attention,
   };
 }
 

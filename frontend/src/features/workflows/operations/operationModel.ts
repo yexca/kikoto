@@ -1,7 +1,7 @@
 import { metadataSyncDefaultValues, metadataSyncPayload } from "@/features/workflows/metadataSyncModel";
 import { isActiveRunStatus, runStatusTone, type RunTone } from "@/features/workflows/runPresentation";
 import type { SystemRunKind, SystemRunOptions } from "@/features/workflows/workflowPageModel";
-import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
+import type { WorkflowDefinition, WorkflowRun, WorkflowStatus } from "@/lib/api";
 
 /** What the Workflows page offers: the library maintenance a person starts by hand. */
 
@@ -89,25 +89,23 @@ export type OperationState =
   | { phase: "finished"; run: WorkflowRun; tone: RunTone; review: boolean };
 
 /**
- * An operation's state from its newest run. A run requested on this page
- * counts as starting until a run at least as new is listed, so the row never
- * falls back to the previous outcome between the request and the next poll.
+ * An operation's state from its server status, which names the run that
+ * states it and whether that run waits for review; `undefined` until the first
+ * answer. A run requested on this page counts as starting until a run at
+ * least as new is listed, so the row never falls back to the previous outcome
+ * between the request and the next poll.
  */
 export function operationState(
-  run: WorkflowRun | null | undefined,
+  status: Pick<WorkflowStatus, "currentRun" | "needsReview"> | undefined,
   pending: { runId: number | null } | undefined,
 ): OperationState {
+  const run = status ? status.currentRun : undefined;
   if (pending && (pending.runId === null || !run || run.id < pending.runId)) return { phase: "starting" };
   if (run === undefined) return { phase: "loading" };
   if (run === null) return { phase: "never" };
   if (run.status === "queued") return { phase: "queued", run };
   if (isActiveRunStatus(run.status)) return { phase: "running", run };
-  return {
-    phase: "finished",
-    run,
-    tone: runStatusTone(run.status),
-    review: run.pendingCandidates > 0 || (run.pendingFailedMetadata ?? 0) > 0,
-  };
+  return { phase: "finished", run, tone: runStatusTone(run.status), review: status?.needsReview ?? false };
 }
 
 /** The operation has a run starting, queued, or running. */

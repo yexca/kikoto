@@ -360,6 +360,44 @@ export type WorkflowNotificationsPage = {
   clearableTotal: number;
 };
 
+/** The workflow half of the header bell: runs that need attention and the newest active run. */
+export type NotificationAttention = {
+  /** Every run needing attention; `runs` lists the newest few. */
+  total: number;
+  runs: WorkflowRun[];
+  /** The queued and running runs; `runningRun` is the newest. */
+  running: number;
+  runningRun: WorkflowRun | null;
+};
+
+/** What the header bell shows, as the server decided it. */
+export type NotificationSummary = {
+  /** The badge: undismissed notifications plus runs needing attention. */
+  unreadCount: number;
+  /** Null for an account without library access. */
+  notifications: WorkflowNotificationsPage | null;
+  /** Null for an account that cannot list workflow runs. */
+  attention: NotificationAttention | null;
+};
+
+/** One system workflow's status, from every run the viewer may see. */
+export type WorkflowStatus = {
+  definitionId: number;
+  code: string;
+  /** The stages the workflow declares. */
+  stageCount: number;
+  /** The newest run of any status; null when it never ran. */
+  latestRun: WorkflowRun | null;
+  /** The run that states the status: the running run, else the newest queued run, else the latest run. */
+  currentRun: WorkflowRun | null;
+  /** Queued and running runs. */
+  activeRuns: number;
+  /** The current run ended with candidates or metadata failures still waiting for a decision. */
+  needsReview: boolean;
+  /** The soonest next run among the enabled interval schedules. */
+  nextRunAt: string | null;
+};
+
 export type LocalMediaIndexMode = "incremental" | "full";
 
 export type LocalMediaIndexResult = {
@@ -511,11 +549,17 @@ async function streamWorkflowRunEvents(
 }
 
 export const workflowApi = {
-  listNotifications: (page = 1, pageSize = 50) =>
-    getJSON<WorkflowNotificationsPage>(`/api/notifications?page=${page}&pageSize=${pageSize}`),
+  getNotificationSummary: (page = 1, pageSize = 50) =>
+    getJSON<NotificationSummary>(`/api/notifications/summary?page=${page}&pageSize=${pageSize}`),
   dismissNotification: (id: number) => deleteJSON<{ ok: boolean }>(`/api/notifications/${id}`),
   clearSucceededNotifications: () => postJSON<{ ok: boolean; dismissed: number }>("/api/notifications/clear-succeeded"),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
+  /** The status of the named system workflows, or of every one when none is named. */
+  listWorkflowStatuses: (codes: readonly string[] = [], signal?: AbortSignal) =>
+    getJSON<{ workflows: WorkflowStatus[] }>(
+      `/api/workflow-status${codes.length > 0 ? `?${codes.map((code) => `code=${encodeURIComponent(code)}`).join("&")}` : ""}`,
+      signal,
+    ).then((response) => response.workflows),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
   updateAvailabilityWatch: (payload: { sourceId: number | null }) =>
     putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),

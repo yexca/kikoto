@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type WorkflowRun } from "@/lib/api";
+import { api, type WorkflowRun, type WorkflowStatus } from "@/lib/api";
 
 const activeListSize = 50;
 const busyPollMs = 3000;
@@ -14,10 +14,12 @@ type ActiveQueue = {
 };
 
 /**
- * The newest run of each listed operation. The active queue is polled, quickly
- * only while work is active, so a run started by a schedule, at startup, or in
- * another browser shows on its operation; each operation's latest run reloads
- * when the queue changes instead of on its own timer.
+ * The status of each listed operation, from the server. The status and the
+ * active queue are polled together, quickly only while work is active, so a
+ * run started by a schedule, at startup, or in another browser shows on its
+ * operation. The queue only feeds the Running list; an operation's run, its
+ * active count, and whether it needs review come from its status, which holds
+ * however many runs are active.
  */
 export function useOperationRuns({
   codes,
@@ -29,8 +31,9 @@ export function useOperationRuns({
   staticDemo: boolean;
 }) {
   const [queue, setQueue] = useState<ActiveQueue>({ runs: [], running: 0, attention: 0 });
-  const [latest, setLatest] = useState<Record<string, WorkflowRun | null>>({});
+  const [statuses, setStatuses] = useState<Record<string, WorkflowStatus>>({});
   const busy = queue.running > 0;
+  const codesKey = codes.join(",");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,16 +41,29 @@ export function useOperationRuns({
     const load = async () => {
       if (fetching || document.hidden || controller.signal.aborted) return;
       fetching = true;
+      const wanted = codesKey ? codesKey.split(",") : [];
       try {
-        const page = await api.listWorkflowRuns(1, activeListSize, "running", "", "", controller.signal);
+        // Each answer stands alone; one that fails keeps its last known state.
+        const [page, listed] = await Promise.allSettled([
+          api.listWorkflowRuns(1, activeListSize, "running", "", "", controller.signal),
+          wanted.length > 0 ? api.listWorkflowStatuses(wanted, controller.signal) : Promise.resolve([]),
+        ]);
         if (controller.signal.aborted) return;
-        setQueue({
-          runs: page.runs,
-          running: page.viewTotals?.running ?? page.total,
-          attention: page.viewTotals?.attention ?? 0,
-        });
-      } catch {
-        // Keep the last known queue; the run lists report load failures where they block a task.
+        if (page.status === "fulfilled") {
+          setQueue({
+            runs: page.value.runs,
+            running: page.value.viewTotals?.running ?? page.value.total,
+            attention: page.value.viewTotals?.attention ?? 0,
+          });
+        }
+        // Run lists report load failures where they block a task.
+        if (listed.status === "fulfilled") {
+          setStatuses((current) => {
+            const next = { ...current };
+            for (const status of listed.value) next[status.code] = status;
+            return next;
+          });
+        }
       } finally {
         fetching = false;
       }
@@ -61,56 +77,16 @@ export function useOperationRuns({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", load);
     };
-  }, [busy, refreshKey, staticDemo]);
+  }, [busy, codesKey, refreshKey, staticDemo]);
 
-  const codesKey = codes.join(",");
-  const queueSignature = `${queue.runs.map((run) => `${run.id}:${run.status}`).join(",")}|${queue.running}|${queue.attention}`;
-  useEffect(() => {
-    if (!codesKey) return;
-    const controller = new AbortController();
-    void Promise.all(
-      codesKey.split(",").map((code) =>
-        api
-          .listWorkflowRuns(1, 1, "", "", code, controller.signal)
-          .then((page) => [code, page.runs[0] ?? null] as const)
-          .catch(() => null),
-      ),
-    ).then((entries) => {
-      if (controller.signal.aborted) return;
-      setLatest((current) => {
-        const next = { ...current };
-        for (const entry of entries) if (entry) next[entry[0]] = entry[1];
-        return next;
-      });
-    });
-    return () => controller.abort();
-  }, [codesKey, queueSignature, refreshKey]);
-
-  /** The operation's queued and running runs, newest first. */
-  const activeRunsOf = useCallback(
-    (code: string) => queue.runs.filter((run) => run.workflowCode === code),
-    [queue.runs],
-  );
-
-  /**
-   * The run that states an operation's status: its active run when it has one,
-   * a running one ahead of a queued one, otherwise its newest run. `undefined`
-   * until the first answer and `null` for an operation that never ran.
-   */
-  const runOf = useCallback(
-    (code: string): WorkflowRun | null | undefined => {
-      const active = activeRunsOf(code);
-      return active.find((run) => run.status === "running") ?? active[0] ?? latest[code];
-    },
-    [activeRunsOf, latest],
-  );
+  /** The operation's status; `undefined` until the first answer. */
+  const statusOf = useCallback((code: string): WorkflowStatus | undefined => statuses[code], [statuses]);
 
   return {
     /** Queued and running runs of every workflow, newest first, up to the list size. */
     activeRuns: queue.runs,
     running: queue.running,
     attention: queue.attention,
-    runOf,
-    activeRunsOf,
+    statusOf,
   };
 }

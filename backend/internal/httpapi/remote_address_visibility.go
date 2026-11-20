@@ -388,8 +388,15 @@ func (redactor *remoteAddressRedactor) runs(runs []workflowRunRecord) {
 		return
 	}
 	for index := range runs {
-		runs[index].SummaryJSON = redactor.json(runs[index].SummaryJSON)
+		redactor.run(&runs[index])
 	}
+}
+
+func (redactor *remoteAddressRedactor) run(run *workflowRunRecord) {
+	if redactor == nil || run == nil {
+		return
+	}
+	run.SummaryJSON = redactor.json(run.SummaryJSON)
 }
 
 func (redactor *remoteAddressRedactor) runDetail(detail *workflowRunDetailRecord) {

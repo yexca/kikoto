@@ -99,10 +99,18 @@ export type TranslationItemView = "review" | "active" | "attention" | "history";
 
 export type TranslationReviewResult = { id: number; ok: boolean; code?: string };
 
+export type TranslationRunStage = "queued" | "translating" | "review" | "stopped" | "done";
+
 export type TranslationRunLanguage = {
   language: string;
   states: Partial<Record<TranslationItemState, number>>;
   total: number;
+  /** Where the language stands, as the server decided it. */
+  stage: TranslationRunStage;
+  /** Items that have settled; `total` is all of them. */
+  done: number;
+  /** The items the stage names: queued, settled, waiting for review, stopped, or accepted. */
+  count: number;
   chunksDone: number;
   chunks: number;
 };

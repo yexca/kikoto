@@ -16,9 +16,52 @@ type translationRunLanguage struct {
 	// States counts the language's items by state.
 	States map[string]int `json:"states"`
 	Total  int            `json:"total"`
+	// Stage is where the language stands: queued, translating, review,
+	// stopped, or done. Done counts the items that have settled and Count the
+	// items the stage names: the queued ones while queued, the settled ones
+	// while translating, the ones waiting for review, the stopped ones, or the
+	// accepted ones when done.
+	Stage string `json:"stage"`
+	Done  int    `json:"done"`
+	Count int    `json:"count"`
 	// ChunksDone and Chunks count the lyrics requests of the language.
 	ChunksDone int `json:"chunksDone"`
 	Chunks     int `json:"chunks"`
+}
+
+// translationSettledStates are the item states that need no further
+// translation request.
+var translationSettledStates = []string{"ready", "accepted", "rejected", "failed", "uncertain", "invalid", "policy_blocked", "cancelled"}
+
+// translationStoppedStates are the settled states that stopped without a
+// usable translation.
+var translationStoppedStates = []string{"failed", "uncertain", "invalid", "policy_blocked"}
+
+// translationLanguageStage names the stage of one language from its item
+// state counts. A language translates while a request is out or once some of
+// its items have settled; otherwise it waits in the queue, for review, or has
+// stopped items, and is done when none of those remain.
+func translationLanguageStage(states map[string]int) (stage string, done, count int) {
+	sum := func(keys ...string) int {
+		total := 0
+		for _, key := range keys {
+			total += states[key]
+		}
+		return total
+	}
+	settled := sum(translationSettledStates...)
+	switch {
+	case states["requesting"] > 0 || (states["queued"] > 0 && settled > 0):
+		return "translating", settled, settled
+	case states["queued"] > 0:
+		return "queued", settled, states["queued"]
+	case states["ready"] > 0:
+		return "review", settled, states["ready"]
+	case sum(translationStoppedStates...) > 0:
+		return "stopped", settled, sum(translationStoppedStates...)
+	default:
+		return "done", settled, states["accepted"]
+	}
 }
 
 type translationRunResponse struct {
@@ -177,5 +220,14 @@ func (s *Server) translationRuns(ctx context.Context, actor currentUser, statuse
 		entry.ChunksDone += done
 		entry.Chunks += chunks
 	}
-	return runs, items.Close()
+	if err := items.Close(); err != nil {
+		return nil, err
+	}
+	for runIndex := range runs {
+		for languageIndex := range runs[runIndex].Languages {
+			language := &runs[runIndex].Languages[languageIndex]
+			language.Stage, language.Done, language.Count = translationLanguageStage(language.States)
+		}
+	}
+	return runs, nil
 }

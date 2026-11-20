@@ -37,15 +37,18 @@ describe("workflowTriggerSummary", () => {
     enabled,
   });
 
-  it("names what starts an operation on its own and when it next runs", () => {
+  it("names what starts an operation on its own and states the server's next run", () => {
     expect(
-      workflowTriggerSummary([
-        { ...trigger("{}"), triggerType: "startup" },
-        { ...trigger("{}"), triggerType: "filesystem_event", enabled: false },
-        scheduled(1440, "2026-07-15T00:00:00Z"),
-        scheduled(360, "2026-07-14T06:00:00Z"),
-        scheduled(90, null, false),
-      ]),
+      workflowTriggerSummary(
+        [
+          { ...trigger("{}"), triggerType: "startup" },
+          { ...trigger("{}"), triggerType: "filesystem_event", enabled: false },
+          scheduled(1440, "2026-07-15T00:00:00Z"),
+          scheduled(360, "2026-07-14T06:00:00Z"),
+          scheduled(90, null, false),
+        ],
+        "2026-07-14T06:00:00Z",
+      ),
     ).toEqual({
       startup: true,
       watching: false,
@@ -59,8 +62,11 @@ describe("workflowTriggerSummary", () => {
   });
 
   it("tells a manual-only operation from one whose triggers are all off", () => {
-    expect(workflowTriggerSummary([])).toBeNull();
-    expect(workflowTriggerSummary([scheduled(45, null, false)])).toMatchObject({ paused: true, intervals: [] });
+    expect(workflowTriggerSummary([], null)).toBeNull();
+    expect(workflowTriggerSummary([scheduled(45, null, false)], null)).toMatchObject({
+      paused: true,
+      intervals: [],
+    });
   });
 });
 
