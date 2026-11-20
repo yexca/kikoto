@@ -438,7 +438,9 @@ func directPlaybackContentType(probe playbackProbe, profile string, capabilities
 			if playbackFormatIncludes(probe, "ogg") && capabilities[capAudioOggVorbis] {
 				return `audio/ogg; codecs="vorbis"`, true
 			}
-		case "pcm_s16le", "pcm_s24le", "pcm_s32le":
+		// Browsers decode WAV's linear PCM at every depth it stores: unsigned
+		// 8-bit, signed 16-, 24-, and 32-bit, and 32-bit float.
+		case "pcm_u8", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le":
 			if playbackFormatIncludes(probe, "wav") && capabilities[capAudioWAV] {
 				return "audio/wav", true
 			}

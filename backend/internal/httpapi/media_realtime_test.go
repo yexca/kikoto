@@ -45,7 +45,7 @@ func TestDirectPlaybackContentTypeRequiresMatchingContainerCodecAndCapability(t 
 	}
 }
 
-func TestDirectPlaybackContentTypeSupportsNativeFLACOggAudio(t *testing.T) {
+func TestDirectPlaybackContentTypeSupportsNativeFLACOggWAVAudio(t *testing.T) {
 	cases := []struct {
 		name       string
 		format     string
@@ -56,6 +56,9 @@ func TestDirectPlaybackContentTypeSupportsNativeFLACOggAudio(t *testing.T) {
 		{name: "flac", format: "flac", codec: "flac", capability: capAudioFLAC, want: "audio/flac"},
 		{name: "ogg opus", format: "ogg", codec: "opus", capability: capAudioOggOpus, want: `audio/ogg; codecs="opus"`},
 		{name: "ogg vorbis", format: "ogg", codec: "vorbis", capability: capAudioOggVorbis, want: `audio/ogg; codecs="vorbis"`},
+		{name: "8-bit wav", format: "wav", codec: "pcm_u8", capability: capAudioWAV, want: "audio/wav"},
+		{name: "16-bit wav", format: "wav", codec: "pcm_s16le", capability: capAudioWAV, want: "audio/wav"},
+		{name: "float wav", format: "wav", codec: "pcm_f32le", capability: capAudioWAV, want: "audio/wav"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
