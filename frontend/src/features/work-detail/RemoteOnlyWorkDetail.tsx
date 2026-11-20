@@ -13,7 +13,6 @@ import {
   buildRemoteTree,
   buildTree,
   emptyTree,
-  flattenTreeFiles,
   toPlayerTrack,
   toRemotePreviewPlayerTrack,
   type TreeNode,
@@ -141,7 +140,6 @@ export function RemoteOnlyWorkDetailController({
     [detail],
   );
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
-  const remoteFiles = useMemo(() => flattenTreeFiles(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(
     () =>
       buildSourceTabs(
@@ -309,14 +307,14 @@ export function RemoteOnlyWorkDetailController({
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!detail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => toRemotePreviewPlayerTrack(track, detail, remoteFiles)),
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, detail)),
       locationId,
     );
   };
 
   const queueRemoteTrack = (track: TreeTrack, next: boolean) => {
     if (!detail) return;
-    queuePlayerTrack(player, toast, toRemotePreviewPlayerTrack(track, detail, remoteFiles), next);
+    queuePlayerTrack(player, toast, toRemotePreviewPlayerTrack(track, detail), next);
   };
 
   const playMaterializedTracks = (tracks: TreeTrack[], locationId: number) => {

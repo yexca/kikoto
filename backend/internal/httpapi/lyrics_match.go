@@ -2,15 +2,26 @@ package httpapi
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 	"unicode/utf16"
 
 	"golang.org/x/text/unicode/norm"
 )
 
-// Automatic lyrics matching by file name. This is the server copy of the
-// player's rule in frontend/src/player/lyricsMatching.ts: both must accept the
-// same track and lyrics pairs, so change them together.
+// Automatic lyrics matching by file name. It ranks the lyrics choices of the
+// work media and remote track responses, decides the lyrics indicator of work
+// cards, and pairs added files with tracks in a lyrics edit, so every surface
+// accepts the same track and lyrics pairs.
+
+// The reasons a lyrics file is a choice of a track, strongest first.
+const (
+	lyricsReasonAssigned     = "assigned"
+	lyricsReasonSidecar      = "exact_sidecar"
+	lyricsReasonSameStem     = "same_stem"
+	lyricsReasonNormalized   = "normalized_name"
+	lyricsReasonSharedFolder = "shared_folder"
+)
 
 var (
 	lyricsMatchExtensions      = []string{".lrc", ".vtt", ".srt", ".ass", ".ssa", ".txt"}
@@ -56,6 +67,8 @@ type lyricsCandidateName struct {
 	stem       string
 	normalized string
 	numbers    string
+	// format ranks the lyrics formats, so of two equal names LRC wins.
+	format int
 }
 
 func isLyricsMatchPath(path string) bool {
@@ -84,7 +97,8 @@ func newLyricsTrackName(path string) lyricsTrackName {
 }
 
 func newLyricsCandidateName(path string) lyricsCandidateName {
-	base := stripLyricsMatchExtension(lyricsMatchFileName(path), lyricsMatchExtensions)
+	name := lyricsMatchFileName(path)
+	base := stripLyricsMatchExtension(name, lyricsMatchExtensions)
 	stem := stripLyricsMatchExtension(base, lyricsMatchAudioExtensions)
 	return lyricsCandidateName{
 		directory:  lyricsMatchDirectory(path),
@@ -92,27 +106,105 @@ func newLyricsCandidateName(path string) lyricsCandidateName {
 		stem:       stem,
 		normalized: normalizeLyricsMatchName(stem),
 		numbers:    lyricsMatchNumbers(stem),
+		format:     lyricsFormatPreference(name),
 	}
 }
 
-// matches reports whether the player picks this lyrics file for the track
-// automatically: a sidecar or shared lyrics file in the track's folder, or a
-// file with the same or the same normalized name in any folder. Names whose
-// normalized forms agree but whose numbers differ, such as "01_abc" and
-// "02_abc", name different tracks.
-func (candidate lyricsCandidateName) matches(track lyricsTrackName) bool {
+func lyricsFormatPreference(name string) int {
+	switch {
+	case strings.HasSuffix(name, ".lrc"):
+		return 6
+	case strings.HasSuffix(name, ".vtt"):
+		return 5
+	case strings.HasSuffix(name, ".srt"):
+		return 4
+	case strings.HasSuffix(name, ".ass"), strings.HasSuffix(name, ".ssa"):
+		return 3
+	case strings.HasSuffix(name, ".txt"):
+		return 2
+	default:
+		return 1
+	}
+}
+
+// score reports how strongly name matching picks this lyrics file for the
+// track, and why: a sidecar or shared lyrics file in the track's folder, or a
+// file with the same or the same normalized name in any folder, where a file
+// in the track's folder ranks above one elsewhere. Names whose normalized
+// forms agree but whose numbers differ, such as "01_abc" and "02_abc", name
+// different tracks. The reason is empty when the file is no match.
+func (candidate lyricsCandidateName) score(track lyricsTrackName) (int, string) {
 	sameDirectory := candidate.directory == track.directory
+	score := 0
+	if sameDirectory {
+		score = 1000
+	}
+	var reason string
 	switch {
 	case sameDirectory && candidate.base == track.name:
-		return true
+		score, reason = score+10000, lyricsReasonSidecar
 	case candidate.stem == track.stem:
-		return true
+		score, reason = score+7000, lyricsReasonSameStem
 	case candidate.normalized == track.normalized && len(utf16.Encode([]rune(track.normalized))) >= 2 &&
 		(candidate.numbers == "" || track.numbers == "" || candidate.numbers == track.numbers):
-		return true
+		score, reason = score+4000, lyricsReasonNormalized
+	case sameDirectory && sharedLyricsNames[candidate.normalized]:
+		score, reason = score+500, lyricsReasonSharedFolder
 	default:
-		return sameDirectory && sharedLyricsNames[candidate.normalized]
+		return 0, ""
 	}
+	return score + candidate.format, reason
+}
+
+// matches reports whether name matching picks this lyrics file for the track.
+func (candidate lyricsCandidateName) matches(track lyricsTrackName) bool {
+	_, reason := candidate.score(track)
+	return reason != ""
+}
+
+// lyricsMatchCandidate is a lyrics file name matching can choose, at its
+// path as stored.
+type lyricsMatchCandidate struct {
+	path string
+	name lyricsCandidateName
+}
+
+func newLyricsMatchCandidate(path string) lyricsMatchCandidate {
+	return lyricsMatchCandidate{path: path, name: newLyricsCandidateName(path)}
+}
+
+// lyricsRankedMatch is one lyrics file name matching picks for a track: the
+// index of its candidate and the reason.
+type lyricsRankedMatch struct {
+	index  int
+	reason string
+}
+
+// rankLyricsMatches lists the candidates name matching picks for the track at
+// trackPath, best first. Equal matches follow the natural order of their paths.
+func rankLyricsMatches(trackPath string, candidates []lyricsMatchCandidate) []lyricsRankedMatch {
+	track := newLyricsTrackName(trackPath)
+	type scored struct {
+		lyricsRankedMatch
+		score int
+	}
+	matches := []scored{}
+	for index, candidate := range candidates {
+		if score, reason := candidate.name.score(track); reason != "" {
+			matches = append(matches, scored{lyricsRankedMatch{index: index, reason: reason}, score})
+		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].score != matches[j].score {
+			return matches[i].score > matches[j].score
+		}
+		return naturalNameCompare(candidates[matches[i].index].path, candidates[matches[j].index].path) < 0
+	})
+	ranked := make([]lyricsRankedMatch, len(matches))
+	for index, match := range matches {
+		ranked[index] = match.lyricsRankedMatch
+	}
+	return ranked
 }
 
 func normalizeLyricsMatchName(value string) string {

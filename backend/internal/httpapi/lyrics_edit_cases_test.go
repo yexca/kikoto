@@ -491,3 +491,48 @@ func TestLyricsEditStopsWhenCancelled(t *testing.T) {
 		t.Fatalf("a cancelled edit created %v", folders)
 	}
 }
+
+// Automatic assignment is decided by the server and never replaces lyrics a
+// track already has in a language, since assignments are shared by everyone
+// using the library.
+func TestLyricsEditAssignOptionNeverReplacesAnAssignment(t *testing.T) {
+	fixture := newLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
+	const sidecar = "mp3/Track1.Original name.mp3.vtt"
+	const translated = "subtitles/Track1.vtt"
+	const existing = "notes/kept.lrc"
+	fixture.write(t, map[string]string{sidecar: lyricsFetchVTT, translated: "WEBVTT\n\nother\n", existing: "[00:01.00]kept\n"})
+	_, existingItem := fixture.location(t, existing)
+	if _, err := fixture.db.Exec(
+		"INSERT INTO media_lyrics_assignment (audio_media_item_id, language, lyrics_media_item_id, origin) VALUES (?, 'zh-cn', ?, 'manual')",
+		fixture.audioID, existingItem,
+	); err != nil {
+		t.Fatal(err)
+	}
+	edit := map[string]any{"assign": true, "additions": []any{
+		lyricsEditFolderAddition(sidecar, "zh-cn"), lyricsEditFolderAddition(translated, "ja-jp"),
+	}}
+
+	// The preview names the pair the edit makes: the translated file by track
+	// number in Japanese, and nothing in Simplified Chinese.
+	plan := fixture.plan(t, edit)
+	if len(plan.Assignments) != 1 || plan.Assignments[0].AudioMediaItemID != fixture.audioID ||
+		plan.Assignments[0].ItemKey != "folder:"+translated {
+		t.Fatalf("planned assignments = %+v", plan.Assignments)
+	}
+	if response := fixture.edit(t, edit, "downloads:manage"); response.Code != http.StatusForbidden {
+		t.Fatalf("assigning without library write = %d, want 403", response.Code)
+	}
+
+	result := fixture.decode(t, fixture.edit(t, edit))
+	if result.Copied != 2 || result.Assigned != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	want := []string{
+		"ja-jp=manual:" + fixture.root + "/lyrics_kikoto/ja/" + translated,
+		"zh-cn=manual:" + fixture.root + "/" + existing,
+	}
+	if assigned := fixture.assignedLanguages(t); strings.Join(assigned, "|") != strings.Join(want, "|") {
+		t.Fatalf("assignments = %v, want %v", assigned, want)
+	}
+	fixture.assertNoStagingLeft(t)
+}

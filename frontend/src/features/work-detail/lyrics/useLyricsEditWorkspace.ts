@@ -11,9 +11,7 @@ import {
 import {
   FOLDER_LYRICS_RESOURCE,
   MANAGED_LYRICS_RESOURCE,
-  folderAudio,
   folderLyrics,
-  lyricsEditAssignments,
   lyricsEditLanguage,
   lyricsEditReadiness,
   lyricsEditRequest,
@@ -68,7 +66,6 @@ export function useLyricsEditWorkspace({
   const { t } = useTranslation();
   const toast = useToast();
   const lyrics = useMemo(() => folderLyrics(items, target.rootPath), [items, target.rootPath]);
-  const audio = useMemo(() => folderAudio(items, target.rootPath), [items, target.rootPath]);
   const ownResources = useMemo(
     () => lyricsEditResources({ workId: target.workId, primaryCode: "", editions: [], warnings: [] }, target),
     [target],
@@ -187,7 +184,8 @@ export function useLyricsEditWorkspace({
     if (!needsPlan || applying) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      api.planWorkLyricsEdit(target.workId, request).then(
+      // A viewer who may assign sees the pairs the server would make.
+      api.planWorkLyricsEdit(target.workId, canAssign ? { ...request, assign: true } : request).then(
         (next) => {
           if (cancelled) return;
           setPlan(next);
@@ -205,7 +203,7 @@ export function useLyricsEditWorkspace({
     };
     // The request is identified by its revision.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [applying, needsPlan, planAttempt, revision, target.workId]);
+  }, [applying, canAssign, needsPlan, planAttempt, revision, target.workId]);
 
   const currentPlan = needsPlan ? plan : null;
   const planCurrent = needsPlan && plannedRevision === revision;
@@ -216,19 +214,14 @@ export function useLyricsEditWorkspace({
     [currentPlan, kept, lyrics.managed],
   );
   const removedFiles = useMemo(() => lyrics.managed.filter((file) => !kept.has(file.path)), [kept, lyrics.managed]);
-  const assignments = useMemo(
-    () =>
-      canAssign && assign && planCurrent
-        ? lyricsEditAssignments({ audio, additions: request.additions, plan: currentPlan })
-        : [],
-    [assign, audio, canAssign, currentPlan, planCurrent, request.additions],
-  );
+  const assignments = canAssign && assign && planCurrent ? (currentPlan?.assignments ?? []) : [];
 
   const apply = async () => {
     if (readiness !== "ready" || applying) return;
     setApplying(true);
     try {
-      const applied = await api.applyWorkLyricsEdit(target.workId, { ...request, assignments });
+      // The server pairs the files again as the folder is when the edit applies.
+      const applied = await api.applyWorkLyricsEdit(target.workId, { ...request, assign: canAssign && assign });
       toast.success(
         t("lyricsFiles.applied", {
           added: applied.moved + applied.copied + applied.downloaded,

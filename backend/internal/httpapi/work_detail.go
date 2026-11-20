@@ -203,6 +203,12 @@ type fileLocationDetail struct {
 	// Loudness is the measured loudness of the file version the location
 	// holds, present once playback has measured it.
 	Loudness *mediaLoudnessDetail `json:"loudness,omitempty"`
+	// LyricsChoices ranks the lyrics an audio or video location can play;
+	// the first is the automatic choice.
+	LyricsChoices []mediaLyricsChoice `json:"lyricsChoices,omitempty"`
+	// LyricsMatchMediaItemID is the lyrics file name matching picks for an
+	// audio or video location, which applies where no assignment does.
+	LyricsMatchMediaItemID *int64 `json:"lyricsMatchMediaItemId,omitempty"`
 }
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {

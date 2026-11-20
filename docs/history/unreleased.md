@@ -359,6 +359,9 @@
   a language under its name, **Selected lyrics files**, or **Assign added
   lyrics to matching tracks**. The note in **Manage files** that counts the
   folder's other lyrics files still opens **Lyrics files** on them.
+- **Assign added lyrics to matching tracks** pairs the files when the edit
+  applies and never replaces lyrics a track already has in that language,
+  including lyrics another manager assigned while the edit was open.
 - The folder edit and Fetch follow-up requests no longer take a lyrics
   `language` on an addition or `assignments`, and the folder edit plan no
   longer counts `lyrics`; a request that still sends them adds the file at its
@@ -558,6 +561,8 @@
   positions that cannot be saved no longer fill the waiting list.
 - An LRC file's `[offset:]` tag applies under your own lyrics offset, and a
   `.cue` sheet is never taken for lyrics.
+- A work card's lyrics mark, the directory, and the player match lyrics files
+  to tracks by one rule, so they always agree on which lyrics a track has.
 - Removing the playing item when it is last in the queue stops playback and
   keeps the player showing the items that remain.
 

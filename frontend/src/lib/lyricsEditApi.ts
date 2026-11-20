@@ -20,14 +20,22 @@ export type LyricsEditRequest = {
   /** Local locations of the managed lyrics to delete. */
   removeLocationIds: number[];
   decisions: RemoteFetchFileDecision[];
-  /** Added files to assign as the library lyrics of local tracks, in the file's language. */
-  assignments: { audioMediaItemId: number; itemKey: string }[];
+  /** Added files to assign explicitly as the library lyrics of local tracks, in the file's language. */
+  assignments: LyricsEditAssignment[];
+  /**
+   * Pairs the added files with the folder's tracks that have no library lyrics
+   * in a file's language. The server decides the pairs and never replaces an assignment.
+   */
+  assign?: boolean;
   /**
    * Copies or moves the added files of the edited folder that are outside
    * Kikoto's lyrics folder; managed lyrics that change language always move.
    */
   folderMode: FolderLyricsMode;
 };
+
+/** An added file, by its plan item key, as the library lyrics of a local track. */
+export type LyricsEditAssignment = { audioMediaItemId: number; itemKey: string };
 
 export type LyricsEditItem = RemoteWorkSavePlanItem & {
   language: string;
@@ -54,6 +62,8 @@ export type LyricsEditPlan = {
   items: LyricsEditItem[];
   removals: WorkFolderEditRemoval[];
   summary: LyricsEditSummary;
+  /** The pairs the assign option makes, when the request sets it. */
+  assignments?: LyricsEditAssignment[];
 };
 
 export type LyricsEditResult = {

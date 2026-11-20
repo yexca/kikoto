@@ -54,7 +54,12 @@ type lyricsEditRequest struct {
 	FolderMode        string                    `json:"folderMode,omitempty"`
 	RemoveLocationIDs []int64                   `json:"removeLocationIds"`
 	Decisions         []remoteFetchFileDecision `json:"decisions"`
-	Assignments       []lyricsEditAssignmentIn  `json:"assignments"`
+	// Assignments name added files as library lyrics of tracks explicitly;
+	// each replaces what its track has in the file's language.
+	Assignments []lyricsEditAssignmentIn `json:"assignments"`
+	// Assign pairs the added files with the folder's tracks that have no
+	// library lyrics in a file's language. It never replaces an assignment.
+	Assign bool `json:"assign,omitempty"`
 }
 
 // lyricsEditItem is one lyrics file to bring into a language's lyrics folder.
@@ -95,6 +100,8 @@ type lyricsEditPlan struct {
 	Items    []lyricsEditItem        `json:"items"`
 	Removals []workFolderEditRemoval `json:"removals"`
 	Summary  lyricsEditSummary       `json:"summary"`
+	// Assignments are the pairs the assign option makes, when it is set.
+	Assignments []lyricsEditPlannedAssignment `json:"assignments,omitempty"`
 
 	target       lyricsFetchTarget
 	rootAbsolute string
@@ -134,6 +141,10 @@ func (s *Server) parseLyricsEditRequest(w http.ResponseWriter, r *http.Request) 
 	var payload lyricsEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return currentUser{}, 0, lyricsEditRequest{}, false
+	}
+	if payload.Assign && !userHasPermission(actor, "library:write") {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "library:write permission is required to assign lyrics"})
 		return currentUser{}, 0, lyricsEditRequest{}, false
 	}
 	return actor, workID, payload, true
@@ -289,9 +300,15 @@ func (s *Server) buildLyricsEditPlan(ctx context.Context, workID int64, payload 
 	for index := range items {
 		items[index].remoteWorkSavePlanItem = base[index]
 	}
+	var assignments []lyricsEditPlannedAssignment
+	if payload.Assign {
+		if assignments, err = s.lyricsEditAutomaticAssignments(ctx, target, items); err != nil {
+			return lyricsEditPlan{}, err
+		}
+	}
 	return lyricsEditPlan{
 		WorkID: workID, FolderID: payload.FolderID, FolderMode: folderMode, SaveRoot: target.RootPath,
-		Items: items, Removals: removals, Summary: summarizeLyricsEdit(items, removals),
+		Items: items, Removals: removals, Summary: summarizeLyricsEdit(items, removals), Assignments: assignments,
 		target: target, rootAbsolute: rootAbsolute,
 	}, nil
 }

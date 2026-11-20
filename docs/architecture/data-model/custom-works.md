@@ -124,8 +124,16 @@ A media read lists an audio item's assignments in the order that viewer's
 playback tries them: the viewer's metadata languages in priority order, where
 `origin` stands for the declared language of the family's original edition,
 then the every-language assignment, then the remaining languages in the fixed
-supported order. Clients rank a user's `user_media_lyrics_preference` first,
-then these assignments in that order, then name matching.
+supported order. The server ranks the lyrics choices of every audio and video
+location the read lists as `lyricsChoices`: the item's assigned files that are
+available in the library, in that order and each once, then the work's
+available local lyrics files that name matching picks for the location's path,
+best first. The first choice is the automatic one; a user's
+`user_media_lyrics_preference` takes precedence when it is among the choices.
+The location's `lyricsMatchMediaItemId` is the file name matching picks on its
+own, which applies where no assignment does. A remote edition's track tree
+ranks, for each audio and video file, the lyrics files of the same tree that
+name matching picks.
 `user_media_lyrics_offset` holds a user's lyrics timing offset for one audio
 item, a nonzero number of milliseconds within 30 seconds either way. It is
 independent of the lyrics choice and is read into that viewer's media item as
@@ -137,6 +145,7 @@ only picks among lyrics a track already has. A work has lyrics when a track has
 an assignment whose lyrics file is available in the library, or a lyrics file
 matched by name among the work's local files or among the files of the track's
 remote source. A work without tracks of its own takes the status of the other
-editions of its family. The server's name matching in
-`httpapi/lyrics_match.go` and the player's in `player/lyricsMatching.ts` accept
-the same track and lyrics pairs.
+editions of its family. Media reads, remote track trees, work cards and
+[lyrics edits](../backend/work-edit-apis.md#lyrics-edit) share one name
+matching rule in `httpapi/lyrics_match.go`, so they accept the same track and
+lyrics pairs.

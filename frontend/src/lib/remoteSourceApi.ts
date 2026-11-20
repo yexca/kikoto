@@ -2,7 +2,7 @@ import { apiSessionVersion, assertApiSession } from "@/lib/apiSession";
 import { deleteJSON, getJSON, postJSONBody } from "@/lib/apiTransport";
 import type { LibrarySort, ListeningStatus, SortDirection, SourcePresenceItem, UserTag } from "@/lib/libraryApi";
 import type { LocalFolderAvailability } from "@/lib/localAvailability";
-import type { MediaCacheResult } from "@/lib/mediaApi";
+import type { LyricsChoiceReason, MediaCacheResult } from "@/lib/mediaApi";
 import type { WorkMetadataPresentation } from "@/lib/metadataApi";
 
 export type RemoteWorksResponse = {
@@ -82,7 +82,12 @@ export type RemoteTrack = {
   localPath: string;
   localAvailable: boolean;
   children: RemoteTrack[];
+  /** The lyrics files of the same tree that name matching picks for an audio or video file, best first. */
+  lyricsChoices?: RemoteLyricsChoice[];
 };
+
+/** A lyrics file of a remote edition's tree, by its path in the tree. */
+export type RemoteLyricsChoice = { path: string; reason: LyricsChoiceReason };
 
 export type RemoteWorkDetail = {
   sourceId: number;

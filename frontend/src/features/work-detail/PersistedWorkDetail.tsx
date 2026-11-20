@@ -414,7 +414,6 @@ export function PersistedWorkDetailController({
     work,
     localDirectoryWork,
     selectedRemoteDetail,
-    tree,
     playbackTree,
     playbackCursor,
     hasResumableCursor,

@@ -31,7 +31,7 @@ func (s *Server) runLyricsEdit(ctx context.Context, userID int64, workID int64, 
 	if err != nil {
 		return lyricsEditResult{}, err
 	}
-	if plan.Summary.Add == 0 && plan.Summary.Remove == 0 && len(assignments) == 0 {
+	if plan.Summary.Add == 0 && plan.Summary.Remove == 0 && len(assignments) == 0 && len(plan.Assignments) == 0 {
 		return lyricsEditResult{}, lyricsFetchBadRequest("the edit does not change the lyrics")
 	}
 	removals := make([]mediaCleanupTarget, 0, len(plan.Removals))
@@ -90,7 +90,7 @@ func (s *Server) runLyricsEdit(ctx context.Context, userID int64, workID int64, 
 	}, nil
 }
 
-// lyricsEditAssignments validates the requested assignments against the plan.
+// lyricsEditAssignments validates the explicit assignments against the plan.
 // A track takes one file per language, and only a file the edit leaves in the
 // folder can be assigned.
 func (s *Server) lyricsEditAssignments(ctx context.Context, plan lyricsEditPlan, requested []lyricsEditAssignmentIn) ([]lyricsEditAssignment, error) {
@@ -316,8 +316,10 @@ func lyricsEditAssignmentOrigin(item lyricsEditItem) string {
 // declareLyricsEdit stores what the edit means for library lyrics, for the
 // files the rescan indexed. References to a moved file follow it to its new
 // media item, the assignments that use it take its declared language, and the
-// requested assignments are stored in the language of their file. A file the
-// scan did not index is skipped, not an error: the files themselves changed.
+// requested assignments are stored in the language of their file: an explicit
+// one replaces what its track has in that language, and an automatic one is
+// stored only where the track has nothing in that language. A file the scan
+// did not index is skipped, not an error: the files themselves changed.
 func (s *Server) declareLyricsEdit(ctx context.Context, userID int64, plan lyricsEditPlan, previous map[int]int64, assignments []lyricsEditAssignment) (int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -356,6 +358,23 @@ func (s *Server) declareLyricsEdit(ctx context.Context, userID int64, plan lyric
 			return 0, err
 		}
 		assigned++
+	}
+	for _, assignment := range plan.Assignments {
+		item := plan.Items[assignment.item]
+		lyricsID, ok, err := lyricsEditLyricsItem(ctx, tx, plan.target, item.TargetPath)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			continue
+		}
+		inserted, err := insertLyricsAssignmentIfAbsent(ctx, tx, assignment.AudioMediaItemID, item.Language, lyricsID, lyricsEditAssignmentOrigin(item), userID)
+		if err != nil {
+			return 0, err
+		}
+		if inserted {
+			assigned++
+		}
 	}
 	return assigned, tx.Commit()
 }

@@ -41,8 +41,8 @@ work as its audio; a null lyrics file removes that language's assignment. `PUT` 
 audio item under the same same-work rule. `PUT` takes `lyricsMediaItemId`,
 `lyricsOffsetMs`, or both; a field left out keeps its value, and an offset is
 an integer from -30000 to 30000 where 0 removes it. `DELETE` clears only the
-choice. Both answer with the item's current choice and offset. How clients
-rank preferences, assignments, and name matching is in
+choice. Both answer with the item's current choice and offset. How media reads
+rank assignments and name matches, and where a preference applies, is in
 [Data model](../data-model.md).
 
 `GET /api/works/{id}/file-display-names` requires `library:read` and lists the

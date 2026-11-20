@@ -84,6 +84,22 @@ export type MediaFileLocation = {
   lastCheckedAt: string | null;
   /** The measured loudness of the file the location holds, once playback has measured it. */
   loudness?: MediaLoudness;
+  /** The lyrics an audio or video location can play, ranked by the server; the first is the automatic choice. */
+  lyricsChoices?: MediaLyricsChoice[];
+  /** The lyrics file name matching picks for an audio or video location, which applies where no assignment does. */
+  lyricsMatchMediaItemId?: number;
+};
+
+/** Why a lyrics file is a choice of a track: a library assignment, or the way name matching picked it. */
+export type LyricsChoiceReason = "assigned" | "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
+
+/** One lyrics file a track location can play, read from its local location. */
+export type MediaLyricsChoice = {
+  lyricsMediaItemId: number;
+  locationId: number;
+  reason: LyricsChoiceReason;
+  /** The declared language of an assigned file; absent for a name match or a file assigned to every language. */
+  language?: string;
 };
 
 /** EBU R 128 integrated loudness and the peak level of one file. */

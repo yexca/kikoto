@@ -16,7 +16,20 @@ folder. The plan items share the Fetch plan item's shape and conflict
 decisions. Copies and downloads are staged on the target work's storage pool,
 removals run through media cleanup, and the work folder is rescanned; the
 lyrics assignments and personal lyrics choices of a moved file follow it to the
-media item of its new path. Its permissions and limits are in
+media item of its new path.
+
+An edit assigns added files in their language. Each of its explicit
+`assignments` names a track and an added file and replaces what the track has
+in that language. With `assign`, the server pairs the added files with the
+folder's tracks that have no assignment in a file's language: the files of one
+place in one language go together, a track takes the file
+[name matching](../data-model/custom-works.md#custom-works) picks for it, and
+the tracks left are aligned by track number, or by position when the counts
+are equal, with the subfolder holding the most of those files. A file the plan
+leaves out is not assigned. The plan lists these pairs as `assignments`;
+applying pairs the files again against the folder as it is then and stores a
+pair only where the track still has nothing in that language. Its permissions
+and limits are in
 [Lyrics files](../../development/security.md#lyrics-files).
 
 ## Duplicate Files

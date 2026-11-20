@@ -136,8 +136,9 @@ without one, the administrator's `lyrics_folder_files_mode` setting says
 `move` (managed lyrics that change language always move), files of another local folder of the family are
 copied there, files a configured compatible source offers for a family
 edition are downloaded there, and managed lyrics are deleted. Both require
-`downloads:manage`; applying also requires `library:write` when the request
-assigns tracks. The preview never changes a file.
+`downloads:manage`, and also `library:write` when the request sets `assign`;
+applying requires `library:write` for explicit assignments too. The preview
+never changes a file.
 
 - The target must be an active local folder of the requested work on an
   online storage pool. A local source must be another active local folder of

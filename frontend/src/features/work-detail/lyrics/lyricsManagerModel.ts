@@ -2,7 +2,7 @@ import type { LyricsAssignmentChange, MediaItem } from "@/lib/api";
 import { allLyricsLanguages, lyricsLanguages, mediaItemLyricsAssignments } from "@/lib/lyricsLanguage";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
 import type { ParsedLyrics } from "@/lib/timedLyrics";
-import { findLyricsMatches, isLyricsPath } from "@/player/lyricsMatching";
+import { isLyricsPath } from "@/player/lyricsMatching";
 
 /** An audio file of the work as the lyrics manager lists it. */
 export type LyricsManagerAudio = {
@@ -14,7 +14,7 @@ export type LyricsManagerAudio = {
   durationSeconds: number | null;
   /** The stored library lyrics file per language; the empty language applies to every language. */
   assignedLyrics: Readonly<Record<string, number>>;
-  /** The name match used when no assignment exists. */
+  /** The name match the server picks, used when no assignment exists. */
   autoLyricsMediaItemId: number | null;
 };
 
@@ -67,7 +67,7 @@ export function lyricsManagerEntries(items: MediaItem[]): LyricsManagerEntries {
         assignedLyrics: Object.fromEntries(
           mediaItemLyricsAssignments(item).map((assignment) => [assignment.language, assignment.lyricsMediaItemId]),
         ),
-        autoLyricsMediaItemId: findLyricsMatches(path, items)[0]?.mediaItemId ?? null,
+        autoLyricsMediaItemId: location.lyricsMatchMediaItemId ?? null,
       };
     })
     .sort(comparePaths);

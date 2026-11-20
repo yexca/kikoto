@@ -8,6 +8,7 @@ import type {
   LocalMediaRefreshResult,
   MediaCleanupResult,
   MediaItem,
+  MediaLyricsChoice,
   MediaProgress,
   MediaTextPreview,
   TimedLyricsResult,
@@ -1277,6 +1278,11 @@ export function mediaFixture(id: number, title: string, path: string, kind: "aud
       }),
     ],
   });
+}
+
+/** An item whose locations carry the lyrics choices the server ranks for it. */
+export function withLyricsChoices(item: MediaItem, lyricsChoices: MediaLyricsChoice[]): MediaItem {
+  return { ...item, locations: item.locations.map((location) => ({ ...location, lyricsChoices })) };
 }
 
 /** Switches the Library source through the phone source menu or the wide-layout source tabs. */

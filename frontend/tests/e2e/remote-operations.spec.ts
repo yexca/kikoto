@@ -864,6 +864,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     removeLocationIds: [],
     decisions: [],
     assignments: [],
+    assign: true,
     folderMode: "move",
   });
   await expect(apply).toBeDisabled();
@@ -887,7 +888,8 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
         targetPath: "lyrics_kikoto/ja/track.mp3.vtt",
       },
     ],
-    assignments: [{ audioMediaItemId: 1, itemKey: "folder:track.mp3.vtt" }],
+    assignments: [],
+    assign: true,
     folderMode: "move",
   });
   await expect(

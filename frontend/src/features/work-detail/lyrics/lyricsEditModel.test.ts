@@ -6,9 +6,7 @@ import type { LyricsEditItem, LyricsEditPlan, MediaItem, WorkFolderEditSources }
 import {
   FOLDER_LYRICS_RESOURCE,
   MANAGED_LYRICS_RESOURCE,
-  folderAudio,
   folderLyrics,
-  lyricsEditAssignments,
   lyricsEditReadiness,
   lyricsEditRequest,
   lyricsEditResources,
@@ -297,33 +295,5 @@ describe("lyrics edit result", () => {
     expect(
       lyricsEditReadiness({ request: { ...request, additions: [] }, undeclared: [], plan: null, planCurrent: false }),
     ).toBe("idle");
-  });
-});
-
-describe("lyrics edit assignments", () => {
-  const audio = folderAudio(items, root);
-  const additions = [
-    { kind: "folder" as const, path: "mp3/01 Opening.mp3.vtt", language: "ja-jp" },
-    { kind: "remote" as const, sourceId: 3, remoteCode: "RJ00000001", path: "sub/01 Opening.vtt", language: "zh-cn" },
-    { kind: "remote" as const, sourceId: 3, remoteCode: "RJ00000001", path: "sub/02 Ending.vtt", language: "zh-cn" },
-  ];
-
-  it("suggests the added files per language and leaves a track its lyrics in that language", () => {
-    expect(lyricsEditAssignments({ audio, additions, plan: null })).toEqual([
-      { audioMediaItemId: 1, itemKey: "folder:mp3/01 Opening.mp3.vtt" },
-      // The first track already has Simplified Chinese lyrics.
-      { audioMediaItemId: 2, itemKey: "remote:3:RJ00000001:sub/02 Ending.vtt" },
-    ]);
-  });
-
-  it("does not assign a file the plan leaves out", () => {
-    const left = plan([
-      planItem("remote:3:RJ00000001:sub/02 Ending.vtt", "lyrics_kikoto/zh-hans/sub/02 Ending.vtt", {
-        action: "exclude",
-      }),
-    ]);
-    expect(lyricsEditAssignments({ audio, additions, plan: left }).map((assignment) => assignment.itemKey)).toEqual([
-      "folder:mp3/01 Opening.mp3.vtt",
-    ]);
   });
 });

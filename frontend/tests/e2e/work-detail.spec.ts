@@ -8,6 +8,7 @@ import {
   mediaFixture,
   seedPlayer,
   silentWav,
+  withLyricsChoices,
 } from "./fixtures/player-library";
 import type { LocalMediaRefreshResult, MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
 import type { PlaybackReport } from "../../src/lib/playbackReportApi";
@@ -378,7 +379,9 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
 test("directory folds matched lyrics into the audio row while preserving text preview", async ({ page }) => {
   const lyricsWork = { ...work, primaryCode: "RJ00000000", title: "Lyrics attachment work" };
   const mediaItems = [
-    mediaFixture(1, "01.mp3", "library/RJ00000000/Main/01.mp3", "audio"),
+    withLyricsChoices(mediaFixture(1, "01.mp3", "library/RJ00000000/Main/01.mp3", "audio"), [
+      { lyricsMediaItemId: 9, locationId: 9, reason: "same_stem" },
+    ]),
     mediaFixture(9, "01.lrc", "library/RJ00000000/Main/01.lrc", "text"),
     mediaFixture(10, "notes.txt", "library/RJ00000000/Main/notes.txt", "text"),
   ];

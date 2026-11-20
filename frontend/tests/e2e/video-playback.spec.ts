@@ -1,10 +1,11 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import type { MediaItem, VideoPlaybackInfo } from "../../src/lib/api";
+import type { MediaItem, MediaLyricsChoice, VideoPlaybackInfo } from "../../src/lib/api";
 import type { ApiErrorBody } from "./fixtures/api";
 import { mediaFixture, mockApplication, silentWav, work } from "./fixtures/player-library";
 
-function videoFixture(id: number, title: string): MediaItem {
+/** A video whose location carries the lyrics choices the server ranks for it. */
+function videoFixture(id: number, title: string, lyricsChoices?: MediaLyricsChoice[]): MediaItem {
   const item = mediaFixture(id, title, `${work.primaryCode}/${title}`, "file");
   return {
     ...item,
@@ -15,12 +16,13 @@ function videoFixture(id: number, title: string): MediaItem {
       ...location,
       durationSeconds: 180,
       streamUrl: `/api/media/${id}/stream`,
+      lyricsChoices,
     })),
   };
 }
 
-async function mockLocalVideo(page: Page, otherItems: MediaItem[] = []) {
-  await mockApplication(page, undefined, false, 1, 0, [videoFixture(1, "example.avi"), ...otherItems]);
+async function mockLocalVideo(page: Page, otherItems: MediaItem[] = [], lyricsChoices?: MediaLyricsChoice[]) {
+  await mockApplication(page, undefined, false, 1, 0, [videoFixture(1, "example.avi", lyricsChoices), ...otherItems]);
   // Exercise the native-HLS branch through browser capability APIs. A generated
   // WAV supplies real media timing; this tests recovery, not codec decoding.
   await page.addInitScript(() => {
@@ -283,11 +285,18 @@ test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) 
     2: "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nSynthetic SRT line\n",
     3: "WEBVTT\n\n00:00:02.000 --> 00:00:04.000\nSynthetic WebVTT line\n",
   };
-  await mockLocalVideo(page, [
-    mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text"),
-    mediaFixture(3, "example.avi.vtt", `${work.primaryCode}/example.avi.vtt`, "text"),
-    mediaFixture(4, "other.srt", `${work.primaryCode}/other.srt`, "text"),
-  ]);
+  await mockLocalVideo(
+    page,
+    [
+      mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text"),
+      mediaFixture(3, "example.avi.vtt", `${work.primaryCode}/example.avi.vtt`, "text"),
+      mediaFixture(4, "other.srt", `${work.primaryCode}/other.srt`, "text"),
+    ],
+    [
+      { lyricsMediaItemId: 3, locationId: 3, reason: "exact_sidecar" },
+      { lyricsMediaItemId: 2, locationId: 2, reason: "same_stem" },
+    ],
+  );
   await mockDirectPlayback(page);
   const textRequests: number[] = [];
   await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) => {
@@ -393,7 +402,11 @@ test("choosing another audio track keeps the position and the paused or playing 
 test("ASS files and embedded subtitle streams load as subtitle tracks", async ({ page }) => {
   // The server keeps the timing and text of ASS dialogue as WebVTT.
   const ass = "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nSynthetic\nASS line\n";
-  await mockLocalVideo(page, [mediaFixture(2, "example.ass", `${work.primaryCode}/example.ass`, "text")]);
+  await mockLocalVideo(
+    page,
+    [mediaFixture(2, "example.ass", `${work.primaryCode}/example.ass`, "text")],
+    [{ lyricsMediaItemId: 2, locationId: 2, reason: "same_stem" }],
+  );
   await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) =>
     route.fulfill({ contentType: "text/vtt", body: ass }),
   );
@@ -537,7 +550,11 @@ test("the speed menu sets the playback rate and shows the speed notice", async (
 });
 
 test("the subtitle menu shows one track and extracts an embedded stream only once chosen", async ({ page }) => {
-  await mockLocalVideo(page, [mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text")]);
+  await mockLocalVideo(
+    page,
+    [mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text")],
+    [{ lyricsMediaItemId: 2, locationId: 2, reason: "same_stem" }],
+  );
   await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) =>
     route.fulfill({ contentType: "text/vtt", body: "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nSynthetic SRT line\n" }),
   );

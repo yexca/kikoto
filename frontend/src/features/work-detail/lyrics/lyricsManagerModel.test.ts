@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
+import type { MediaItem, MediaLyricsAssignment, MediaLyricsChoice } from "@/lib/api";
 import type { ParsedLyrics } from "@/lib/timedLyrics";
-import { findLocalLyricsChoices, lyricsChoiceDisplayLabel } from "@/player/lyricsMatching";
+import { localLyricsChoices, localLyricsFiles, lyricsChoiceDisplayLabel } from "@/player/lyricsMatching";
 import { syntheticWorkCode } from "@/test-support/workCode";
 
 import {
@@ -26,6 +26,8 @@ function localItem(
     durationSeconds?: number;
     assignedLyricsMediaItemId?: number;
     lyricsAssignments?: MediaLyricsAssignment[];
+    lyricsChoices?: MediaLyricsChoice[];
+    lyricsMatchMediaItemId?: number;
   } = {},
 ): MediaItem {
   const path = `${workRoot}/${relativePath}`;
@@ -57,6 +59,8 @@ function localItem(
         durationSeconds: options.durationSeconds ?? null,
         availability: "available",
         lastCheckedAt: null,
+        lyricsChoices: options.lyricsChoices,
+        lyricsMatchMediaItemId: options.lyricsMatchMediaItemId,
       },
     ],
   };
@@ -66,7 +70,7 @@ describe("lyricsManagerEntries", () => {
   it("lists local audio and lyrics below the work folder with their automatic match", () => {
     const entries = lyricsManagerEntries([
       localItem(2, "audio", "mp3/02 Second.mp3"),
-      localItem(1, "audio", "mp3/01 First.mp3", { assignedLyricsMediaItemId: 12 }),
+      localItem(1, "audio", "mp3/01 First.mp3", { assignedLyricsMediaItemId: 12, lyricsMatchMediaItemId: 11 }),
       localItem(11, "text", "mp3/01 First.mp3.vtt"),
       localItem(12, "file", "Translated/Track1.vtt"),
       localItem(20, "image", "cover.jpg"),
@@ -187,49 +191,28 @@ describe("lyricsTimingCheck", () => {
   });
 });
 
-describe("findLocalLyricsChoices", () => {
-  it("leads with the library assignment even when its name does not match", () => {
+describe("localLyricsChoices", () => {
+  it("reads the server's choices in order and names the language of assigned files", () => {
+    const audio = localItem(1, "audio", "mp3/01 First.mp3", {
+      lyricsChoices: [
+        { lyricsMediaItemId: 12, locationId: 1012, reason: "assigned", language: "zh-cn" },
+        { lyricsMediaItemId: 13, locationId: 1013, reason: "assigned", language: "en-us" },
+        // A file the work media no longer lists is left out.
+        { lyricsMediaItemId: 99, locationId: 1099, reason: "same_stem" },
+        { lyricsMediaItemId: 11, locationId: 1011, reason: "exact_sidecar" },
+      ],
+    });
     const items = [
-      localItem(1, "audio", "mp3/01 First.mp3"),
-      localItem(11, "text", "mp3/01 First.mp3.vtt"),
-      localItem(12, "text", "Translated/Track1.vtt"),
-    ];
-    expect(findLocalLyricsChoices(`${workRoot}/mp3/01 First.mp3`, items).map((choice) => choice.mediaItemId)).toEqual([
-      11,
-    ]);
-    expect(
-      findLocalLyricsChoices(`${workRoot}/mp3/01 First.mp3`, items, [{ language: "", lyricsMediaItemId: 12 }]).map(
-        (choice) => [choice.mediaItemId, choice.reason],
-      ),
-    ).toEqual([
-      [12, "assigned"],
-      [11, "exact_sidecar"],
-    ]);
-    // An assignment to a file that is no longer available falls back to name matching.
-    expect(
-      findLocalLyricsChoices(`${workRoot}/mp3/01 First.mp3`, items, [{ language: "", lyricsMediaItemId: 99 }]).map(
-        (choice) => choice.mediaItemId,
-      ),
-    ).toEqual([11]);
-  });
-
-  it("lists each language's lyrics in the given order and names their language", () => {
-    const items = [
-      localItem(1, "audio", "mp3/01 First.mp3"),
+      audio,
       localItem(11, "text", "mp3/01 First.mp3.vtt"),
       localItem(12, "text", "lyrics_kikoto/zh-hans/Track1.vtt"),
       localItem(13, "text", "lyrics_kikoto/en/Track1.vtt"),
     ];
-    const choices = findLocalLyricsChoices(`${workRoot}/mp3/01 First.mp3`, items, [
-      { language: "zh-cn", lyricsMediaItemId: 12 },
-      { language: "", lyricsMediaItemId: 12 },
-      { language: "en-us", lyricsMediaItemId: 13 },
-    ]);
-    // One file assigned in two languages is one choice, under its first language.
-    expect(choices.map((choice) => [choice.mediaItemId, choice.language ?? null])).toEqual([
-      [12, "zh-cn"],
-      [13, "en-us"],
-      [11, null],
+    const choices = localLyricsChoices(audio.locations[0], localLyricsFiles(items));
+    expect(choices.map((choice) => [choice.mediaItemId, choice.reason, choice.language ?? null])).toEqual([
+      [12, "assigned", "zh-cn"],
+      [13, "assigned", "en-us"],
+      [11, "exact_sidecar", null],
     ]);
     const languageName = (language: string) => (language === "zh-cn" ? "Simplified Chinese" : "English");
     expect(choices.map((choice) => lyricsChoiceDisplayLabel(choice, choices, languageName))).toEqual([

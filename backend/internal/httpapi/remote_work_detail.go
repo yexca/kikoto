@@ -84,6 +84,9 @@ type remoteTrackDetail struct {
 	LocalPath       string              `json:"localPath"`
 	LocalAvailable  bool                `json:"localAvailable"`
 	Children        []remoteTrackDetail `json:"children"`
+	// LyricsChoices ranks the lyrics files of the same tree that name
+	// matching picks for an audio or video file.
+	LyricsChoices []remoteLyricsChoice `json:"lyricsChoices,omitempty"`
 }
 
 func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +235,8 @@ func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSource
 			locationState.Local[path] = state
 		}
 	}
+	details := remoteTrackDetails(source.Code, code, tracks, "", locationState)
+	attachRemoteLyricsChoices(details)
 	return remoteWorkTracksDetail{
 		SourceID:    source.ID,
 		SourceCode:  source.Code,
@@ -239,7 +244,7 @@ func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSource
 		RemoteID:    strconv.FormatInt(work.ID, 10),
 		PrimaryCode: code,
 		RemoteCode:  code,
-		Tracks:      remoteTrackDetails(source.Code, code, tracks, "", locationState),
+		Tracks:      details,
 	}, nil
 }
 

@@ -6,7 +6,6 @@ import {
   buildTree,
   buildWorkResumeQueue,
   flattenTracks,
-  flattenTreeFiles,
   toPlayerTrack,
   toRemotePreviewPlayerTrack,
   type TreeNode,
@@ -45,7 +44,6 @@ export function usePersistedWorkPlayback({
   work,
   localDirectoryWork,
   selectedRemoteDetail,
-  tree,
   playbackTree,
   playbackCursor,
   hasResumableCursor,
@@ -58,8 +56,6 @@ export function usePersistedWorkPlayback({
   /** The shown edition, whose local tracks play. */
   localDirectoryWork: WorkDetail | null;
   selectedRemoteDetail: RemoteWorkDetail | null;
-  /** The shown directory, which the remote tracks come from. */
-  tree: TreeNode;
   /** The shown edition's whole local tree, which a resume starts from. */
   playbackTree: TreeNode;
   playbackCursor: WorkProgressSummary | null;
@@ -109,14 +105,14 @@ export function usePersistedWorkPlayback({
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!selectedRemoteDetail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => titled(toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree)))),
+      tracks.map((track) => titled(toRemotePreviewPlayerTrack(track, selectedRemoteDetail))),
       locationId,
     );
   };
 
   const queueTrack = (track: TreeTrack, next: boolean) => {
     const queuedTrack = selectedRemoteDetail
-      ? titled(toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree)))
+      ? titled(toRemotePreviewPlayerTrack(track, selectedRemoteDetail))
       : localDirectoryWork
         ? titled(toPlayerTrack(track, localDirectoryWork, coverUrl))
         : null;

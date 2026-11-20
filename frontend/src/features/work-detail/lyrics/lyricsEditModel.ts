@@ -7,9 +7,8 @@ import {
   type FolderEditSelection,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
-import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { managedLyricsLanguage, pathBelowFolder } from "@/features/work-detail/lyrics/managedLyricsModel";
-import { isLyricsFilePath, suggestRemoteLyricsMapping } from "@/features/work-detail/lyrics/remoteLyricsModel";
+import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
 import type {
   FolderLyricsMode,
   LyricsEditAddition,
@@ -20,8 +19,7 @@ import type {
   RemoteFetchFileDecision,
   WorkFolderEditSources,
 } from "@/lib/api";
-import { editionLyricsLanguage, mediaItemLyricsAssignments } from "@/lib/lyricsLanguage";
-import { naturalNameCompare } from "@/lib/naturalNameOrder";
+import { editionLyricsLanguage } from "@/lib/lyricsLanguage";
 
 /** The resource that is the lyrics Kikoto manages in the edited folder. */
 export const MANAGED_LYRICS_RESOURCE = "current";
@@ -100,34 +98,6 @@ export function folderLyrics(items: MediaItem[], rootPath: string) {
     (managedLyricsLanguage(file.path) === null ? loose : managed).push(file);
   }
   return { managed, loose };
-}
-
-/** The audio files of a local folder with their library lyrics, by path below that folder. */
-export function folderAudio(items: MediaItem[], rootPath: string): LyricsManagerAudio[] {
-  const audio: LyricsManagerAudio[] = [];
-  for (const item of items) {
-    if (item.kind !== "audio") continue;
-    for (const location of item.locations) {
-      const path =
-        location.locationType === "local" && location.availability === "available"
-          ? pathBelowFolder(rootPath, location.path)
-          : null;
-      if (path === null) continue;
-      audio.push({
-        mediaItemId: item.id,
-        title: fileName(path),
-        path,
-        folder: directoryName(path),
-        durationSeconds: location.durationSeconds ?? item.durationSeconds,
-        assignedLyrics: Object.fromEntries(
-          mediaItemLyricsAssignments(item).map((assignment) => [assignment.language, assignment.lyricsMediaItemId]),
-        ),
-        autoLyricsMediaItemId: null,
-      });
-      break;
-    }
-  }
-  return audio.sort((left, right) => naturalNameCompare(left.path, right.path));
 }
 
 /** The key the server gives the plan item of an addition. */
@@ -314,67 +284,7 @@ export function lyricsEditReadiness({
   return plan.summary.add > 0 || request.removeLocationIds.length > 0 ? "ready" : "idle";
 }
 
-/**
- * Suggests which added file each track of the folder uses, per language: a
- * matching file name first, then track order against the subfolder holding the
- * most files. A track that already has library lyrics in the language keeps
- * them, and a file the plan leaves out is not assigned.
- */
-export function lyricsEditAssignments({
-  audio,
-  additions,
-  plan,
-}: {
-  audio: readonly LyricsManagerAudio[];
-  additions: readonly LyricsEditAddition[];
-  plan: LyricsEditPlan | null;
-}): LyricsEditRequest["assignments"] {
-  const left = new Set(
-    (plan?.items ?? [])
-      .filter((item) => item.action === "conflict" || item.action === "exclude")
-      .map((item) => item.itemKey),
-  );
-  // Files of one place in one language are matched together, so track order means something.
-  const groups = new Map<string, LyricsEditAddition[]>();
-  for (const addition of additions) {
-    const itemKey = lyricsEditItemKey(addition);
-    if (left.has(itemKey)) continue;
-    const group = `${addition.language}\n${itemKey.slice(0, itemKey.length - addition.path.length)}`;
-    groups.set(group, [...(groups.get(group) ?? []), addition]);
-  }
-  const taken = new Set<string>();
-  const assignments: LyricsEditRequest["assignments"] = [];
-  for (const group of groups.values()) {
-    const language = group[0].language;
-    const free = audio.filter(
-      (entry) => entry.assignedLyrics[language] === undefined && !taken.has(`${entry.mediaItemId}:${language}`),
-    );
-    const byPath = new Map(group.map((addition) => [addition.path, addition]));
-    const mapping = suggestRemoteLyricsMapping(
-      free,
-      group.map((addition) => ({
-        path: addition.path,
-        title: fileName(addition.path),
-        folder: directoryName(addition.path),
-        sizeBytes: null,
-      })),
-    );
-    for (const [audioMediaItemId, path] of mapping) {
-      const addition = path ? byPath.get(path) : undefined;
-      if (!addition) continue;
-      taken.add(`${audioMediaItemId}:${language}`);
-      assignments.push({ audioMediaItemId, itemKey: lyricsEditItemKey(addition) });
-    }
-  }
-  return assignments;
-}
-
 function fileName(path: string) {
   const index = path.lastIndexOf("/");
   return index >= 0 ? path.slice(index + 1) : path;
-}
-
-function directoryName(path: string) {
-  const index = path.lastIndexOf("/");
-  return index >= 0 ? path.slice(0, index) : "";
 }

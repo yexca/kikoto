@@ -195,3 +195,18 @@ func upsertLyricsAssignment(ctx context.Context, tx *sql.Tx, audioID int64, lang
 	`, audioID, language, lyricsID, origin, nullableUserID(userID))
 	return err
 }
+
+// insertLyricsAssignmentIfAbsent stores an automatic assignment only when the
+// track has no library lyrics in that language, and reports whether it did.
+func insertLyricsAssignmentIfAbsent(ctx context.Context, tx *sql.Tx, audioID int64, language string, lyricsID int64, origin string, userID int64) (bool, error) {
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO media_lyrics_assignment (audio_media_item_id, language, lyrics_media_item_id, origin, assigned_by_user_id)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(audio_media_item_id, language) DO NOTHING
+	`, audioID, language, lyricsID, origin, nullableUserID(userID))
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}

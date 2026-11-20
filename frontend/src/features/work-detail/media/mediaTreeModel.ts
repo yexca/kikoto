@@ -1,12 +1,18 @@
-import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
-import { mediaItemLyricsAssignments } from "../../../lib/lyricsLanguage";
+import type {
+  MediaItem,
+  RemoteLyricsChoice,
+  RemoteTrack,
+  RemoteWorkDetail,
+  WorkDetail,
+  WorkProgressSummary,
+} from "../../../lib/api";
 import { naturalNameCompare } from "../../../lib/naturalNameOrder";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
   audioExtensions,
-  findLocalLyricsChoices,
-  findRemoteLyricsMatches,
   isLyricsPath,
+  localLyricsChoices,
+  localLyricsFiles,
   type LyricsChoice,
 } from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
@@ -79,7 +85,6 @@ export function emptyTree(): TreeNode {
 
 export function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
   const root = emptyTree();
-  const lyricsMatchPathsByLocationID = new Map<number, string>();
   const folderLabels = localWorkFolderLabels(items, fileSourceId, workCode);
   for (const item of items) {
     const sourceLocations =
@@ -171,10 +176,9 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
           availability: candidate.availability,
         })),
     });
-    lyricsMatchPathsByLocationID.set(location.id, location.path);
   }
   const displayRoot = normalizeDisplayTree(root);
-  attachLocalLyricsChoices(displayRoot, items, lyricsMatchPathsByLocationID);
+  attachLocalLyricsChoices(displayRoot, items);
   return displayRoot;
 }
 
@@ -192,6 +196,7 @@ function playbackStreamURLForLocation(locationId: number, locationType: string, 
 export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIdentity): TreeNode {
   let nextID = -1;
   const root = emptyTree();
+  const lyricsChoices = new Map<TreeTrack, RemoteLyricsChoice[]>();
   const walk = (nodes: RemoteTrack[], cursor: TreeNode) => {
     nodes.forEach((node, index) => {
       const title = (node.title ?? "").trim() || `Track ${index + 1}`;
@@ -211,7 +216,7 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
         identity && !hasCache && hasRemoteMedia && (remoteKind === "audio" || remoteKind === "video")
           ? remoteMediaURL(identity.sourceId, identity.workCode, sourcePath)
           : node.streamUrl;
-      cursor.files.push({
+      const file: TreeTrack = {
         mediaItemId: nextID,
         locationId: hasCache ? node.cacheLocationId! : nextID,
         title,
@@ -281,13 +286,15 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
               ]
             : []),
         ],
-      });
+      };
+      cursor.files.push(file);
+      if (node.lyricsChoices?.length) lyricsChoices.set(file, node.lyricsChoices);
       nextID -= 1;
     });
   };
   walk(tracks, root);
   const displayRoot = normalizeDisplayTree(root);
-  attachRemoteLyricsChoices(displayRoot);
+  attachRemoteLyricsChoices(displayRoot, lyricsChoices);
   return displayRoot;
 }
 
@@ -471,7 +478,10 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverU
   const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
   const lyricsChoices =
     track.lyricsChoices ??
-    findLocalLyricsChoices(track.sourcePath || track.title, work.mediaItems, mediaItemLyricsAssignments(audioItem));
+    localLyricsChoices(
+      audioItem?.locations.find((location) => location.id === track.locationId),
+      localLyricsFiles(work.mediaItems),
+    );
   const automaticLyrics = lyricsChoices[0] ?? null;
   const preferredLyricsMediaItemId =
     track.preferredLyricsMediaItemId !== undefined
@@ -552,14 +562,9 @@ export function buildWorkResumeQueue(
   };
 }
 
-export function toRemotePreviewPlayerTrack(
-  track: TreeTrack,
-  detail: RemoteWorkDetail,
-  files: TreeTrack[] = [],
-): PlayerTrack {
+export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
   const remoteWorkCode = detail.remoteCode || detail.primaryCode || detail.remoteId;
-  const remoteLyrics =
-    track.lyricsChoices ?? findRemoteLyricsMatches(track.sourcePath || track.title, files.map(remoteLyricsCandidate));
+  const remoteLyrics = track.lyricsChoices ?? [];
   const automaticLyrics = remoteLyrics[0] ?? null;
   return {
     ...track,
@@ -584,21 +589,17 @@ export function toRemotePreviewPlayerTrack(
   };
 }
 
-function attachLocalLyricsChoices(
-  root: TreeNode,
-  items: MediaItem[],
-  lyricsMatchPathsByLocationID: ReadonlyMap<number, string>,
-) {
+function attachLocalLyricsChoices(root: TreeNode, items: MediaItem[]) {
   const files = flattenTreeFiles(root);
   const itemsByID = new Map(items.map((item) => [item.id, item]));
+  const lyricsFiles = localLyricsFiles(items);
   const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
   for (const file of files) {
     if (file.kind !== "audio" && file.kind !== "video") continue;
     const item = itemsByID.get(file.mediaItemId);
-    const choices = findLocalLyricsChoices(
-      lyricsMatchPathsByLocationID.get(file.locationId) || file.sourcePath || file.title,
-      items,
-      mediaItemLyricsAssignments(item),
+    const choices = localLyricsChoices(
+      item?.locations.find((location) => location.id === file.locationId),
+      lyricsFiles,
     ).map((choice) => ({
       ...choice,
       displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
@@ -611,31 +612,37 @@ function attachLocalLyricsChoices(
   }
 }
 
-function attachRemoteLyricsChoices(root: TreeNode) {
+/**
+ * Turns the lyrics choices the server ranks for each remote audio and video
+ * file into the files of the tree they name. A file the tree cannot read is
+ * left out.
+ */
+function attachRemoteLyricsChoices(root: TreeNode, serverChoices: ReadonlyMap<TreeTrack, RemoteLyricsChoice[]>) {
   const files = flattenTreeFiles(root);
-  const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
-  const candidates = files.map(remoteLyricsCandidate);
+  const filesByPath = new Map<string, TreeTrack>();
+  for (const file of files) if (!filesByPath.has(file.sourcePath)) filesByPath.set(file.sourcePath, file);
   for (const file of files) {
     if (file.kind !== "audio" && file.kind !== "video") continue;
-    const choices = findRemoteLyricsMatches(file.sourcePath || file.title, candidates).map((choice) => ({
-      ...choice,
-      displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
-    }));
+    const choices: LyricsChoice[] = [];
+    for (const choice of serverChoices.get(file) ?? []) {
+      const lyrics = filesByPath.get(choice.path);
+      const url = lyrics ? lyrics.textPreviewUrl || lyrics.streamUrl || lyrics.downloadUrl : "";
+      if (!lyrics || !url || choices.some((existing) => existing.locationId === lyrics.locationId)) continue;
+      choices.push({
+        mediaItemId: lyrics.mediaItemId,
+        locationId: lyrics.locationId,
+        title: lyrics.title,
+        path: lyrics.sourcePath,
+        displayPath: lyrics.sourcePath,
+        reason: choice.reason,
+        url,
+      });
+    }
     file.lyricsChoices = choices;
     file.autoLyricsLocationId = choices[0]?.locationId ?? null;
     file.preferredLyricsMediaItemId = null;
     file.lyricsPreferencePersistable = false;
   }
-}
-
-function remoteLyricsCandidate(file: TreeTrack) {
-  return {
-    mediaItemId: file.mediaItemId,
-    locationId: file.locationId,
-    title: file.title,
-    path: file.sourcePath,
-    url: file.textPreviewUrl || file.streamUrl || file.downloadUrl,
-  };
 }
 
 function displayPathParts(

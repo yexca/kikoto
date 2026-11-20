@@ -1,8 +1,11 @@
 package httpapi
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestLyricsCandidateMatchesTrackLikeThePlayer(t *testing.T) {
+func TestLyricsCandidateMatchesTrack(t *testing.T) {
 	cases := []struct {
 		name   string
 		track  string
@@ -51,6 +54,52 @@ func TestLyricsMatchPathAcceptsOnlyLyricsFormats(t *testing.T) {
 	} {
 		if got := isLyricsMatchPath(path); got != want {
 			t.Errorf("isLyricsMatchPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestRankLyricsMatchesOrdersTheChoices(t *testing.T) {
+	cases := []struct {
+		name   string
+		track  string
+		lyrics []string
+		want   []string
+	}{
+		{"the track's folder before another", "work/main/01_abc.wav", []string{"work/bonus/01_abc.vtt", "work/main/01_abc.srt"}, []string{"work/main/01_abc.srt", "work/bonus/01_abc.vtt"}},
+		{"a shared lyrics file only in the track's folder", "work/main/01_abc.wav", []string{"work/lyrics.vtt", "work/main/字幕.vtt"}, []string{"work/main/字幕.vtt"}},
+		{"the track's own sound effect variant first", "work/本編_SEあり.wav", []string{"work/本編_SEなし.lrc", "work/本編_SEあり.lrc"}, []string{"work/本編_SEあり.lrc", "work/本編_SEなし.lrc"}},
+		{"never a CUE sheet", "work/01_abc.wav", []string{"work/01_abc.cue", "work/01_abc.lrc"}, []string{"work/01_abc.lrc"}},
+		{"the preferred format among equal names", "work/01_abc.wav", []string{"work/01_abc.srt", "work/01_abc.vtt"}, []string{"work/01_abc.vtt", "work/01_abc.srt"}},
+		{"natural path order among equal matches", "work/01_abc.wav", []string{"work/subs10/01_abc.lrc", "work/subs2/01_abc.lrc"}, []string{"work/subs2/01_abc.lrc", "work/subs10/01_abc.lrc"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			candidates := []lyricsMatchCandidate{}
+			for _, path := range testCase.lyrics {
+				if isLyricsMatchPath(path) {
+					candidates = append(candidates, newLyricsMatchCandidate(path))
+				}
+			}
+			got := []string{}
+			for _, match := range rankLyricsMatches(testCase.track, candidates) {
+				got = append(got, candidates[match.index].path)
+			}
+			if strings.Join(got, "|") != strings.Join(testCase.want, "|") {
+				t.Fatalf("ranked = %v, want %v", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestNaturalNameCompareReadsNumbers(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"Track2.mp3", "Track10.mp3"},
+		{"a.lrc", "B.lrc"},
+		{"第二話.mp3", "第十話.mp3"},
+		{"第九話.mp3", "第二十一話.mp3"},
+	} {
+		if naturalNameCompare(pair[0], pair[1]) >= 0 || naturalNameCompare(pair[1], pair[0]) <= 0 {
+			t.Errorf("%q does not come before %q", pair[0], pair[1])
 		}
 	}
 }
