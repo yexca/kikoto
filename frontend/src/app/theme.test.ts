@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -5,10 +7,13 @@ import {
   DEFAULT_THEME_PRESET,
   getStoredThemePalette,
   getStoredThemePreset,
+  resolveThemePalette,
   themeColorFor,
-  THEME_PALETTE_OPTIONS,
+  themePaletteOptions,
   THEME_PRESET_OPTIONS,
 } from "@/app/theme";
+
+const stylesheet = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 describe("theme preset preferences", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -47,19 +52,54 @@ describe("theme palette preferences", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("uses Original when no valid palette is stored", () => {
-    for (const storedValue of [null, "blue", "rose"]) {
+    for (const storedValue of [null, "rose", "cyan"]) {
       vi.stubGlobal("localStorage", { getItem: () => storedValue });
       expect(getStoredThemePalette()).toBe("original");
     }
     expect(DEFAULT_THEME_PALETTE).toBe("original");
   });
 
-  it.each(["original", "graphite", "cobalt", "iris"] as const)("preserves a stored %s palette", (storedValue) => {
+  it.each(["original", "green", "purple", "orange"] as const)("preserves a stored %s palette", (storedValue) => {
     vi.stubGlobal("localStorage", { getItem: () => storedValue });
     expect(getStoredThemePalette()).toBe(storedValue);
   });
 
-  it("keeps the palette list small and places Original first", () => {
-    expect(THEME_PALETTE_OPTIONS.map((option) => option.value)).toEqual(["original", "graphite", "cobalt", "iris"]);
+  it.each([
+    ["graphite", "original"],
+    ["cobalt", "blue"],
+    ["iris", "purple"],
+  ] as const)("maps the former %s palette to %s", (storedValue, palette) => {
+    vi.stubGlobal("localStorage", { getItem: () => storedValue });
+    expect(getStoredThemePalette()).toBe(palette);
+  });
+
+  it("offers Original first and at least one distinct alternate for every preset", () => {
+    for (const option of THEME_PRESET_OPTIONS) {
+      const palettes = themePaletteOptions(option.value).map((palette) => palette.value);
+      expect(palettes[0]).toBe("original");
+      expect(palettes.length).toBeGreaterThan(1);
+      expect(new Set(palettes).size).toBe(palettes.length);
+    }
+  });
+
+  it("shows Original for a hue the preset does not offer and keeps an offered one", () => {
+    expect(resolveThemePalette("apple", "green")).toBe("original");
+    expect(resolveThemePalette("google-md", "green")).toBe("green");
+  });
+
+  it("swatches show the accent the stylesheet applies in each mode", () => {
+    for (const option of THEME_PRESET_OPTIONS) {
+      for (const { value, accent } of themePaletteOptions(option.value).slice(1)) {
+        const selector = `[data-theme-preset="${option.value}"][data-theme-palette="${value}"]`;
+        expect(primaryFor(`:root${selector}`)).toBe(accent.light);
+        expect(primaryFor(`.dark${selector}`)).toBe(accent.dark);
+      }
+    }
   });
 });
+
+function primaryFor(selector: string) {
+  const start = stylesheet.indexOf(`${selector} {`);
+  if (start < 0) return undefined;
+  return /--primary:\s*([^;]+);/.exec(stylesheet.slice(start))?.[1];
+}

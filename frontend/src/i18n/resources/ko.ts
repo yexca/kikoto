@@ -756,7 +756,6 @@ export const koreanResource = {
       ...recordsKorean,
       appearance: {
         title: "외관",
-        subtitle: "모드, 스타일 및 색상",
         openSettings: "외관 설정 열기",
         summary: "외관: {{mode}}, {{style}}, {{color}}",
         language: "UI 언어",
@@ -768,7 +767,14 @@ export const koreanResource = {
         themePreference: "테마 설정",
         themeStyle: "테마 스타일",
         themeColor: "테마 색상",
-        palette: { original: "기본", graphite: "그래파이트", cobalt: "코발트", iris: "아이리스" },
+        palette: {
+          original: "기본",
+          green: "그린",
+          blue: "블루",
+          purple: "퍼플",
+          pink: "핑크",
+          orange: "오렌지",
+        },
         light: "라이트",
         dark: "다크",
         system: "시스템",

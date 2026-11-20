@@ -12,12 +12,12 @@
         ? storedPreset
         : "anthropic";
   const storedPalette = localStorage.getItem("kikoto:theme-palette");
-  const palette =
-    storedPalette === "original" ||
-    storedPalette === "graphite" ||
-    storedPalette === "cobalt" ||
-    storedPalette === "iris"
-      ? storedPalette
+  const formerPalettes = { graphite: "original", cobalt: "blue", iris: "purple" };
+  const palettes = ["original", "green", "blue", "purple", "pink", "orange"];
+  const palette = palettes.includes(storedPalette)
+    ? storedPalette
+    : Object.prototype.hasOwnProperty.call(formerPalettes, storedPalette)
+      ? formerPalettes[storedPalette]
       : "original";
   const dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.classList.toggle("dark", dark);

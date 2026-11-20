@@ -257,7 +257,7 @@ export function HeaderActions({
             ariaLabel={t("appearance.title")}
           >
             <div className="w-[min(16rem,calc(100vw-1rem))]">
-              <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
+              <PopoverHeader title={t("appearance.title")} />
               {appearanceControls}
             </div>
           </HeaderPopover>

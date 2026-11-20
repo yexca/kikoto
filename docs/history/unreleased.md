@@ -159,7 +159,17 @@
   the current card mode instead of an empty-library message before the first
   page arrives, and the Libraries settings tab shows its source cards.
 - Appearance chooses Light, Dark, or System from a row of tabs instead of a
-  menu.
+  menu, and drops its description line.
+- Each Appearance style offers the accent colors its design source
+  publishes beside Original: Anthropic adds the brand Blue and Green; OpenAI
+  the Apps SDK Blue, Purple, and Orange; Apple the system Purple, Pink, and
+  Orange; and Google MD Material 3 Green, Purple, and Orange. Apple's and
+  Google MD's Original blue follow the same sources: Apple's current system
+  blue with white text, and Google MD's Material 3 primary tones. The styles'
+  colors replace the shared Graphite, Cobalt, and Iris palettes: a stored Iris
+  becomes Purple, Cobalt becomes Blue where the style offers it, and Graphite
+  returns to Original. Swatches show the color for the current light or dark
+  mode.
 - Metadata's **DLsite works** chooses **All** or **Needs attention** from a
   filter in the header beside search instead of a row of buttons above the
   list. **Metadata issues** and **No available source** are folded into

@@ -24,8 +24,20 @@ Current implemented direction:
 - User-selectable Anthropic, OpenAI, Apple, and Google Material Design presets.
 - Preset-owned color, typography, density, radius, elevation, icon weight, and
   motion strength.
-- An independent Original, Graphite, Cobalt, or Iris color palette. Original
-  resolves to the selected preset's authored default.
+- A color palette per preset: Original, the preset's default accent, plus the
+  accents its design source publishes. A hue the selected preset does not
+  offer shows as Original.
+  - Anthropic: the brand's Blue and Green accents, kept at the brand hue and
+    saturation with lightness set for text contrast, as Original is for the
+    brand orange.
+  - OpenAI: the Apps SDK solid accent roles, Blue (info), Purple (discovery),
+    and Orange (warning), with white text in both modes.
+  - Apple: the Human Interface Guidelines system colors, Blue as Original
+    plus Purple, Pink, and Orange, default light and dark values with white
+    text.
+  - Google MD: Material 3 tones of Google palette colors, Blue as Original
+    plus Green, Purple, and Orange: tone 40 with tone 100 text in light mode,
+    tone 80 with tone 20 text in dark mode.
 - Light, dark, and system display modes remain independent from the preset.
 - Persistent mini player.
 

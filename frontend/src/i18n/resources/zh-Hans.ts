@@ -734,7 +734,6 @@ export const zhHansResource = {
       ...recordsHans,
       appearance: {
         title: "外观",
-        subtitle: "模式、样式和颜色",
         openSettings: "打开外观设置",
         summary: "外观：{{mode}}、{{style}}、{{color}}",
         language: "界面语言",
@@ -746,7 +745,7 @@ export const zhHansResource = {
         themePreference: "主题偏好",
         themeStyle: "主题样式",
         themeColor: "主题颜色",
-        palette: { original: "原始", graphite: "石墨", cobalt: "钴蓝", iris: "鸢尾紫" },
+        palette: { original: "原始", green: "绿", blue: "蓝", purple: "紫", pink: "粉", orange: "橙" },
         light: "浅色",
         dark: "深色",
         system: "跟随系统",

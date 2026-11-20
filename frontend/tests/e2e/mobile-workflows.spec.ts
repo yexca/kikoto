@@ -1801,8 +1801,8 @@ test("mobile header keeps Notifications and the account panel, which holds the r
   await expect(page.locator("html")).toHaveClass(/dark/);
   await appearancePopover.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
-  await appearancePopover.getByRole("button", { name: "Cobalt", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
+  await appearancePopover.getByRole("button", { name: "Pink", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "pink");
   const colorGroupBox = await appearancePopover.getByRole("group", { name: "Color" }).boundingBox();
   expect(colorGroupBox).not.toBeNull();
   expect(colorGroupBox!.x).toBeGreaterThanOrEqual(0);
@@ -1832,13 +1832,13 @@ async function openAppearance(page: Page) {
   if (await headerControl.isVisible()) {
     await headerControl.click();
     const appearance = page.getByRole("dialog", { name: "Appearance" });
-    await expect(appearance.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+    await expect(appearance.getByRole("group", { name: "Color", exact: true })).toBeVisible();
     return appearance;
   }
   await page.getByRole("button", { name: "Account menu" }).click();
   const account = page.getByRole("dialog", { name: "Account" });
   await account.getByRole("button", { name: /^Appearance/ }).click();
-  await expect(account.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(account.getByRole("group", { name: "Color", exact: true })).toBeVisible();
   return account;
 }
 
@@ -1985,14 +1985,14 @@ test("@desktop settings theme styles and colors change independently and persist
   expect(appleOriginalTokens.controlHeight).not.toBe(anthropicTokens.controlHeight);
   expect(appleOriginalTokens.motionScale).not.toBe(anthropicTokens.motionScale);
   expect(appleOriginalTokens.fontHeading).not.toBe(anthropicTokens.fontHeading);
-  await page.getByRole("button", { name: "Cobalt", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
-  const appleCobaltTokens = await themeVisualTokens(page);
-  expect(appleCobaltTokens.primary).not.toBe(appleOriginalTokens.primary);
-  expect(appleCobaltTokens.radius).toBe(appleOriginalTokens.radius);
+  await page.getByRole("button", { name: "Pink", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "pink");
+  const applePinkTokens = await themeVisualTokens(page);
+  expect(applePinkTokens.primary).not.toBe(appleOriginalTokens.primary);
+  expect(applePinkTokens.radius).toBe(appleOriginalTokens.radius);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
-  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "pink");
 });
 
 async function themeVisualTokens(page: Page) {
@@ -2132,7 +2132,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(notice).toHaveText(demoNotice);
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
   await openAppearance(page);
-  for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Graphite", "Cobalt", "Iris"]) {
+  for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Blue", "Green"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
   }
   await page

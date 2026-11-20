@@ -323,7 +323,7 @@
     --card-foreground: 240 4% 11%;
     --popover: 240 20% 99%;
     --popover-foreground: 240 4% 11%;
-    --primary: 211 100% 43%;
+    --primary: 208 100% 50%;
     --primary-foreground: 0 0% 100%;
     --secondary: 240 8% 92%;
     --secondary-foreground: 240 4% 20%;
@@ -333,7 +333,7 @@
     --accent-foreground: 240 4% 16%;
     --border: 240 6% 82%;
     --input: 240 5% 77%;
-    --ring: 211 100% 50%;
+    --ring: 208 100% 50%;
     --radius: 0.875rem;
     --control-radius: 0.625rem;
     --badge-radius: 9999px;
@@ -374,8 +374,8 @@
     --card-foreground: 240 5% 93%;
     --popover: 240 4% 15%;
     --popover-foreground: 240 5% 93%;
-    --primary: 211 100% 66%;
-    --primary-foreground: 211 65% 10%;
+    --primary: 206 100% 50%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 240 4% 19%;
     --secondary-foreground: 240 5% 89%;
     --muted: 240 4% 17%;
@@ -384,7 +384,7 @@
     --accent-foreground: 240 5% 94%;
     --border: 240 4% 27%;
     --input: 240 4% 31%;
-    --ring: 211 100% 66%;
+    --ring: 206 100% 50%;
     --surface-opacity: 0.78;
     --shell-opacity: 0.72;
     --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.28);
@@ -401,7 +401,7 @@
     --card-foreground: 220 6% 13%;
     --popover: 210 25% 99%;
     --popover-foreground: 220 6% 13%;
-    --primary: 217 82% 48%;
+    --primary: 212 100% 38%;
     --primary-foreground: 0 0% 100%;
     --secondary: 214 55% 92%;
     --secondary-foreground: 216 35% 22%;
@@ -411,7 +411,7 @@
     --accent-foreground: 216 42% 20%;
     --border: 214 15% 80%;
     --input: 214 16% 75%;
-    --ring: 217 82% 55%;
+    --ring: 214 82% 51%;
     --radius: 0.875rem;
     --control-radius: 9999px;
     --badge-radius: 9999px;
@@ -452,8 +452,8 @@
     --card-foreground: 210 14% 91%;
     --popover: 220 9% 15%;
     --popover-foreground: 210 14% 91%;
-    --primary: 216 86% 76%;
-    --primary-foreground: 216 55% 12%;
+    --primary: 221 100% 84%;
+    --primary-foreground: 213 100% 20%;
     --secondary: 216 22% 20%;
     --secondary-foreground: 214 42% 89%;
     --muted: 220 8% 17%;
@@ -462,7 +462,7 @@
     --accent-foreground: 214 42% 92%;
     --border: 216 10% 27%;
     --input: 216 11% 31%;
-    --ring: 216 86% 76%;
+    --ring: 221 100% 84%;
     --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.3);
     --shadow-md: 0 3px 9px hsl(0 0% 0% / 0.34);
     --shadow-lg: 0 7px 18px hsl(0 0% 0% / 0.4);
@@ -470,40 +470,144 @@
     --shadow-2xl: 0 20px 50px hsl(0 0% 0% / 0.54);
   }
 
-  :root[data-theme-palette="graphite"] {
-    --primary: 240 4% 29%;
+  /*
+   * Each preset's alternate accents come from the design source it follows:
+   * Anthropic's brand accents, OpenAI's Apps SDK solid accent roles, Apple's
+   * system colors, and Material 3 tones 40 and 80 of Google palette colors.
+   * The --primary values match the accents in theme.ts; a palette a preset
+   * does not offer matches no rule and leaves the preset's Original in place.
+   */
+
+  :root[data-theme-preset="anthropic"][data-theme-palette="blue"] {
+    --primary: 210 49% 42%;
     --primary-foreground: 0 0% 100%;
-    --ring: 240 5% 38%;
+    --ring: 210 49% 50%;
   }
 
-  .dark[data-theme-palette="graphite"] {
-    --primary: 240 5% 78%;
-    --primary-foreground: 240 8% 11%;
-    --ring: 240 5% 78%;
-  }
-
-  :root[data-theme-palette="cobalt"] {
-    --primary: 223 66% 48%;
+  :root[data-theme-preset="anthropic"][data-theme-palette="green"] {
+    --primary: 86 22% 36%;
     --primary-foreground: 0 0% 100%;
-    --ring: 223 72% 56%;
+    --ring: 86 22% 44%;
   }
 
-  .dark[data-theme-palette="cobalt"] {
-    --primary: 223 100% 77%;
-    --primary-foreground: 223 45% 12%;
-    --ring: 223 100% 77%;
-  }
-
-  :root[data-theme-palette="iris"] {
-    --primary: 263 45% 44%;
+  :root[data-theme-preset="openai"][data-theme-palette="blue"] {
+    --primary: 209 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --ring: 263 54% 54%;
+    --ring: 209 100% 50%;
   }
 
-  .dark[data-theme-palette="iris"] {
-    --primary: 263 72% 78%;
-    --primary-foreground: 263 42% 12%;
-    --ring: 263 72% 78%;
+  :root[data-theme-preset="openai"][data-theme-palette="purple"] {
+    --primary: 264 91% 64%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 264 91% 64%;
+  }
+
+  :root[data-theme-preset="openai"][data-theme-palette="orange"] {
+    --primary: 21 94% 46%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 21 94% 46%;
+  }
+
+  :root[data-theme-preset="apple"][data-theme-palette="purple"] {
+    --primary: 293 74% 53%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 293 74% 53%;
+  }
+
+  :root[data-theme-preset="apple"][data-theme-palette="pink"] {
+    --primary: 349 100% 59%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 349 100% 59%;
+  }
+
+  :root[data-theme-preset="apple"][data-theme-palette="orange"] {
+    --primary: 28 100% 58%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 28 100% 58%;
+  }
+
+  :root[data-theme-preset="google-md"][data-theme-palette="green"] {
+    --primary: 143 100% 22%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 139 72% 31%;
+  }
+
+  :root[data-theme-preset="google-md"][data-theme-palette="purple"] {
+    --primary: 273 73% 49%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 272 89% 61%;
+  }
+
+  :root[data-theme-preset="google-md"][data-theme-palette="orange"] {
+    --primary: 28 100% 30%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 28 100% 37%;
+  }
+
+  .dark[data-theme-preset="anthropic"][data-theme-palette="blue"] {
+    --primary: 210 55% 70%;
+    --primary-foreground: 210 45% 12%;
+    --ring: 210 55% 70%;
+  }
+
+  .dark[data-theme-preset="anthropic"][data-theme-palette="green"] {
+    --primary: 86 25% 64%;
+    --primary-foreground: 86 30% 10%;
+    --ring: 86 25% 64%;
+  }
+
+  .dark[data-theme-preset="openai"][data-theme-palette="blue"] {
+    --primary: 209 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 209 100% 50%;
+  }
+
+  .dark[data-theme-preset="openai"][data-theme-palette="purple"] {
+    --primary: 264 91% 64%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 264 91% 64%;
+  }
+
+  .dark[data-theme-preset="openai"][data-theme-palette="orange"] {
+    --primary: 21 94% 46%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 21 94% 46%;
+  }
+
+  .dark[data-theme-preset="apple"][data-theme-palette="purple"] {
+    --primary: 293 88% 58%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 293 88% 58%;
+  }
+
+  .dark[data-theme-preset="apple"][data-theme-palette="pink"] {
+    --primary: 348 100% 61%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 348 100% 61%;
+  }
+
+  .dark[data-theme-preset="apple"][data-theme-palette="orange"] {
+    --primary: 28 100% 59%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 28 100% 59%;
+  }
+
+  .dark[data-theme-preset="google-md"][data-theme-palette="green"] {
+    --primary: 129 60% 66%;
+    --primary-foreground: 139 100% 11%;
+    --ring: 129 60% 66%;
+  }
+
+  .dark[data-theme-preset="google-md"][data-theme-palette="purple"] {
+    --primary: 273 100% 86%;
+    --primary-foreground: 275 100% 25%;
+    --ring: 273 100% 86%;
+  }
+
+  .dark[data-theme-preset="google-md"][data-theme-palette="orange"] {
+    --primary: 23 100% 77%;
+    --primary-foreground: 26 100% 16%;
+    --ring: 23 100% 77%;
   }
 
   @media (max-width: 1023px) {

@@ -765,7 +765,6 @@ export const japaneseResource = {
       ...recordsJapanese,
       appearance: {
         title: "外観",
-        subtitle: "モード、スタイル、カラー",
         openSettings: "外観設定を開く",
         summary: "外観：{{mode}}、{{style}}、{{color}}",
         language: "UI 言語",
@@ -777,7 +776,14 @@ export const japaneseResource = {
         themePreference: "テーマ設定",
         themeStyle: "テーマスタイル",
         themeColor: "テーマカラー",
-        palette: { original: "オリジナル", graphite: "グラファイト", cobalt: "コバルト", iris: "アイリス" },
+        palette: {
+          original: "オリジナル",
+          green: "グリーン",
+          blue: "ブルー",
+          purple: "パープル",
+          pink: "ピンク",
+          orange: "オレンジ",
+        },
         light: "ライト",
         dark: "ダーク",
         system: "システム",

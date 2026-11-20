@@ -3,7 +3,14 @@ import { Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button, type ButtonProps } from "@/components/ui/button";
-import { themePaletteLabel, themePresetLabel, type ThemeMode, type ThemePalette, type ThemePreset } from "@/app/theme";
+import {
+  resolveThemePalette,
+  themePaletteLabel,
+  themePresetLabel,
+  type ThemeMode,
+  type ThemePalette,
+  type ThemePreset,
+} from "@/app/theme";
 
 export function ThemeTrigger({
   mode,
@@ -22,11 +29,13 @@ export function ThemeTrigger({
 }) {
   const { t } = useTranslation();
   const modeLabel = t(`appearance.${mode}`, { defaultValue: themeModeLabel(mode) });
+  const shownPalette = resolveThemePalette(preset, palette);
+  const colorLabel = t(`appearance.palette.${shownPalette}`, { defaultValue: themePaletteLabel(shownPalette) });
   const appearanceSummary = t("appearance.summary", {
     defaultValue: "Appearance: {{mode}}, {{style}}, {{color}}",
     mode: modeLabel,
     style: themePresetLabel(preset),
-    color: themePaletteLabel(palette),
+    color: colorLabel,
   });
   return (
     <Button
@@ -37,7 +46,7 @@ export function ThemeTrigger({
       aria-label={t("appearance.openSettings", { defaultValue: "Open appearance settings" })}
       title={
         appearanceSummary.includes("{{")
-          ? `Appearance: ${modeLabel}, ${themePresetLabel(preset)}, ${themePaletteLabel(palette)}`
+          ? `Appearance: ${modeLabel}, ${themePresetLabel(preset)}, ${colorLabel}`
           : appearanceSummary
       }
       onClick={onClick}

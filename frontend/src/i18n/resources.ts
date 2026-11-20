@@ -374,7 +374,6 @@ export const englishResource = {
       ...recordsEnglish,
       appearance: {
         title: "Appearance",
-        subtitle: "Mode, style, and color",
         openSettings: "Open appearance settings",
         summary: "Appearance: {{mode}}, {{style}}, {{color}}",
         language: "UI language",
@@ -388,9 +387,11 @@ export const englishResource = {
         themeColor: "Theme color",
         palette: {
           original: "Original",
-          graphite: "Graphite",
-          cobalt: "Cobalt",
-          iris: "Iris",
+          green: "Green",
+          blue: "Blue",
+          purple: "Purple",
+          pink: "Pink",
+          orange: "Orange",
         },
         light: "Light",
         dark: "Dark",

@@ -1,77 +1,85 @@
 export type ThemeMode = "light" | "dark" | "system";
 export type ThemePreset = "anthropic" | "openai" | "apple" | "google-md";
-export type ThemePalette = "original" | "graphite" | "cobalt" | "iris";
+/** An accent hue. Each preset offers Original plus the accents its design source publishes. */
+export type ThemePalette = "original" | "green" | "blue" | "purple" | "pink" | "orange";
 
 type ResolvedThemeMode = Exclude<ThemeMode, "system">;
+/** HSL channels in the form styles.css uses for `--primary`. */
+type ThemeAccent = Record<ResolvedThemeMode, string>;
 
 export const DEFAULT_THEME_PRESET: ThemePreset = "anthropic";
 export const DEFAULT_THEME_PALETTE: ThemePalette = "original";
+/**
+ * Each preset's accents in display order, taken from the design source the
+ * preset follows (see the Visual Direction section of docs/development/design.md).
+ * The `--primary` values in styles.css match these, so a swatch shows the color
+ * the theme applies.
+ */
 export const THEME_PRESET_OPTIONS = [
   {
     value: "anthropic",
     label: "Anthropic",
-    swatches: ["#ad4f2f", "#f7f3ed", "#302a26"],
-    previewAccents: {
-      original: "#ad4f2f",
-      graphite: "#625854",
-      cobalt: "#49699d",
-      iris: "#79588f",
+    accents: {
+      original: { light: "15 57% 43%", dark: "19 76% 70%" },
+      blue: { light: "210 49% 42%", dark: "210 55% 70%" },
+      green: { light: "86 22% 36%", dark: "86 25% 64%" },
     },
     themeColor: { light: "#f7f3ed", dark: "#1a1715" },
   },
   {
     value: "openai",
     label: "OpenAI",
-    swatches: ["#10a37f", "#fafafa", "#202020"],
-    previewAccents: {
-      original: "#10a37f",
-      graphite: "#4d5755",
-      cobalt: "#247da8",
-      iris: "#6b6099",
+    accents: {
+      original: { light: "160 84% 28%", dark: "160 55% 60%" },
+      blue: { light: "209 100% 50%", dark: "209 100% 50%" },
+      purple: { light: "264 91% 64%", dark: "264 91% 64%" },
+      orange: { light: "21 94% 46%", dark: "21 94% 46%" },
     },
     themeColor: { light: "#fafafa", dark: "#141414" },
   },
   {
     value: "apple",
     label: "Apple",
-    swatches: ["#007aff", "#f2f2f7", "#1c1c1e"],
-    previewAccents: {
-      original: "#007aff",
-      graphite: "#5b5b63",
-      cobalt: "#0a84ff",
-      iris: "#5e5ce6",
+    accents: {
+      original: { light: "208 100% 50%", dark: "206 100% 50%" },
+      purple: { light: "293 74% 53%", dark: "293 88% 58%" },
+      pink: { light: "349 100% 59%", dark: "348 100% 61%" },
+      orange: { light: "28 100% 58%", dark: "28 100% 59%" },
     },
     themeColor: { light: "#f2f2f7", dark: "#111112" },
   },
   {
     value: "google-md",
     label: "Google MD",
-    swatches: ["#1a73e8", "#f8fafd", "#202124"],
-    previewAccents: {
-      original: "#1a73e8",
-      graphite: "#5f6368",
-      cobalt: "#3367d6",
-      iris: "#7e57c2",
+    accents: {
+      original: { light: "212 100% 38%", dark: "221 100% 84%" },
+      green: { light: "143 100% 22%", dark: "129 60% 66%" },
+      purple: { light: "273 73% 49%", dark: "273 100% 86%" },
+      orange: { light: "28 100% 30%", dark: "23 100% 77%" },
     },
     themeColor: { light: "#f8fafd", dark: "#121316" },
   },
 ] as const satisfies ReadonlyArray<{
   value: ThemePreset;
   label: string;
-  swatches: readonly [string, string, string];
-  previewAccents: Record<ThemePalette, string>;
+  accents: { original: ThemeAccent } & Partial<Record<ThemePalette, ThemeAccent>>;
   themeColor: Record<ResolvedThemeMode, string>;
 }>;
-export const THEME_PALETTE_OPTIONS = [
-  { value: "original", label: "Original", swatch: null },
-  { value: "graphite", label: "Graphite", swatch: "#4a4a50" },
-  { value: "cobalt", label: "Cobalt", swatch: "#315fd6" },
-  { value: "iris", label: "Iris", swatch: "#7552b5" },
-] as const satisfies ReadonlyArray<{
-  value: ThemePalette;
-  label: string;
-  swatch: string | null;
-}>;
+const THEME_PALETTE_LABELS: Record<ThemePalette, string> = {
+  original: "Original",
+  green: "Green",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
+  orange: "Orange",
+};
+const THEME_PALETTES = Object.keys(THEME_PALETTE_LABELS) as ThemePalette[];
+/** Stored values from the former shared palettes and the hue that replaces each. */
+const FORMER_THEME_PALETTES = new Map<string, ThemePalette>([
+  ["graphite", "original"],
+  ["cobalt", "blue"],
+  ["iris", "purple"],
+]);
 
 const THEME_STORAGE_KEY = "kikoto:theme";
 const THEME_PRESET_STORAGE_KEY = "kikoto:theme-preset";
@@ -104,7 +112,8 @@ export function storeThemePreset(preset: ThemePreset) {
 
 export function getStoredThemePalette(): ThemePalette {
   const value = localStorage.getItem(THEME_PALETTE_STORAGE_KEY);
-  return isThemePalette(value) ? value : DEFAULT_THEME_PALETTE;
+  if (isThemePalette(value)) return value;
+  return FORMER_THEME_PALETTES.get(value ?? "") ?? DEFAULT_THEME_PALETTE;
 }
 
 export function storeThemePalette(palette: ThemePalette) {
@@ -158,7 +167,25 @@ export function themePresetLabel(preset: ThemePreset) {
 }
 
 export function themePaletteLabel(palette: ThemePalette) {
-  return THEME_PALETTE_OPTIONS.find((option) => option.value === palette)?.label ?? "Original";
+  return THEME_PALETTE_LABELS[palette];
+}
+
+/** The palettes a preset offers, Original first, with each one's light and dark accent. */
+export function themePaletteOptions(preset: ThemePreset): Array<{ value: ThemePalette; accent: ThemeAccent }> {
+  const accents: Partial<Record<ThemePalette, ThemeAccent>> = presetOption(preset).accents;
+  return (Object.keys(accents) as ThemePalette[]).map((value) => ({ value, accent: accents[value]! }));
+}
+
+/**
+ * The palette a preset shows. A stored hue the preset does not offer falls back
+ * to Original, so switching back to a preset that offers it restores it.
+ */
+export function resolveThemePalette(preset: ThemePreset, palette: ThemePalette): ThemePalette {
+  return palette in presetOption(preset).accents ? palette : "original";
+}
+
+function presetOption(preset: ThemePreset) {
+  return THEME_PRESET_OPTIONS.find((option) => option.value === preset) ?? THEME_PRESET_OPTIONS[0];
 }
 
 function isThemePreset(value: string | null): value is ThemePreset {
@@ -166,7 +193,7 @@ function isThemePreset(value: string | null): value is ThemePreset {
 }
 
 function isThemePalette(value: string | null): value is ThemePalette {
-  return value === "original" || value === "graphite" || value === "cobalt" || value === "iris";
+  return (THEME_PALETTES as readonly (string | null)[]).includes(value);
 }
 
 function updateThemeColor(mode: ResolvedThemeMode, preset: ThemePreset) {

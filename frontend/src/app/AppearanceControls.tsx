@@ -22,7 +22,7 @@ export type AppearanceControl = {
   onPaletteChange: (palette: ThemePalette) => void;
 };
 
-/** Mode, style, and color; the account panel shows them in its Appearance view. */
+/** Mode, style, and color; the header popover and the phone account panel show them under Appearance. */
 export function AppearanceControls({
   mode,
   preset,
@@ -55,10 +55,10 @@ export function AppearanceControls({
         </div>
       </AppearanceGroup>
       <AppearanceGroup label={t("appearance.style")}>
-        <ThemePresetPicker value={preset} onChange={onPresetChange} compact />
+        <ThemePresetPicker value={preset} onChange={onPresetChange} />
       </AppearanceGroup>
       <AppearanceGroup label={t("appearance.color")}>
-        <ThemePalettePicker preset={preset} value={palette} onChange={onPaletteChange} compact />
+        <ThemePalettePicker preset={preset} value={palette} onChange={onPaletteChange} />
       </AppearanceGroup>
     </>
   );

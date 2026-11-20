@@ -739,7 +739,6 @@ export const zhHantResource = {
       ...recordsHant,
       appearance: {
         title: "外觀",
-        subtitle: "模式、樣式和色彩",
         openSettings: "開啟外觀設定",
         summary: "外觀：{{mode}}、{{style}}、{{color}}",
         language: "介面語言",
@@ -751,7 +750,7 @@ export const zhHantResource = {
         themePreference: "主題偏好",
         themeStyle: "主題樣式",
         themeColor: "主題色彩",
-        palette: { original: "原始", graphite: "石墨", cobalt: "鈷藍", iris: "鳶尾紫" },
+        palette: { original: "原始", green: "綠", blue: "藍", purple: "紫", pink: "粉", orange: "橙" },
         light: "淺色",
         dark: "深色",
         system: "跟隨系統",

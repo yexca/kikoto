@@ -131,7 +131,7 @@ export function AccountPanel({
   }
   if (view === "appearance" && appearance) {
     return (
-      <NestedView title={t("appearance.title")} subtitle={t("appearance.subtitle")} onBack={back("appearance")}>
+      <NestedView title={t("appearance.title")} onBack={back("appearance")}>
         {appearance.content}
       </NestedView>
     );
@@ -318,24 +318,14 @@ function MainView({
   return <>{children}</>;
 }
 
-function NestedView({
-  title,
-  subtitle,
-  onBack,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  onBack: () => void;
-  children: ReactNode;
-}) {
+function NestedView({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("button")?.focus();
   }, []);
   return (
     <div ref={ref} className="contents">
-      <PopoverHeader title={title} subtitle={subtitle} onBack={onBack} />
+      <PopoverHeader title={title} onBack={onBack} />
       {children}
     </div>
   );
