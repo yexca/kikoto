@@ -392,9 +392,13 @@
 - Followed circles and voice actors leave Favorites: they are the **Favorite**
   view of the Circles and Voice Actors pages, and a link to the former
   Favorites creator shelves opens that view.
-- A smart list's rule, new works, **Only new**, **Mark all as seen**, and
-  **Edit rule** share one line under the shelf header. **Convert to regular
-  list** moves into the list's editor.
+- A smart list's rule, its new-works count, which toggles **Only new**, and
+  icon buttons for **Mark all as seen** and **Edit rule** share one line under
+  the shelf header that fits a phone screen. **Convert to regular list** moves
+  into the list's editor.
+- On a phone, a smart list with new works further along the shelf row no
+  longer widens Favorites, which pushed the bottom navigation below the screen
+  and could hide it while searching.
 - Circle and voice actor pages open with a compact summary like the work
   detail Hero: no frame, the catalog counts on one line above the name after
   a circle's code (zero counts left out, and a circle's size left to its

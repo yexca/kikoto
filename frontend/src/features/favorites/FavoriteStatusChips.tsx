@@ -25,7 +25,7 @@ export function FavoriteStatusChips({
   const { t } = useTranslation();
   return (
     <div
-      className="scrollbar-hidden -mx-4 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4"
+      className="scrollbar-hidden relative -mx-4 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4"
       role="group"
       aria-label={t("favorites.statusFilters")}
     >

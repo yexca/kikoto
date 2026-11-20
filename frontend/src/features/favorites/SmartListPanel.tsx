@@ -1,5 +1,5 @@
 import { CheckCheck, Pencil, Sparkles, Zap } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,9 @@ import { cn } from "@/lib/tailwindClassNames";
 import { smartRuleSummary } from "./smartListModel";
 
 /**
- * The smart list line under the shelf header: what the rule matches, the new
- * works it found with Only new and Mark all as seen, and Edit rule. Converting
- * the list to a regular one waits in its editor.
+ * The smart list line under the shelf header: what the rule matches, then a
+ * new-works chip that toggles Only new, and icon actions for Mark all as seen
+ * and Edit rule. Converting the list to a regular one waits in its editor.
  */
 export function SmartListPanel({
   list,
@@ -46,7 +46,7 @@ export function SmartListPanel({
   return (
     <section
       aria-label={t("favorites.smart.ruleLabel")}
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius)] border bg-card/60 px-3 py-1.5"
+      className="flex items-center gap-2 rounded-[var(--radius)] border bg-card/60 py-1 pl-3 pr-1"
     >
       <Zap className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
       <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -69,44 +69,63 @@ export function SmartListPanel({
           <RuleSummaryChip key={`${tag.kind}:${tag.id}`} tag={tag} excluded />
         ))}
       </ul>
-      <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1">
+      <div className="ml-auto flex items-center gap-0.5">
         {(newCount > 0 || newOnly) && (
-          <>
-            <span role="status" className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-primary">
-              <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              {t("favorites.smart.newCount", { count: newCount })}
-            </span>
-            <Button
-              variant={newOnly ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-2 text-xs"
-              aria-pressed={newOnly}
-              onClick={onToggleNewOnly}
-            >
-              {t("favorites.smart.showNewOnly")}
-            </Button>
-            {canEdit && newCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                disabled={markingSeen}
-                onClick={() => void markSeen()}
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-                {t("favorites.smart.markSeen")}
-              </Button>
+          // The new count is the Only new toggle itself, so the line holds one chip instead of a label and a button.
+          <button
+            type="button"
+            aria-pressed={newOnly}
+            title={t("favorites.smart.showNewOnly")}
+            onClick={onToggleNewOnly}
+            className={cn(
+              "touch-target inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              newOnly
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-primary/40 text-primary hover:bg-primary/10",
             )}
-          </>
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="whitespace-nowrap">{t("favorites.smart.newCount", { count: newCount })}</span>
+          </button>
+        )}
+        {canEdit && newCount > 0 && (
+          <PanelIconButton label={t("favorites.smart.markSeen")} disabled={markingSeen} onClick={() => void markSeen()}>
+            <CheckCheck className="h-4 w-4" />
+          </PanelIconButton>
         )}
         {canEdit && (
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={onEditRule}>
-            <Pencil className="h-3.5 w-3.5" />
-            {t("favorites.smart.editRule")}
-          </Button>
+          <PanelIconButton label={t("favorites.smart.editRule")} onClick={onEditRule}>
+            <Pencil className="h-4 w-4" />
+          </PanelIconButton>
         )}
       </div>
     </section>
+  );
+}
+
+function PanelIconButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 shrink-0 text-muted-foreground"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
   );
 }
 

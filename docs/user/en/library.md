@@ -226,8 +226,8 @@ favorites. You can still add other works by hand, which makes them favorites
 like in any list, and remove a matching work, which keeps it out of the list
 until you add it again. The list only gathers works already in your library.
 When works start to match later, the shelf shows how many are new and marks
-them **New** until you choose **Mark all as seen**; **Only new** shows just
-those works. **Convert to regular list** in the list's editor keeps the works the list shows now as
+them **New** until you choose **Mark all as seen**; choosing the new-works
+count shows just those works. **Convert to regular list** in the list's editor keeps the works the list shows now as
 an ordinary list, makes all of them favorites, and removes the rule. A tag that
 is later hidden or deleted stays in the rule, crossed out, and matches no work.
 
