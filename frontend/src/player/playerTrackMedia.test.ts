@@ -1,30 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { audioHlsPlayback } from "./mediaPlayback";
-import { playerTrackAudioSource, RECORD_LOCATION_TYPE, supportsCompatibilityPlayback } from "./playerTrackMedia";
-import type { PlayerTrack } from "./playerTypes";
-
-const track: PlayerTrack = {
-  queueItemId: "queue-example",
-  mediaItemId: 7,
-  locationId: 11,
-  title: "01 Example.wav",
-  kind: "audio",
-  folderPath: "",
-  locationType: "local",
-  streamUrl: "/api/media/11/stream",
-  sizeBytes: null,
-  availability: "available",
-  workId: 1,
-  workCode: "RJ00000000",
-  workTitle: "Example Work",
-  coverUrl: "",
-  circle: "Example Circle",
-  progress: null,
-  progressRecordable: true,
-  lyricsLocationId: null,
-  lyricsTitle: "",
-};
 
 function stubBrowser({ nativeHls = false, mse = false, userAgent = "Mozilla/5.0 (Windows NT 10.0)" }) {
   vi.stubGlobal("document", {
@@ -53,95 +29,5 @@ describe("audio HLS playback support", () => {
     expect(audioHlsPlayback()).toBe("native");
     stubBrowser({});
     expect(audioHlsPlayback()).toBeNull();
-  });
-});
-
-describe("player audio sources", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("streams a file the browser plays directly", () => {
-    stubBrowser({ mse: true });
-    const source = playerTrackAudioSource(track);
-    expect(source.delivery).toBe("direct");
-    expect(source.url).toContain("forceDirect=1");
-  });
-
-  it("converts compatibility playback and unplayable formats through the HLS playlist", () => {
-    stubBrowser({ mse: true });
-    expect(playerTrackAudioSource(track, true)).toEqual({
-      delivery: "hls",
-      url: "/api/media/11/hls/index.m3u8",
-    });
-    expect(playerTrackAudioSource({ ...track, title: "01 Example.wma" }).delivery).toBe("hls");
-  });
-
-  it("converts the audio of a video file through the audio profile of its HLS playlist", () => {
-    const video: PlayerTrack = { ...track, kind: "video", title: "clip.avi" };
-    stubBrowser({ mse: true });
-    expect(playerTrackAudioSource(video)).toEqual({
-      delivery: "hls",
-      url: "/api/media/11/hls/index.m3u8?profile=audio",
-    });
-    stubBrowser({ nativeHls: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" });
-    expect(playerTrackAudioSource(video).delivery).toBe("hls");
-    stubBrowser({ mse: true });
-    expect(playerTrackAudioSource({ ...video, title: "clip.mp4" }).delivery).toBe("direct");
-  });
-
-  it("prepares a complete conversion without HLS playback", () => {
-    stubBrowser({});
-    const prepared = playerTrackAudioSource(track, true);
-    expect(prepared.delivery).toBe("prepared");
-    expect(prepared.url).toContain("forceTranscode=1");
-    const video = playerTrackAudioSource({ ...track, kind: "video", title: "clip.avi" });
-    expect(video.delivery).toBe("prepared");
-    expect(video.url).toContain("profile=audio");
-  });
-
-  it("never converts a remote stream", () => {
-    stubBrowser({ mse: true });
-    const remote = {
-      ...track,
-      locationType: "remote_stream",
-      remoteSourceId: 3,
-      remoteWorkCode: "RJ00000000",
-      remotePath: "a.wma",
-    };
-    expect(playerTrackAudioSource(remote, true).delivery).toBe("direct");
-  });
-});
-
-describe("Record audio sources", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  const recordTrack: PlayerTrack = {
-    ...track,
-    mediaItemId: 0,
-    locationId: -21,
-    title: "Episode 1.mp3",
-    locationType: RECORD_LOCATION_TYPE,
-    streamUrl: "/api/records/assets/21/stream",
-    workId: 0,
-    workCode: "",
-    progressRecordable: false,
-    record: { assetId: 21, folderId: 4 },
-  };
-
-  it("streams the file itself when the browser plays it", () => {
-    stubBrowser({ mse: true });
-    expect(playerTrackAudioSource(recordTrack)).toEqual({ delivery: "direct", url: "/api/records/assets/21/stream" });
-  });
-
-  it("converts compatibility playback, unplayable formats, and a video's sound through the Record audio playlist", () => {
-    stubBrowser({ mse: true });
-    const playlist = { delivery: "hls", url: "/api/records/assets/21/hls/index.m3u8?profile=audio" };
-    expect(playerTrackAudioSource(recordTrack, true)).toEqual(playlist);
-    expect(playerTrackAudioSource({ ...recordTrack, title: "Episode 1.wma" })).toEqual(playlist);
-    expect(playerTrackAudioSource({ ...recordTrack, kind: "video", title: "Day 1.mkv" })).toEqual(playlist);
-    expect(supportsCompatibilityPlayback(recordTrack)).toBe(true);
   });
 });

@@ -186,7 +186,7 @@ func TestVideoHLSCanGenerateLaterSegmentFirstAndReuseIt(t *testing.T) {
 	infoRequest := httptest.NewRequest(http.MethodGet, "/api/media/804/playback?forceTranscode=1", nil)
 	infoRequest.SetPathValue("id", "804")
 	infoResponse := httptest.NewRecorder()
-	server.getVideoPlaybackInfo(infoResponse, infoRequest)
+	server.getMediaPlaybackInfo(infoResponse, infoRequest)
 	if infoResponse.Code != http.StatusOK {
 		t.Fatalf("playback info status = %d, body = %s", infoResponse.Code, infoResponse.Body.String())
 	}

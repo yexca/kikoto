@@ -294,7 +294,7 @@ test("@desktop player keeps speed and compatibility playback under More", async 
   await page.goto("/");
 
   await expect
-    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).pathname === "/api/media/1/stream"))
     .toBe(true);
   await expect(page.getByRole("button", { name: /Playback speed .* times/ })).toHaveCount(0);
   const more = page.getByRole("button", { name: "More player options" });
@@ -818,7 +818,7 @@ test("failed direct playback offers compatibility before source fallback and the
 
   await expect(page.getByText("Playback failed for Test track.wav.")).toBeVisible();
   await expect
-    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).pathname === "/api/media/1/stream"))
     .toBe(true);
   await page.getByRole("button", { name: "Compatibility playback", exact: true }).click();
   await expect
@@ -1014,7 +1014,7 @@ test("the next queued track is preloaded while the current track plays", async (
 
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(() => nextTrackRequests.length).toBeGreaterThan(0);
-  expect(new URL(nextTrackRequests[0]).searchParams.get("forceDirect")).toBe("1");
+  expect(new URL(nextTrackRequests[0]).searchParams.get("profile")).toBe("audio");
   await expect(page.getByText("Test track.wav", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element: HTMLAudioElement) => new URL(element.src).pathname)).toBe(
     "/api/media/1/stream",

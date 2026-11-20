@@ -1,6 +1,6 @@
 # Media Playback
 
-How the backend measures loudness, shares conversion capacity, answers playback info, chooses audio tracks, extracts subtitles for local and cached media, and reads lyrics and subtitle text.
+How the backend measures loudness, shares conversion capacity, answers playback info for video and audio, chooses audio tracks, extracts subtitles for local and cached media, and reads lyrics and subtitle text.
 
 ## Loudness
 
@@ -73,6 +73,38 @@ tiers of the direct HEVC decoder keys and are probed against Media Source: the
 player sends one only when Media Source accepts the codec and AAC and, where
 the browser offers MediaCapabilities, reports `media-source` decoding of it as
 supported and power efficient.
+
+## Audio Playback Decision
+
+`GET /api/media/{id}/playback?profile=audio` chooses how the audio player plays
+a local or cached audio file, or the audio of a video, and answers
+`delivery`, `conversion`, `url`, and `durationSeconds`:
+
+- `direct` (`conversion` `none`) names the stream route with the declared
+  `capabilities`, which serves the file itself with range support. The probed
+  first audio stream and its container decide, never the extension: FLAC named
+  `.mp3` plays directly for a client that declares `audio-flac` and is
+  converted for one that does not, and MP3 named `.wma` plays directly.
+- `hls` names the audio HLS playlist of the file's revision. A client declares
+  `audio-hls` when it plays one; the playlist is a conversion, so the transcode
+  slots, failure memory, and cache quota apply as they do to video.
+- `prepared` names the stream route with `forceTranscode`, which serves one
+  complete MP3 conversion. A client without `audio-hls` gets it for any
+  converted file, and so does a file that HLS cannot segment.
+
+`forceTranscode`, the player's compatibility playback, skips `direct`. The
+extension decides only when the probe cannot run or rejects the file: a known
+audio extension then plays directly through the stream route's `forceDirect`,
+which serves the file without probing, and any other file is converted. A
+playback info request converts nothing, since the conversion starts with the
+request for the URL it names, so the player may ask for the next track ahead
+of its turn. The probe result is cached for two minutes, so the stream
+request that follows does not probe again. The `audio-hls` capability names
+no format, and the stream route ignores it.
+
+A Record audio file, or the audio of a Record video, is answered by
+`GET /api/records/assets/{id}/playback?profile=audio` with the same decision
+between `direct` and `hls`; Record has no `prepared` delivery.
 
 ## Audio Tracks
 

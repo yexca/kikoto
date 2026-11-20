@@ -89,8 +89,9 @@ async function mockRecordLibrary(page: Page) {
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (path === "/api/records/assets/1/playback") {
       playbackRequests.push(url);
-      // The original file fails in the browser; the conversion plays.
-      const converted = url.searchParams.get("forceTranscode") === "1";
+      // The original file fails in the browser as video; the conversion plays,
+      // and its sound plays as it is in the audio player.
+      const converted = url.searchParams.get("forceTranscode") === "1" || url.searchParams.get("profile") === "audio";
       return route.fulfill({
         json: {
           delivery: "direct",

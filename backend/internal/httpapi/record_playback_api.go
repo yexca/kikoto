@@ -98,8 +98,9 @@ func (s *Server) prefetchRecordVideoKeyframes(assets []record.Asset) {
 func recordPlaybackCacheKey(id int64) string { return "record-" + strconv.FormatInt(id, 10) }
 
 // getRecordPlaybackInfo answers how a record video or audio file plays. The
-// profile query "audio" plays only the audio of a video. Audio plays directly
-// when the client decodes the file, and otherwise as an audio HLS encode.
+// profile query "audio" plays only the audio of a video. Audio, a video's
+// included, plays directly when the client decodes its first audio stream, and
+// otherwise as an audio HLS encode.
 func (s *Server) getRecordPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
@@ -122,7 +123,7 @@ func (s *Server) getRecordPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		s.writeVideoPlaybackInfo(w, r, source)
 		return
 	}
-	if source.Encode == &audioHLSProfile && !forcePlaybackTranscode(r) {
+	if source.Profile == playbackProfileAudio && !forcePlaybackTranscode(r) {
 		if _, direct := directPlaybackContentType(source.Probe, playbackProfileAudio, playbackCapabilities(r)); direct {
 			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 				Delivery: "direct", Conversion: "none", URL: source.route() + "/stream",

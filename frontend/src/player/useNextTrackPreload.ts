@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { warmAudioHls } from "./audioHlsSource";
-import type { PlayerAudioSource } from "./playerTrackMedia";
+import type { PlayerAudioSource } from "./audioPlaybackSource";
 
 // Keep the finished preload briefly so the player element can adopt its buffered
 // data after it switches to the same URL.

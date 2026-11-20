@@ -283,7 +283,7 @@ func TestVideoPlaybackOffersEveryAudioTrack(t *testing.T) {
 	}
 
 	for _, query := range []string{"audioStream=0", "audioStream=3", "audioStream=x"} {
-		if response := fixture.request(fixture.server.getVideoPlaybackInfo, 861, "", capabilities+"&"+query); response.Code != http.StatusBadRequest ||
+		if response := fixture.request(fixture.server.getMediaPlaybackInfo, 861, "", capabilities+"&"+query); response.Code != http.StatusBadRequest ||
 			!strings.Contains(response.Body.String(), "invalid_audio_stream") {
 			t.Errorf("playback info with %s = %d: %s", query, response.Code, response.Body.String())
 		}

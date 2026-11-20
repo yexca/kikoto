@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   bufferedEndAt,
-  audioNeedsConversion,
   nextTrackPreloadWindowSeconds,
   NEXT_TRACK_PRELOAD_WINDOW_SECONDS,
   nextAutoAdvanceIndex,
@@ -82,11 +81,5 @@ describe("nextTrackPreloadWindowSeconds", () => {
     const state = { playing: true, currentTime: 400, duration: 600, bufferedEnd: 450 };
     expect(shouldPreloadNextTrack(state)).toBe(false);
     expect(shouldPreloadNextTrack({ ...state, windowSeconds: nextTrackPreloadWindowSeconds(9000, true) })).toBe(true);
-  });
-
-  it("treats formats the browser cannot play, or compatibility playback, as transcoded", () => {
-    expect(audioNeedsConversion("01 track.wma", false)).toBe(true);
-    expect(audioNeedsConversion("01 track.WAV", false)).toBe(false);
-    expect(audioNeedsConversion("01 track.flac", true)).toBe(true);
   });
 });

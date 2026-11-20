@@ -5,14 +5,16 @@ Playback is handled by a global browser audio player.
 
 ## Current Behavior
 
-- Local and cached audio with a browser-oriented extension is served directly
-  with HTTP range support. This keeps startup and duration discovery on the
-  browser's native media path without waiting for FFprobe.
+- Local and cached audio the browser decodes is served directly with HTTP range
+  support, which keeps startup and duration discovery on the browser's native
+  media path. The server decides from the file's codec and container as
+  FFprobe reports them, not from the file name, so an `.mp3` that holds FLAC
+  plays or converts according to what the browser decodes.
 - When direct audio decoding fails and the file still exists, the player offers
   compatibility playback for only the current track, the current queue, or all
-  future local and cached playback. Compatibility playback and audio with an
-  extension the browser does not play, such as `.wma`, `.aiff`, `.aif`, or
-  `.mka`, stream as an HLS VOD playlist with the file's complete duration and
+  future local and cached playback. Compatibility playback and audio in a
+  codec or container the browser does not play, such as WMA, AIFF, or Matroska
+  audio, stream as an HLS VOD playlist with the file's complete duration and
   six-second 192 kbit/s AAC segments. One continuous FFmpeg encode produces
   the segments in order from where playback starts or seeks to, so even a
   multi-hour file starts within about a second and segment boundaries stay

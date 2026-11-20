@@ -122,7 +122,7 @@ func (fixture *videoSubtitleTestServer) playbackInfo(t *testing.T, location int6
 	request := httptest.NewRequest(http.MethodGet, "/api/media/"+id+"/playback", nil)
 	request.SetPathValue("id", id)
 	response := httptest.NewRecorder()
-	fixture.server.getVideoPlaybackInfo(response, request)
+	fixture.server.getMediaPlaybackInfo(response, request)
 	var info videoPlaybackInfoResponse
 	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &info) != nil {
 		t.Fatalf("playback info %d = %d: %s", location, response.Code, response.Body.String())

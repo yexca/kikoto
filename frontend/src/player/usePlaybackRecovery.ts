@@ -5,7 +5,8 @@ import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { originalFileNamesShown } from "@/lib/originalFileNames";
 
-import { playerTrackAudioSource, supportsCompatibilityPlayback } from "./playerTrackMedia";
+import { audioSourceCheckURL, forgetAudioSource } from "./audioPlaybackSource";
+import { supportsCompatibilityPlayback } from "./playerTrackMedia";
 import { playerTrackTitle } from "./playerTrackTitle";
 import { probePlaybackStorageOffline, type PlaybackStorageOfflineCode } from "./playbackStorageOffline";
 import type { PlaybackCompatibilityScope, PlayerTrack } from "./playerTypes";
@@ -171,8 +172,10 @@ export function usePlaybackRecovery(
     }, 3_000);
     // An HLS playlist played through Media Source Extensions has a blob: source.
     const elementSource = audio.currentSrc.startsWith("blob:") ? "" : audio.currentSrc;
-    const sourceURL =
-      elementSource || assetURL(playerTrackAudioSource(failedTrack, refs.compatibilityPlaybackEnabledRef.current).url);
+    const compatibility = refs.compatibilityPlaybackEnabledRef.current;
+    const sourceURL = elementSource || assetURL(audioSourceCheckURL(failedTrack, compatibility));
+    // A retry asks the server again rather than reuse a decision that just failed.
+    forgetAudioSource(failedTrack, compatibility);
     refs.sourceLoadingRef.current = false;
     setIsBuffering(false);
     updatePlayingState(false);

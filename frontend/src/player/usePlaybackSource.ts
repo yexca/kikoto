@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { assetURL } from "@/lib/api";
 
 import { attachAudioHls } from "./audioHlsSource";
+import type { PlayerAudioSource } from "./audioPlaybackSource";
 import { audioHlsPlayback } from "./mediaPlayback";
 import { bufferedEndAt, nextTrackPreloadWindowSeconds, shouldPreloadNextTrack } from "./nextTrackPreload";
-import { playerTrackAudioSource, type PlayerAudioSource } from "./playerTrackMedia";
 import type { PlayerTrack } from "./playerTypes";
+import { useAudioSource } from "./useAudioSource";
 import type { PlaybackEngine } from "./usePlaybackEngine";
 import { useNextTrackPreload } from "./useNextTrackPreload";
 
@@ -15,9 +16,11 @@ function assetSource(source: PlayerAudioSource): PlayerAudioSource {
 }
 
 /**
- * Drives the audio element from player state: loads each playback instance,
- * applies its start position, follows the play/pause intent and playback rate,
- * and warms the next auto-advance track near the end of the current one.
+ * Drives the audio element from player state: loads each playback instance
+ * from the source the server decides, applies its start position, follows the
+ * play/pause intent and playback rate, and warms the next auto-advance track
+ * near the end of the current one. The next track's source is decided as soon
+ * as the current one has started, so its turn finds the decision made.
  */
 export function usePlaybackSource(
   engine: PlaybackEngine,
@@ -55,13 +58,11 @@ export function usePlaybackSource(
   const currentMediaItemId = currentTrack?.mediaItemId;
   const currentQueueItemId = currentTrack?.queueItemId;
   // Track objects are replaced by unrelated queue edits; the source strings only
-  // change when the element really has to load something else.
-  const currentSource = useMemo(
-    () => (currentTrack ? assetSource(playerTrackAudioSource(currentTrack, compatibilityPlaybackEnabled)) : null),
-    [compatibilityPlaybackEnabled, currentTrack],
-  );
-  const currentSourceURL = currentSource?.url ?? null;
-  const currentSourceIsHls = currentSource?.delivery === "hls";
+  // change when the element really has to load something else. Until the server
+  // has decided, a track has no source and the element holds nothing.
+  const decidedSource = useAudioSource(currentTrack, compatibilityPlaybackEnabled, currentPlaybackInstanceKey ?? "");
+  const currentSourceURL = decidedSource ? assetURL(decidedSource.url) : null;
+  const currentSourceIsHls = decidedSource?.delivery === "hls";
 
   useEffect(() => {
     const audio = refs.audioRef.current;
@@ -191,6 +192,7 @@ export function usePlaybackSource(
     currentMediaItemId,
     currentPlaybackInstanceKey,
     currentQueueItemId,
+    currentSourceURL,
     refs,
     setCurrentTime,
     startPositionRequest,
@@ -200,7 +202,8 @@ export function usePlaybackSource(
     const audio = refs.audioRef.current;
     if (!audio || !currentTrack) return;
     if (isPlaying) {
-      requestAudioPlay(audio, currentPlaybackInstanceKey);
+      // A track the server has not decided yet plays when its source loads.
+      if (currentSourceURL !== null) requestAudioPlay(audio, currentPlaybackInstanceKey);
     } else {
       refs.sourceLoadingRef.current = false;
       invalidatePlaybackRequests();
@@ -212,11 +215,14 @@ export function usePlaybackSource(
     isPlaying,
     currentTrack,
     currentPlaybackInstanceKey,
+    currentSourceURL,
     invalidatePlaybackRequests,
     refs,
     requestAudioPlay,
   ]);
 
+  // The next track is decided once the current one plays, and warmed once it nears its end.
+  const nextSource = useAudioSource(currentSourceURL === null ? null : nextTrack, nextTrackCompatibility);
   const [preloadArmedInstanceKey, setPreloadArmedInstanceKey] = useState<string | null>(null);
   const preloadArmed = currentPlaybackInstanceKey !== null && preloadArmedInstanceKey === currentPlaybackInstanceKey;
 
@@ -225,10 +231,7 @@ export function usePlaybackSource(
     if (!audio || currentLocationId === null || !currentPlaybackInstanceKey || preloadArmed) return;
     if (durationLocationId !== currentLocationId) return;
     const windowSeconds = nextTrack
-      ? nextTrackPreloadWindowSeconds(
-          nextTrack.durationSeconds,
-          playerTrackAudioSource(nextTrack, nextTrackCompatibility).delivery === "prepared",
-        )
+      ? nextTrackPreloadWindowSeconds(nextTrack.durationSeconds, nextSource?.delivery === "prepared")
       : undefined;
     if (
       shouldPreloadNextTrack({
@@ -248,15 +251,15 @@ export function usePlaybackSource(
     duration,
     durationLocationId,
     isPlaying,
+    nextSource,
     nextTrack,
-    nextTrackCompatibility,
     preloadArmed,
     refs,
   ]);
 
-  const nextSource = useMemo(
-    () => (preloadArmed && nextTrack ? assetSource(playerTrackAudioSource(nextTrack, nextTrackCompatibility)) : null),
-    [nextTrack, nextTrackCompatibility, preloadArmed],
+  const preloadSource = useMemo(
+    () => (preloadArmed && nextSource ? assetSource(nextSource) : null),
+    [nextSource, preloadArmed],
   );
-  useNextTrackPreload(nextSource && nextSource.url !== currentSourceURL ? nextSource : null);
+  useNextTrackPreload(preloadSource && preloadSource.url !== currentSourceURL ? preloadSource : null);
 }

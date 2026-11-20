@@ -235,6 +235,37 @@ function untrackResult(workId: number, sourceId: number): WorkSourceUntrackResul
   };
 }
 
+/**
+ * Answers the audio playback info of a library location as the server does: the
+ * file itself, or, for compatibility playback, an HLS playlist where the client
+ * declares audio HLS and one complete conversion where it does not.
+ */
+function audioPlaybackInfoFixture(locationId: string, url: URL) {
+  const capabilities = (url.searchParams.get("capabilities") ?? "").split(",").filter(Boolean);
+  const formats = capabilities.filter((capability) => capability !== "audio-hls");
+  const route = `/api/media/${locationId}`;
+  const base = { durationSeconds: 30, seekable: true };
+  if (url.searchParams.get("forceTranscode") !== "1") {
+    const query = new URLSearchParams({ profile: "audio" });
+    if (formats.length > 0) query.set("capabilities", formats.join(","));
+    return { ...base, delivery: "direct", conversion: "none", url: `${route}/stream?${query.toString()}` };
+  }
+  if (capabilities.includes("audio-hls")) {
+    return {
+      ...base,
+      delivery: "hls",
+      conversion: "transcode",
+      url: `${route}/hls/index.m3u8?v=fixture&profile=audio`,
+    };
+  }
+  return {
+    ...base,
+    delivery: "prepared",
+    conversion: "transcode",
+    url: `${route}/stream?profile=audio&forceTranscode=1`,
+  };
+}
+
 export async function mockApplication(
   page: Page,
   onWorksRequest?: (url: URL) => void,
@@ -247,6 +278,11 @@ export async function mockApplication(
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    const audioPlayback = /^\/api\/media\/(\d+)\/playback$/.exec(url.pathname);
+    if (audioPlayback && url.searchParams.get("profile") === "audio") {
+      await route.fulfill({ json: audioPlaybackInfoFixture(audioPlayback[1], url) });
+      return;
+    }
     if (url.pathname === "/api/listening-sessions" && route.request().method() === "GET") {
       await route.fulfill({ json: { generation: 0 } });
       return;

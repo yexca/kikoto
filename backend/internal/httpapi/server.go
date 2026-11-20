@@ -389,7 +389,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("GET /api/records/assets/{id}/subtitles/{file}", recordRoute(s.serveRecordEmbeddedSubtitle))
 	handleSlowFirstResponse("GET /api/records/assets/{id}/download", recordRoute(s.endsOnShutdown(s.downloadRecordAsset)))
 	handleSlowFirstResponse("GET /api/media/{id}/stream", s.endsOnShutdown(s.streamMedia))
-	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
+	mux.HandleFunc("GET /api/media/{id}/playback", s.getMediaPlaybackInfo)
 	mux.HandleFunc("GET /api/media/{id}/loudness", s.getMediaLoudness)
 	handleSlowFirstResponse("GET /api/media/{id}/hls/{file}", s.endsOnShutdown(s.serveMediaHLS))
 	handleSlowFirstResponse("GET /api/media/{id}/subtitles/{file}", s.serveVideoSubtitle)

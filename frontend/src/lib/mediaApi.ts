@@ -242,6 +242,19 @@ export type VideoPlaybackInfo = {
   subtitles?: VideoEmbeddedSubtitle[];
 };
 
+/**
+ * How the audio player plays one location: "direct" is the file itself, "hls" a
+ * playlist the server converts as it is played, and "prepared" one complete
+ * conversion for a browser without HLS playback.
+ */
+export type AudioPlaybackInfo = {
+  delivery: "direct" | "hls" | "prepared";
+  conversion?: "none" | "transcode";
+  url: string;
+  durationSeconds: number;
+  seekable: boolean;
+};
+
 /** An embedded text subtitle stream, served as WebVTT from `url`. */
 export type VideoEmbeddedSubtitle = {
   stream: number;
@@ -335,6 +348,21 @@ export const mediaApi = {
     if (audioStream !== null) query.set("audioStream", String(audioStream));
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return getJSON<VideoPlaybackInfo>(`/api/media/${locationId}/playback${suffix}`, signal);
+  },
+  /**
+   * How the audio player plays a library location, decided on the server from
+   * the probed file and the declared capabilities. A location of a video plays
+   * only its audio. `forceTranscode` is compatibility playback.
+   */
+  getAudioPlaybackInfo: (
+    locationId: number,
+    options: { capabilities: string[]; forceTranscode?: boolean },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams({ profile: "audio" });
+    if (options.capabilities.length > 0) query.set("capabilities", options.capabilities.join(","));
+    if (options.forceTranscode) query.set("forceTranscode", "1");
+    return getJSON<AudioPlaybackInfo>(`/api/media/${locationId}/playback?${query.toString()}`, signal);
   },
   setMediaLyricsPreference: (audioMediaItemId: number, lyricsMediaItemId: number) =>
     putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(

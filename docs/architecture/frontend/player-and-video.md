@@ -17,12 +17,24 @@ ref, so they never act on a stale queue or mode. The dock (`player/dock`) has
 Mini, Compact, and full surfaces, while queue reordering math and formatting
 stay in pure modules.
 
-`playerTrackAudioSource` picks each track's delivery: the original file, an
-HLS playlist when the server converts the track and the browser plays HLS, or
-a complete MP3 conversion otherwise. A Record track uses its own stream or the
-audio profile of its Record HLS playlist, and the file itself without HLS
-playback; its progress goes to the Record progress route instead of the
-playback report scheduler, when the listener has `library:write`. Source
+The server picks each track's delivery, and `audioPlaybackSource` asks it: the
+player declares the audio formats its element decodes and whether it plays HLS,
+and [audio playback info](../backend/media-playback.md#audio-playback-decision)
+answers with the original file, an HLS playlist, or a complete MP3 conversion
+and the URL to load. Compatibility playback asks for a conversion. The answer
+is shared by every caller and kept for a minute, and a track that fails asks
+again when it retries. The player holds a track back from its element until
+the server has answered, and decides the next auto-advance track as soon as
+the current one has loaded, so its turn finds the answer made and gapless
+advance waits for no request. A request that fails leaves the track on the
+stream route, which decides between the file and a complete MP3 conversion
+from the declared formats. The player decides nothing from a file name. A
+remote stream is never converted and has no playback info; its URL is the
+remote media route, and a location the server does not read itself plays from
+its own stream URL. A Record track asks Record's playback info the same way
+and plays its own stream when that is the answer or the browser cannot play
+HLS; its progress goes to the Record progress route instead of the playback
+report scheduler, when the listener has `library:write`. Source
 loading attaches an HLS playlist natively on iOS and iPadOS and through a
 lazily loaded hls.js elsewhere; hls.js starts loading at the pending start
 position, asks the element to play again once it has attached its source, and

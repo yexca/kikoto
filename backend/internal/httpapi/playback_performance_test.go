@@ -406,7 +406,7 @@ func TestVideoHLSPlaybackPerformance(t *testing.T) {
 			request.SetPathValue("id", location)
 			response := httptest.NewRecorder()
 			infoStart := time.Now()
-			server.getVideoPlaybackInfo(response, request)
+			server.getMediaPlaybackInfo(response, request)
 			infos = append(infos, time.Since(infoStart))
 			var info videoPlaybackInfoResponse
 			if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil || info.Delivery != "hls" {

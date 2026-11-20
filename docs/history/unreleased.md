@@ -565,6 +565,12 @@
   to tracks by one rule, so they always agree on which lyrics a track has.
 - Removing the playing item when it is last in the queue stops playback and
   keeps the player showing the items that remain.
+- The server decides whether a track plays as the file, an HLS playlist, or a
+  complete MP3 conversion, from what is inside the file and what your browser
+  decodes rather than from the file name. A FLAC file named `.mp3` converts
+  when the browser cannot play FLAC, and an MP3 under an unusual extension
+  plays as it is. The sound of a Record video plays as it is when the browser
+  decodes it.
 
 </details>
 

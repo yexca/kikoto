@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  forcePlaybackDirectURL,
+  audioPlaybackCapabilities,
   playbackCapabilities,
   playbackURL,
   remoteMediaPlaybackURL,
@@ -22,13 +22,6 @@ describe("media playback URLs", () => {
     expect(value.endsWith("#fragment")).toBe(true);
   });
 
-  it("can request direct extension playback without changing the transcode helper", () => {
-    const value = playbackURL("/api/media/4/stream", "audio", false, true);
-    expect(value).toContain("forceDirect=1");
-    expect(value).not.toContain("forceTranscode=1");
-    expect(forcePlaybackDirectURL("/api/media/4/stream?source=local")).toContain("forceDirect=1");
-  });
-
   it("builds a same-origin remote media proxy URL", () => {
     const base = remoteMediaURL(7, "RJ00000001", "Bonus/clip.avi");
     expect(base).toBe("/api/remote-sources/7/works/RJ00000001/media?path=Bonus%2Fclip.avi");
@@ -43,6 +36,19 @@ describe("media playback URLs", () => {
     });
     expect(playbackCapabilities("audio")).toEqual(["audio-mp3", "audio-mp4-aac"]);
     expect(playbackURL("/media.mp3", "audio")).toContain("capabilities=audio-mp3%2Caudio-mp4-aac");
+  });
+
+  it("declares audio HLS playback beside the formats the element decodes", () => {
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        canPlayType: (mime: string) => (mime === "audio/mpeg" ? "probably" : ""),
+      }),
+    });
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Windows NT 10.0)", platform: "Win32", maxTouchPoints: 0 });
+    vi.stubGlobal("MediaSource", { isTypeSupported: (type: string) => type.includes("mp4a.40.2") });
+    expect(audioPlaybackCapabilities()).toEqual(["audio-mp3", "audio-hls"]);
+    vi.stubGlobal("MediaSource", undefined);
+    expect(audioPlaybackCapabilities()).toEqual(["audio-mp3"]);
   });
 
   it("reports native FLAC and Ogg audio capabilities", () => {

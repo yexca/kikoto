@@ -50,6 +50,10 @@ const (
 	playbackProfileVideo = "video"
 )
 
+// capAudioHLS is declared by a client that plays an audio HLS playlist. It is
+// not a format, and no stream request needs it.
+const capAudioHLS = "audio-hls"
+
 const (
 	capAudioMP3            = "audio-mp3"
 	capAudioMP4AAC         = "audio-mp4-aac"
@@ -181,7 +185,7 @@ func playbackCapabilities(r *http.Request) map[string]bool {
 	values := strings.Split(strings.TrimSpace(r.URL.Query().Get("capabilities")), ",")
 	allowed := slices.Concat([]string{
 		capAudioMP3, capAudioMP4AAC, capAudioFLAC, capAudioOggOpus,
-		capAudioOggVorbis, capAudioWebMOpus, capAudioWebMVorbis, capAudioWAV,
+		capAudioOggVorbis, capAudioWebMOpus, capAudioWebMVorbis, capAudioWAV, capAudioHLS,
 	}, videoPlaybackCapabilityKeys)
 	// Only known keys are kept, so the result is bounded by the allow list.
 	result := make(map[string]bool)

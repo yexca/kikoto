@@ -101,10 +101,21 @@ func (source hlsPlaybackSource) segmentCount() int {
 	return hlsSegmentCount(source.Duration)
 }
 
-func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
+// getMediaPlaybackInfo answers how a library location plays: as video by
+// default, or, with the profile query "audio", as the audio player plays it
+// (media_audio_playback.go).
+func (s *Server) getMediaPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	locationID, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+	requestedProfile, ok := parseRequestedPlaybackProfile(w, r)
+	if !ok {
+		return
+	}
+	if requestedProfile == playbackProfileAudio {
+		s.writeAudioPlaybackInfo(w, r, locationID)
 		return
 	}
 	source, err := s.loadHLSPlaybackSource(r.Context(), locationID)
@@ -412,20 +423,32 @@ func hlsPlaybackProfile(kind string, requested string) (profile string, encode *
 	return "", nil, "", false
 }
 
-func (s *Server) loadHLSPlaybackSourceProfile(ctx context.Context, locationID int64, requestedProfile string) (hlsPlaybackSource, error) {
+// localPlaybackFile is an available local or cached audio or video file that
+// the server reads itself.
+type localPlaybackFile struct {
+	target mediaStreamTarget
+	// Kind is the effective media kind, "audio" or "video".
+	Kind string
+	Path string
+	Info os.FileInfo
+}
+
+// loadLocalPlaybackFile resolves a library location to a readable local or
+// cached audio or video file, or errHLSMediaNotFound.
+func (s *Server) loadLocalPlaybackFile(ctx context.Context, locationID int64) (localPlaybackFile, error) {
 	target, _, err := s.loadMediaStreamTarget(ctx, locationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return hlsPlaybackSource{}, errHLSMediaNotFound
+			return localPlaybackFile{}, errHLSMediaNotFound
 		}
-		return hlsPlaybackSource{}, err
+		return localPlaybackFile{}, err
 	}
 	kind := effectiveMediaKind(target.Kind, target.RelativePath)
 	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" || (kind != "video" && kind != "audio") {
-		return hlsPlaybackSource{}, errHLSMediaNotFound
+		return localPlaybackFile{}, errHLSMediaNotFound
 	}
 	if err := s.ensureMediaLocationReadable(ctx, target.LocationType, target.RelativePath); err != nil {
-		return hlsPlaybackSource{}, err
+		return localPlaybackFile{}, err
 	}
 	root := s.cfg.DataRoot
 	if target.LocationType == "cache" {
@@ -433,12 +456,21 @@ func (s *Server) loadHLSPlaybackSourceProfile(ctx context.Context, locationID in
 	}
 	mediaPath, err := safeResolvedPath(root, target.RelativePath)
 	if err != nil {
-		return hlsPlaybackSource{}, errHLSMediaNotFound
+		return localPlaybackFile{}, errHLSMediaNotFound
 	}
 	info, err := os.Stat(mediaPath)
 	if err != nil || !info.Mode().IsRegular() {
-		return hlsPlaybackSource{}, errHLSMediaNotFound
+		return localPlaybackFile{}, errHLSMediaNotFound
 	}
+	return localPlaybackFile{target: target, Kind: kind, Path: mediaPath, Info: info}, nil
+}
+
+func (s *Server) loadHLSPlaybackSourceProfile(ctx context.Context, locationID int64, requestedProfile string) (hlsPlaybackSource, error) {
+	file, err := s.loadLocalPlaybackFile(ctx, locationID)
+	if err != nil {
+		return hlsPlaybackSource{}, err
+	}
+	target, kind, mediaPath, info := file.target, file.Kind, file.Path, file.Info
 	probe, err := s.probePlaybackFile(ctx, mediaPath)
 	if err != nil {
 		return hlsPlaybackSource{}, err

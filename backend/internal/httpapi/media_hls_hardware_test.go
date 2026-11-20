@@ -178,7 +178,7 @@ func TestVideoHardwareFailureFallsBackToSoftware(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/api/media/834/playback?forceTranscode=1", nil)
 		request.SetPathValue("id", "834")
 		response := httptest.NewRecorder()
-		server.getVideoPlaybackInfo(response, request)
+		server.getMediaPlaybackInfo(response, request)
 		var info videoPlaybackInfoResponse
 		if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil || info.Conversion != "transcode" {
 			t.Fatalf("playback info = %d: %s", response.Code, response.Body.String())

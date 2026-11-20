@@ -156,8 +156,8 @@ The HTTP surface is under `/api/records`:
 - `GET /api/records/assets/{id}/playback` answers how a video or audio file
   plays, in the shape of library playback info, for the `capabilities`,
   `forceTranscode`, and `audioStream` queries. `profile=audio` asks for the
-  sound of a video, which always plays as an audio encode; an audio file plays
-  directly when the client decodes it and as an audio encode otherwise.
+  sound of a video; an audio file or a video's sound plays directly when the
+  client decodes its first audio stream and as an audio encode otherwise.
 - `GET /api/records/assets/{id}/hls/{file}` serves the playlists and segments
   playback info names, and `GET /api/records/assets/{id}/subtitles/{stream}.vtt`
   an embedded text subtitle stream as WebVTT.
