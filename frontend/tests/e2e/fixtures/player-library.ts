@@ -1285,6 +1285,11 @@ export function withLyricsChoices(item: MediaItem, lyricsChoices: MediaLyricsCho
   return { ...item, locations: item.locations.map((location) => ({ ...location, lyricsChoices })) };
 }
 
+/** An item whose locations carry the lyrics file the server's name matching picks for it. */
+export function withLyricsMatch(item: MediaItem, lyricsMatchMediaItemId: number): MediaItem {
+  return { ...item, locations: item.locations.map((location) => ({ ...location, lyricsMatchMediaItemId })) };
+}
+
 /** Switches the Library source through the phone source menu or the wide-layout source tabs. */
 export async function selectLibrarySource(page: Page, name: string) {
   const menu = page.getByRole("button", { name: /^Source: / });

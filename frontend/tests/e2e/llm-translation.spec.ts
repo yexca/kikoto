@@ -10,7 +10,7 @@ import {
   runtimeSettingsFixture,
   type ApiResponse,
 } from "./fixtures/api";
-import { mockApplication, work } from "./fixtures/player-library";
+import { mockApplication, withLyricsMatch, work } from "./fixtures/player-library";
 import { runSourceAction } from "./fixtures/work-detail";
 
 const provider: LLMProvider = {
@@ -352,7 +352,7 @@ test("Translate with AI sends only what each language lacks and shows what it wr
     false,
     1,
     0,
-    [localFile(1, "audio", "track.mp3"), localFile(2, "text", "track.mp3.vtt")],
+    [withLyricsMatch(localFile(1, "audio", "track.mp3"), 2), localFile(2, "text", "track.mp3.vtt")],
     undefined,
     {
       work: {
@@ -711,7 +711,7 @@ test("Manage lyrics transcribes from the audio language with a model that decide
     [
       localFile(1, "audio", "01.mp3"),
       localFile(2, "audio", "02.mp3"),
-      localFile(3, "audio", "03.mp3"),
+      withLyricsMatch(localFile(3, "audio", "03.mp3"), 4),
       localFile(4, "text", "03.mp3.vtt"),
     ],
     undefined,
@@ -829,7 +829,7 @@ test("Demo shows sample transcriptions in Manage lyrics with every action off @d
     [
       localFile(1, "audio", "01.mp3"),
       localFile(2, "audio", "02.mp3"),
-      localFile(3, "audio", "03.mp3"),
+      withLyricsMatch(localFile(3, "audio", "03.mp3"), 4),
       localFile(4, "text", "03.mp3.vtt"),
     ],
     undefined,
