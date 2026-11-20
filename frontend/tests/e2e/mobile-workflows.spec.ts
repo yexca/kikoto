@@ -1878,13 +1878,16 @@ test("mobile header keeps Notifications and the account panel, which holds the r
  */
 async function openAppearance(page: Page) {
   const headerControl = page.getByRole("button", { name: "Open appearance settings" });
+  const accountMenu = page.getByRole("button", { name: "Account menu" });
+  // isVisible does not wait, so let the header render before choosing the entry.
+  await expect(headerControl.or(accountMenu).first()).toBeVisible();
   if (await headerControl.isVisible()) {
     await headerControl.click();
     const appearance = page.getByRole("dialog", { name: "Appearance" });
     await expect(appearance.getByRole("group", { name: "Color", exact: true })).toBeVisible();
     return appearance;
   }
-  await page.getByRole("button", { name: "Account menu" }).click();
+  await accountMenu.click();
   const account = page.getByRole("dialog", { name: "Account" });
   await account.getByRole("button", { name: /^Appearance/ }).click();
   await expect(account.getByRole("group", { name: "Color", exact: true })).toBeVisible();
