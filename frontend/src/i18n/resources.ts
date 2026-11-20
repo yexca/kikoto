@@ -207,6 +207,7 @@ export const collectionEnglish = {
   filter: "Filter",
   filterValue: "{{label}}: {{value}}",
   filters: "{{label}} filters",
+  search: "Search",
   clearSearch: "Clear search",
   works: "works",
   columns: "Columns: {{label}}",

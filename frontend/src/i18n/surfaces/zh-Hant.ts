@@ -3230,7 +3230,6 @@ export const surfaceHant = {
   favorites: {
     all: "全部收藏",
     allShort: "全部",
-    search: "搜尋",
     lists: "收藏清單",
     listTabs: "收藏清單標籤",
     exitSelection: "結束選取",

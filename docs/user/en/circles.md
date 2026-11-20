@@ -12,8 +12,9 @@ Circles represent makers, circles, and related party catalog state.
 - Keeps search, one-tap view chips, and the page-size action on one wrapping
   toolbar row. The chips are `All circles`, `Favorite`, `Tagged`,
   `Available`, `Local`, `Remote`, `Missing`, and `Attention`, and the
-  pressed chip names the current view. On a phone the search field keeps its
-  own row with page size beside it, and the chips scroll sideways below.
+  pressed chip names the current view. On a phone the chips scroll sideways
+  with **Search** and page size at the row's end; **Search** opens the search
+  field above the row, and closing it clears the search.
 - Shows each circle as a cover tile: the circle's cover with a `No cover`
   fallback, the favorite control on the cover, the name, the latest release
   date, and personal tags. Tiles fill the row on wide layouts and form two
@@ -84,9 +85,9 @@ Circles represent makers, circles, and related party catalog state.
   states how many works match and, from tablet width, the page; more pages add
   the shared pagination below the grid. The series overview lists series and
   offers no order.
-- On a phone the Works/Series switch takes its own row and the search field
-  stays on show below it, followed by the work count with the sort button,
-  the filter, and **View**, which opens as a sheet.
+- On a phone the Works/Series switch takes its own row, followed by the work
+  count with **Search**, the sort button, the filter, and **View**, which
+  opens as a sheet. **Search** opens the search field above that row.
 - Treats the mobile detail back control as Up to the last server-and-user-scoped
   Circles list location, including when the detail was opened from Library.
   Wide layouts keep the source-aware history return label and destination.

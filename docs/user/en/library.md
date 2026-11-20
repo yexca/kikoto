@@ -135,11 +135,12 @@ The Library is the main browsing surface for works.
   source. The panel stays open while you change several settings.
 - On wide screens the source tabs start with **Source visibility**, which
   sets whether each source's tab shows automatically, always, or never.
-- On phones the Library leads with an always-visible search field and,
-  beside it, a source button that names the current source and opens every
-  source in a menu. The row below starts with the sort button and **Mark
-  filter** and ends with **Recently played** and **View**, which opens its
-  panel as a sheet. The result count and page follow under that row.
+- On phones the Library leads with a source button that names the current
+  source and opens every source in a menu, the result count and page, and
+  **Search**, **Recently played**, and **View**, which opens its panel as a
+  sheet. The row below holds the sort button and **Mark filter**. **Search**
+  opens the search field above both rows; the field stays open while it holds
+  a query or a search condition, and closing it clears the search.
 - Display options start with **Cards**, a choice of **Full**, **Simple**,
   **Compact**, and **Mini** that is stored with the column settings,
   separately for phones and wide screens. **Full** is the default. Automatic

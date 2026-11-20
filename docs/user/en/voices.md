@@ -24,8 +24,9 @@ Voice pages present persisted person and credit data.
 - Keeps search, one-tap view chips, and the page-size action on one wrapping
   toolbar row. The chips are `All voices`, `Favorite`, `Tagged`,
   `Available`, `Local`, `Remote`, and `Missing`, and the pressed chip names
-  the current view. On a phone the search field keeps its own row with page
-  size beside it, and the chips scroll sideways below. User tags remain
+  the current view. On a phone the chips scroll sideways with **Search** and
+  page size at the row's end; **Search** opens the search field above the
+  row, and closing it clears the search. User tags remain
   visible and searchable, but the list does not expose a tag filter.
 - Shows favorite and user tag state.
 - Shows confirmed aliases under the detail title. Alias review, duplicate
@@ -90,9 +91,9 @@ Voice pages present persisted person and credit data.
   chosen card mode starts from its [preset](library.md#current-behavior).
   A caption before the sort button states how many works match and, from
   tablet width, the page; more pages add the shared pagination below the
-  grid. On a phone the search field stays on
-  show, followed by the work count with the sort button, the filter, and
-  **View**, which opens as a sheet.
+  grid. On a phone the work count comes
+  with **Search**, the sort button, the filter, and **View**, which opens as a
+  sheet; **Search** opens the search field above that row.
 - Treats the mobile detail back control as Up to the last
   server-and-user-scoped Voice Actors list location, including when the detail
   was opened from Library or Favorites. Wide layouts keep the source-aware

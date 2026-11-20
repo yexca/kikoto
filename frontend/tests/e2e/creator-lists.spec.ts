@@ -387,6 +387,8 @@ test("circle list uses cover tiles, one-tap filters, and shared pagination", asy
   await expect(filters.getByRole("button", { name: "Missing" })).toHaveAttribute("aria-pressed", "true");
   await expect(filters.getByRole("button", { name: "All circles" })).toHaveAttribute("aria-pressed", "false");
 
+  // A phone opens the search field from its icon at the end of the chip row.
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await page.getByPlaceholder("Search circles").fill("Example");
   await expect(page).toHaveURL(/q=Example/);
 
@@ -790,8 +792,10 @@ test("voice detail keeps quiet actions, statistics, and the View sheet on mobile
   await actions.getByRole("button", { name: "Refresh" }).click();
   expect((await refreshRequest).postDataJSON()).toEqual({ catalogRefresh: "incremental", metadataRefresh: "missing" });
 
-  // Search stays on show; the order, the filter, and View share the caption row.
-  await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeVisible();
+  // Search, the order, the filter, and View share the caption row; Search opens its field above it.
+  await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeHidden();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Sort: Release date" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Voice work availability:/ })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: /works$/ })).toBeVisible();
@@ -1095,7 +1099,7 @@ test("circle detail shows a chosen work's cover until the latest work is restore
   expect(coverRequests).toEqual(["RJ00000003", ""]);
 });
 
-test("mobile circle detail keeps search and filter on show and moves display options into the View sheet", async ({
+test("mobile circle detail opens search from its icon, keeps the filter on show, and moves display options into the View sheet", async ({
   page,
 }) => {
   await mockCreatorDetails(page);
@@ -1104,7 +1108,10 @@ test("mobile circle detail keeps search and filter on show and moves display opt
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
   await expect(page.getByTestId("work-card").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "More circle actions" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Search catalog works" })).toBeVisible();
+  const search = page.getByRole("textbox", { name: "Search catalog works" });
+  await expect(search).toBeHidden();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(search).toBeFocused();
 
   await page.getByRole("button", { name: "Catalog availability filter: All works" }).click();
   await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();

@@ -140,7 +140,8 @@ Favorites draw the same icon for a stored key.
 The circle and voice actor detail pages compose one summary and works toolbar
 from `components/creator`: a frameless summary, one-line counts, an action row
 with the quiet Favorite control, the catalog refresh button, and the More
-menu, a search, order, filter, and View row, the View popover or phone sheet
+menu, a search, order, filter, and View row (on a phone, Search is an icon
+that opens the field above the row), the View popover or phone sheet
 around the shared display options, and the toolbar's result caption. Each page
 decides the More entries, the refresh button, and the sync and failed-source
 marks from the viewer's permissions and passes nothing for one the viewer may

@@ -213,6 +213,7 @@ const collectionKorean = {
   filter: "필터",
   filterValue: "{{label}}: {{value}}",
   filters: "{{label}} 필터",
+  search: "검색",
   clearSearch: "검색 지우기",
   works: "작품",
   columns: "열: {{label}}",

@@ -3223,7 +3223,6 @@ export const surfaceHans = {
   favorites: {
     all: "全部收藏",
     allShort: "全部",
-    search: "搜索",
     lists: "收藏列表",
     listTabs: "收藏列表标签",
     exitSelection: "退出选择",

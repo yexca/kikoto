@@ -214,6 +214,7 @@ const collectionHant = {
   filter: "篩選",
   filterValue: "{{label}}：{{value}}",
   filters: "{{label}}篩選",
+  search: "搜尋",
   clearSearch: "清除搜尋",
   works: "項作品",
   columns: "欄數：{{label}}",

@@ -3376,7 +3376,6 @@ export const surfaceJapanese = {
   favorites: {
     all: "すべてのお気に入り",
     allShort: "すべて",
-    search: "検索",
     lists: "お気に入りリスト",
     listTabs: "お気に入りリストのタブ",
     exitSelection: "選択を終了",

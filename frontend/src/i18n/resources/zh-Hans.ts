@@ -213,6 +213,7 @@ export const collectionHans = {
   filter: "筛选",
   filterValue: "{{label}}：{{value}}",
   filters: "{{label}}筛选",
+  search: "搜索",
   clearSearch: "清除搜索",
   works: "项作品",
   columns: "列数：{{label}}",

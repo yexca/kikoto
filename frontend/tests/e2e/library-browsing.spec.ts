@@ -267,28 +267,38 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await expect(popover).toBeVisible();
 });
 
-test("the phone toolbar puts the order, Mark filter, Recently played, and View on one row inside a 360px screen", async ({
-  page,
-}) => {
+test("the phone toolbar fits the source row and the order row inside a 360px screen", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await mockApplication(page);
   await page.goto("/");
   await expect(page.getByTestId("work-card").first()).toBeVisible();
 
-  const controls = [
-    librarySortButton(page),
-    page.getByRole("button", { name: "Refresh recommendations", exact: true }),
-    page.getByRole("button", { name: "Mark filter", exact: true }),
-    page.getByRole("button", { name: "Recently played", exact: true }),
-    libraryViewButton(page),
+  // The source menu shares its row with Search, Recently played, and View; the order and Mark filter sit below.
+  const rows = [
+    [
+      page.getByRole("button", { name: /^Source:/ }),
+      page.getByRole("button", { name: "Search", exact: true }),
+      page.getByRole("button", { name: "Recently played", exact: true }),
+      libraryViewButton(page),
+    ],
+    [
+      librarySortButton(page),
+      page.getByRole("button", { name: "Refresh recommendations", exact: true }),
+      page.getByRole("button", { name: "Mark filter", exact: true }),
+    ],
   ];
-  const boxes = await Promise.all(controls.map(async (control) => (await control.boundingBox())!));
   const middle = (box: { y: number; height: number }) => box.y + box.height / 2;
-  for (const box of boxes) {
-    expect(Math.abs(middle(box) - middle(boxes[0]))).toBeLessThan(2);
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(360);
+  const rowMiddles: number[] = [];
+  for (const row of rows) {
+    const boxes = await Promise.all(row.map(async (control) => (await control.boundingBox())!));
+    for (const box of boxes) {
+      expect(Math.abs(middle(box) - middle(boxes[0]))).toBeLessThan(2);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(360);
+    }
+    rowMiddles.push(middle(boxes[0]));
   }
+  expect(rowMiddles[1]).toBeGreaterThan(rowMiddles[0]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });
 
@@ -803,8 +813,9 @@ test("library search follows the user across scopes and survives navigation", as
   await page.goto("/");
 
   const search = page.getByRole("searchbox", { name: "Search library" });
-  await expect(search).toBeVisible();
-  await expect(search).not.toBeFocused();
+  await expect(search).toBeHidden();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(search).toBeFocused();
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
   await selectLibrarySource(page, "Tracked");
@@ -814,13 +825,19 @@ test("library search follows the user across scopes and survives navigation", as
   await selectLibrarySource(page, "Local");
   await expect(search).toHaveValue("tracked term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
+  // A query restored from the address keeps the field open.
   await page.reload();
   await expect(search).toHaveValue("tracked term");
+  // Closing search clears the query, so a hidden field never narrows the results.
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(search).toBeHidden();
+  await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBeNull();
 });
 
 test("touch text controls use 16px text so focusing them does not zoom the page", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   const search = page.getByRole("searchbox", { name: "Search library" });
   await expect(search).toBeVisible();
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -840,6 +857,7 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await mockApplication(page);
   await page.goto("/");
 
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   const searchBox = page.getByRole("searchbox", { name: "Search library" });
   const searchBoundsBeforeEditor = await searchBox.boundingBox();
   await page.getByRole("button", { name: "Add search condition" }).click();

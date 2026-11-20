@@ -399,6 +399,11 @@
 - On a phone, a smart list with new works further along the shelf row no
   longer widens Favorites, which pushed the bottom navigation below the screen
   and could hide it while searching.
+- On a phone, Library, Circles, Voice Actors, and the works of a circle or
+  voice actor open search from a **Search** icon, as Favorites does, so the
+  search field no longer takes a row of its own. The field stays open while it
+  holds a search, and closing it clears the search. Library puts the result
+  count beside the source button.
 - Circle and voice actor pages open with a compact summary like the work
   detail Hero: no frame, the catalog counts on one line above the name after
   a circle's code (zero counts left out, and a circle's size left to its

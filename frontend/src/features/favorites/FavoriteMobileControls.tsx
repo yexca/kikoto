@@ -1,8 +1,6 @@
-import { Search } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 
-import { IconButton } from "@/components/ui/icon-button";
+import { SearchToggle, useCollapsibleSearch } from "@/components/collection/CollapsibleSearch";
 import type { FavoriteStatusFilterOption } from "./favoriteShelfModel";
 import type { FavoriteStatusFilter } from "./favoritesBrowseState";
 import { FavoriteStatusChips } from "./FavoriteStatusChips";
@@ -33,37 +31,12 @@ export function FavoriteMobileControls({
     onChange: (value: FavoriteStatusFilter) => void;
   };
 }) {
-  const { t } = useTranslation();
-  const hasQuery = Boolean(query.trim());
-  const [searchOpen, setSearchOpen] = useState(hasQuery);
-  const focusSearch = useRef(false);
-  const fieldRef = useRef<HTMLDivElement | null>(null);
-
-  // A query restored from history or typed elsewhere keeps the field on show.
-  useEffect(() => {
-    if (hasQuery) setSearchOpen(true);
-  }, [hasQuery]);
-
-  useEffect(() => {
-    if (!searchOpen || !focusSearch.current) return;
-    focusSearch.current = false;
-    fieldRef.current?.querySelector("input")?.focus();
-  }, [searchOpen]);
-
-  const toggleSearch = () => {
-    if (searchOpen) {
-      setSearchOpen(false);
-      if (hasQuery) onQueryChange("");
-      return;
-    }
-    focusSearch.current = true;
-    setSearchOpen(true);
-  };
+  const search = useCollapsibleSearch(query, onQueryChange);
 
   return (
     <div className="space-y-2" data-toast-avoid>
-      {searchOpen && (
-        <div ref={fieldRef}>
+      {search.open && (
+        <div ref={search.fieldRef}>
           <FavoriteSearchInput
             value={query}
             placeholder={placeholder}
@@ -75,9 +48,7 @@ export function FavoriteMobileControls({
       <div className="flex min-h-11 items-center gap-1.5">
         {sort}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <IconButton title={t("favorites.search")} aria-pressed={searchOpen} onClick={toggleSearch}>
-            <Search className={`h-4 w-4 ${searchOpen ? "text-primary" : ""}`} />
-          </IconButton>
+          <SearchToggle open={search.open} onToggle={search.toggle} />
           {actions}
         </div>
       </div>

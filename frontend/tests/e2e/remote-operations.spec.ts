@@ -160,6 +160,7 @@ test("remote source keeps alias matches returned by the backend", async ({ page 
   await page.goto("/");
   await selectLibrarySource(page, "Example Remote");
 
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   const search = page.getByRole("searchbox", { name: "Search library" });
   await search.fill(aliasWorkCode);
   await expect.poll(() => requests.some((url) => url.searchParams.get("q") === aliasWorkCode)).toBe(true);

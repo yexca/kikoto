@@ -3349,7 +3349,6 @@ export const surfaceKorean = {
   favorites: {
     all: "모든 즐겨찾기",
     allShort: "전체",
-    search: "검색",
     lists: "즐겨찾기 목록",
     listTabs: "즐겨찾기 목록 탭",
     exitSelection: "선택 종료",

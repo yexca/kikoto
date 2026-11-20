@@ -213,6 +213,7 @@ const collectionJapanese = {
   filter: "絞り込み",
   filterValue: "{{label}}：{{value}}",
   filters: "{{label}}の絞り込み",
+  search: "検索",
   clearSearch: "検索をクリア",
   works: "作品",
   columns: "列数：{{label}}",

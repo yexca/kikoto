@@ -3417,7 +3417,6 @@ export const surfaceEnglish = {
   favorites: {
     all: "All Favorites",
     allShort: "All",
-    search: "Search",
     lists: "Favorite lists",
     listTabs: "Favorite list tabs",
     exitSelection: "Exit selection",

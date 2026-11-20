@@ -222,8 +222,9 @@ display setting joins the View panel instead of the toolbar.
 
 The works of a circle or voice actor detail page have a toolbar of at most
 five controls: a circle's Works and Series tabs, the search field, the order,
-the availability filter, and one View entry. Search, order, and filter stay on
-show because they are used often; View holds the display options and selecting
+the availability filter, and one View entry. Search, order, and filter stay
+one step away because they are used often (a phone opens the search field
+from its icon); View holds the display options and selecting
 works for bulk Fetch or Fork, and opens as a popover on wide layouts and as a
 sheet on a phone. A new browse control on these pages joins View instead of the
 toolbar. A caption before the order states how many works match and, from
@@ -490,24 +491,31 @@ Mobile:
   selected source's actions, in the side column's order.
 - Circle and voice actor detail keep the summary's order, with the counts and
   the icon action row below the portrait and name. The works toolbar puts a
-  circle's tabs on their own row and the search field full width below it, then
-  one row with the result caption and the order, the filter, and View, whose
-  sheet holds the display options and selection.
+  circle's tabs on their own row, then one row with the result caption and
+  Search, the order, the filter, and View, whose sheet holds the display
+  options and selection. Search opens its field full width above that row.
 - The native server connection form keeps the address on its own full-width
   row, with protocol and port below. Controls remain inside a 320px viewport
   without horizontal scrolling and retain at least 44px touch targets.
 - Viewport-bounded popovers or sheets for filters and source picking.
-- The phone Library toolbar keeps search always visible with the source menu
-  beside it. One row below starts with what shapes the results, the labeled
-  order with its reshuffle and the Quick mark filter, and ends with Recently
-  played and View as icons; the order's name truncates before the row
-  overflows a 360px screen. A caption under that row states the result count
-  and page in place of a top pager.
+- Phone browse toolbars keep search behind a Search icon, since it is used
+  less than the order and filters: Library, Favorites, Circles, Voice Actors,
+  and the works of a circle or voice actor. The icon opens the field above the
+  controls and focuses it; the field stays open while it holds a query,
+  including one restored from history or set by a link, and closing it clears
+  the query so a hidden field never narrows the results.
+- The phone Library toolbar puts the source menu, the result count and page,
+  and Search, Recently played, and View as icons on one row. The row below
+  holds what shapes the results, the labeled order with its reshuffle and the
+  Quick mark filter; the order's name truncates before the row overflows a
+  360px screen. Search conditions are part of the query, so the field stays
+  open while any is set.
+- The phone Circles and Voice Actors lists put the sideways-scrolling view
+  chips and, at the row's end, Search and page size on one row.
 - The phone Favorites shelf puts, below its shelf row, whose selected chip
   names the open shelf in place of a header: the labeled sort with Search,
   Filters, and the view utilities at the row's end, then the Quick mark chips
-  in a horizontally scrollable row. Search opens its field above the row and
-  keeps it while a query is set.
+  in a horizontally scrollable row.
 - Text inputs, textareas, and selects use at least 16px text on coarse
   pointers so iOS WebKit never zooms into a focused control. The viewport keeps
   pinch zoom; fine-pointer layouts keep their compact control text.
