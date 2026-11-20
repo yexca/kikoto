@@ -1,45 +1,21 @@
-// Text viewer model: the player's timed-lyrics parsing plus what a reading view adds.
+// Text viewer model: how a reading view shows the timed lyrics the server read.
 
-import { parseTimedLyrics, startsWithLrcTimestamp } from "@/lib/timedLyrics";
+import type { TimedLyricsResult } from "@/lib/api";
 
 export type LyricsLine = { timeSeconds: number; text: string };
 export type LyricsTag = { key: string; value: string };
 export type ParsedLyrics = { tags: LyricsTag[]; lines: LyricsLine[] };
 
-const lrcTagPattern = /^\[([A-Za-z]+):(.*)\]$/;
-// Header tags worth showing; offset, length, and tool tags only describe the file.
-const displayedTagKeys = new Set(["ti", "ar", "al", "au", "by"]);
-// Mostly stamped lines make an LRC file; a script with a few stray stamps stays plain text.
-const minimumStampedShare = 0.6;
-
 /**
- * Reads timed lyrics and subtitles (LRC, WebVTT, SRT) into the lines the player
- * shows, or returns null for ordinary text.
+ * The lines and song tags the viewer shows for a file the server read, or null
+ * for ordinary text: a file with no timed line, or a script that only quotes a
+ * few time marks.
  */
-export function parseLyrics(content: string): ParsedLyrics | null {
-  const timed = parseTimedLyrics(content);
-  if (!timed.timed) return null;
-  const tags: LyricsTag[] = [];
-  let textLines = 0;
-  let stampedLines = 0;
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const tag = lrcTagPattern.exec(line);
-    if (tag) {
-      const key = tag[1].toLowerCase();
-      const value = tag[2].trim();
-      if (displayedTagKeys.has(key) && value) tags.push({ key, value });
-      continue;
-    }
-    textLines += 1;
-    if (startsWithLrcTimestamp(line)) stampedLines += 1;
-  }
-  // Cue files carry their timing in structure, so only LRC needs the share check.
-  if (stampedLines > 0 && stampedLines < textLines * minimumStampedShare) return null;
+export function lyricsView(result: TimedLyricsResult | null): ParsedLyrics | null {
+  if (!result?.timed || result.sparse) return null;
   return {
-    tags,
-    lines: timed.lines.map((line) => ({ timeSeconds: line.time, text: line.text })),
+    tags: result.tags,
+    lines: result.lines.map((line) => ({ timeSeconds: line.time, text: line.text })),
   };
 }
 

@@ -77,9 +77,6 @@ func TestChunkCuesPlaceSegmentsOnTheTrackTimeline(t *testing.T) {
 	if !strings.HasPrefix(vtt, "WEBVTT\n\n00:01:00.500 --> 00:01:01.250\nfirst line\n") || strings.Count(vtt, " --> ") != 3 {
 		t.Fatalf("vtt = %q", vtt)
 	}
-	if got := vttTime(3_723_004); got != "01:02:03.004" {
-		t.Fatalf("time = %q", got)
-	}
 }
 
 func TestQuietCutFallsInTheQuietestStretch(t *testing.T) {

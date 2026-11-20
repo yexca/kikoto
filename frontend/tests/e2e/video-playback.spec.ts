@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import type { MediaItem, MediaTextPreview, VideoPlaybackInfo } from "../../src/lib/api";
+import type { MediaItem, VideoPlaybackInfo } from "../../src/lib/api";
 import type { ApiErrorBody } from "./fixtures/api";
 import { mediaFixture, mockApplication, silentWav, work } from "./fixtures/player-library";
 
@@ -278,9 +278,10 @@ test("video stage shortcuts control the video, and the header steps through the 
 });
 
 test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) => {
-  const subtitles: Record<number, MediaTextPreview> = {
-    2: { path: "example.srt", content: "1\r\n00:00:01,000 --> 00:00:03,500\r\nSynthetic SRT line\r\n" },
-    3: { path: "example.avi.vtt", content: "WEBVTT\n\n00:00:02.000 --> 00:00:04.000\nSynthetic WebVTT line\n" },
+  // The server converts each sidecar to WebVTT.
+  const subtitles: Record<number, string> = {
+    2: "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nSynthetic SRT line\n",
+    3: "WEBVTT\n\n00:00:02.000 --> 00:00:04.000\nSynthetic WebVTT line\n",
   };
   await mockLocalVideo(page, [
     mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text"),
@@ -289,10 +290,10 @@ test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) 
   ]);
   await mockDirectPlayback(page);
   const textRequests: number[] = [];
-  await page.route(/\/api\/media\/\d+\/text$/, (route) => {
-    const id = Number(/\/api\/media\/(\d+)\/text$/.exec(route.request().url())?.[1]);
+  await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) => {
+    const id = Number(/\/api\/media\/(\d+)\/text/.exec(route.request().url())?.[1]);
     textRequests.push(id);
-    return route.fulfill({ json: subtitles[id] ?? { path: "other.srt", content: "" } });
+    return route.fulfill({ contentType: "text/vtt", body: subtitles[id] ?? "WEBVTT\n" });
   });
   const video = await openVideo(page);
   await expect
@@ -390,15 +391,11 @@ test("choosing another audio track keeps the position and the paused or playing 
 });
 
 test("ASS files and embedded subtitle streams load as subtitle tracks", async ({ page }) => {
-  const ass = [
-    "[Script Info]",
-    "[Events]",
-    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    "Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\an8}Synthetic\\NASS line",
-  ].join("\n");
+  // The server keeps the timing and text of ASS dialogue as WebVTT.
+  const ass = "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nSynthetic\nASS line\n";
   await mockLocalVideo(page, [mediaFixture(2, "example.ass", `${work.primaryCode}/example.ass`, "text")]);
-  await page.route(/\/api\/media\/\d+\/text$/, (route) =>
-    route.fulfill({ json: { path: "example.ass", content: ass } satisfies MediaTextPreview }),
+  await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) =>
+    route.fulfill({ contentType: "text/vtt", body: ass }),
   );
   await page.route("**/api/media/1/playback*", (route) =>
     route.fulfill({
@@ -541,13 +538,8 @@ test("the speed menu sets the playback rate and shows the speed notice", async (
 
 test("the subtitle menu shows one track and extracts an embedded stream only once chosen", async ({ page }) => {
   await mockLocalVideo(page, [mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text")]);
-  await page.route(/\/api\/media\/\d+\/text$/, (route) =>
-    route.fulfill({
-      json: {
-        path: "example.srt",
-        content: "1\r\n00:00:01,000 --> 00:00:03,500\r\nSynthetic SRT line\r\n",
-      } satisfies MediaTextPreview,
-    }),
+  await page.route(/\/api\/media\/\d+\/text\?format=webvtt$/, (route) =>
+    route.fulfill({ contentType: "text/vtt", body: "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nSynthetic SRT line\n" }),
   );
   await page.route("**/api/media/1/playback*", (route) =>
     route.fulfill({

@@ -5,7 +5,6 @@ import {
   subtitleLanguageName,
   videoSubtitlesFor,
   videoSubtitleTracks,
-  videoSubtitleWebVtt,
 } from "@/player/video/videoSubtitles";
 import type { VideoEmbeddedSubtitle } from "@/lib/api";
 import type { LyricsChoice } from "@/player/lyricsMatching";
@@ -34,87 +33,6 @@ describe("video sidecar subtitles", () => {
     expect(videoSubtitlesFor("movie/clip.mp4", [remote])).toEqual([
       { locationId: -2, title: "clip.srt", url: "/remote/clip.srt" },
     ]);
-  });
-});
-
-describe("subtitle conversion", () => {
-  it("rewrites SRT cues as WebVTT and keeps their line breaks", () => {
-    const srt =
-      "1\r\n00:00:01,500 --> 00:00:04,000\r\n<i>Hello</i>\r\nthere\r\n\r\n2\r\n01:02:03,040 --> 01:02:05,000\r\nLater\r\n";
-    expect(videoSubtitleWebVtt(srt)).toBe(
-      "WEBVTT\n\n00:00:01.500 --> 00:00:04.000\n<i>Hello</i>\nthere\n\n01:02:03.040 --> 01:02:05.000\nLater\n",
-    );
-  });
-
-  it("shows SRT text as written, keeping only the markup WebVTT shares", () => {
-    const srt =
-      '1\n00:00:01,000 --> 00:00:02,000\n<font color="#ffff00">Tom & Jerry</font> <B>love</B> <3\nif a < b --> c > d\n';
-    expect(videoSubtitleWebVtt(srt)).toBe(
-      "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nTom &amp; Jerry <b>love</b> &lt;3\nif a &lt; b --&gt; c &gt; d\n",
-    );
-  });
-
-  it("ends a cue without a usable end at the next cue", () => {
-    const srt =
-      "1\n00:00:01,000 --> 00:00:00,000\nFirst\n\n2\n00:00:03,000 -->\nSecond\n\n3\n00:00:09,000 --> 00:00:10,000\n\n";
-    expect(videoSubtitleWebVtt(srt)).toBe(
-      "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nFirst\n\n00:00:03.000 --> 00:00:09.000\nSecond\n",
-    );
-  });
-
-  it("keeps a WebVTT file as written and rejects a file without cues", () => {
-    const vtt = "\uFEFFWEBVTT\n\n00:01.000 --> 00:02.000 line:0\n<c.yellow>Hi</c>\n";
-    expect(videoSubtitleWebVtt(vtt)).toBe(vtt.slice(1));
-    expect(videoSubtitleWebVtt("just some notes")).toBeNull();
-  });
-});
-
-describe("ASS subtitle conversion", () => {
-  it("keeps the timing and text of ASS dialogue", () => {
-    const ass = [
-      "\uFEFF[Script Info]",
-      "Title: Synthetic",
-      "",
-      "[V4+ Styles]",
-      "Format: Name, Fontname, Fontsize",
-      "Style: Default,Arial,20",
-      "",
-      "[Events]",
-      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-      "Comment: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,not shown",
-      "Dialogue: 0,0:00:05.50,0:00:07.00,Default,,0,0,0,,{\\an8}second, with a comma",
-      "Dialogue: 0,0:00:01.25,0:00:03.00,Default,,0,0,0,,{\\i1}first{\\i0}\\Nline\\nthree\\hwords",
-      "Dialogue: 0,0:00:08.00,0:00:09.00,Default,,0,0,0,,a < b & c --> d",
-      "Dialogue: 0,1:02:03.00,1:02:04.00,Default,,0,0,0,,{\\p1}{\\p0}",
-    ].join("\r\n");
-    expect(videoSubtitleWebVtt(ass)).toBe(
-      [
-        "WEBVTT",
-        "",
-        "00:00:01.250 --> 00:00:03.000",
-        "first",
-        "line",
-        "three words",
-        "",
-        "00:00:05.500 --> 00:00:07.000",
-        "second, with a comma",
-        "",
-        "00:00:08.000 --> 00:00:09.000",
-        "a &lt; b &amp; c --&gt; d",
-        "",
-      ].join("\n"),
-    );
-  });
-
-  it("reads SSA dialogue in its declared field order", () => {
-    const ssa =
-      "[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
-      "Dialogue: Marked=0,0:00:02.00,0:00:04.50,Default,,0000,0000,0000,,old style";
-    expect(videoSubtitleWebVtt(ssa)).toBe("WEBVTT\n\n00:00:02.000 --> 00:00:04.500\nold style\n");
-  });
-
-  it("rejects an ASS file without dialogue", () => {
-    expect(videoSubtitleWebVtt("[Script Info]\nTitle: Synthetic\n\n[Events]\n")).toBeNull();
   });
 });
 

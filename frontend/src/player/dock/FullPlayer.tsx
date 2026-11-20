@@ -207,6 +207,7 @@ export function FullPlayer({
       <ActiveLyricsPanel
         title={lyrics.activeLyricsChoice?.title ?? track.lyricsTitle}
         text={lyrics.lyricsText}
+        file={lyrics.fileLyrics}
         parsed={parsedLyrics}
         choices={track.lyricsChoices ?? []}
         activeLocationId={activeLyricsLocationId}

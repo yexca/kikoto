@@ -124,6 +124,26 @@ export type MediaTextPreview = {
   content: string;
 };
 
+/**
+ * A lyrics or subtitle file as the server reads it: LRC, WebVTT, SRT, and ASS
+ * become timed lines, in start order. `text` is the file's own text and is
+ * present only when it holds no timed line.
+ */
+export type TimedLyricsResult = {
+  timed: boolean;
+  lines: { time: number; text: string; attribution?: boolean }[];
+  /** The song tags of an LRC header: title, artist, album, author, and creator. */
+  tags: { key: string; value: string }[];
+  /** Only a few lines carry LRC timestamps, so a viewer shows the file as plain text. */
+  sparse: boolean;
+  text?: string;
+};
+
+/** A text route answers in these formats when asked with `format`. */
+function withTextFormat(url: string, format: "lyrics" | "webvtt") {
+  return `${url}${url.includes("?") ? "&" : "?"}format=${format}`;
+}
+
 export type MediaCacheResult = {
   runId: number;
   jobId: number;
@@ -266,6 +286,20 @@ export type MediaCleanupResult = {
 
 export const mediaApi = {
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  /** Reads a lyrics file of a work as timed lines; every kind of location is read where its bytes are. */
+  getMediaLyrics: (locationId: number, signal?: AbortSignal) =>
+    getJSON<TimedLyricsResult>(`/api/media/${locationId}/text?format=lyrics`, signal),
+  /** Reads a subtitle file of a work as WebVTT for a `<track>` element. */
+  getMediaSubtitle: (locationId: number, signal?: AbortSignal) =>
+    getText(`/api/media/${locationId}/text?format=webvtt`, signal),
+  /** Reads a remote source's text file, named by the server's text URL, as timed lines. */
+  getTextUrlLyrics: (url: string, signal?: AbortSignal) =>
+    getJSON<TimedLyricsResult>(withTextFormat(url, "lyrics"), signal),
+  /** Reads a remote source's subtitle file, named by the server's text URL, as WebVTT. */
+  getTextUrlSubtitle: (url: string, signal?: AbortSignal) => getText(withTextFormat(url, "webvtt"), signal),
+  /** Reads text the client already holds, such as a translation or a transcription, as timed lines. */
+  parseLyrics: (text: string, signal?: AbortSignal) =>
+    postJSONBody<TimedLyricsResult>("/api/lyrics/parse", { text }, signal),
   /** Reads an embedded subtitle stream as WebVTT from the URL playback info lists. */
   getVideoSubtitle: (url: string, signal?: AbortSignal) => getText(url, signal),
   /** Compares the local files of a work's family by content; one request does a bounded share of the work. */

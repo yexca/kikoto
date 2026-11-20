@@ -1,7 +1,7 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api, assetURL, type VideoEmbeddedSubtitle } from "@/lib/api";
+import { api, type VideoEmbeddedSubtitle } from "@/lib/api";
 import { keepOneVideoSubtitle } from "@/player/video/videoControlsModel";
 import {
   initialVideoSubtitleKey,
@@ -10,10 +10,8 @@ import {
   type VideoSubtitle,
   type VideoSubtitleTrack,
   videoSubtitleTracks,
-  videoSubtitleWebVtt,
 } from "@/player/video/videoSubtitles";
 
-const MAX_SUBTITLE_BYTES = 512 * 1024;
 const trackSelector = "track[data-subtitle-key]";
 
 /**
@@ -90,14 +88,11 @@ export function useVideoSubtitleTracks(
       return;
     }
     const controller = new AbortController();
-    void Promise.allSettled(sidecars.map((subtitle) => loadSidecarText(subtitle, controller.signal))).then(
+    void Promise.allSettled(sidecars.map((subtitle) => loadSidecarSubtitle(subtitle, controller.signal))).then(
       (results) => {
         if (controller.signal.aborted) return;
         results.forEach((result, index) =>
-          store(
-            sidecarSubtitleKey(sidecars[index]),
-            result.status === "fulfilled" ? videoSubtitleWebVtt(result.value) : null,
-          ),
+          store(sidecarSubtitleKey(sidecars[index]), result.status === "fulfilled" ? result.value : null),
         );
         setSidecarsSettled(true);
       },
@@ -121,7 +116,7 @@ export function useVideoSubtitleTracks(
       void api
         .getVideoSubtitle(track.url, signal)
         .then((text) => {
-          store(track.key, videoSubtitleWebVtt(text));
+          store(track.key, text);
           if (!signal.aborted) settle(null);
         })
         .catch(() => {
@@ -191,12 +186,9 @@ export function useVideoSubtitleTracks(
   return withStatus;
 }
 
-async function loadSidecarText(subtitle: VideoSubtitle, signal: AbortSignal) {
-  if (!subtitle.url) return (await api.getMediaText(subtitle.locationId)).content;
-  const response = await fetch(assetURL(subtitle.url), { headers: { Accept: "text/plain,text/*" }, signal });
-  if (!response.ok) throw new Error(`Subtitle request returned HTTP ${response.status}.`);
-  if (Number(response.headers.get("content-length") ?? 0) > MAX_SUBTITLE_BYTES) throw new Error("Subtitle too large.");
-  const content = await response.text();
-  if (content.length > MAX_SUBTITLE_BYTES) throw new Error("Subtitle too large.");
-  return content;
+/** A sidecar file as WebVTT: the server reads it where its bytes are and converts it, so no format is parsed here. */
+function loadSidecarSubtitle(subtitle: VideoSubtitle, signal: AbortSignal) {
+  return subtitle.url
+    ? api.getTextUrlSubtitle(subtitle.url, signal)
+    : api.getMediaSubtitle(subtitle.locationId, signal);
 }

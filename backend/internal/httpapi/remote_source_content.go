@@ -56,6 +56,11 @@ func (s *Server) kikoeruClientForSourceWithLanguages(source remoteSourceForUse, 
 }
 
 func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request) {
+	format, ok := requestedTextFormat(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_format", "unsupported text format", false)
+		return
+	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
@@ -96,6 +101,10 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 	}
 	decoded, err := textdecode.Decode(r.Context(), content, contentType)
 	if err != nil {
+		return
+	}
+	if format != "" {
+		writeTimedText(w, decoded, format)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

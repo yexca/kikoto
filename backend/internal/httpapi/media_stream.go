@@ -146,8 +146,14 @@ func setAssetRevisionHeaders(w http.ResponseWriter, info os.FileInfo, identity s
 
 // serveMediaText returns one text file of a work as decoded text. Every kind of
 // location is read where its bytes are: a local file from the library, a cached
-// copy from the cache, and a remote file through its configured source.
+// copy from the cache, and a remote file through its configured source. With a
+// `format` query it answers the text read as timed lyrics or as WebVTT.
 func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
+	format, ok := requestedTextFormat(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_format", "unsupported text format", false)
+		return
+	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
@@ -177,6 +183,10 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 	}
 	content, err := textdecode.Decode(r.Context(), raw, contentType)
 	if err != nil {
+		return
+	}
+	if format != "" {
+		writeTimedText(w, content, format)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

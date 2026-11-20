@@ -16,12 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
-import { countTextLines, formatLyricsTime, parseLyrics } from "@/features/work-detail/dialogs/textPreviewModel";
+import { countTextLines, formatLyricsTime, lyricsView } from "@/features/work-detail/dialogs/textPreviewModel";
 import { WorkVideoPlayer } from "@/features/work-detail/media/WorkVideoPlayer";
 import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
-import { api, assetURL } from "@/lib/api";
+import { api, assetURL, type TimedLyricsResult } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -508,7 +508,8 @@ function TextReader({
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<"lyrics" | "raw">("lyrics");
-  const lyrics = useMemo(() => (text === null ? null : parseLyrics(text)), [text]);
+  const [timedLyrics, setTimedLyrics] = useState<TimedLyricsResult | null>(null);
+  const lyrics = useMemo(() => lyricsView(timedLyrics), [timedLyrics]);
 
   useEffect(() => {
     let active = true;
@@ -523,8 +524,11 @@ function TextReader({
         })
       : api.getMediaText(preview.locationId);
     request
+      // The server reads the text as timed lyrics; a failed read leaves it plain text.
+      .then(async (result) => ({ ...result, timed: await api.parseLyrics(result.content).catch(() => null) }))
       .then((result) => {
         if (!active) return;
+        setTimedLyrics(result.timed);
         setText(result.content);
         onContent(result.content);
         onDetails(i18n.t("libraryDetail.lineCount", { count: countTextLines(result.content) }));

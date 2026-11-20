@@ -10,6 +10,7 @@ import type {
   MediaItem,
   MediaProgress,
   MediaTextPreview,
+  TimedLyricsResult,
   RecentlyPlayedWorksResponse,
   RemoteFetchFileDecision,
   RemoteTrackRunStatus,
@@ -639,23 +640,43 @@ export async function mockApplication(
       });
       return;
     }
+    if (url.pathname === "/api/lyrics/parse") {
+      const { text } = route.request().postDataJSON() as { text: string };
+      await route.fulfill({ json: mockTimedLyrics(text) });
+      return;
+    }
     const textPreviewMatch = url.pathname.match(/^\/api\/media\/(\d+)\/text$/);
     if (textPreviewMatch) {
       const locationID = Number(textPreviewMatch[1]);
+      const preview: MediaTextPreview =
+        locationID === 9
+          ? {
+              path: "lyrics.lrc",
+              content:
+                "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line",
+            }
+          : { path: "notes.txt", content: "Synthetic notes" };
       await route.fulfill({
         json:
-          locationID === 9
-            ? ({
-                path: "lyrics.lrc",
-                content:
-                  "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line",
-              } satisfies MediaTextPreview)
-            : ({ path: "notes.txt", content: "Synthetic notes" } satisfies MediaTextPreview),
+          url.searchParams.get("format") === "lyrics"
+            ? ({ ...mockTimedLyrics(preview.content), text: preview.content } satisfies TimedLyricsResult)
+            : preview,
       });
       return;
     }
     await route.fulfill({ status: 404, json: notMocked });
   });
+}
+
+/** The server's timed reading of LRC lines, for text the mock serves; other formats are not mocked. */
+function mockTimedLyrics(text: string): TimedLyricsResult {
+  const lines = text.split(/\r?\n/).flatMap((line) => {
+    const match = /^\[(\d+):(\d{2})(?:\.(\d+))?\](.*)$/.exec(line.trim());
+    if (!match) return [];
+    const fraction = Number(`0.${match[3] ?? "0"}`);
+    return [{ time: Number(match[1]) * 60 + Number(match[2]) + fraction, text: match[4].trim() }];
+  });
+  return { timed: lines.length > 0, lines, tags: [], sparse: false };
 }
 
 export async function seedPlayer(page: Page, track = persistedTrack, principalID: number | null = null) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
+import type { ParsedLyrics } from "@/lib/timedLyrics";
 import { findLocalLyricsChoices, lyricsChoiceDisplayLabel } from "@/player/lyricsMatching";
 import { syntheticWorkCode } from "@/test-support/workCode";
 
@@ -159,9 +160,13 @@ describe("alignLyricsByOrder", () => {
   });
 });
 
+function timed(...lines: ParsedLyrics["lines"]): ParsedLyrics {
+  return { timed: true, lines };
+}
+
 describe("lyricsTimingCheck", () => {
   it("flags timed lyrics that continue well past the audio", () => {
-    const vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n\n00:05:00.000 --> 00:05:02.000\nLate line\n";
+    const vtt = timed({ time: 1, text: "Hello" }, { time: 300, text: "Late line" });
     expect(lyricsTimingCheck(vtt, 120)).toMatchObject({
       timed: true,
       lineCount: 2,
@@ -170,12 +175,14 @@ describe("lyricsTimingCheck", () => {
     });
     expect(lyricsTimingCheck(vtt, 300).exceedsAudio).toBe(false);
     expect(lyricsTimingCheck(vtt, null).exceedsAudio).toBe(false);
-    expect(lyricsTimingCheck("plain text", 120)).toMatchObject({ timed: false, exceedsAudio: false });
+    expect(lyricsTimingCheck({ timed: false, lines: [] }, 120)).toMatchObject({ timed: false, exceedsAudio: false });
   });
 
   it("leaves out the line naming the models of AI-made lyrics", () => {
-    const vtt =
-      "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n当前歌词由 example-model 生成，example-llm 翻译\n\n00:00:01.000 --> 00:00:02.000\nHello\n";
+    const vtt = timed(
+      { time: 0, text: "当前歌词由 example-model 生成，example-llm 翻译", attribution: true },
+      { time: 1, text: "Hello" },
+    );
     expect(lyricsTimingCheck(vtt, 120)).toMatchObject({ timed: true, lineCount: 1, lastLineSeconds: 1 });
   });
 });

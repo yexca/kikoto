@@ -45,8 +45,11 @@ The backend stack, the internal package map, and the layering rule between HTTP 
   and lyrics templates. HTTP composition
   binds these to work identity, review persistence, file scope and workflow jobs.
 - `backend/internal/asr`: speech recognition service configuration, the
-  OpenAI-compatible transcription protocol, WebVTT rendering of timed
-  segments, and quiet cut points between transcription chunks.
+  OpenAI-compatible transcription protocol, timed segments rendered through
+  `timedtext`, and quiet cut points between transcription chunks.
+- `backend/internal/timedtext`: the reader of lyrics and subtitle text (LRC,
+  WebVTT, SubRip, ASS and SSA) as timed lines or WebVTT, and the WebVTT
+  writer; see [Timed Text](media-playback.md#timed-text).
 - `backend/internal/kikotohelper`: the Kikoto Helper task endpoints shared by
   `asr` and `llm`: the info probe, the translation task path and the helper's
   error codes.

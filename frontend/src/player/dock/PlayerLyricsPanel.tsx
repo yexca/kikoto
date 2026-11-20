@@ -31,6 +31,7 @@ export function LyricsLoadingSkeleton() {
 export function LyricsPanel({
   title,
   text,
+  file,
   parsed,
   activeIndex,
   choices,
@@ -42,7 +43,10 @@ export function LyricsPanel({
   onSeek,
 }: {
   title: string;
+  /** The file's own text, shown when it holds no timed line. */
   text: string;
+  /** The file's lines before the listener's offset; the panel scrolls to the active line when a new file loads. */
+  file: ParsedLyrics;
   parsed: ParsedLyrics;
   activeIndex: number;
   choices: LyricsChoice[];
@@ -76,7 +80,7 @@ export function LyricsPanel({
 
   useEffect(() => {
     centerActiveLine("auto");
-  }, [centerActiveLine, text]);
+  }, [centerActiveLine, file]);
 
   useEffect(() => {
     if (following) return;

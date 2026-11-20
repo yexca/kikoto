@@ -1,8 +1,7 @@
 import type { LyricsAssignmentChange, MediaItem } from "@/lib/api";
 import { allLyricsLanguages, lyricsLanguages, mediaItemLyricsAssignments } from "@/lib/lyricsLanguage";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
-import { isLyricsAttribution } from "@/lib/lyricsAttribution";
-import { parseTimedLyrics } from "@/lib/timedLyrics";
+import type { ParsedLyrics } from "@/lib/timedLyrics";
 import { findLyricsMatches, isLyricsPath } from "@/player/lyricsMatching";
 
 /** An audio file of the work as the lyrics manager lists it. */
@@ -231,12 +230,12 @@ export type LyricsTimingCheck = {
 };
 
 /**
- * Checks whether timed lyrics fit the audio they are assigned to. The line
- * naming the models of AI-made lyrics is not one of their lines.
+ * Checks whether timed lyrics, as the server read them, fit the audio they are
+ * assigned to. The line the server marks as naming the models of AI-made
+ * lyrics is not one of their lines.
  */
-export function lyricsTimingCheck(text: string, durationSeconds: number | null): LyricsTimingCheck {
-  const parsed = parseTimedLyrics(text);
-  const lines = parsed.lines.filter((line) => !isLyricsAttribution(line.text));
+export function lyricsTimingCheck(parsed: ParsedLyrics, durationSeconds: number | null): LyricsTimingCheck {
+  const lines = parsed.lines.filter((line) => !line.attribution);
   const lastLineSeconds = lines.length > 0 ? lines[lines.length - 1].time : null;
   return {
     timed: parsed.timed,

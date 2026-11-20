@@ -5,13 +5,13 @@ import { useTranslation } from "react-i18next";
 import { lyricsTimingCheck } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { api, assetURL } from "@/lib/api";
-import { parseTimedLyrics } from "@/lib/timedLyrics";
+import { type ParsedLyrics, untimedLyrics } from "@/lib/timedLyrics";
 
 const previewLineCount = 6;
 const panelLineCount = 200;
 const maxRemotePreviewCharacters = 512 * 1024;
 
-type LyricsPreviewState = { key: string; text: string } | { key: string; failed: true };
+type LyricsPreviewState = { key: string; text: string; parsed: ParsedLyrics } | { key: string; failed: true };
 
 /**
  * Shows the first lines of a lyrics file and warns when its timed lines run
@@ -36,9 +36,14 @@ export function LyricsPreview({
   const [state, setState] = useState<LyricsPreviewState | null>(null);
   useEffect(() => {
     let cancelled = false;
+    // The server reads the text as timed lyrics, whichever file or task it came from.
     load()
-      .then((text) => {
-        if (!cancelled) setState({ key: loadKey, text });
+      .then(async (text) => {
+        const result = await api.parseLyrics(text);
+        return { text, parsed: result.timed ? { timed: true, lines: result.lines } : untimedLyrics };
+      })
+      .then(({ text, parsed }) => {
+        if (!cancelled) setState({ key: loadKey, text, parsed });
       })
       .catch(() => {
         if (!cancelled) setState({ key: loadKey, failed: true });
@@ -51,14 +56,16 @@ export function LyricsPreview({
   }, [loadKey]);
   const current = state?.key === loadKey ? state : null;
   const text = current && "text" in current ? current.text : null;
+  const parsed = current && "parsed" in current ? current.parsed : null;
   const check = useMemo(
-    () => (text === null ? null : lyricsTimingCheck(text, durationSeconds)),
-    [text, durationSeconds],
+    () => (parsed === null ? null : lyricsTimingCheck(parsed, durationSeconds)),
+    [parsed, durationSeconds],
   );
   const panel = variant === "panel";
   const lines = useMemo(
-    () => (text === null ? [] : previewLines(text, panel ? panelLineCount : previewLineCount)),
-    [text, panel],
+    () =>
+      text === null || parsed === null ? [] : previewLines(text, parsed, panel ? panelLineCount : previewLineCount),
+    [text, parsed, panel],
   );
   const timing =
     check && !check.exceedsAudio
@@ -179,8 +186,7 @@ export async function loadRemoteLyricsText(sourceId: number, workCode: string, p
 }
 
 /** The first lines as playback shows them: timed lines with their start, else the raw text. */
-function previewLines(text: string, count: number): { time: string; text: string }[] {
-  const parsed = parseTimedLyrics(text);
+function previewLines(text: string, parsed: ParsedLyrics, count: number): { time: string; text: string }[] {
   if (parsed.timed) {
     return parsed.lines.slice(0, count).map((line) => ({ time: formatLyricsTime(line.time), text: line.text }));
   }

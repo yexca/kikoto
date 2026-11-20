@@ -1,6 +1,6 @@
 # Media Playback
 
-How the backend measures loudness, shares conversion capacity, answers playback info, chooses audio tracks, and extracts subtitles for local and cached media.
+How the backend measures loudness, shares conversion capacity, answers playback info, chooses audio tracks, extracts subtitles for local and cached media, and reads lyrics and subtitle text.
 
 ## Loudness
 
@@ -115,3 +115,43 @@ source path, size, modification time, and stream, so a changed source is
 extracted again and the old file is evicted like any other cache file.
 Responses carry the untrusted-file headers, and a URL naming the current
 revision is cached as immutable.
+
+## Timed Text
+
+`backend/internal/timedtext` is the one reader of lyrics and subtitle text, so
+no client parses LRC, WebVTT, SubRip, or ASS and SSA. It reads the format from
+the content, never the file name: a `WEBVTT` header, or complete cue timing
+lines at least as many as lines that start with LRC timestamps, make a cue
+file; otherwise LRC timestamps make it LRC, then ASS dialogue. A WebVTT file
+may therefore be named `.txt`. The reader keeps LRC `[offset:]` tags, hour
+fields, and minutes past 99, and drops markup, cue identifiers, settings, and
+word timestamps from line text.
+
+The two text routes, `GET /api/media/{id}/text` and
+`GET /api/remote-sources/{id}/works/{code}/text`, answer in one of two shapes
+when asked with `format`; a file is read, bounded, and decoded as in
+[Remote text preview](../../development/security.md#remote-text-preview) first.
+
+- `format=lyrics` returns JSON: `timed`, `lines` (`time` in seconds, `text`,
+  and `attribution` for the line naming the models of AI-made lyrics, decided
+  by the translation package's attribution templates), the song `tags` of an
+  LRC header, `sparse` for a file where only a few lines carry LRC timestamps,
+  and `text`, the file itself, when it holds no timed line. Timed lines are
+  JSON rather than WebVTT because lyrics are shown and sought by line start;
+  LRC lines have no end, and WebVTT would make every client parse cues again.
+- `format=webvtt` returns `text/vtt` for a `<track>` element. A WebVTT file
+  passes through as written; SubRip cues are rewritten, keeping `<i>`, `<b>`,
+  and `<u>` and escaping the rest; ASS and SSA dialogue keeps only timing and
+  text. A cue without a usable end lasts until the next cue, or five seconds.
+  A file with no cue answers `422 subtitle_has_no_cues`.
+
+Any other `format` is `400 invalid_text_format`. A Record subtitle URL always
+answers WebVTT and ignores `format`.
+
+`POST /api/lyrics/parse` reads text a client already holds, such as a
+translation result or a transcription, as the `format=lyrics` shape without
+`text`. It reads no file, stores nothing, accepts at most 512 KiB, needs a
+signed-in viewer only, and stays available in Demo.
+
+The same package renders WebVTT for speech recognition output and converts
+SubRip sidecars for Record.

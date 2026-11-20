@@ -52,10 +52,16 @@ media event handlers ignore a replaced element.
 
 ## Lyrics Timeline
 
-Timed-lyrics parsing lives in `lib/timedLyrics`, so the player and the work
-detail file viewer read LRC, WebVTT, SRT, and ASS files the same way. The
-player moves parsed lines by the listener's lyrics offset, so the active line,
-line seeking, and screen lyrics share one timeline.
+The server reads lyrics files: LRC, WebVTT, SRT, and ASS or SSA text become
+timed lines, so the player, the lyrics previews, and the work detail file
+viewer show the same lines (see
+[Timed Text](../backend/media-playback.md#timed-text)). `lib/timedLyrics` keeps
+only the active-line lookup and the listener's offset. The player loads a
+track's lyrics as the server's timed lines, moves them by the listener's
+lyrics offset, so the active line, line seeking, and screen lyrics share one
+timeline, and shows a file with no timed line as its own text. The line the
+server marks as naming the models of AI-made lyrics stays among the lines; a
+timing check leaves it out.
 
 ## Playback Guards
 
@@ -121,8 +127,8 @@ to `AnchoredPopover` as `container` while it is fullscreen, because a popover
 in `document.body` is not shown over a fullscreen element.
 
 Subtitle menu choices set each `<track>` element's `track.mode`. Same-name
-WebVTT, SRT, ASS, and SSA files from the video's lyrics matches load at once,
-with SRT and ASS rewritten as WebVTT through `lib/timedLyrics`, and the
+WebVTT, SRT, ASS, and SSA files from the video's lyrics matches load at once
+as the WebVTT the server converts them to, and the
 embedded streams that playback info lists follow, each fetched only once its
 track is selected. Every track loads through the API transport as an object
 URL, so native shells need no subtitle asset route. Work video resume

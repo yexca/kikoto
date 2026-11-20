@@ -422,6 +422,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("DELETE /api/cache/transcodes", s.clearTranscodeCache)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
+	mux.HandleFunc("POST /api/lyrics/parse", s.parseLyricsText)
 	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
 	mux.HandleFunc("GET /api/auth/me/preferences", s.getUserPreferences)

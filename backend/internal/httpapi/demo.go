@@ -14,7 +14,7 @@ import (
 
 func (s *Server) demoReadOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !demoRecommendationReadRequest(r) && !demoForYouDrawRequest(r) {
+		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !demoRecommendationReadRequest(r) && !demoForYouDrawRequest(r) && !demoLyricsParseRequest(r) {
 			writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo mode is read-only", false)
 			return
 		}

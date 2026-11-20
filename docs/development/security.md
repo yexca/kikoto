@@ -328,6 +328,10 @@ current tree the same way.
 - Both endpoints accept the same files: one the source lists as text, or one
   with a `.txt`, `.md`, `.json`, `.lrc`, `.cue`, `.srt`, `.vtt`, `.ass`, `.ssa`,
   `.csv`, `.log`, `.ini`, `.yaml`, or `.yml` extension.
+- With `format=lyrics` or `format=webvtt` they answer the decoded text read as
+  timed lyrics or as WebVTT ([Timed Text](../architecture/backend/media-playback.md#timed-text)).
+  The read, its origin check, and its limits are the same, so the clients
+  parse nothing and fetch no remote text themselves.
 
 ### Remote image proxy
 

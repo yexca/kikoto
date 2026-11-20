@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { api, assetURL } from "@/lib/api";
-import { activeTimedLyricIndex, offsetTimedLyrics, parseTimedLyrics, type TimedLyricLine } from "@/lib/timedLyrics";
+import { api, type TimedLyricsResult } from "@/lib/api";
+import {
+  activeTimedLyricIndex,
+  offsetTimedLyrics,
+  type ParsedLyrics,
+  type TimedLyricLine,
+  untimedLyrics,
+} from "@/lib/timedLyrics";
 import type { LyricsChoice } from "@/player/lyricsMatching";
 import { preferredLyricsMediaItemID, usePlayerTime } from "@/player/PlayerProvider";
 import type { LyricsPreferenceTarget, PlayerTrack } from "@/player/playerTypes";
-
-const MAX_LYRICS_BYTES = 512 * 1024;
 
 /**
  * Resolves and loads the current track's lyrics. The active line follows the
@@ -24,12 +28,15 @@ export function usePlayerLyrics({
   changeLyricsChoice: (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => Promise<void>;
   changeLyricsOffset: (target: LyricsPreferenceTarget, offsetMs: number) => void;
 }) {
-  const [lyricsText, setLyricsText] = useState<string | null>(null);
+  const [lyricsFile, setLyricsFile] = useState<TimedLyricsResult | null>(null);
   const [lyricsError, setLyricsError] = useState("");
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
   const [usingAutomaticLyrics, setUsingAutomaticLyrics] = useState(true);
   const lyricsOffsetMs = track?.lyricsOffsetMs ?? 0;
-  const fileLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
+  const fileLyrics = useMemo<ParsedLyrics>(
+    () => (lyricsFile?.timed ? { timed: true, lines: lyricsFile.lines } : untimedLyrics),
+    [lyricsFile],
+  );
   const parsedLyrics = useMemo(() => offsetTimedLyrics(fileLyrics, lyricsOffsetMs), [fileLyrics, lyricsOffsetMs]);
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
 
@@ -48,31 +55,25 @@ export function usePlayerLyrics({
   }, [preferenceOverrides, track]);
 
   useEffect(() => {
-    setLyricsText(null);
+    setLyricsFile(null);
     setLyricsError("");
     if (!activeLyricsLocationId) return;
-    let cancelled = false;
+    const controller = new AbortController();
+    // The server reads the file where its bytes are, within its text preview
+    // limit, and returns its timed lines.
     const lyricsURL = activeLyricsChoice?.url;
     const request = lyricsURL
-      ? fetch(assetURL(lyricsURL), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-          if (!response.ok) throw new Error(`Lyrics preview returned HTTP ${response.status}.`);
-          const length = Number(response.headers.get("content-length") ?? 0);
-          if (length > MAX_LYRICS_BYTES) throw new Error("Lyrics file is too large to preview.");
-          const content = await response.text();
-          if (content.length > MAX_LYRICS_BYTES) throw new Error("Lyrics file is too large to preview.");
-          return { content };
-        })
-      : api.getMediaText(activeLyricsLocationId);
+      ? api.getTextUrlLyrics(lyricsURL, controller.signal)
+      : api.getMediaLyrics(activeLyricsLocationId, controller.signal);
     request
       .then((result) => {
-        if (!cancelled) setLyricsText(result.content);
+        if (!controller.signal.aborted) setLyricsFile(result);
       })
       .catch((error) => {
-        if (!cancelled) setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed.");
+        if (!controller.signal.aborted)
+          setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed.");
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [activeLyricsChoice?.url, activeLyricsLocationId]);
 
   const selectLyricsLocation = (locationId: number | null) => {
@@ -90,7 +91,10 @@ export function usePlayerLyrics({
   };
 
   return {
-    lyricsText,
+    /** The file's own text when it holds no timed line; null until the file has loaded. */
+    lyricsText: lyricsFile === null ? null : (lyricsFile.text ?? ""),
+    /** The file's lines before the listener's offset; a new file is a new object. */
+    fileLyrics,
     lyricsError,
     activeLyricsLocationId,
     activeLyricsChoice,

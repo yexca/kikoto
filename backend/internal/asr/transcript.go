@@ -2,9 +2,10 @@ package asr
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/timedtext"
 )
 
 // Cue is one timed line of a transcript on the track's timeline.
@@ -45,16 +46,12 @@ func clampMS(seconds float64, durationMS int64) int64 {
 
 // RenderVTT writes cues as a WebVTT document.
 func RenderVTT(cues []Cue) string {
-	var builder strings.Builder
-	builder.WriteString("WEBVTT\n")
-	for _, cue := range cues {
-		fmt.Fprintf(&builder, "\n%s --> %s\n%s\n", vttTime(cue.StartMS), vttTime(cue.EndMS), cue.Text)
+	timed := make([]timedtext.Cue, len(cues))
+	for i, cue := range cues {
+		timed[i] = timedtext.Cue{StartMS: cue.StartMS, EndMS: cue.EndMS, HasEnd: true, Lines: []string{cue.Text}}
 	}
-	return builder.String()
-}
-
-func vttTime(ms int64) string {
-	return fmt.Sprintf("%02d:%02d:%02d.%03d", ms/3_600_000, ms/60_000%60, ms/1000%60, ms%1000)
+	vtt, _ := timedtext.RenderWebVTT(timed)
+	return vtt
 }
 
 // quietWindowFrames is the length, in 100 ms frames, of the quiet stretch a
