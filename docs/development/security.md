@@ -1,14 +1,11 @@
 # Secure Development
 
 Security changes must preserve Kikoto's product boundaries as well as prevent a
-technical exploit. Read [Core boundaries](../architecture/core-boundaries.md),
-the repository [Security Policy](../../SECURITY.md), and
-[Runtime security](../operations/security.md) before changing authentication,
-sources, media access, filesystems, or outbound networking.
-
-This document is for contributors changing the codebase. Operators should use
-[Runtime security](../operations/security.md), and vulnerability reporters
-should use the repository [Security Policy](../../SECURITY.md).
+technical exploit. This document is for contributors changing the codebase.
+Read [Core boundaries](../architecture/core-boundaries.md), the repository
+[Security Policy](../../SECURITY.md) (for vulnerability reporters), and
+[Runtime security](../operations/security.md) (for operators) before changing
+authentication, sources, media access, filesystems, or outbound networking.
 
 ## Trust Boundaries
 
@@ -36,6 +33,12 @@ boundary and include tests for it.
   configured origins plus a reviewable host allowlist, or the declared
   public-host compatibility mode. An unconfigured destination must never
   inherit the configured origin's private-address exception.
+- Source-returned URL rule: a URL a source lists or returns (a file listing, a
+  tree, a cover, a response field) must be HTTP(S) without credentials and pass
+  the source's outbound policy before any request. The shared source transport
+  validates every redirect hop, pins the validated address, and keeps the
+  private-address exception for the source's configured origins only. The
+  sections below refer to this as the source URL rule.
 - Reject redirects by default. When redirects are required, apply the complete
   URL, origin, DNS, and address checks again at every hop.
 - Never forward authorization, cookies, or proxy authorization to a different
@@ -108,11 +111,10 @@ The opt-in fallback asks administrator-configured remote sources for one work
 after DLsite reports it as not found:
 
 - The destination is the source's configured API origin. Redirects are followed
-  only between the source's configured origins (API, public site, fallback);
-  the shared source policy validates every hop, pins the validated address,
-  strips credentials on an origin change, and keeps the configured private-origin
-  exception for those origins only. A cover URL from the response goes through
-  the existing remote cover path, so an unconfigured private origin is refused.
+  only between the source's configured origins (API, public site, fallback),
+  under the source URL rule, and credentials are stripped on an origin change.
+  A cover URL from the response goes through the existing remote cover path, so
+  an unconfigured private origin is refused.
 - Each source gets one `workInfo` request with a 30-second bound and a 2 MiB
   response limit, through the paced crawl lane; cancellation releases the lane
   and records no outcome. Retryable DLsite failures never trigger a request.
@@ -162,11 +164,9 @@ assigns tracks. The preview never changes a file.
 - A file to delete must be a lyrics file in a language's lyrics folder of the
   target's marked `lyrics_kikoto` folder. Deletion runs the media cleanup
   checks, including the symbolic-link review, when the edit is applied.
-- A remote file's source-returned URL must be HTTP(S) without credentials and
-  pass the source's outbound policy before any request; redirects are validated
-  at every hop by the shared source transport, and only configured origins keep
-  the private-address exception. Downloads use the source's download lane with
-  a 30-second bound per file and at most 200 downloads per request.
+- A remote file's URL follows the source URL rule. Downloads use the source's
+  download lane with a 30-second bound per file and at most 200 downloads per
+  request.
 - A request names at most 2,000 added and 2,000 deleted files. A copied or
   downloaded file is at most 2 MiB, the files collected for one request at
   most 128 MiB, and a request is bounded by 2 minutes. Copies and downloads
@@ -183,8 +183,6 @@ assigns tracks. The preview never changes a file.
   client disconnects, bounded by the 2-minute request limit, and the work
   folder is rescanned even when the edit stopped partway, so the folder and its
   index agree. Directories the edit emptied are removed.
-- Errors expose fixed messages only. Upstream URLs, local paths, and detailed
-  failures stay in protected logs.
 
 ### Speech transcription
 
@@ -222,12 +220,10 @@ an administrator accepts it, so the notice does not depend on the client.
   rechecked before every chunk.
 - Publication stages the file in `.kikoto-staging` on the work folder's
   storage pool and renames it into the language's lyrics folder through plain
-  directories, inside a `lyrics_kikoto` folder Kikoto created and marked; an
-  unmarked one is refused with `lyrics_folder_blocked`. It never replaces a
-  file: a different file under the track's name moves the transcription to a
-  numbered name.
-- Run and API errors expose fixed failure codes only; upstream errors,
-  endpoints and paths stay in protected logs.
+  directories, inside a marked `lyrics_kikoto` folder as in
+  [Lyrics files](#lyrics-files). It never replaces a file: a different file
+  under the track's name moves the transcription to a numbered name.
+- Run and API errors expose fixed failure codes only.
 
 ### Folder edit
 
@@ -246,26 +242,21 @@ and `remote:track`. It contacts only configured sources, through the shared
 remote-source transport, asks only about editions of the requested work's
 family, and stops before the next edition when the request is cancelled.
 
-- The target must be an active local folder of the requested work on an online
-  storage pool. A local source must be another active local folder of the same
-  family. Each requested path is resolved below it, and every path component
-  must be a regular directory or file, so a link inside the folder cannot read
-  from outside it. The source folder is not changed. The run checks the
-  target's pool again before it indexes the folder, so an unmounted pool never
-  marks the folder's files missing.
-- A remote code must be an edition of the requested work's family, and its
-  source an enabled compatible source. The edition's tree is read through the
-  remote snapshot cache; it is not stored as a work, presence, or media
-  location. Each requested path must be a file of that tree.
+- The target, a local source, and every requested path follow the target and
+  path rules of [Lyrics files](#lyrics-files). The run checks the target's
+  pool again before it indexes the folder, so an unmounted pool never marks the
+  folder's files missing.
+- A remote code and its tree follow the same rules as in Lyrics files, and its
+  source must be an enabled compatible source. Each requested path must be a
+  file of that tree.
 - A removed file must be a local location of the requested work inside the
   target folder. Applying the edit runs the destructive-path checks of media
   cleanup, including the symbolic-link review, and records the file's size and
   modification time on disk; the run deletes it only while it is still that
   version.
 - An addition that keeps a path inside another folder's `lyrics_kikoto`
-  lands only in a `lyrics_kikoto` folder Kikoto created and marked, or one the
-  run creates and marks; an unmarked one is refused with
-  `lyrics_folder_blocked`.
+  lands only in a marked `lyrics_kikoto` folder, as in
+  [Lyrics files](#lyrics-files), or one the run creates and marks.
 - Target paths stay inside the target folder. A target that exists is kept
   when it has the same size and is otherwise a conflict, which apply rejects
   until a decision resolves it. Two files of the result never share a path,
@@ -284,7 +275,7 @@ family, and stops before the next edition when the request is cancelled.
   checks and holds only plain folders and regular files, at most 20000. Its
   storage pool must be online both when the edit is planned and when the run
   deletes it, as for every
-  [library file change](../architecture/workflows.md#library-layout-and-onboarding).
+  [library file change](../architecture/workflows/library-layout-and-onboarding.md#library-layout-and-onboarding).
   Apply requires the review of a complete merge check of the same files and
   refuses the edit when they changed since. The review carries the files the
   check reported lost, and apply compares again: a merged file now without a
@@ -304,10 +295,8 @@ family, and stops before the next edition when the request is cancelled.
   deleted and recorded as gone as merged. The merge check only reads and hashes files below the merged
   folders and the target folder.
 - The job resolves each download address again from the source's tree when it
-  runs; the plan response and the stored job carry none. The address must be
-  HTTP(S) without credentials and pass the source's outbound policy before any
-  request; redirects are validated at every hop by the shared source
-  transport, and only configured origins keep the private-address exception.
+  runs; the plan response and the stored job carry none. The address follows
+  the source URL rule.
 - Downloads stream through the source's download lane into the run's
   `.kikoto-staging` directory on the target's pool, bounded by the remote
   download limit and the size the listing declares. Like Fetch staging
@@ -320,8 +309,8 @@ family, and stops before the next edition when the request is cancelled.
   directories, and lands on an existing file only when the plan decided to
   replace it. A cancelled or failed run removes its staging directory; a
   failure that is retried automatically keeps what it collected.
-- Responses expose request errors only. Upstream URLs and detailed failures
-  stay in protected logs and runs.
+- Responses expose request errors only; detailed failures stay in protected
+  logs and runs.
 
 ### Remote text preview
 
@@ -331,18 +320,14 @@ are: a local file from the library, a cached copy from the cache, and a
 `GET /api/remote-sources/{id}/works/{code}/text` reads a file of the source's
 current tree the same way.
 
-- The source must be enabled and compatible. The listed URL is untrusted: it
-  must be HTTP(S) without credentials and pass the source's outbound policy
-  before any request, and the shared source transport validates every redirect
-  hop. A URL the source's outbound policy rejects is refused without a
-  request; only the configured origins keep the private-address exception.
+- The source must be enabled and compatible. The listed URL is untrusted and
+  follows the source URL rule; a URL the policy rejects is refused without a
+  request.
 - A read has a 20-second bound and a 512 KiB limit; local and cached files
   share the size limit.
 - Both endpoints accept the same files: one the source lists as text, or one
   with a `.txt`, `.md`, `.json`, `.lrc`, `.cue`, `.srt`, `.vtt`, `.ass`, `.ssa`,
   `.csv`, `.log`, `.ini`, `.yaml`, or `.yml` extension.
-- Errors expose fixed messages only. Upstream URLs and local paths stay in
-  protected logs.
 
 ### Remote image proxy
 
@@ -355,20 +340,16 @@ remote source returned, for viewers who may not see source addresses (see
   issues tokens only for URLs it already returned in the same response shape;
   a modified token, a token for another source, or a token from before a
   restart is answered with 404 and makes no request.
-- The decrypted URL must be HTTP(S) without credentials and pass the source's
-  outbound policy before any request. The shared source transport validates
-  every redirect hop, pins the validated address, and keeps the private-address
-  exception for the source's configured origins only.
+- The decrypted URL follows the source URL rule.
 - Each request is bounded to 30 seconds and to the 20 MiB cover limit; a
   declared larger body is refused before reading, and streaming stops at the
   limit. Only JPEG, PNG, and WebP identified from the first bytes are served,
   with `nosniff`, a sandbox CSP, and a private cache lifetime.
-- Errors are fixed codes and messages. Upstream errors stay in protected logs.
 
 ### Purchase bonus detection
 
 Metadata sync may look up a purchase bonus's parent product (see
-[workflows](../architecture/workflows.md#purchase-bonus-detection)):
+[workflows](../architecture/workflows/metadata-sync.md#purchase-bonus-detection)):
 
 - Requests use the built-in DLsite metadata client and its shared outbound
   transport: the maker profile pages and `product.json` on the configured DLsite
@@ -469,7 +450,9 @@ cannot create an unchecked outbound path.
 
 Public API errors use a stable code, a retryability decision, and a short
 sanitized message. Detailed errors may be logged or recorded in protected
-run events only when operationally useful.
+run events only when operationally useful. Endpoints that contact a source or
+change files expose fixed messages or codes only; upstream URLs, endpoints, and
+local paths stay in protected logs and runs.
 
 Before emitting or exporting a value, consider whether it contains:
 
@@ -479,8 +462,7 @@ Before emitting or exporting a value, consider whether it contains:
 - A work identifier or title from a private collection.
 - Raw upstream response content.
 
-UI recovery should preserve known local state and the global player. Use an
-inline retry state for a blocked task; use a toast for a transient event. A
+UI recovery follows [Failure and Recovery](design.md#failure-and-recovery). A
 render error fallback must not display a raw stack or server error to an
 anonymous user.
 
@@ -524,31 +506,24 @@ anonymous user.
   need a reviewed verification-metadata update. The Playwright test image
   follows `@playwright/test` by hand, as described in
   [Frontend](testing.md#frontend).
-- The daily `Dependency Audit` workflow runs `make dependency-audit` against
-  `main`, as described in
-  [Continuous Integration](testing.md#continuous-integration). Treat a failed
-  run like a newly reported advisory and update the affected dependency.
 - Do not add a JAR or AAR to a Capacitor `flatDir` directory without an
   explicit source review and checksum. Those directories do not carry normal
   repository metadata or transitive dependency information.
 
 ## Public Fixtures and Documentation
 
-- Use reserved domains such as `example.invalid` and documentation address
-  ranges.
-- Use generic names such as `Example Remote` and identifiers that are obviously
-  synthetic. Never copy a configured source, work record, log, database, or
-  personal filesystem path into a fixture.
-- A plausible catalog number is not synthetic merely because it was chosen for
-  a test. Use the repository-reserved identities in
-  [Synthetic Fixture Data](testing.md#synthetic-fixture-data).
+- Fixtures and examples use reserved domains, generic names, and the
+  repository-reserved identities in
+  [Synthetic Fixture Data](testing.md#synthetic-fixture-data). Never copy a
+  configured source, work record, log, database, or personal filesystem path
+  into a fixture.
 - Keep secrets in local environment or mounted configuration. Do not commit an
   `.env` file with real values.
 - Do not treat `.gitignore` as a secrecy boundary. Keep deployment credentials
   and private service details in an access-controlled system outside the
   repository workspace whenever possible.
-- Review added lines and staged content with a tracked-file privacy scan before
-  committing.
+- Scan added lines and staged content before committing, as described in
+  [Before Committing](testing.md#before-committing).
 
 ## Review Checklist
 
@@ -563,12 +538,8 @@ For a security-relevant change, record:
    documentation must change.
 
 Do not publish exploit details for an undisclosed vulnerability in a normal
-issue or pull request. Use GitHub Private Vulnerability Reporting as described
-in the Security Policy.
+issue or pull request; use the private reporting in the Security Policy.
 
 ## Related Documentation
 
-- [Backend guidelines](backend-guidelines.md)
-- [Frontend guidelines](frontend-guidelines.md)
-- [Testing](testing.md)
-- [Privacy and data handling](../../PRIVACY.md)
+[Privacy and data handling](../../PRIVACY.md).

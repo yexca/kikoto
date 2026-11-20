@@ -100,15 +100,8 @@ version.
 ## Release Steps
 
 1. Set `VERSION` to the release tag.
-2. From `backend/`, run the baseline generator in release mode:
-
-   ```sh
-   go run ./cmd/schema-baseline -migrations ./migrations -version-file ../VERSION -release
-   ```
-
-   It writes `migrations/baseline/<schema>_<VERSION>.sql` when the numbered
-   chain is newer than the highest released baseline and deletes every
-   development baseline in `migrations/compat/`. Update the
+2. Run the baseline generator in release mode, as described in
+   [Baseline Generation](migrations.md#baseline-generation). Update the
    [Release To Schema Map](migrations.md#release-to-schema-map) and the
    accepted-ledger table in the same change.
 3. Move the area blocks of `docs/history/unreleased.md` into
@@ -130,11 +123,10 @@ Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
 The release tag must exactly match `VERSION` and point to a commit on `main`.
-The `full` validation tier described in
-[Continuous Integration](testing.md#continuous-integration) runs on that same
-commit in `Full`, so the release workflow does not repeat it. Before building
-images or app packages, the release workflow requires a successful `Full` run
-for the tagged commit. Every build job depends on that check, so a commit whose
+The release workflow does not repeat the `full` validation tier of
+[Continuous Integration](testing.md#continuous-integration). Before building
+images or app packages, it requires a successful `Full` run for the tagged
+commit. Every build job depends on that check, so a commit whose
 `Full` run failed, was cancelled, or has not finished stops the release before
 publication work begins. Once `Full` succeeds, rerunning the failed jobs of the
 release resumes it; start `Full` on the tag from the Actions page when the
@@ -146,8 +138,8 @@ A release is published as one unit so users are never offered a version whose
 image, APK, or IPA is missing:
 
 1. The production image, the signed APK, and the unsigned IPA are built in
-   parallel. The IPA uses `make ios-build` on a macOS runner and needs no Apple
-   signing secrets; sideloading tools re-sign it at install time. The image is
+   parallel. The IPA is the unsigned build of `make ios-build` (see
+   [Frontend](testing.md#frontend)) and needs no Apple signing secrets. The image is
    built for `linux/amd64` and `linux/arm64` without pushing, so no registry
    tag moves yet. Its build stages run natively and cross-compile; only the
    arm64 runtime stage runs under QEMU. Because the validation tiers exercise

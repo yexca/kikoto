@@ -31,6 +31,9 @@ test("documentation-only PRs skip expensive jobs while unknown paths require ful
         "docs/development/testing.md",
         "docs/readme/README.zh-Hans.md",
         "docs/development/design.md",
+        "AGENTS.md",
+        "frontend/AGENTS.md",
+        "backend/migrations/AGENTS.md",
       ]),
     ).every((value) => value === false),
   );

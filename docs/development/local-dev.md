@@ -28,11 +28,10 @@ and `data/` mounts at their existing repository-root locations.
 
 ## Common Checks
 
-- Backend tests: [Testing](testing.md)
-- Frontend build: [Testing](testing.md)
-- Database changes: [Migrations](migrations.md)
-- Security-sensitive changes: [Secure development](security.md)
-- Commit format: [Commit and release](commit-and-release.md)
+Tests and validation targets are in [Testing](testing.md), database changes in
+[Migrations](migrations.md), security-sensitive changes in
+[Secure development](security.md), and the commit format in
+[Commit and release](commit-and-release.md).
 
 ## Useful Paths
 
@@ -43,6 +42,6 @@ and `data/` mounts at their existing repository-root locations.
 
 ## Related Docs
 
-- [Backend guidelines](backend-guidelines.md)
-- [Frontend guidelines](frontend-guidelines.md)
-- [Architecture](../architecture/index.md)
+[Backend guidelines](backend-guidelines.md),
+[Frontend guidelines](frontend-guidelines.md), and
+[Architecture](../architecture/index.md).

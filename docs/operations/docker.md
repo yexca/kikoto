@@ -310,7 +310,7 @@ library-read and playback permissions, but Demo GET/HEAD/OPTIONS requests may
 read every administration, workflow, activity, source, and user surface so the
 deployment can be demonstrated. Mutation requests are rejected before the
 handler runs; the remote recommendation POST only computes read-only
-[simulated scores](../architecture/data-model.md#recommendation-catalog-and-generations).
+[simulated scores](../architecture/data-model/recommendations.md#recommendation-catalog-and-generations).
 The frontend exposes workflow editing and Fetch selection as
 local previews; Save, Delete, Publish Fetch, health checks, and other writes
 never reach the backend.

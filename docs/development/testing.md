@@ -1,8 +1,7 @@
 # Testing
 
 The goal is the smallest test set that gives strong confidence in a real
-behavior or stable contract. Before adding a test, state the regression it is
-meant to catch.
+behavior or stable contract.
 
 ## Value Gate
 
@@ -48,8 +47,8 @@ Use these repository-reserved values unless the value itself is under test:
 | Another supported prefix | The equivalent all-zero form, such as `VJ00000000`, only when prefix behavior matters |
 | Generated work codes | Go `testfixture.WorkCode` or TypeScript `syntheticWorkCode`, with an explicit prefix and ordinal |
 | Custom work code | `KT00000001` upward, from Go `testfixture.WorkCode(PrefixKT, n)`; Kikoto assigns these itself, so `WorkCodeAt` never spans them |
-| 101–400 distinct works | `WorkCodeAt` or `syntheticWorkCodeAt`, which deterministically spans the reserved prefix ranges |
-| Isolated larger scale experiment | Go `HighCardinalityWorkCodeAt`, with explicit ordinals in its bounded zero-prefixed range |
+| 101–400 distinct works in one isolated fixture | `WorkCodeAt` or `syntheticWorkCodeAt`, which deterministically spans the reserved prefix ranges |
+| More than 400 distinct works, as in an isolated recommendation scale experiment | Go `HighCardinalityWorkCodeAt`, with explicit ordinals in its bounded zero-prefixed range |
 | Work, circle, or person name | `Example Work`, `Example Circle`, or `Example Voice` with a numeric suffix when needed |
 | Remote source | Code `example_remote_a`, display name `Example Remote A` |
 | Inert URL | `https://source.example.invalid/path` |
@@ -64,14 +63,11 @@ and keep the names generic.
 
 Fixture constructors are deterministic builders, not random generators. Pass an
 explicit ordinal so failures remain reproducible and parallel test order cannot
-change identities. Use `WorkCodeAt` only when one isolated
-fixture genuinely needs more than 100 unique works; its later ranges use the
-equivalent reserved BJ, VJ, and CC forms. `WorkCodeAt` accepts ordinals 0–399;
-isolated recommendation scale experiments use `HighCardinalityWorkCodeAt` for
-0–399,999, spanning four prefixes with zero-prefixed `00000000`–`00099999`
-suffixes. This larger constructor belongs only to fixtures requiring more than
-400 identities. Keep explicit literals when code length,
-case, separators, or serialization is itself the behavior under test.
+change identities. `WorkCodeAt` accepts ordinals 0–399, and its later ranges
+use the equivalent reserved BJ, VJ, and CC forms. `HighCardinalityWorkCodeAt`
+accepts 0–399,999, spanning four prefixes with zero-prefixed `00000000`–`00099999`
+suffixes. Keep explicit literals when code length, case, separators, or
+serialization is itself the behavior under test.
 
 For network tests:
 
@@ -122,10 +118,9 @@ another one. `make backend-test-container` uses the Go of `GO_IMAGE`.
 `make ci-backend` runs the full test suite with coverage and then with the race
 detector, alongside formatting, lint, module verification, vulnerability checks,
 and vet. It omits a third plain test run because coverage already executes the
-full suite. `make backend-test` remains available for fast local feedback.
-
-CI runs `ci-backend-static`, `ci-backend-coverage`, and the race suite as
-independent matrix jobs. The local `ci-backend` target composes the same checks.
+full suite. CI runs `ci-backend-static`, `ci-backend-coverage`, and the race
+suite as independent matrix jobs that `ci-backend` composes locally.
+`make backend-test` remains available for fast local feedback.
 
 Tests inside a package run one after another, and the race detector slows the
 SQLite-heavy packages many times over, so CI runs the race suite as six
@@ -273,9 +268,7 @@ of `playerPersistence`; Playwright retains real owner/server isolation and
 reload/playback workflows. Service-worker request exclusions execute the actual
 worker fetch handler in a unit harness, while production Smoke verifies the
 served manifest, icons, and worker asset. These tests do not claim to verify
-browser installation or offline lifecycle behavior. Layout assertions protect
-documented viewport, touch-target, or loading-stability contracts, not incidental
-pixel coordinates or internal spans.
+browser installation or offline lifecycle behavior.
 
 Android JVM tests live under `frontend/android/app/src/test` and run through:
 
@@ -302,8 +295,7 @@ The target synchronizes Capacitor through `ios-sync` and writes an unsigned
 `kikoto-<version>-unsigned.ipa` under `frontend/ios/App/build`. The IPA is not
 installable as built; a sideloading tool re-signs it with the installing
 user's identity. The iOS shell has no unit-test suite. CI runs the same target
-on a macOS runner, and the release workflow attaches the IPA to the GitHub
-Release.
+on a macOS runner.
 
 ## Continuous Integration
 
@@ -404,10 +396,9 @@ an independent job fails; source-based cache updates also consume cache storage.
 `make actionlint` lints every workflow, including its expressions, job
 dependencies, the inputs of the reusable workflow, and the inputs passed to
 the composite actions under `.github/actions`. Where `shellcheck` is
-installed, as on the CI runner, it also checks each `run` script. Workflows
-set up Node, Go, and the Android toolchain only through those composite
-actions, which read the Node and Go versions from `frontend/package.json` and
-`backend/go.mod`.
+installed, as on the CI runner, it also checks each `run` script. The
+composite actions read the Node and Go versions from `frontend/package.json`
+and `backend/go.mod`.
 
 The separate `PR Description` workflow checks the contribution template's
 change, validation, and upgrade-impact sections for PRs targeting `main` on
@@ -440,14 +431,14 @@ affected dependency.
 
 ## Frontend Coverage
 
-Vitest covers pure state and model logic. User-visible React interaction
-belongs in Playwright; do not build a large fake component runtime inside a unit test.
+Vitest covers pure state and model logic. Do not build a large fake component
+runtime inside a unit test; user-visible React interaction belongs in
+Playwright.
 
 To produce the frontend coverage report:
 
 ```sh
 cd frontend
-npm ci --strict-allow-scripts
 npm run test:unit:coverage
 ```
 
@@ -473,7 +464,9 @@ For Playwright, prefer locators in this order:
 
 Avoid DOM-parent traversal, Tailwind utility selectors, and fixed sleeps when a
 semantic locator and user-observable completion condition exist. A CSS/class
-assertion should include or point to the design/layout contract it protects.
+or layout assertion protects a documented viewport, touch-target, or
+loading-stability contract and includes or points to it, never incidental pixel
+coordinates or internal spans.
 
 Mock the narrowest external boundary needed for determinism: network, clock,
 filesystem, process, or browser API. Do not mock the subject under test or
@@ -481,7 +474,8 @@ recreate production behavior inside the mock.
 
 ## Regression Review
 
-A bug-fix test should identify:
+Before adding a test, state the regression it is meant to catch. A bug-fix
+test should identify:
 
 - The user-visible failure or violated contract.
 - The smallest setup that reproduces it.
@@ -608,25 +602,15 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 - Check `git status`.
 - Review staged changes for secrets, real source details, private paths, logs,
   databases, and runtime data.
-- Update public docs for behavior changes.
+- Update public docs and README links for behavior changes.
 
 ## Suggested Routine
 
-For a backend-only change:
-
-1. Run `cd backend && go test ./...`
-2. Review affected public docs.
-3. Check git-tracked changes for sensitive paths or data.
-
-For a frontend-facing change:
-
-1. Run backend tests if API behavior changed.
-2. Run frontend lint, unit tests, and the production build.
-3. Run the relevant Playwright project for interaction changes.
-4. Check the affected product docs and README links.
+Run backend tests when backend or API behavior changed. For a frontend-facing
+change, run frontend lint, unit tests, and the production build, plus the
+relevant Playwright project for interaction changes.
 
 ## Related Docs
 
-- [Local development](local-dev.md)
-- [Secure development](security.md)
-- [Commit and release](commit-and-release.md)
+[Local development](local-dev.md), [Secure development](security.md), and
+[Commit and release](commit-and-release.md).

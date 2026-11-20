@@ -3,10 +3,8 @@
 Kikoto should feel like a quiet personal media library and player.
 
 This repository-wide contract governs new and changed UI across the browser,
-Android, and iOS shells.
-
-Sections labeled as current describe the implementation. The other rules
-govern every new and changed surface.
+Android, and iOS shells. Sections labeled as current describe the
+implementation; the other rules govern every new and changed surface.
 
 ## Design Principles
 
@@ -15,8 +13,8 @@ govern every new and changed surface.
 - Background work should be visible without taking over the product.
 - File source state must be understandable at a glance.
 - Mobile should not feel like a reduced desktop layout.
-- Failures should stay close to the surface that failed and leave playable local
-  state intact.
+- Failures should stay close to the surface that failed
+  ([Failure and Recovery](#failure-and-recovery)).
 
 ## Visual Direction
 
@@ -100,8 +98,9 @@ Every reusable interactive component defines:
   size. Adjacent compact controls share their overlap, so space destructive
   actions away from frequent ones.
 
-Keyboard focus must remain clearly visible. Do not remove focus feedback merely
-to match pointer styling, and do not rely on hover for a control used on touch.
+Keyboard focus must remain clearly visible; do not remove focus feedback
+merely to match pointer styling. Pressed feedback and a large touch target never
+depend on hover.
 
 ## Action Hierarchy
 
@@ -124,8 +123,8 @@ Avoid:
 - Oversized dashboard cards.
 - Hiding important playback/cache state behind nested menus.
 - Nested cards used only to manufacture visual hierarchy.
-- Page-local brand colors, source-specific status colors, or hard-coded light
-  and dark palette branches.
+- Page-local brand colors or hard-coded light and dark palette branches (see
+  [Semantic Tokens](#semantic-tokens)).
 
 ## Information Density
 
@@ -335,8 +334,9 @@ that their decision needs.
   distinct states; do not collapse all of them into one toast.
 - A transient toast reports an event. A failure that still blocks the task needs
   a persistent inline state with a Retry or recovery action.
-- User-facing errors are concise and sanitized. Private endpoints, local paths,
-  credentials, and raw upstream bodies belong only in protected diagnostics.
+- User-facing errors are concise and sanitized; what stays in protected
+  diagnostics is listed in
+  [Errors, Logs, and Diagnostics](security.md#errors-logs-and-diagnostics).
 
 ## Semantic UI Boundaries
 
@@ -508,12 +508,10 @@ Mobile:
   Filters, and the view utilities at the row's end, then the Quick mark chips
   in a horizontally scrollable row. Search opens its field above the row and
   keeps it while a query is set.
-- Large touch targets.
 - Text inputs, textareas, and selects use at least 16px text on coarse
   pointers so iOS WebKit never zooms into a focused control. The viewport keeps
   pinch zoom; fine-pointer layouts keep their compact control text.
 - Player page optimized for one-handed listening.
-- Pressed feedback must not depend on hover availability.
 - Dynamic viewport and safe-area insets protect fixed controls, sheets, and
   dialogs in portrait and landscape.
 - Horizontal scroll strips clip vertical overflow, so a vertical swipe that

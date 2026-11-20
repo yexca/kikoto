@@ -75,4 +75,4 @@ Security reporters should read:
 - Release notes, pending changes, and per-release upgrade steps belong in
   [History](history/index.md). Every other page describes only the current
   system; see the writing rules in the
-  [repository agent guide](../AGENTS.md#documentation).
+  [documentation agent guide](AGENTS.md#writing-rules).

@@ -1,258 +1,87 @@
 # Agent Guide
 
-Read these first:
+Kikoto is a local-first, self-hosted library and player for purchased audio
+works: a Go backend, a React frontend, and Android and iOS shells.
 
-- `README.md`
-- `docs/overview.md`
-- `docs/architecture/core-boundaries.md`
+## Where To Read Next
 
-Before changing an area, read its docs:
+Before changing files under a path, read its guide, then open only the doc
+pages it names.
 
-| Area | Docs |
+| Path | Guide |
 | --- | --- |
-| Data model, schema, migrations | `docs/architecture/data-model.md`, `docs/development/migrations.md` |
-| Scan, fetch, background workflows | `docs/architecture/workflows.md` |
-| Backend | `docs/architecture/backend.md`, `docs/development/backend-guidelines.md` |
-| Frontend and UI | `docs/architecture/frontend.md`, `docs/development/frontend-guidelines.md`, `docs/development/design.md` |
-| Outbound HTTP, auth, secrets, privacy | `SECURITY.md`, `docs/development/security.md` |
-| Tests | `docs/development/testing.md` |
-| Commits and releases | `docs/development/commit-and-release.md` |
+| `frontend/` | [`frontend/AGENTS.md`](frontend/AGENTS.md) |
+| `backend/` | [`backend/AGENTS.md`](backend/AGENTS.md) |
+| `backend/migrations/`, release or schema work | [`backend/migrations/AGENTS.md`](backend/migrations/AGENTS.md) |
+| `docs/`, `README*`, any public Markdown | [`docs/AGENTS.md`](docs/AGENTS.md) |
+| A recurring procedure | [`.claude/skills/`](.claude/skills/README.md); follow a `SKILL.md` whose description matches |
 
-Recurring repository procedures are agent skills in
-[`.claude/skills/`](.claude/skills/README.md); follow a skill's `SKILL.md` when
-its description matches the task.
+## Product Invariants
 
-## Product Boundaries
+- `work` is the unified `primary_code` entity. Folders, cache entries, remote
+  sources, and catalogs only describe its presence, locations, or metadata
+  snapshots; never create a second work identity for any of them.
+- Metadata sources (what a work is) and file sources (where it plays) are
+  separate. Source names and icons are data: branch on declared capabilities
+  and source type, never on a display name or service brand.
+- Catalog discovery is not permission to materialize every code as a `work`;
+  local, tracked, cached, or requested works are the automatic metadata roots.
+  Stop and discuss before broadening a provider crawl or redesigning identity
+  away from DLsite-style `primary_code`.
+- Fetch publication directories (`.kikoto-staging`, `.kikoto-backup`,
+  `.kikoto-trash`) stay on the target pool's filesystem (data root, or
+  `/data/<pool>`) so publication and rollback are same-filesystem renames.
+  Durable transaction or review state never moves to `/cache`, and pools
+  never share a transaction directory.
+- A scan never marks works missing where it cannot see: an unmounted root, an
+  offline pool without `.kikoto-pool`, or folders below the scan depth. New
+  scan, watcher, and cleanup paths keep that pool scope.
+- Every new or changed outbound HTTP path follows the [Outbound HTTP checklist](backend/AGENTS.md#outbound-http).
 
-Critical rule:
+## Validation
 
-```text
-Metadata sources and file sources are separate.
-```
+The `Makefile` is canonical; use a direct command only when it has no target.
+Run the smallest sufficient target, not an aggregate, for a narrow change.
 
-Core boundary:
+| Change | Target |
+| --- | --- |
+| Public docs | `make frontend-docs` |
+| Frontend style / frontend / backend behavior | `make ci-style` / `ci-frontend` / `ci-backend` |
+| Browser workflow / Docker runtime | `make frontend-e2e` / `make smoke` |
+| Android / iOS (macOS) | `make android-test android-build` / `make ios-build` |
+| Production image | `make DOCKER_IMAGE=kikoto:ci docker-build` |
+| Everything portable / plus Android | `make ci-local` / `make ci` |
 
-```text
-work is the unified primary_code entity. Local folders, cache entries, remote
-sources, and source catalogs only describe presence, locations, or metadata
-snapshots for that work.
-```
-
-- Do not create a second work identity for a source-local id, translation,
-  folder, cache entry, or remote result.
-- Source names and icons are data. Branch on declared source capabilities and
-  source type, never on a configured display name or a private service brand.
-- Catalog discovery is not permission to recursively materialize every
-  discovered code as a `work`. Local, tracked, cached, or explicitly requested
-  works are the automatic metadata roots. Stop and discuss before broadening a
-  provider crawl.
-- DLsite-style `primary_code` is the identity key. Do not redesign around
-  source-local ids or a new identity system; stop and discuss before proposing
-  one.
-
-Fetch publication directories such as `.kikoto-staging`, `.kikoto-backup`, and
-the reviewable `.kikoto-trash` must remain on the filesystem of the storage
-pool that holds the target, so publication and rollback can use
-same-filesystem rename semantics: the data root in standard mode,
-`/data/<pool>` in storage pool mode. Do not move durable transaction or review
-state to disposable `/cache` storage, and do not share one transaction
-directory across pools.
-
-A scan must never mark works missing where it cannot see: an unmounted data
-root or offline pool (no `.kikoto-pool` marker), or folders deeper than the
-scan depth. Keep new scan, watcher, and disk-verified cleanup paths behind the
-same pool scope.
-
-## Remote Request Boundary
-
-An endpoint explicitly configured by an administrator is trusted configuration
-and may intentionally be a private LAN address. URLs, redirects, headers, and
-metadata returned by that source are still untrusted input.
-
-For every new or materially changed outbound HTTP path:
-
-- Accept only HTTP(S) URLs and reject embedded credentials.
-- State whether the destination must remain on the configured origin or may use
-  an explicit allowlist. Do not follow arbitrary redirects; validate every hop
-  and remove credentials when an allowed redirect changes origin.
-- When untrusted input can influence the hostname, prevent DNS rebinding by
-  validating the addresses and connecting to the same validated address.
-- Bound timeouts, buffered metadata responses, streamed bytes, concurrency, and
-  retry behavior. Large media must stream to a bounded destination rather than
-  be buffered in memory.
-- Keep detailed upstream errors in protected logs or Activity. Public API and UI
-  errors must not reveal credentials, private endpoints, or local paths.
-- Add tests for private/reserved addresses, redirects, response limits,
-  cancellation, and the explicitly configured private-origin exception.
-
-The shared server-side outbound transport establishes this URL, origin,
-redirect, address, and DNS-pinning boundary for built-in metadata clients and
-configured remote-source requests. A new path is not covered merely because the
-transport exists: route it through the shared policy, define its destinations,
-and add the relevant regression tests before documenting the stronger contract.
-
-## Code Organization
-
-New and extracted code should follow a downward dependency direction:
-
-```text
-app composition -> domain feature -> shared application code -> primitives
-```
-
-- App and route layers compose domains. Shared code must not import a domain
-  feature, and sibling domain features should communicate through composition or
-  an extracted shared contract rather than importing each other's internals.
-- Promote a domain only after it owns a real page or workflow plus several
-  cohesive files. Prefer incremental extraction over a repository-wide move.
-- Keep UI, state models, transport, and persistence separate when that makes the
-  behavior independently testable. Do not add more unrelated orchestration to
-  already large page or HTTP-handler files.
-- A feature with multiple outside consumers should expose a small explicit
-  public entry rather than requiring deep imports.
-
-## UI and Test Contracts
-
-- Follow `docs/development/design.md`. Preserve the global player across navigation and
-  contain page failures so one remote or media error does not discard known
-  local state.
-- Avoid unnecessary helper labels and explanatory text; let the layout itself
-  explain the surface. The rule for when a description still belongs is in
-  [Helper Text](docs/development/design.md#helper-text).
-- Use semantic design tokens. Status color communicates availability or intent,
-  never source identity.
-- Tests should protect a concrete user-visible behavior, public contract, state
-  transition, or prior regression. Choose the lowest sufficient layer and do
-  not repeat the same assertion at every layer.
-- Before adding or changing test fixtures, follow
+- Redirect slow targets (`make ci-*`, `frontend-e2e`, `smoke`) to a log file
+  outside tracked paths and read it; do not re-run to see another part. Known
+  traps: [Local Pitfalls](docs/development/testing.md#local-pitfalls).
+- Tests protect a user-visible behavior, contract, state transition, or
+  regression at the lowest sufficient layer, once
+  ([Value Gate](docs/development/testing.md#value-gate)); fixtures follow
   [Synthetic Fixture Data](docs/development/testing.md#synthetic-fixture-data).
-  Use the deterministic test fixture constructors and repository-reserved
-  `RJ00000000` through `RJ00000099` sequence when work identity is incidental;
-  use `WorkCodeAt` only when more than 100 distinct works are required and
-  `HighCardinalityWorkCodeAt` only beyond 400. Do not randomize or improvise a plausible catalog number.
-- Prefer accessible roles, names, and labels in browser tests. Add an authored
-  stable semantic marker only when a complex app-owned surface has no useful
-  accessible boundary. Do not make utility classes or incidental DOM ancestry a
-  public test contract.
-- Pure visual assertions are appropriate only for a documented layout,
-  accessibility, or responsive contract.
-
-## Documentation
-
-Docs describe the current system and its current decisions, not how it got
-there. Where each topic belongs is in
-[Documentation Rules](docs/README.md#documentation-rules).
-
-- Write in present tense. Do not narrate change: no "previously", "no longer",
-  "now", "as before", "was removed", "migration NNN adds", version-dated
-  asides, PR/issue/commit references, or before/after comparisons.
-- When behavior changes, rewrite the affected section as if it had always been
-  this way instead of appending a paragraph. Search for and remove every
-  statement the change contradicts, including user pages, operations pages,
-  and translations.
-- Compatibility that still runs is current behavior. State it as a rule
-  ("`/maintenance` redirects to Settings"), not as a story.
-- History belongs only in `docs/history/` (release notes, with pending changes
-  and per-release upgrade steps in `unreleased.md`) and in the context of ADRs
-  in `docs/decisions/`. Release notes and `unreleased.md` fold each area's
-  changes under its title; follow
-  [Release Notes](docs/development/commit-and-release.md#release-notes).
-- Reference docs contain no TODOs, plans, roadmaps, or dated measurement logs.
-- State each rule or fact in one place and link to it instead of restating it.
-- When an English user page changes, update the matching locale pages in the
-  same change. If a translation cannot be updated, remove the stale passage
-  rather than leave it contradicting the English page.
-
-## Validation Commands
-
-The `Makefile` is the canonical entry point for repository validation. Prefer
-its targets over reconstructing CI commands by hand, so local checks and GitHub
-Actions continue to exercise the same commands. Use a direct command only when
-the Makefile has no target for the required check.
-
-- Use the smallest sufficient target for the change: `make frontend-docs` for
-  public documentation, `make ci-style` for frontend style checks,
-  `make ci-backend` for backend behavior, and `make ci-frontend` for frontend
-  behavior.
-- Use `make smoke` for Docker/runtime changes, `make frontend-e2e` for browser
-  workflow changes, `make android-test android-build` for Android changes,
-  `make ios-build`
-  for iOS shell changes on macOS with Xcode, and
-  `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
-- `make ci-local` runs the complete locally portable Actions sequence, including
-  Docker validation but excluding the Android SDK build. `make ci` adds the
-  Android build and is the full local equivalent when its toolchain is
-  available.
-- Keep validation proportional: do not run the full aggregate target for a
-  narrow change when its affected target is sufficient.
-- Redirect the output of slow targets (`make ci-*`, `make frontend-e2e`,
-  `make smoke`) to a log file outside tracked paths and read that file, rather
-  than piping it through `tail` or `grep` and re-running the target to see
-  another part.
-- Known local tool and verification traps are in
-  [Local Pitfalls](docs/development/testing.md#local-pitfalls).
-- Before every commit, run `make sensitive-check` and review any findings. It
-  scans tracked changes against `HEAD` plus untracked files, so run it before
-  committing rather than after. This privacy check is intentionally
-  separate from the GitHub Actions validation sequence.
-- Do not bypass the privacy scan with source comments. An approved built-in
-  public endpoint belongs in `scripts/privacy-allowlist.json` with its
-  repository-relative owner files and a reason. Prefer an exact URL; use a
-  path-only `*`/`**` wildcard only for a stable public namespace, as described
-  in
-  [Before Committing](docs/development/testing.md#before-committing). Review
-  every change to that list before committing.
+- Before every commit and handoff, run `make sensitive-check` and review it;
+  Actions does not run it. Never bypass it with comments: an approved public
+  endpoint goes in `scripts/privacy-allowlist.json` per
+  [Before Committing](docs/development/testing.md#before-committing).
 
 ## Release and Handoff
 
-Use the repository's normal signed-commit path. If the 1Password signing agent
-requires approval or is unavailable, stop and ask the user. Do not disable
-commit signing, pass a no-sign flag, replace the configured signer, or otherwise
-bypass the agent.
+- Commit through the normal signed path. If the 1Password agent needs approval
+  or is unavailable, stop and ask; never disable or replace signing. Merge per
+  [Merging Into main](docs/development/commit-and-release.md#merging-into-main).
+- Do not push, open or update a PR, or post on issues, discussions, or reviews
+  without the user's explicit approval; draft the text first.
+- Never invent identifiers. Versions come from `VERSION`; migration numbers,
+  issue and PR numbers, tags, and catalog codes come from the repository, the
+  user, or the issue; ask when none applies. Commit, issue, and PR text name
+  functions, files, settings, and targets, never line numbers.
+- Tracked files use generic source examples, reserved domains, and synthetic
+  identifiers. Never commit real source names, endpoints, credentials,
+  personal paths, logs, databases, or work records; ignore rules are not a
+  secrecy boundary.
 
-When merging a branch into `main`, judge whether its commits are worth keeping
-as separate steps. Squash the branch when they are not; create a merge commit
-only when they are. The criteria and commands are in
-[Merging Into main](docs/development/commit-and-release.md#merging-into-main).
+## Documentation
 
-Release and migration boundaries are derived from repository state:
-
-- Read `VERSION` for the application version; do not hard-code the current
-  release in agent instructions or infer it from an old release note.
-- `001_initial.sql` and every numbered migration after it are immutable once
-  released. Add the next contiguous number after the highest existing
-  migration for a schema change; never edit an applied migration.
-- An empty database applies the highest baseline the mode reads, then any
-  later numbered migrations. Released baselines live in `baseline/`;
-  development baselines of the unreleased chain live in `compat/`, which only
-  `KIKOTO_MODE=development` reads. After a numbered migration changes, run
-  `go generate ./migrations` to refresh the development baseline. A release
-  runs the generator with `-release`, which writes a released baseline only
-  when the chain changed and clears `compat/`. Never add a second released
-  baseline for an existing schema version.
-- Existing databases must continue through the numbered migration chain and
-  must never be reconstructed from a fresh-install baseline.
-- Before release or migration work, inspect `VERSION`, the highest numbered
-  migration, and the baseline filenames in `baseline/` and `compat/`. Details
-  are in [Migrations](docs/development/migrations.md); release steps are in
-  [Commit And Release](docs/development/commit-and-release.md#release-steps).
-
-Before handoff, run the smallest sufficient targets from
-[Validation Commands](#validation-commands), then `make sensitive-check`.
-
-Do not invent identifiers. Issue and PR numbers, versions, migration numbers,
-release tags, and catalog codes come from the repository, the user, or the
-referenced issue, as `VERSION`, the migration chain, and
-[Synthetic Fixture Data](docs/development/testing.md#synthetic-fixture-data)
-define; ask when none applies. Commit messages, issue text, and PR text
-reference functions, files, settings, and make targets by name, not by line
-number or position, because the text outlives the code.
-
-Do not push, open or update a pull request, or post on issues, discussions, or
-reviews without the user's explicit approval for that action. Draft the text
-first and let the user review it.
-
-Public tracked code and docs must use generic remote-source examples, reserved
-domains, and obviously synthetic identifiers. Never commit real configured
-source names, endpoints, credentials, personal paths, logs, databases, or work
-records. Ignore rules are not a secrecy boundary; keep deployment details in an
-access-controlled system outside the repository workspace whenever possible.
+Docs describe the current system in present tense; history lives only in
+`docs/history/` and ADRs. The full writing rules are in
+[`docs/AGENTS.md`](docs/AGENTS.md).

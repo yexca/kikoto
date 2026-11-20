@@ -50,7 +50,7 @@ export const scriptJobs = {
 };
 
 const documentation =
-  /^(docs\/|(README(?:\.[\w-]+)?\.md|AGENTS\.md|CONTRIBUTING\.md|DESIGN\.md|SECURITY\.md|PRIVACY\.md|LICENSE)$)/;
+  /^(docs\/|(?:[\w-]+\/)*AGENTS\.md$|(README(?:\.[\w-]+)?\.md|CONTRIBUTING\.md|DESIGN\.md|SECURITY\.md|PRIVACY\.md|LICENSE)$)/;
 // Both development images are built from these.
 const devImage =
   /^(frontend\/Dockerfile|backend\/Dockerfile|frontend\/nginx(?:-security)?\.conf|docker-compose\.dev\.yml|deploy\/compose\/dev\.yml)$/;

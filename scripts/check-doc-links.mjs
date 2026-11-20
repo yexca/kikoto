@@ -7,6 +7,9 @@ const repositoryRoot = path.resolve(scriptDirectory, "..");
 const publicRootFiles = [
   "README.md",
   "AGENTS.md",
+  "backend/AGENTS.md",
+  "backend/migrations/AGENTS.md",
+  "frontend/AGENTS.md",
   "CONTRIBUTING.md",
   "SECURITY.md",
   "PRIVACY.md",

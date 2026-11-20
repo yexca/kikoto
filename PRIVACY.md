@@ -61,7 +61,7 @@ Confirmed records are removed; unconfirmed or quarantined reports remain in
 their original server/account scope across sign-out until acknowledged, history
 clearing invalidates them, or browser/app storage is cleared. Queue capacity and
 recovery behavior are described in
-[Playback reports](docs/architecture/frontend.md#playback-reports).
+[Playback reports](docs/architecture/frontend/playback-reports.md).
 
 The Android client stores the configured server address and a bearer session in
 the app's private preferences. The iOS client stores the configured server

@@ -3,7 +3,7 @@
   "endpoints": [
     {
       "url": "https://tailwindcss.com/docs/compatibility",
-      "files": ["docs/architecture/frontend.md"],
+      "files": ["docs/architecture/frontend/structure.md"],
       "reason": "Official public Tailwind CSS browser compatibility documentation for the frontend build upgrade."
     },
     {
