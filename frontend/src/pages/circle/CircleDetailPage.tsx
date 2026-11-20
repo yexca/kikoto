@@ -259,7 +259,7 @@ export function CircleDetailPage({
   const filteredWorks = useMemo(() => {
     return circle.works;
   }, [circle.works]);
-  const catalogOnlyCount = circle.works.filter((work) => work.catalogStatus !== "imported").length;
+  const metadataMissingWorks = circle.metadataMissingWorks ?? 0;
   const totalWorkPages = Math.max(1, Math.ceil(circle.worksMeta.total / workPageSize));
   const currentWorkPage = Math.min(circle.worksMeta.page || workPage, totalWorkPages);
   const pagedWorks = filteredWorks;
@@ -413,14 +413,14 @@ export function CircleDetailPage({
           },
         ]
       : []),
-    ...(canRefreshCatalog && !firstPull && catalogOnlyCount > 0
+    ...(canRefreshCatalog && !firstPull && metadataMissingWorks > 0
       ? [
           {
             key: "retryMetadata",
             label: t("detailActions.retryMetadata"),
             icon: <RefreshCw className="h-4 w-4" />,
             disabled: refreshUnavailable,
-            hint: t("detailActions.retryMetadataCount", { count: catalogOnlyCount }),
+            hint: t("detailActions.retryMetadataCount", { count: metadataMissingWorks }),
             onSelect: () => void queueRefresh({ catalogRefresh: "stored", metadataRefresh: "missing" }),
           },
         ]

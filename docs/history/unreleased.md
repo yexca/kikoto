@@ -441,6 +441,9 @@
   once and **Refresh** after that, and follows a running refresh to its run;
   **Retry metadata** moves into **More**. These show only to users allowed to
   refresh a catalog, and so do sync state and failed sources.
+- A circle's **Retry metadata** and its count cover every catalog work still
+  lacking metadata, so a later works page or a filter no longer hides it or
+  lowers its count.
 - The circle and voice actor works toolbar is the search field, the order, the
   availability filter, and one **View** button holding the display options
   and **Select works**; on a phone **View** opens as a sheet. A caption before the order states the matching works and

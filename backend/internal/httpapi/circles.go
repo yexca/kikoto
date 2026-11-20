@@ -66,6 +66,10 @@ type circleDetail struct {
 	Works          []circleCatalogWork `json:"works"`
 	WorksMeta      circleWorksMeta     `json:"worksMeta"`
 	Series         []circleSeries      `json:"series"`
+	// MetadataMissingWorks counts the whole circle's stored catalog works
+	// without DLsite metadata, independently of the requested works page and
+	// filter; a stored-catalog refresh with missing metadata targets these.
+	MetadataMissingWorks int `json:"metadataMissingWorks"`
 	// Refresh is the newest catalog sync run for this circle, so the page can follow
 	// a queued refresh across reloads and link it in Activity.
 	Refresh *creatorRefreshRun `json:"refresh"`
@@ -333,6 +337,7 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 	}
 	if localOnlyRequest(r.Context()) {
 		detail.SourceSummaries = localSourceStats(detail.SourceSummaries)
+		detail.MetadataMissingWorks = 0
 		for index := range detail.Works {
 			localCircleWork(&detail.Works[index])
 		}

@@ -54,6 +54,13 @@ func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int6
 	if err != nil {
 		return circleDetail{}, err
 	}
+	// The demo cannot refresh, and its catalog shows only eligible works.
+	metadataMissing := 0
+	if !s.cfg.IsDemo() {
+		if metadataMissing, err = s.countCircleMetadataMissingWorks(ctx, partyID); err != nil {
+			return circleDetail{}, err
+		}
+	}
 	var refresh *creatorRefreshRun
 	if latest, ok, err := s.latestCircleCatalogSyncRun(ctx, externalID, false); err != nil {
 		return circleDetail{}, err
@@ -73,8 +80,9 @@ func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int6
 			HasMore:   hasMore,
 			Truncated: worksQuery.Legacy && hasMore,
 		},
-		Series:  series,
-		Refresh: refresh,
+		Series:               series,
+		MetadataMissingWorks: metadataMissing,
+		Refresh:              refresh,
 	}, nil
 }
 

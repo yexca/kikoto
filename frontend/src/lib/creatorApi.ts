@@ -148,6 +148,8 @@ export type CircleDetail = CircleSummary & {
   works: CircleCatalogWork[];
   worksMeta: CircleWorksMeta;
   series: CircleSeries[];
+  /** The whole circle's catalog works without metadata, whatever page or filter; Retry metadata targets exactly these. */
+  metadataMissingWorks?: number;
   /** Newest follow run for this circle, so the page can follow a queued refresh across reloads. */
   refresh?: CreatorRefreshRun | null;
 };

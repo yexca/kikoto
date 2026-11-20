@@ -40,6 +40,30 @@ func (s *Server) runCircleCatalogRefresh(ctx context.Context, partyID int64, ext
 	return profile, nil
 }
 
+// countCircleMetadataMissingWorks counts the circle's stored DLsite catalog
+// codes that still need metadata: the works a stored-catalog refresh with
+// missing metadata queues, across the whole catalog rather than one page.
+func (s *Server) countCircleMetadataMissingWorks(ctx context.Context, partyID int64) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM (
+			SELECT DISTINCT UPPER(TRIM(catalog.primary_code)) AS code
+			FROM party_catalog_item AS catalog
+			WHERE catalog.party_id = ?
+				AND catalog.provider_id = (SELECT id FROM metadata_provider WHERE code = 'dlsite')
+				AND TRIM(catalog.primary_code) != ''
+		) AS catalog_code
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM work
+			WHERE UPPER(work.primary_code) = catalog_code.code
+				AND `+workDLsiteMetadataSettledSQL("work")+`
+		)
+	`, partyID).Scan(&count)
+	return count, err
+}
+
 func (s *Server) loadCircleProfileForRefresh(ctx context.Context, partyID int64, externalID string) (dlsite.MakerProfile, error) {
 	profile := dlsite.MakerProfile{MakerID: externalID}
 	var name string

@@ -102,10 +102,28 @@ type graphWorkFilterMetadata struct {
 	UserTags     []string
 }
 
+// workDLsiteMetadataSettledSQL is true when the work aliased workAlias needs no
+// DLsite metadata request: it has a DLsite snapshot, or DLsite reported it as
+// not found, so a scheduled follow does not request it again on every run.
+func workDLsiteMetadataSettledSQL(workAlias string) string {
+	return `(
+		EXISTS (
+			SELECT 1
+			FROM metadata_snapshot AS snapshot
+			INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
+			WHERE snapshot.work_id = ` + workAlias + `.id AND provider.code = 'dlsite'
+		)
+		OR EXISTS (
+			SELECT 1
+			FROM work_metadata_provider_state AS state
+			INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
+			WHERE state.work_id = ` + workAlias + `.id AND provider.code = 'dlsite' AND state.status = 'not_found'
+		)
+	)`
+}
+
 // graphWorkMissingMetadata reports whether a catalog code still needs DLsite
-// metadata: it has no work, or its work has no DLsite snapshot. A work the
-// provider reported as not found is skipped so a scheduled follow does not
-// request it again on every run.
+// metadata: it has no work, or its work's DLsite metadata is not settled.
 func (s *Server) graphWorkMissingMetadata(ctx context.Context, code string) (bool, error) {
 	var synced bool
 	err := s.db.QueryRowContext(ctx, `
@@ -113,20 +131,7 @@ func (s *Server) graphWorkMissingMetadata(ctx context.Context, code string) (boo
 			SELECT 1
 			FROM work
 			WHERE UPPER(work.primary_code) = UPPER(?)
-				AND (
-					EXISTS (
-						SELECT 1
-						FROM metadata_snapshot AS snapshot
-						INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
-						WHERE snapshot.work_id = work.id AND provider.code = 'dlsite'
-					)
-					OR EXISTS (
-						SELECT 1
-						FROM work_metadata_provider_state AS state
-						INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
-						WHERE state.work_id = work.id AND provider.code = 'dlsite' AND state.status = 'not_found'
-					)
-				)
+				AND `+workDLsiteMetadataSettledSQL("work")+`
 		)
 	`, code).Scan(&synced)
 	return !synced, err

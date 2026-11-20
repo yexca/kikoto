@@ -278,7 +278,7 @@ async function mockCreatorDetails(
       missingWorks: 1,
       catalogWorks: circleWorks.length,
     },
-    { availableWorks: 1, works: circleWorks, series: options.circleSeries ?? [] },
+    { availableWorks: 1, works: circleWorks, series: options.circleSeries ?? [], metadataMissingWorks: 1 },
   );
 
   await page.route("**/api/**", async (route) => {

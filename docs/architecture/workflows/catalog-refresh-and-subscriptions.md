@@ -21,7 +21,10 @@ different request is rejected until that run settles. A detail refresh is
 authorized by `metadata:sync`; because its graph holds only refresh steps, the
 run carries `workflows:run` on the requester's behalf. Circle detail returns
 the newest catalog sync run for the circle so the page can follow it across
-reloads.
+reloads. Circle and voice actor details also return `metadataMissingWorks`,
+the whole stored catalog's count of works a missing-metadata retry targets,
+independent of the requested works page or filter; the detail page shows
+Retry metadata only while it is above zero.
 The only inline circle refresh is the bounded incremental catalog lookup
 that resolves a series link. Creator
 catalogs expose Never, Attention, or Synced from their last successful pull and
