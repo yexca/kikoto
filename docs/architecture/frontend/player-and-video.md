@@ -17,6 +17,19 @@ ref, so they never act on a stale queue or mode. The dock (`player/dock`) has
 Mini, Compact, and full surfaces, while queue reordering math and formatting
 stay in pure modules.
 
+A restored queue refreshes once after startup through the server's queue
+resolve (`playerQueueRestore`), in one request however long the queue is: a
+playable item takes the location, locations, names, lyrics, progress, and work
+information the server resolves, and an item that is missing or cannot play
+leaves the queue; when the library cannot be reached, the queue stays as
+saved. An item the listener has already started keeps its location. A changed
+viewer preference, such as the metadata languages, resolves only the queued
+tracks' display names again, in one request, and a saved display name does so
+for its work (`useQueueDisplayNameRefresh`). The player never ranks locations
+itself: a track's locations arrive in the server's playback order (see
+[Playback Locations and Queues](../backend/media-playback.md#playback-locations-and-queues)),
+which the fallback after a failed location and the source menu follow.
+
 The server picks each track's delivery, and `audioPlaybackSource` asks it: the
 player declares the audio formats its element decodes and whether it plays HLS,
 and [audio playback info](../backend/media-playback.md#audio-playback-decision)

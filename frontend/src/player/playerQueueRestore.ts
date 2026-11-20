@@ -1,19 +1,59 @@
-import type { MediaItem } from "../lib/api";
-import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
-import { mediaItemDisplayTitle } from "./queueDisplayNames";
-import { applyTrackLocation, preferredTrackLocation } from "./trackLocations";
+import type {
+  PlaybackQueueResolution,
+  PlaybackQueueResolveItem,
+  PlaybackQueueResolvedItem,
+  PlaybackQueueWork,
+} from "@/lib/api";
+import { resolvedTrackLyrics } from "./playbackQueueTracks";
+import type { PlayerTrack } from "./playerTypes";
+import { applyTrackLocation } from "./trackLocations";
 
-type WorkMediaResult = { kind: "loaded"; mediaItems: MediaItem[] } | { kind: "missing" } | { kind: "unavailable" };
-type WorkPresentation = {
-  primaryCode: string;
-  title: string;
-  coverUrl: string;
-  circle: string;
-  voiceActors?: string[];
-};
+/** The most items one resolve request names; the server refuses more. */
+const PLAYBACK_QUEUE_RESOLVE_LIMIT = 1000;
 
-function isNotFoundError(error: unknown) {
-  return typeof error === "object" && error !== null && "status" in error && error.status === 404;
+export type ResolvePlaybackQueue = (
+  items: PlaybackQueueResolveItem[],
+  options?: { titlesOnly?: boolean },
+) => Promise<PlaybackQueueResolution>;
+
+/** Whether a queued track is a library work file the server can resolve. */
+export function resolvableQueueTrack(track: PlayerTrack) {
+  return track.workId > 0 && track.mediaItemId > 0 && !track.record;
+}
+
+/**
+ * Resolves queued tracks in as few requests as the server's limit allows and
+ * returns each track's resolution, in queue order, keyed by its position.
+ */
+export async function resolveQueueTracks(
+  tracks: PlayerTrack[],
+  resolve: ResolvePlaybackQueue,
+  options: { titlesOnly?: boolean } = {},
+) {
+  const positions = tracks.flatMap((track, index) => (resolvableQueueTrack(track) ? [index] : []));
+  const resolved = new Map<number, PlaybackQueueResolvedItem>();
+  const works = new Map<number, PlaybackQueueWork>();
+  for (let start = 0; start < positions.length; start += PLAYBACK_QUEUE_RESOLVE_LIMIT) {
+    const part = positions.slice(start, start + PLAYBACK_QUEUE_RESOLVE_LIMIT);
+    const response = await resolve(
+      part.map((index) => {
+        const track = tracks[index];
+        return {
+          mediaItemId: track.mediaItemId,
+          workId: track.workId,
+          locationId: track.locationId,
+          ...(track.locationChosen ? { locationChosen: true } : {}),
+        };
+      }),
+      options,
+    );
+    part.forEach((index, offset) => {
+      const item = response.items[offset];
+      if (item) resolved.set(index, item);
+    });
+    for (const work of response.works) works.set(work.id, work);
+  }
+  return { resolved, works };
 }
 
 /**
@@ -32,77 +72,52 @@ export function keepPlayingTrackLocation(tracks: PlayerTrack[], playing: PlayerT
   });
 }
 
+/**
+ * Refreshes a restored queue against the library in one request. A playable
+ * item takes its current locations, names, lyrics, and work information and
+ * moves to the location the server chooses: its best one, unless the listener
+ * picked its location in the player or it already plays from one as good. An
+ * item that is missing or cannot play now leaves the queue. When the library
+ * cannot be reached, the queue stays as it was saved.
+ */
 export async function revalidatePersistedQueue(
   tracks: PlayerTrack[],
-  loadWorkMedia: (workId: number) => Promise<MediaItem[]>,
-  loadWorkPresentation?: (workId: number) => Promise<WorkPresentation>,
+  resolve: ResolvePlaybackQueue,
 ): Promise<PlayerTrack[]> {
-  const workIDs = Array.from(new Set(tracks.map((track) => track.workId).filter((workId) => workId > 0)));
-  const results = new Map<number, WorkMediaResult>();
-  const presentations = new Map<number, WorkPresentation>();
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(4, workIDs.length) }, async () => {
-    while (cursor < workIDs.length) {
-      const workID = workIDs[cursor++];
-      const presentationPromise = loadWorkPresentation
-        ? loadWorkPresentation(workID).catch(() => null)
-        : Promise.resolve(null);
-      const mediaPromise = loadWorkMedia(workID)
-        .then<WorkMediaResult>((mediaItems) => ({ kind: "loaded", mediaItems }))
-        .catch<WorkMediaResult>((error) => (isNotFoundError(error) ? { kind: "missing" } : { kind: "unavailable" }));
-      const [result, presentation] = await Promise.all([mediaPromise, presentationPromise]);
-      results.set(workID, result);
-      if (presentation) presentations.set(workID, presentation);
-    }
-  });
-  await Promise.all(workers);
-
-  return tracks.flatMap((track) => {
-    const result = results.get(track.workId);
-    if (!result || result.kind === "unavailable") return [track];
-    if (result.kind === "missing") return [];
-    const mediaItem = result.mediaItems.find((item) => item.id === track.mediaItemId);
-    if (!mediaItem) return [];
-    const presentation = presentations.get(track.workId);
-    const locations: PlayerTrackLocation[] = mediaItem.locations
-      .filter(
-        (location) =>
-          (location.streamUrl || (location.locationType === "remote_stream" && location.downloadUrl)) &&
-          ["available", "remote"].includes(location.availability),
-      )
-      .map((location) => ({
-        locationId: location.id,
-        locationType: location.locationType,
-        streamUrl:
-          location.locationType === "remote_stream" && (mediaItem.kind === "audio" || mediaItem.kind === "video")
-            ? `/api/media/${location.id}/stream`
-            : location.streamUrl || location.downloadUrl,
-        sourceId: location.fileSourceId,
-        sourceName: location.fileSourceName,
-        availability: location.availability,
-      }));
-    if (locations.length === 0) return [];
-    const updated = {
+  let resolution: Awaited<ReturnType<typeof resolveQueueTracks>>;
+  try {
+    resolution = await resolveQueueTracks(tracks, resolve);
+  } catch {
+    return tracks;
+  }
+  const { resolved, works } = resolution;
+  return tracks.flatMap((track, index) => {
+    const item = resolved.get(index);
+    if (!item) return [track];
+    if (item.status !== "playable" || !item.track) return [];
+    const server = item.track;
+    const location = server.locations.find((candidate) => candidate.locationId === server.locationId);
+    if (!location) return [];
+    const work = works.get(track.workId);
+    const updated: PlayerTrack = {
       ...track,
-      kind: mediaItem.kind === "video" ? ("video" as const) : ("audio" as const),
-      durationSeconds: mediaItem.durationSeconds ?? track.durationSeconds,
-      sizeBytes: mediaItem.sizeBytes ?? track.sizeBytes,
-      progress: mediaItem.progress,
-      locations,
-      workCode: presentation?.primaryCode || track.workCode,
-      workTitle: presentation?.title || track.workTitle,
-      coverUrl: presentation?.coverUrl || track.coverUrl,
-      circle: presentation?.circle || track.circle,
-      voiceActors: presentation?.voiceActors ?? track.voiceActors,
-      displayTitle: mediaItemDisplayTitle(mediaItem, track.locationId),
+      kind: server.kind === "video" ? "video" : "audio",
+      durationSeconds: server.durationSeconds ?? track.durationSeconds,
+      sizeBytes: server.sizeBytes ?? track.sizeBytes,
+      progress: server.progress,
+      locations: server.locations,
+      workCode: work?.primaryCode || track.workCode,
+      workTitle: work?.title || track.workTitle,
+      coverUrl: work?.coverUrl || track.coverUrl,
+      circle: work?.circle || track.circle,
+      voiceActors: work?.voiceActors ?? track.voiceActors,
+      displayTitle: server.displayTitle,
+      ...resolvedTrackLyrics(server, track.lyricsLocationId),
+      lyricsPreferencePersistable: server.lyricsPreferencePersistable,
     };
-    // A restored item plays from its best location, local first, unless the
-    // listener picked its location in the player. The saved location also stays
-    // when it is as good as the best one, such as another local folder.
-    const saved = locations.find((location) => location.locationId === track.locationId);
-    const preferred = preferredTrackLocation(updated);
-    if (saved && track.locationChosen) return [{ ...applyTrackLocation(updated, saved), locationChosen: true }];
-    const selected = saved && saved.locationType === preferred?.locationType ? saved : preferred;
-    return [selected ? applyTrackLocation(updated, selected) : updated];
+    const moved = applyTrackLocation(updated, location);
+    return [
+      track.locationChosen && location.locationId === track.locationId ? { ...moved, locationChosen: true } : moved,
+    ];
   });
 }

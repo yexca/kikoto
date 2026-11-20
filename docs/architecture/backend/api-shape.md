@@ -118,7 +118,8 @@ and before Demo content or handlers. Health, login/logout, initial setup, curren
 state, minimal mode/access runtime settings, the public library migration
 status, and CORS preflight remain available for bootstrap. Operational runtime settings are omitted while production sign-in is
 required. Every other unauthenticated request is rejected unless the stored
-anonymous-access policy is enabled, in which case only `GET` and `HEAD` continue.
+anonymous-access policy is enabled, in which case only `GET`, `HEAD`, and the
+read-only player queue resolve continue.
 While anonymous remote browsing is off, the middleware also refuses remote
 routes and remote or cache media for those requests and marks the rest
 local-only; handlers then refuse a work without a local folder in its family

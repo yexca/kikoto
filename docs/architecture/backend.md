@@ -10,7 +10,7 @@ change touches.
 | --- | --- |
 | [Stack and Packages](backend/stack-and-packages.md) | the Go stack, which `internal/` package owns a concern, or the layering rule |
 | [Runtime Responsibilities](backend/runtime-responsibilities.md) | what the process does at runtime, duration probing, planner statistics, or job runner limits |
-| [Media Playback](backend/media-playback.md) | loudness, transcode slots and failure memory, the playback decision, audio tracks, subtitles, or how lyrics and subtitle text is read |
+| [Media Playback](backend/media-playback.md) | loudness, transcode slots and failure memory, the playback decision, audio tracks, subtitles, playback location order, queue restore and Resume queues, or how lyrics and subtitle text is read |
 | [HLS Encoding](backend/hls-encoding.md) | remux keyframe indexes, HLS encode lifetime and limits, or hardware video encoding |
 | [API Shape](backend/api-shape.md) | work, lyrics, custom work, library list, or recommendation endpoints, or the access-policy middleware |
 | [HTTP Responses](backend/http-responses.md) | playback reports, listening history, static caching, compression, error shape, or request budgets |

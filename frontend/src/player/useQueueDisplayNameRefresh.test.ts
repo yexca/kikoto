@@ -4,56 +4,65 @@ vi.hoisted(() => {
   (globalThis as typeof globalThis & { __APP_VERSION__: string }).__APP_VERSION__ = "test";
 });
 
-import type { MediaItem } from "@/lib/api";
+import type { PlaybackQueueResolution, PlaybackQueueResolveItem, PlaybackQueueTrack } from "@/lib/api";
+import type { ResolvePlaybackQueue } from "./playerQueueRestore";
+import type { PlayerTrack } from "./playerTypes";
 import { createQueueDisplayNameLoader } from "./useQueueDisplayNameRefresh";
 
 function deferred() {
-  let resolve!: (items: MediaItem[]) => void;
-  const promise = new Promise<MediaItem[]>((done) => (resolve = done));
+  let resolve!: (resolution: PlaybackQueueResolution) => void;
+  const promise = new Promise<PlaybackQueueResolution>((done) => (resolve = done));
   return { promise, resolve };
 }
 
-const items = (title: string) => [{ id: 1, title } as MediaItem];
+const queued = (workId: number) => ({ workId, mediaItemId: workId * 10, locationId: workId * 100 }) as PlayerTrack;
+
+function named(items: PlaybackQueueResolveItem[], displayTitle: string): PlaybackQueueResolution {
+  return {
+    items: items.map((item) => ({
+      ...item,
+      status: "playable",
+      track: { mediaItemId: item.mediaItemId, displayTitle } as PlaybackQueueTrack,
+    })),
+    works: [],
+  };
+}
 
 describe("queue display name loader", () => {
-  it("keeps a newer load's names when an older batch finishes after it", async () => {
-    const pending = new Map<string, ReturnType<typeof deferred>>();
-    const applied: Array<Record<number, string>> = [];
-    const load = createQueueDisplayNameLoader(
-      (workId) => {
-        const request = deferred();
-        pending.set(`${workId}:${pending.size}`, request);
-        return request.promise;
-      },
-      (media) => applied.push(Object.fromEntries([...media].map(([workId, list]) => [workId, list[0].title]))),
+  it("resolves names in one titles-only request and keeps a newer load's names", async () => {
+    const pending: Array<{ items: PlaybackQueueResolveItem[]; request: ReturnType<typeof deferred> }> = [];
+    const resolve = vi.fn<ResolvePlaybackQueue>((items) => {
+      const request = deferred();
+      pending.push({ items, request });
+      return request.promise;
+    });
+    const applied: string[][] = [];
+    const load = createQueueDisplayNameLoader(resolve, (titles) =>
+      applied.push([...titles].map(([key, title]) => `${key}=${title}`)),
     );
 
-    // An older refresh of two works fetches work 1, then a save for work 1
-    // starts a newer refresh that finishes before the older batch.
-    const older = load([1, 2]);
-    pending.get("1:0")!.resolve(items("old"));
-    await Promise.resolve();
-    const newer = load([1]);
-    pending.get("1:2")!.resolve(items("new"));
+    // A preference change refreshes the whole queue, then a save for work 1
+    // refreshes that work again and finishes first.
+    const older = load([queued(1), queued(2)]);
+    const newer = load([queued(1)]);
+    pending[1].request.resolve(named(pending[1].items, "new"));
     await newer;
-    pending.get("2:1")!.resolve(items("second"));
+    pending[0].request.resolve(named(pending[0].items, "old"));
     await older;
 
-    expect(applied).toEqual([{ 1: "new" }, { 2: "second" }]);
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(resolve.mock.calls[0][1]).toEqual({ titlesOnly: true });
+    expect(applied).toEqual([["1:10:100=new"], ["2:20:200=old"]]);
   });
 
-  it("leaves out a work whose media fails to load", async () => {
-    const applied: number[][] = [];
-    const load = createQueueDisplayNameLoader(
-      async (workId) => {
-        if (workId === 2) throw new Error("offline");
-        return items("ok");
-      },
-      (media) => applied.push([...media.keys()]),
-    );
+  it("keeps every name when the request fails", async () => {
+    const apply = vi.fn();
+    const load = createQueueDisplayNameLoader(async () => {
+      throw new Error("offline");
+    }, apply);
 
-    await load([1, 2]);
+    await load([queued(1)]);
 
-    expect(applied).toEqual([[1]]);
+    expect(apply).not.toHaveBeenCalled();
   });
 });

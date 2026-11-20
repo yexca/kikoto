@@ -1,11 +1,4 @@
-import type {
-  MediaItem,
-  RemoteLyricsChoice,
-  RemoteTrack,
-  RemoteWorkDetail,
-  WorkDetail,
-  WorkProgressSummary,
-} from "../../../lib/api";
+import type { MediaItem, RemoteLyricsChoice, RemoteTrack, RemoteWorkDetail, WorkDetail } from "../../../lib/api";
 import { naturalNameCompare } from "../../../lib/naturalNameOrder";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
@@ -17,7 +10,6 @@ import {
 } from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
 import { remoteMediaURL } from "../../../player/mediaPlayback";
-import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
 export type TreeNode = {
   name: string;
@@ -112,12 +104,11 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
     const names = displayPathNames(location, parts.length);
     const fileName = parts.pop() ?? item.title;
     const displayTitle = names.pop();
-    const locationStreamUrl = playbackStreamURLForLocation(
-      location.id,
-      location.locationType,
-      item.kind,
-      locationPlaybackURL(location),
-    );
+    // The server lists the usable locations with the URL each plays through.
+    const playbackLocations = item.playbackLocations ?? [];
+    const locationStreamUrl =
+      playbackLocations.find((candidate) => candidate.locationId === location.id)?.streamUrl ??
+      locationPlaybackURL(location);
     let cursor = root;
     parts.forEach((part, index) => {
       if (!cursor.children.has(part)) {
@@ -158,23 +149,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       localAvailable: Boolean(localLocation),
       progress: item.progress,
       playbackKey: playbackKeyForLocation(location.id),
-      locations: item.locations
-        .filter(
-          (candidate) => locationPlaybackURL(candidate) && ["available", "remote"].includes(candidate.availability),
-        )
-        .map((candidate) => ({
-          locationId: candidate.id,
-          locationType: candidate.locationType,
-          streamUrl: playbackStreamURLForLocation(
-            candidate.id,
-            candidate.locationType,
-            item.kind,
-            locationPlaybackURL(candidate),
-          ),
-          sourceId: candidate.fileSourceId,
-          sourceName: candidate.fileSourceName,
-          availability: candidate.availability,
-        })),
+      locations: playbackLocations,
     });
   }
   const displayRoot = normalizeDisplayTree(root);
@@ -184,13 +159,6 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
 
 function locationPlaybackURL(location: { locationType: string; streamUrl: string; downloadUrl: string }) {
   return location.streamUrl || (location.locationType === "remote_stream" ? location.downloadUrl : "");
-}
-
-function playbackStreamURLForLocation(locationId: number, locationType: string, kind: string, streamUrl: string) {
-  if (locationType === "remote_stream" && (kind === "audio" || kind === "video") && locationId > 0) {
-    return `/api/media/${locationId}/stream`;
-  }
-  return streamUrl;
 }
 
 export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIdentity): TreeNode {
@@ -506,59 +474,6 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverU
     preferredLyricsMediaItemId,
     lyricsOffsetMs: audioItem?.lyricsOffsetMs ?? 0,
     playbackKey: track.playbackKey ?? playbackKeyForLocation(track.locationId),
-  };
-}
-
-export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverUrl = ""): PlayerTrack {
-  const playerTrack = toPlayerTrack(track, work, fallbackCoverUrl);
-  const preferredLocation = preferredTrackLocation(playerTrack);
-  return preferredLocation ? applyTrackLocation(playerTrack, preferredLocation) : playerTrack;
-}
-
-export type WorkResumeQueue = {
-  tracks: PlayerTrack[];
-  locationId: number;
-  positionSeconds: number;
-};
-
-export function buildWorkResumeQueue(
-  tracks: TreeTrack[],
-  work: WorkDetail,
-  cursor: WorkProgressSummary | null,
-  fallbackCoverUrl = "",
-): WorkResumeQueue | null {
-  if (
-    !cursor?.mediaItemId ||
-    cursor.completed ||
-    !Number.isFinite(cursor.positionSeconds) ||
-    cursor.positionSeconds <= 0 ||
-    (cursor.mediaWorkId !== null && cursor.mediaWorkId !== work.id)
-  ) {
-    return null;
-  }
-  const queue = tracks.map((track) => toPreferredPlayerTrack(track, work, fallbackCoverUrl));
-  const startIndex = queue.findIndex((track) => track.mediaItemId === cursor.mediaItemId);
-  if (startIndex < 0) return null;
-
-  const startTrack = queue[startIndex];
-  const usableLocations =
-    startTrack.locations?.filter(
-      (location) => Boolean(location.streamUrl) && ["available", "remote"].includes(location.availability),
-    ) ?? [];
-  const cursorLocation =
-    usableLocations.find((location) => location.locationId === cursor.locationId) ??
-    usableLocations.find(
-      (location) => location.sourceId === cursor.fileSourceId && location.locationType === cursor.locationType,
-    ) ??
-    usableLocations.find((location) => location.sourceId === cursor.fileSourceId) ??
-    preferredTrackLocation(startTrack);
-  if (!cursorLocation) return null;
-
-  queue[startIndex] = applyTrackLocation(startTrack, cursorLocation);
-  return {
-    tracks: queue,
-    locationId: cursorLocation.locationId,
-    positionSeconds: cursor.positionSeconds,
   };
 }
 

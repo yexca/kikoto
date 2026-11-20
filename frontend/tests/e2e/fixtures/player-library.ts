@@ -11,6 +11,8 @@ import type {
   MediaLyricsChoice,
   MediaProgress,
   MediaTextPreview,
+  PlaybackQueueResolution,
+  PlaybackQueueResolveItem,
   TimedLyricsResult,
   RecentlyPlayedWorksResponse,
   RemoteFetchFileDecision,
@@ -151,6 +153,102 @@ export const persistedTrack: PersistedPlayerTrack = {
 };
 
 export const persistedPlayerTracks = new WeakMap<Page, PersistedPlayerTrack[]>();
+
+/** The work media a server would hold for the tracks a test persisted in the player queue. */
+function restoredMediaItemsFixture(page: Page, workId: number): MediaItem[] {
+  return (persistedPlayerTracks.get(page) ?? [])
+    .filter((track) => track.workId === workId)
+    .map((track) =>
+      mediaItemFixture({
+        id: track.mediaItemId,
+        title: track.title,
+        trackNo: 1,
+        sizeBytes: track.sizeBytes,
+        progress: track.progress,
+        locations: track.locations.map((location) =>
+          mediaLocationFixture({
+            id: location.locationId,
+            fileSourceId: location.sourceId,
+            fileSourceCode: "test",
+            fileSourceName: location.sourceName,
+            locationType: location.locationType,
+            path: `${track.workCode}/${track.title}`,
+            streamUrl: location.streamUrl,
+            sizeBytes: track.sizeBytes,
+            availability: location.availability,
+          }),
+        ),
+      }),
+    );
+}
+
+/**
+ * What the server resolves for a restored queue: every item of the given
+ * media, or of the persisted tracks, on its kept or first playback location;
+ * an item without one is unavailable, and an unknown item or work is missing.
+ */
+function resolvedQueueFixture(
+  page: Page,
+  body: { items: PlaybackQueueResolveItem[]; titlesOnly?: boolean },
+  mediaItems: MediaItem[],
+  workFor: (workId: number) => Work | null,
+): PlaybackQueueResolution {
+  const persisted = persistedPlayerTracks.get(page) ?? [];
+  const works = new Map<number, Work>();
+  const items = body.items.map((requested) => {
+    const missing = { ...requested, status: "missing" as const };
+    const queuedWork = workFor(requested.workId);
+    const media = mediaItems.length > 0 ? mediaItems : restoredMediaItemsFixture(page, requested.workId);
+    const item = media.find((candidate) => candidate.id === requested.mediaItemId);
+    if (!queuedWork || !item) return missing;
+    works.set(queuedWork.id, queuedWork);
+    const locations = item.playbackLocations ?? [];
+    const current = locations.find((location) => location.locationId === requested.locationId);
+    const location =
+      current && (requested.locationChosen || current.locationType === locations[0]?.locationType)
+        ? current
+        : locations[0];
+    if (!location) return { ...requested, status: "unavailable" as const };
+    const saved = persisted.find((track) => track.mediaItemId === item.id && track.workId === requested.workId);
+    const path = item.locations[0]?.path ?? item.title;
+    return {
+      ...requested,
+      status: "playable" as const,
+      track: {
+        mediaItemId: item.id,
+        workId: requested.workId,
+        locationId: location.locationId,
+        title: path.split("/").pop() || item.title,
+        kind: item.kind === "video" ? ("video" as const) : ("audio" as const),
+        folderPath: "",
+        locationType: location.locationType,
+        streamUrl: location.streamUrl,
+        availability: location.availability,
+        sizeBytes: item.sizeBytes,
+        durationSeconds: item.durationSeconds,
+        progress: item.progress,
+        locations,
+        lyricsChoices: (saved?.lyricsChoices ?? []).map((choice) => ({ ...choice })),
+        preferredLyricsMediaItemId: item.preferredLyricsMediaItemId ?? null,
+        lyricsOffsetMs: item.lyricsOffsetMs ?? 0,
+        lyricsPreferencePersistable: item.kind === "audio",
+      },
+    };
+  });
+  return {
+    items,
+    works: body.titlesOnly
+      ? []
+      : [...works.values()].map((queuedWork) => ({
+          id: queuedWork.id,
+          primaryCode: queuedWork.primaryCode,
+          title: queuedWork.title,
+          coverUrl: queuedWork.coverUrl,
+          circle: queuedWork.circle,
+          voiceActors: queuedWork.voiceActors ?? [],
+        })),
+  };
+}
 
 export const playerQueueStorageBaseKey = "kikoto:player-queue:v2";
 
@@ -568,36 +666,42 @@ export async function mockApplication(
         });
         return;
       }
-      const restoredTracks =
-        mediaItems.length > 0 ? [] : (persistedPlayerTracks.get(page) ?? []).filter((track) => track.workId === workId);
-      const restoredMediaItems = restoredTracks.map((track) =>
-        mediaItemFixture({
-          id: track.mediaItemId,
-          title: track.title,
-          trackNo: 1,
-          sizeBytes: track.sizeBytes,
-          progress: track.progress,
-          locations: track.locations.map((location) =>
-            mediaLocationFixture({
-              id: location.locationId,
-              fileSourceId: location.sourceId,
-              fileSourceCode: "test",
-              fileSourceName: location.sourceName,
-              locationType: location.locationType,
-              path: `${track.workCode}/${track.title}`,
-              streamUrl: location.streamUrl,
-              sizeBytes: track.sizeBytes,
-              availability: location.availability,
-            }),
-          ),
-        }),
-      );
       await route.fulfill({
         json: {
           workId,
           mediaWorkId: workId,
-          mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItems,
+          mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItemsFixture(page, workId),
         } satisfies ApiResponse<"getWorkMedia">,
+      });
+      return;
+    }
+    if (url.pathname === "/api/playback/queue/resolve" && route.request().method() === "POST") {
+      if (fixture.mediaBusy) {
+        await route.fulfill({
+          status: 503,
+          json: {
+            error: "database is busy; please retry",
+            code: "database_busy",
+            retryable: true,
+          } satisfies ApiErrorBody,
+        });
+        return;
+      }
+      const body = route.request().postDataJSON() as { items: PlaybackQueueResolveItem[]; titlesOnly?: boolean };
+      const fixtureWork = fixture.work ?? work;
+      const workFor = (workId: number) =>
+        workId === 1
+          ? fixtureWork
+          : workId > 1 && workId <= workCount
+            ? {
+                ...fixtureWork,
+                id: workId,
+                primaryCode: syntheticWorkCode("RJ", workId - 1),
+                title: `Mobile work ${workId}`,
+              }
+            : null;
+      await route.fulfill({
+        json: resolvedQueueFixture(page, body, mediaItems, workFor) satisfies ApiResponse<"resolvePlaybackQueue">,
       });
       return;
     }

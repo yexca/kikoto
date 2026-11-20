@@ -40,6 +40,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 		return nil, err
 	}
 	attachMediaLyricsChoices(mediaItems)
+	attachPlaybackLocations(mediaItems)
 	return mediaItems, nil
 }
 

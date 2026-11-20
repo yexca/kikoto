@@ -111,6 +111,35 @@ export function useWorkEditionSelection({
     setActiveEditionCode(detail.primaryCode);
   };
 
+  /**
+   * Loads an edition by its work id and shows it, as Resume does for the
+   * edition its cursor plays from. Only the latest request may publish, and a
+   * failed load keeps the shown edition.
+   */
+  const showEditionById = useStableCallback(async (editionWorkId: number) => {
+    if (!work) return;
+    const seq = ++requestSeq.current;
+    requestController.current?.abort();
+    requestController.current = null;
+    if (editionWorkId === work.id) {
+      setActiveEdition(null);
+      setActiveEditionCode(work.primaryCode);
+      return;
+    }
+    const controller = new AbortController();
+    requestController.current = controller;
+    try {
+      const detail = await api.getWork(editionWorkId, controller.signal);
+      if (seq !== requestSeq.current) return;
+      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
+      showEdition(detail);
+    } catch {
+      // The directory keeps the edition it shows.
+    } finally {
+      if (seq === requestSeq.current) requestController.current = null;
+    }
+  });
+
   /** Returns to the opened work's own edition, as a non-local source requires. */
   const resetToWorkEdition = () => {
     setActiveEdition(null);
@@ -134,6 +163,7 @@ export function useWorkEditionSelection({
     editionError,
     selectEdition,
     showEdition,
+    showEditionById,
     /** Replaces the active edition's record after its files changed. */
     replaceActiveEdition: setActiveEdition,
     /** Marks the version a remote source is showing; no local edition loads. */

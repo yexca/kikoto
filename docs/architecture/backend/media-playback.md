@@ -1,6 +1,6 @@
 # Media Playback
 
-How the backend measures loudness, shares conversion capacity, answers playback info for video and audio, chooses audio tracks, extracts subtitles for local and cached media, and reads lyrics and subtitle text.
+How the backend measures loudness, shares conversion capacity, answers playback info for video and audio, chooses audio tracks, extracts subtitles for local and cached media, chooses where a track plays and resolves player queues, and reads lyrics and subtitle text.
 
 ## Loudness
 
@@ -147,6 +147,48 @@ source path, size, modification time, and stream, so a changed source is
 extracted again and the old file is evicted like any other cache file.
 Responses carry the untrusted-file headers, and a URL naming the current
 revision is cached as immutable.
+
+## Playback Locations and Queues
+
+Every media item of the work media lists `playbackLocations`: the locations
+it can play from now, in playback priority. A location plays when it is
+`available` or `remote` and has a URL; a local file on an offline storage
+pool reads as `offline` and is never listed. Local files come first, then
+cached copies, then remote streams, each type in source priority order. Remote
+audio and video stream through `/api/media/{id}/stream`; every other location
+keeps its own stream URL, or a remote one its download URL. This one order
+serves every playback choice: the location fallback after a failure, the
+player's source menu, Resume, and a restored queue.
+
+`POST /api/playback/queue/resolve` refreshes a restored player queue in one
+request. The body names up to 1,000 items, each with its `mediaItemId`, the
+`workId` it was queued from, the `locationId` it was on, and
+`locationChosen` when the listener picked that location in the player. Each
+item comes back in request order as `playable` with its track, `unavailable`
+when it still exists but no location can play now, or `missing` when the
+item, its work, or the viewer's access to it is gone. A track keeps its
+location when the listener chose it or when it is of the same type as the
+first playback location, such as another local folder; otherwise it moves to
+the first. A track carries its playback locations, its display name in the
+viewer's metadata languages, size, duration, progress, the lyrics choices of
+its work media resolved to their lyrics files, and the viewer's lyrics
+preference and offset; `works` lists the title, cover, circle, and voice
+actors of each queued work as work detail shows them. `titlesOnly` leaves out
+the work information when only names are refreshed. The request is a read
+despite its POST transport, so Demo and anonymous visitors resolve their
+queues like any read, and a local-only request resolves only works with a
+local folder and their local locations.
+
+`GET /api/works/{id}/resume-queue` answers the queue Resume plays for the
+work's saved cursor, or `resume: null` when the cursor is missing, finished,
+at zero, or its track cannot play now. The queue is the cursor edition's
+playable files in the work playback order, the order the work page's
+Directory lists the edition's whole local tree in: folders before files, names
+in natural order, and chains of single folders collapsed. Every track starts
+on its first playback location, except the cursor's track, which tries the
+cursor's location, then one of the same source and type, then one of the same
+source, then its first. `startIndex` and `positionSeconds` name where Resume
+starts, and `work` holds the edition's information.
 
 ## Timed Text
 

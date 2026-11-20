@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { MediaItem, MediaLyricsChoice, RemoteTrack, WorkProgressSummary } from "@/lib/api";
+import type { MediaItem, MediaLyricsChoice, RemoteTrack } from "@/lib/api";
 import {
-  buildWorkResumeQueue,
   buildRemoteTree,
   buildTree,
   directoryLyricsAttachments,
@@ -12,7 +11,7 @@ import {
   formatDuration,
   formatTrackDuration,
   remoteSelectablePaths,
-  toPreferredPlayerTrack,
+  toPlayerTrack,
   toRemotePreviewPlayerTrack,
   treePathForTrack,
   treeStats,
@@ -70,7 +69,7 @@ describe("mediaTreeModel", () => {
     expect(formatTrackDuration(null)).toBe("");
   });
 
-  it("builds a local tree for one selected source and keeps alternate playback locations", () => {
+  it("builds a local tree for one selected source and keeps the server's playback locations", () => {
     const item = {
       id: 11,
       title: "01.mp3",
@@ -102,6 +101,24 @@ describe("mediaTreeModel", () => {
           availability: "available",
           sizeBytes: 1024,
           durationSeconds: 90,
+        },
+      ],
+      playbackLocations: [
+        {
+          locationId: 21,
+          locationType: "local",
+          streamUrl: "/api/media/21/stream",
+          sourceId: 1,
+          sourceName: "Local",
+          availability: "available",
+        },
+        {
+          locationId: 22,
+          locationType: "cache",
+          streamUrl: "/api/media/22/stream",
+          sourceId: 1,
+          sourceName: "Cache",
+          availability: "available",
         },
       ],
     } as MediaItem;
@@ -193,185 +210,6 @@ describe("mediaTreeModel", () => {
 
     expect(treePathForTrack(tree, { playbackKey: "location:missing", locationId: 101 })).toEqual([]);
     expect(treePathForTrack(tree, { playbackKey: "location:missing", locationId: 999 })).toBeNull();
-  });
-
-  it("selects the best available location for work-level playback", () => {
-    const item = {
-      id: 11,
-      title: "01.mp3",
-      kind: "audio",
-      fingerprint: "fingerprint",
-      durationSeconds: 90,
-      progress: null,
-      locations: [
-        {
-          id: 31,
-          fileSourceId: 2,
-          fileSourceName: "Remote",
-          locationType: "remote_stream",
-          path: "remote/01.mp3",
-          streamUrl: "/remote/01",
-          downloadUrl: "",
-          availability: "remote",
-          sizeBytes: 1024,
-          durationSeconds: 90,
-        },
-        {
-          id: 21,
-          fileSourceId: 1,
-          fileSourceName: "Local",
-          locationType: "local",
-          path: "library/RJ00000001/audio/01.mp3",
-          streamUrl: "/api/media/21/stream",
-          downloadUrl: "",
-          availability: "available",
-          sizeBytes: 1024,
-          durationSeconds: 90,
-        },
-      ],
-    } as MediaItem;
-    const work = {
-      id: 7,
-      primaryCode: "RJ00000001",
-      title: "Work",
-      coverUrl: "",
-      circle: "Circle",
-      mediaItems: [item],
-    } as Parameters<typeof toPreferredPlayerTrack>[1];
-    const track = flattenTracks(buildTree([item], null, work.primaryCode))[0];
-
-    expect(toPreferredPlayerTrack(track, work, "/api/assets/covers/origin.jpg")).toMatchObject({
-      locationId: 21,
-      locationType: "local",
-      streamUrl: "/api/media/21/stream",
-      coverUrl: "/api/assets/covers/origin.jpg",
-    });
-  });
-
-  it("proxies tracked remote audio and video locations through the backend", () => {
-    const item = {
-      id: 31,
-      title: "clip.avi",
-      kind: "video",
-      hasAudio: true,
-      fingerprint: "tracked-remote-video",
-      durationSeconds: 30,
-      progress: null,
-      locations: [
-        {
-          id: 41,
-          fileSourceId: 9,
-          fileSourceName: "Remote",
-          locationType: "remote_stream",
-          path: "bonus/clip.avi",
-          streamUrl: "https://media.invalid/clip.avi",
-          downloadUrl: "",
-          availability: "remote",
-          sizeBytes: 2048,
-          durationSeconds: 30,
-        },
-      ],
-    } as MediaItem;
-    const file = flattenTracks(buildTree([item], null, "RJ00000001"))[0];
-    expect(file.streamUrl).toBe("/api/media/41/stream");
-    expect(file.locations[0]?.streamUrl).toBe("/api/media/41/stream");
-  });
-
-  it("uses the tracked media proxy when only a remote download URL is present", () => {
-    const item = {
-      id: 32,
-      title: "clip.avi",
-      kind: "video",
-      hasAudio: true,
-      fingerprint: "tracked-remote-download-only",
-      durationSeconds: 30,
-      progress: null,
-      locations: [
-        {
-          id: 42,
-          fileSourceId: 9,
-          fileSourceName: "Remote",
-          locationType: "remote_stream",
-          path: "bonus/clip.avi",
-          streamUrl: "",
-          downloadUrl: "https://media.invalid/clip.avi",
-          availability: "available",
-          sizeBytes: 2048,
-          durationSeconds: 30,
-        },
-      ],
-    } as MediaItem;
-
-    const file = flattenTracks(buildTree([item], null, "RJ00000001"))[0];
-    expect(file.streamUrl).toBe("/api/media/42/stream");
-    expect(file.locations[0]?.streamUrl).toBe("/api/media/42/stream");
-  });
-
-  it("builds explicit Resume from the cursor media edition and saved source", () => {
-    const item = {
-      id: 11,
-      title: "01.mp3",
-      kind: "audio",
-      fingerprint: "fingerprint",
-      durationSeconds: 90,
-      progress: null,
-      locations: [
-        {
-          id: 21,
-          fileSourceId: 1,
-          fileSourceName: "Local",
-          locationType: "local",
-          path: "library/RJ00000001/01.mp3",
-          streamUrl: "/api/media/21/stream",
-          downloadUrl: "",
-          availability: "available",
-          sizeBytes: 1024,
-          durationSeconds: 90,
-        },
-        {
-          id: 31,
-          fileSourceId: 2,
-          fileSourceName: "Example Remote",
-          locationType: "remote_stream",
-          path: "RJ00000001/01.mp3",
-          streamUrl: "/remote/01",
-          downloadUrl: "",
-          availability: "remote",
-          sizeBytes: 1024,
-          durationSeconds: 90,
-        },
-      ],
-    } as MediaItem;
-    const work = {
-      id: 7,
-      primaryCode: "RJ00000001",
-      title: "Work",
-      coverUrl: "",
-      circle: "Circle",
-      mediaItems: [item],
-    } as Parameters<typeof toPreferredPlayerTrack>[1];
-    const tracks = flattenTracks(buildTree([item], null, work.primaryCode));
-    const cursor = {
-      workId: 6,
-      mediaWorkId: 7,
-      mediaItemId: 11,
-      fileSourceId: 2,
-      locationId: 31,
-      locationType: "remote_stream",
-      title: "01.mp3",
-      positionSeconds: 42,
-      durationSeconds: 90,
-      lastPlayedAt: "2026-08-02 10:00:00",
-      completed: false,
-    } satisfies WorkProgressSummary;
-
-    expect(buildWorkResumeQueue(tracks, work, cursor)).toMatchObject({
-      locationId: 31,
-      positionSeconds: 42,
-      tracks: [{ mediaItemId: 11, locationId: 31, locationType: "remote_stream" }],
-    });
-    expect(buildWorkResumeQueue(tracks, work, { ...cursor, completed: true })).toBeNull();
-    expect(buildWorkResumeQueue(tracks, work, { ...cursor, mediaWorkId: 8 })).toBeNull();
   });
 
   it("hides items whose selected source only has missing locations", () => {
@@ -488,8 +326,8 @@ describe("mediaTreeModel", () => {
       id: 1,
       primaryCode: "RJ00000000",
       mediaItems: [audio, sidecar, translated],
-    } as Parameters<typeof toPreferredPlayerTrack>[1];
-    expect(toPreferredPlayerTrack({ ...track, lyricsChoices: undefined }, work).lyricsLocationId).toBe(104);
+    } as Parameters<typeof toPlayerTrack>[1];
+    expect(toPlayerTrack({ ...track, lyricsChoices: undefined }, work).lyricsLocationId).toBe(104);
   });
 
   it("collapses one generic folder lyric without duplicating its attachment row per audio", () => {

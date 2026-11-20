@@ -557,6 +557,10 @@
 - A restored queue plays each item from its local copy unless you picked
   another source for it in the player; an item you have already started keeps
   playing from where it is.
+- A restored queue refreshes in one request however long it is, takes each
+  track's current lyrics, and orders each track's sources by the same rule as
+  Resume and the work page. A changed metadata language renames the queued
+  tracks without reloading every queued work.
 - A Resume position whose file location vanished is saved without it, and
   positions that cannot be saved no longer fill the waiting list.
 - An LRC file's `[offset:]` tag applies under your own lyrics offset, and a

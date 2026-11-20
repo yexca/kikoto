@@ -31,7 +31,7 @@ func (s *Server) anonymousAccessMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if s.anonymousAccessEnabled() && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		if s.anonymousAccessEnabled() && (r.Method == http.MethodGet || r.Method == http.MethodHead || playbackQueueResolveRequest(r)) {
 			// Remote-derived content can reveal the remote configuration,
 			// so without anonymous remote browsing a visitor reaches local
 			// content only (see anonymous_local_only.go).

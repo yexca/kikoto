@@ -2,49 +2,22 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
-import {
-  buildTree,
-  buildWorkResumeQueue,
-  flattenTracks,
-  toPlayerTrack,
-  toRemotePreviewPlayerTrack,
-  type TreeNode,
-  type TreeTrack,
-} from "@/features/work-detail/media/mediaTreeModel";
+import { toPlayerTrack, toRemotePreviewPlayerTrack, type TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import { queuePlayerTrack } from "@/features/work-detail/media/queuePlayerTrack";
-import i18n from "@/i18n";
 import { api, type RemoteWorkDetail, type WorkDetail, type WorkProgressSummary } from "@/lib/api";
+import { toResolvedPlayerTrack } from "@/player/playbackQueueTracks";
 import { useLibraryPlayer } from "@/player/PlayerProvider";
-
-async function resolvePersistedResumeContext(
-  cursor: WorkProgressSummary,
-  localDirectoryWork: WorkDetail | null,
-  playbackTree: TreeNode,
-) {
-  const resumeWork =
-    cursor.mediaWorkId && cursor.mediaWorkId !== localDirectoryWork?.id
-      ? await api.getWork(cursor.mediaWorkId)
-      : localDirectoryWork;
-  if (!resumeWork) throw new Error(i18n.t("libraryDetail.savedTrackUnavailable"));
-  return {
-    resumeWork,
-    resumeTree:
-      resumeWork.id === localDirectoryWork?.id
-        ? playbackTree
-        : buildTree(resumeWork.mediaItems, null, resumeWork.primaryCode),
-  };
-}
 
 /**
  * Playback from a persisted work's detail: its local tracks, the selected
  * remote source's tracks, the saved playback cursor, and single tracks queued
- * next or last. Every queued track carries the displayed title.
+ * next or last. Every queued track carries the displayed title. Resume plays
+ * the queue the server builds for the cursor, in the Directory's order.
  */
 export function usePersistedWorkPlayback({
   work,
   localDirectoryWork,
   selectedRemoteDetail,
-  playbackTree,
   playbackCursor,
   hasResumableCursor,
   displayTitle,
@@ -56,15 +29,13 @@ export function usePersistedWorkPlayback({
   /** The shown edition, whose local tracks play. */
   localDirectoryWork: WorkDetail | null;
   selectedRemoteDetail: RemoteWorkDetail | null;
-  /** The shown edition's whole local tree, which a resume starts from. */
-  playbackTree: TreeNode;
   playbackCursor: WorkProgressSummary | null;
   hasResumableCursor: boolean;
   displayTitle: string | undefined;
   coverUrl: string;
   onPlay: () => void;
-  /** Shows another edition when the saved cursor belongs to it. */
-  onShowEdition: (edition: WorkDetail) => void;
+  /** Shows the edition the saved cursor belongs to, by its work id, when it is another one. */
+  onShowEdition: (editionWorkId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -85,16 +56,16 @@ export function usePersistedWorkPlayback({
     if (!work || !playbackCursor || !hasResumableCursor) return;
     setIsResuming(true);
     try {
-      const { resumeWork, resumeTree } = await resolvePersistedResumeContext(
-        playbackCursor,
-        localDirectoryWork,
-        playbackTree,
-      );
-      const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor, coverUrl);
-      if (!resumeQueue) throw new Error(t("libraryDetail.savedTrackUnavailable"));
-      if (resumeWork.id !== localDirectoryWork?.id) onShowEdition(resumeWork);
+      const { resume } = await api.getWorkResumeQueue(work.id);
+      const start = resume?.tracks[resume.startIndex];
+      if (!resume || !start) throw new Error(t("libraryDetail.savedTrackUnavailable"));
+      if (resume.mediaWorkId !== localDirectoryWork?.id) onShowEdition(resume.mediaWorkId);
       onPlay();
-      player.playQueue(resumeQueue.tracks.map(titled), resumeQueue.locationId, resumeQueue.positionSeconds);
+      player.playQueue(
+        resume.tracks.map((track) => titled(toResolvedPlayerTrack(track, resume.work, coverUrl))),
+        start.locationId,
+        resume.positionSeconds,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, t("libraryDetail.savedPlaybackResumeFailed")));
     } finally {

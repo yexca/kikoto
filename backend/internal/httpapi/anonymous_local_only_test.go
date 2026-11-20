@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -95,6 +96,28 @@ func TestAnonymousVisitorReachesLocalContentOnly(t *testing.T) {
 		for _, location := range item.Locations {
 			if location.LocationType != "local" {
 				t.Fatalf("anonymous work detail lists a %s location", location.LocationType)
+			}
+		}
+	}
+
+	// The queue resolve is a read: it answers a visitor, with local works and
+	// local locations only, so the local work's cached and remote copies never
+	// stand in for its local file.
+	resolveResponse := httptest.NewRecorder()
+	handler.ServeHTTP(resolveResponse, httptest.NewRequest(http.MethodPost, "/api/playback/queue/resolve", strings.NewReader(
+		`{"items":[{"mediaItemId":1,"workId":1,"locationId":3},{"mediaItemId":2,"workId":2,"locationId":4}]}`,
+	)))
+	var resolved playbackQueueResolveResponse
+	if err := json.Unmarshal(resolveResponse.Body.Bytes(), &resolved); err != nil || resolveResponse.Code != http.StatusOK {
+		t.Fatalf("anonymous queue resolve = %d %s", resolveResponse.Code, resolveResponse.Body.String())
+	}
+	if len(resolved.Items) != 2 || resolved.Items[0].Status == playbackQueueItemMissing || resolved.Items[1].Status != playbackQueueItemMissing {
+		t.Fatalf("anonymous queue resolve = %+v, want the local work resolved and the remote-only work missing", resolved.Items)
+	}
+	if track := resolved.Items[0].Track; track != nil {
+		for _, location := range track.Locations {
+			if location.LocationType != "local" {
+				t.Fatalf("anonymous queue resolve lists a %s location", location.LocationType)
 			}
 		}
 	}

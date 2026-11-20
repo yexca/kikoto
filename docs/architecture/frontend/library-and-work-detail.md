@@ -53,7 +53,9 @@ source's actions at every width. The Hero's one primary action
 (`heroPlaybackModel`) follows from the shown directory, the folder routing
 rules, and the saved playback cursor: Resume, Play for the folder the
 Directory opens on (the tracks that folder queues when played from its first
-track), loading, or the reason nothing can play. Beside it sit the quiet Mark,
+track), loading, or the reason nothing can play. Resume plays the queue the
+server builds for the cursor and then loads and shows the cursor's edition
+when it is another one. Beside it sit the quiet Mark,
 rating, and List controls and the Metadata button. The source action list ends
 with the work's local files entries (Manage files, Manage lyrics, Edit display
 names, Translate with AI) while a local source is selected. The List control

@@ -23,6 +23,7 @@ import type {
   LibrarySource,
   MediaFileLocation,
   MediaItem,
+  MediaPlaybackLocation,
   MetadataIssueWork,
   MetadataTag,
   MetadataCircle,
@@ -251,9 +252,34 @@ export function mediaLocationFixture(overrides: Partial<MediaFileLocation> = {})
   };
 }
 
+/**
+ * The playback locations the server lists for an item: its usable locations,
+ * local first, then cached, then remote, with remote audio and video streamed
+ * through the location's own route.
+ */
+export function playbackLocationsFixture(item: Pick<MediaItem, "kind" | "locations">): MediaPlaybackLocation[] {
+  const rank = (locationType: string) => ["local", "cache", "remote_stream"].indexOf(locationType) + 1 || 4;
+  return item.locations
+    .filter((location) => location.availability === "available" || location.availability === "remote")
+    .map((location) => {
+      const raw = location.streamUrl || (location.locationType === "remote_stream" ? location.downloadUrl : "");
+      const remoteMedia = location.locationType === "remote_stream" && (item.kind === "audio" || item.kind === "video");
+      return {
+        locationId: location.id,
+        locationType: location.locationType,
+        streamUrl: raw && remoteMedia ? `/api/media/${location.id}/stream` : raw,
+        sourceId: location.fileSourceId,
+        sourceName: location.fileSourceName,
+        availability: location.availability,
+      };
+    })
+    .filter((location) => location.streamUrl)
+    .sort((left, right) => rank(left.locationType) - rank(right.locationType));
+}
+
 export function mediaItemFixture(overrides: Partial<MediaItem> = {}): MediaItem {
   const id = overrides.id ?? 1;
-  return {
+  const item: MediaItem = {
     id,
     parentId: null,
     kind: "audio",
@@ -267,6 +293,7 @@ export function mediaItemFixture(overrides: Partial<MediaItem> = {}): MediaItem 
     locations: [],
     ...overrides,
   };
+  return { ...item, playbackLocations: overrides.playbackLocations ?? playbackLocationsFixture(item) };
 }
 
 const userPermissions = ["library:read", "playback:use", "favorites:write", "tags:write"];

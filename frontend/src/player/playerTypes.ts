@@ -34,6 +34,8 @@ export type PlayerTrack = {
   lyricsChoices?: LyricsChoice[];
   autoLyricsLocationId?: number | null;
   preferredLyricsMediaItemId?: number | null;
+  /** Whether a lyrics choice is saved for the listener; only a library audio file keeps one. */
+  lyricsPreferencePersistable?: boolean;
   /** The listener's lyrics timing offset in milliseconds; positive shows each line later. */
   lyricsOffsetMs?: number;
   remoteSourceId?: number;

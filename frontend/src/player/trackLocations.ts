@@ -1,44 +1,24 @@
 import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
 import { playbackKeyForLocation } from "./playbackIdentity";
 
-function locationPriority(locationType: string) {
-  switch (locationType) {
-    case "local":
-      return 0;
-    case "cache":
-      return 1;
-    case "remote_stream":
-      return 2;
-    default:
-      return 3;
-  }
-}
-
-export function orderedTrackLocations(track: PlayerTrack | null) {
+/**
+ * The locations a track can play from, in the order the server ranks them
+ * (local, then cached, then remote; see the work media `playbackLocations`).
+ * A track that lists none plays only from its own location.
+ */
+export function orderedTrackLocations(track: PlayerTrack | null): PlayerTrackLocation[] {
   if (!track) return [];
-  const locations = track.locations?.length
-    ? track.locations
-    : [
-        {
-          locationId: track.locationId,
-          locationType: track.locationType,
-          streamUrl: track.streamUrl,
-          sourceId: track.remoteSourceId ?? 0,
-          sourceName: track.locationType,
-          availability: track.availability,
-        },
-      ];
-  return [...locations].sort(
-    (left, right) => locationPriority(left.locationType) - locationPriority(right.locationType),
-  );
-}
-
-export function preferredTrackLocation(track: PlayerTrack | null) {
-  return (
-    orderedTrackLocations(track).find(
-      (location) => location.availability === "available" || location.availability === "remote",
-    ) ?? null
-  );
+  if (track.locations?.length) return track.locations;
+  return [
+    {
+      locationId: track.locationId,
+      locationType: track.locationType,
+      streamUrl: track.streamUrl,
+      sourceId: track.remoteSourceId ?? 0,
+      sourceName: track.locationType,
+      availability: track.availability,
+    },
+  ];
 }
 
 /** Moves the track to a location. The move is automatic, so it drops a location the listener picked. */

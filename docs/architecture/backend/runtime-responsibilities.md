@@ -4,7 +4,8 @@ What the backend process does at runtime, its background workers, and the limits
 
 - Authenticate users and enforce permissions.
 - Enforce the production instance access policy before API handlers, with
-  sign-in required by default and optional anonymous `GET`/`HEAD` access.
+  sign-in required by default and optional anonymous `GET`/`HEAD` access,
+  plus the read-only player queue resolve.
 - Scan local libraries.
 - Scan the independent record library and serve its authenticated video,
   audio, and image routes without coupling it to audio work identity; record

@@ -172,6 +172,9 @@ type mediaItemDetail struct {
 	AssignedLyricsMediaItemID *int64                        `json:"assignedLyricsMediaItemId"`
 	LyricsAssignments         []mediaLyricsAssignmentDetail `json:"lyricsAssignments,omitempty"`
 	Locations                 []fileLocationDetail          `json:"locations"`
+	// PlaybackLocations lists the locations the item can play from now, in
+	// playback priority (see orderedPlaybackLocations).
+	PlaybackLocations []playbackLocation `json:"playbackLocations"`
 	// AILyrics names the models that wrote a lyrics file Kikoto published
 	// from speech recognition or translation.
 	AILyrics *lyricsAIModels `json:"aiLyrics,omitempty"`

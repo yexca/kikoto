@@ -126,6 +126,7 @@ func localMediaLocations(items []mediaItemDetail) {
 			}
 		}
 		items[index].Locations = kept
+		items[index].PlaybackLocations = orderedPlaybackLocations(items[index])
 	}
 }
 

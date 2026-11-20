@@ -1,3 +1,4 @@
+import type { MediaPlaybackLocation } from "@/lib/playbackQueueApi";
 import { deleteJSON, getJSON, getText, postJSON, postJSONBody, putJSONBody, sendJSONBody } from "@/lib/apiTransport";
 
 export type MediaProgressUpdate = {
@@ -36,6 +37,8 @@ export type MediaItem = {
    */
   lyricsAssignments?: MediaLyricsAssignment[];
   locations: MediaFileLocation[];
+  /** The locations the item can play from now, in the server's playback priority. */
+  playbackLocations?: MediaPlaybackLocation[];
   /** The models that wrote a lyrics file Kikoto published from speech recognition or translation. */
   aiLyrics?: LyricsAIModels;
 };

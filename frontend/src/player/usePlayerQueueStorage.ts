@@ -26,7 +26,8 @@ export function useRestoredPlayerQueue(queueStorageKey: string, obsoleteProgress
 }
 
 /**
- * Refreshes a restored queue against the library once after startup. The result
+ * Refreshes a restored queue against the library once after startup, in one
+ * request however long the queue is. The result
  * is dropped if the listener already changed the queue, and the restored item
  * continues its Resume cursor unless the listener has already acted on it.
  */
@@ -43,20 +44,7 @@ export function useRestoredQueueRevalidation(
     const restoredTracks = restored.queue;
     if (restoredTracks.length === 0) return;
     let cancelled = false;
-    void revalidatePersistedQueue(
-      restoredTracks,
-      async (workID) => (await api.getWorkMedia(workID)).mediaItems,
-      async (workID) => {
-        const work = await api.getWorkSummary(workID);
-        return {
-          primaryCode: work.primaryCode,
-          title: work.title,
-          coverUrl: work.coverUrl,
-          circle: work.circle,
-          voiceActors: work.voiceActors,
-        };
-      },
-    ).then((refreshed) => {
+    void revalidatePersistedQueue(restoredTracks, api.resolvePlaybackQueue).then((refreshed) => {
       if (cancelled) return;
       const current = refs.queueRef.current;
       if (

@@ -144,7 +144,8 @@ authentication bootstrap and initial setup, library migration status, and
 runtime-setting endpoints before the frontend
 presents the sign-in page. That unauthenticated runtime response contains only
 the deployment mode and access-policy state, not operational settings. When enabled,
-unauthenticated `GET` and `HEAD` requests may browse and play Library content;
+unauthenticated `GET` and `HEAD` requests, and the read-only player queue
+resolve `POST /api/playback/queue/resolve`, may browse and play Library content;
 state-changing methods still require an authenticated account and permission.
 They reach local content only until the separate **Browse remote sources
 without an account** setting, off by default and audited like the first, is

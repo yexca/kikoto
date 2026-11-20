@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 import type { WorkPreview } from "@/features/work-detail/workDetailShared";
 import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
-import { buildTree, emptyTree, treeStats } from "@/features/work-detail/media/mediaTreeModel";
+import { treeStats } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { openActivityRun, openDetailTagSearch, workHasNoSource } from "@/features/work-detail/workDetailHelpers";
 import { heroPlayback as heroPlaybackFor } from "@/features/work-detail/heroPlaybackModel";
@@ -275,11 +275,6 @@ export function PersistedWorkDetailController({
     canFetchIntoFolder: canEditFolders && auth.hasPermission("remote:fetch"),
   });
   const { localFolders } = files;
-  const playbackTree = useMemo(
-    () =>
-      localDirectoryWork ? buildTree(localDirectoryWork.mediaItems, null, localDirectoryWork.primaryCode) : emptyTree(),
-    [localDirectoryWork],
-  );
   const { cursor: playbackCursor, isLoading: playbackCursorLoading } = useWorkPlaybackCursor(work?.id ?? null);
   const hasResumableCursor = hasResumablePlaybackCursor(playbackCursor);
   const { remote: fetchRemote, code: fetchRemoteCode } = persistedFetchTarget(
@@ -414,13 +409,12 @@ export function PersistedWorkDetailController({
     work,
     localDirectoryWork,
     selectedRemoteDetail,
-    playbackTree,
     playbackCursor,
     hasResumableCursor,
     displayTitle: playbackDisplayTitle,
     coverUrl: playbackCoverUrl,
     onPlay,
-    onShowEdition: editions.showEdition,
+    onShowEdition: (editionWorkId) => void editions.showEditionById(editionWorkId),
   });
 
   /** Indexes the folder Manage files edits again, for files changed outside Kikoto. */
