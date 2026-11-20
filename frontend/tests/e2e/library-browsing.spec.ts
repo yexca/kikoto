@@ -158,12 +158,14 @@ test("library keeps its page across a reload", async ({ page }) => {
   );
   await page.goto("/");
   await expect(page.getByText("Mobile work 2", { exact: true })).toBeVisible();
+  // The phone header states the page as page/total after the result count.
+  const headerPage = page.locator("header").getByText("2/2", { exact: true });
   await page.getByRole("button", { name: "Next page" }).last().click();
-  await expect(page.getByText(/^Page 2 of 2/).first()).toBeVisible();
+  await expect(headerPage).toBeVisible();
 
   requestedPages.length = 0;
   await page.reload();
-  await expect(page.getByText(/^Page 2 of 2/).first()).toBeVisible();
+  await expect(headerPage).toBeVisible();
   await expect(page.getByText("Mobile work 2", { exact: true })).toBeVisible();
   expect(requestedPages).toEqual(["2"]);
 });
@@ -267,24 +269,26 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await expect(popover).toBeVisible();
 });
 
-test("the phone toolbar fits the source row and the order row inside a 360px screen", async ({ page }) => {
+test("the phone header holds the source menu and the toolbar fits one row inside a 360px screen", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await mockApplication(page);
   await page.goto("/");
   await expect(page.getByTestId("work-card").first()).toBeVisible();
 
-  // The source menu shares its row with Search, Recently played, and View; the order and Mark filter sit below.
+  // The source menu and the result count sit in the app header; the order,
+  // Mark filter, Search, Recently played, and View share one row below.
+  const header = page.locator("header").first();
+  const source = header.getByRole("button", { name: /^Source:/ });
+  const count = header.getByText(/ works$/);
   const rows = [
-    [
-      page.getByRole("button", { name: /^Source:/ }),
-      page.getByRole("button", { name: "Search", exact: true }),
-      page.getByRole("button", { name: "Recently played", exact: true }),
-      libraryViewButton(page),
-    ],
+    [header.getByAltText("Kikoto"), source, count],
     [
       librarySortButton(page),
       page.getByRole("button", { name: "Refresh recommendations", exact: true }),
       page.getByRole("button", { name: "Mark filter", exact: true }),
+      page.getByRole("button", { name: "Search", exact: true }),
+      page.getByRole("button", { name: "Recently played", exact: true }),
+      libraryViewButton(page),
     ],
   ];
   const middle = (box: { y: number; height: number }) => box.y + box.height / 2;

@@ -11,7 +11,7 @@ import { cn } from "@/lib/tailwindClassNames";
 
 import type { useLibrarySourceVisibility } from "./useLibrarySourceVisibility";
 
-type LibrarySourceProps = {
+export type LibrarySourceProps = {
   active: "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
@@ -75,9 +75,9 @@ export function LibraryPrimaryTabs({
 }
 
 /**
- * The phone source switcher: one button that names the current source and
- * opens every source in a menu, so switching takes no toolbar row and needs
- * no visibility settings.
+ * The phone source switcher, shown in the app header beside the app icon: one
+ * button that names the current source and opens every source in a menu, so
+ * switching takes no toolbar row and needs no visibility settings.
  */
 export function LibrarySourceMenu({ active, activeSourceId, sources, onChange, onSourceChange }: LibrarySourceProps) {
   const { t } = useTranslation();
@@ -118,21 +118,16 @@ export function LibrarySourceMenu({ active, activeSourceId, sources, onChange, o
   const current = entries.find((entry) => entry.selected) ?? entries[0];
 
   return (
-    <div className="relative shrink-0" ref={anchorRef}>
+    <div className="relative min-w-0 max-w-[9rem]" ref={anchorRef}>
       <button
         type="button"
-        className={cn(
-          "inline-flex h-[var(--control-height)] max-w-[8.5rem] items-center gap-1.5 rounded-[var(--control-radius)] border bg-card pl-3.5 pr-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>svg]:shrink-0",
-          open && "border-primary/50",
-        )}
+        className="inline-flex h-9 max-w-full min-w-0 items-center gap-1 rounded-[var(--control-radius)] px-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted [&>svg]:shrink-0"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={t("library.sourceMenuLabel", { source: current.label })}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="text-muted-foreground" aria-hidden="true">
-          {current.icon}
-        </span>
+        {/* The header names the source without its icon, which the menu entries keep. */}
         <span className="min-w-0 truncate">{current.label}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
       </button>
@@ -141,7 +136,7 @@ export function LibrarySourceMenu({ active, activeSourceId, sources, onChange, o
         anchorRef={anchorRef}
         onOpenChange={setOpen}
         bottomCollisionPadding={168}
-        className="w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="w-max min-w-40 max-w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div role="menu" aria-label={t("library.sourceMenu")}>
           {entries.map((entry) => (

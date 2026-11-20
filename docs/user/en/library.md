@@ -135,12 +135,12 @@ The Library is the main browsing surface for works.
   source. The panel stays open while you change several settings.
 - On wide screens the source tabs start with **Source visibility**, which
   sets whether each source's tab shows automatically, always, or never.
-- On phones the Library leads with a source button that names the current
-  source and opens every source in a menu, the result count and page, and
-  **Search**, **Recently played**, and **View**, which opens its panel as a
-  sheet. The row below holds the sort button and **Mark filter**. **Search**
-  opens the search field above both rows; the field stays open while it holds
-  a query or a search condition, and closing it clears the search.
+- On phones the header holds, beside the app icon, a source button that names
+  the current source and opens every source in a menu, followed by the result
+  count and page. One toolbar row holds the sort button, **Mark filter**, **Search**,
+  **Recently played**, and **View**, which opens its panel as a sheet.
+  **Search** opens the search field above the row; the field stays open while
+  it holds a query or a search condition, and closing it clears the search.
 - Display options start with **Cards**, a choice of **Full**, **Simple**,
   **Compact**, and **Mini** that is stored with the column settings,
   separately for phones and wide screens. **Full** is the default. Automatic
@@ -171,7 +171,7 @@ The Library is the main browsing surface for works.
   48, or 96 works per page. Wide screens show a compact top pagination with
   result context and page navigation when the results span more than one
   page, and only the result count when they fit one page. Phones show the result count and the current
-  page as a caption above the works and change pages from the bottom
+  page after the source button in the header and change pages from the bottom
   pagination. The bottom pagination lists the first, last, current, and
   neighboring pages; an ellipsis between them opens a field that goes to a
   typed page number.

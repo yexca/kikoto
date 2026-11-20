@@ -2,22 +2,25 @@ import { Plus, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeaderTitle } from "@/app/pageHeader";
 import { SearchToggle, useCollapsibleSearch } from "@/components/collection/CollapsibleSearch";
 import { numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { cn } from "@/lib/tailwindClassNames";
 
+import { LibrarySourceMenu, type LibrarySourceProps } from "./LibraryPrimaryTabs";
+
 /**
- * The phone Library header: the source menu with the result caption, then
- * Search, Recently played, and View as icons on one row; below it, what shapes
- * the results, the labeled order with its reshuffle and the Quick mark filter.
- * The search field opens from its icon above both rows and stays open while
- * the query holds text or search conditions. The order's name truncates
- * before its row overflows.
+ * The phone Library controls. The source menu and, after it, the result count
+ * and page sit in the app header beside the app icon; the toolbar keeps one
+ * row: the labeled order with its reshuffle and the Quick mark filter, then
+ * Search, Recently played, and View as icons. The search field opens from its
+ * icon above the row and stays open while the query holds text or search
+ * conditions. The order's name truncates before the row overflows.
  */
 export function MobileLibraryToolbar({
-  sourceMenu,
+  source,
   searchQuery,
   onSearchChange,
   onAddClause,
@@ -27,13 +30,13 @@ export function MobileLibraryToolbar({
   resultControls,
   viewControls,
 }: {
-  sourceMenu: ReactNode;
+  source: LibrarySourceProps;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onAddClause: (anchor: HTMLElement) => void;
   addClauseOpen: boolean;
   resultCount: number | null;
-  /** Shown under the count when the results span more than one page. */
+  /** Shown after the count when the results span more than one page. */
   resultPage: { page: number; totalPages: number };
   /** The order and, where the view offers it, the Quick mark filter. */
   resultControls: ReactNode;
@@ -44,15 +47,30 @@ export function MobileLibraryToolbar({
   const { resolvedLocale } = useLocale();
   const search = useCollapsibleSearch(searchQuery, onSearchChange);
   const format = numberFormat(resolvedLocale);
-  const pageText =
-    resultPage.totalPages > 1
-      ? t("library.resultPage", {
-          page: format.format(resultPage.page),
-          totalPages: format.format(resultPage.totalPages),
-        })
-      : "";
+  const paged = resultPage.totalPages > 1;
+  const page = format.format(resultPage.page);
+  const totalPages = format.format(resultPage.totalPages);
   return (
     <div className="space-y-3" data-toast-avoid>
+      <PageHeaderTitle>
+        <LibrarySourceMenu {...source} />
+        {/* The source name truncates before the count and page do. */}
+        <p className="flex shrink-0 flex-col text-xs leading-4 text-muted-foreground">
+          {resultCount !== null && (
+            <>
+              <span className="truncate">{t("library.resultCount", { value: format.format(resultCount) })}</span>
+              {paged && (
+                // The header shows the short page/total; assistive tech reads the full phrase.
+                // The span is positioned so the screen-reader text cannot escape its clipping.
+                <span className="relative truncate tabular-nums">
+                  <span aria-hidden="true">{`${page}/${totalPages}`}</span>
+                  <span className="sr-only">{t("library.resultPage", { page, totalPages })}</span>
+                </span>
+              )}
+            </>
+          )}
+        </p>
+      </PageHeaderTitle>
       {search.open && (
         <div
           ref={search.fieldRef}
@@ -94,25 +112,13 @@ export function MobileLibraryToolbar({
           </button>
         </div>
       )}
-      <div className="flex min-w-0 items-center gap-2">
-        {sourceMenu}
-        {/* The caption shares the source row; a long page count gives way before the icons. */}
-        <p className="flex min-w-0 flex-1 flex-col text-xs leading-4 text-muted-foreground">
-          {resultCount !== null && (
-            <>
-              <span className="truncate font-semibold text-foreground">
-                {t("library.resultCount", { value: format.format(resultCount) })}
-              </span>
-              {pageText && <span className="truncate tabular-nums">{pageText}</span>}
-            </>
-          )}
-        </p>
+      <div className="flex min-h-8 min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">{resultControls}</div>
         <div className="flex shrink-0 items-center gap-2">
           <SearchToggle open={search.open} onToggle={search.toggle} />
           {viewControls}
         </div>
       </div>
-      <div className="flex min-h-8 min-w-0 items-center gap-2">{resultControls}</div>
     </div>
   );
 }

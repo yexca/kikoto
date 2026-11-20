@@ -79,7 +79,7 @@ import {
   writeLibraryHistoryBrowseState,
 } from "@/pages/library/libraryBrowseModel";
 import { LibraryDesktopToolbar } from "@/pages/library/LibraryDesktopToolbar";
-import { LibraryPrimaryTabs, LibrarySourceMenu } from "@/pages/library/LibraryPrimaryTabs";
+import { LibraryPrimaryTabs } from "@/pages/library/LibraryPrimaryTabs";
 import { LibraryMarkFilter } from "@/pages/library/LibraryMarkFilter";
 import { LibrarySortButton } from "@/pages/library/LibrarySortButton";
 import { LibraryViewMenu } from "@/pages/library/LibraryViewMenu";
@@ -773,7 +773,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       <MetadataOnboardingNotice active={active && showBrowse} />
       {mobileNavigationLayout ? (
         <MobileLibraryToolbar
-          sourceMenu={<LibrarySourceMenu {...primaryTabs} />}
+          source={primaryTabs}
           searchQuery={searchQuery}
           onSearchChange={changeSearchQuery}
           onAddClause={clauseEditor.openAdd}

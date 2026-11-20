@@ -23,7 +23,8 @@ The two toolbars hold the source switcher, the search field, and the controls
 the page hands them: the sort button with its reshuffle beside it, the mark
 filter on local and tracked works, the recently played picker, and View. The
 wide source tabs lead with the shared source visibility picker; the phone
-source menu lists every source. View is a popover on wide layouts and a sheet
+source menu, which the phone toolbar renders with the result caption in the
+app header title slot from `app/pageHeader`, lists every source. View is a popover on wide layouts and a sheet
 on phones, holding the shared work collection display options, the
 recommendation score switch, and Select works on a remote source. The sort
 button and the mark filter button each name their own setting, so no other

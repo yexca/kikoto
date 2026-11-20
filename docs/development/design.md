@@ -504,12 +504,12 @@ Mobile:
   controls and focuses it; the field stays open while it holds a query,
   including one restored from history or set by a link, and closing it clears
   the query so a hidden field never narrows the results.
-- The phone Library toolbar puts the source menu, the result count and page,
-  and Search, Recently played, and View as icons on one row. The row below
-  holds what shapes the results, the labeled order with its reshuffle and the
-  Quick mark filter; the order's name truncates before the row overflows a
-  360px screen. Search conditions are part of the query, so the field stays
-  open while any is set.
+- The phone Library puts its source menu and, after it, the result count and
+  page in the app header beside the app icon, so the toolbar is one row: the
+  labeled order with its reshuffle and the Quick mark filter, then Search,
+  Recently played, and View as icons. The order's name truncates
+  before the row overflows a 360px screen. Search conditions are part of the
+  query, so the field stays open while any is set.
 - The phone Circles and Voice Actors lists put the sideways-scrolling view
   chips and, at the row's end, Search and page size on one row.
 - The phone Favorites shelf puts, below its shelf row, whose selected chip

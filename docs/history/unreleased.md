@@ -402,8 +402,11 @@
 - On a phone, Library, Circles, Voice Actors, and the works of a circle or
   voice actor open search from a **Search** icon, as Favorites does, so the
   search field no longer takes a row of its own. The field stays open while it
-  holds a search, and closing it clears the search. Library puts the result
-  count beside the source button.
+  holds a search, and closing it clears the search.
+- On a phone, Library moves its source button and the result count and page
+  into the header beside the app icon, so the order,
+  **Mark filter**, **Search**, **Recently played**, and **View** share one
+  toolbar row.
 - Circle and voice actor pages open with a compact summary like the work
   detail Hero: no frame, the catalog counts on one line above the name after
   a circle's code (zero counts left out, and a circle's size left to its
@@ -420,8 +423,7 @@
   refresh a catalog, and so do sync state and failed sources.
 - The circle and voice actor works toolbar is the search field, the order, the
   availability filter, and one **View** button holding the display options
-  and **Select works**; on a phone the search field stays on show and **View**
-  opens as a sheet. A caption before the order states the matching works and
+  and **Select works**; on a phone **View** opens as a sheet. A caption before the order states the matching works and
   the page; only the bottom page bar turns pages.
 - A work video opens in the full-screen player that Record uses: its header
   shows the video's place among the folder's videos, the **Audio track** menu,

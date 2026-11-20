@@ -40,7 +40,7 @@ import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
-import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
+import { PageActiveProvider, PageHeaderProvider, PageHeaderTitleSlot, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
@@ -841,11 +841,12 @@ function AppHeaderTitle({ title, showMobileTitle }: { title: string; showMobileT
     );
   }
   return (
-    <div className="flex min-w-0 items-center">
-      {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-7 w-7 lg:hidden" />}
+    <div className="flex min-w-0 items-center gap-1.5">
+      {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-7 w-7 shrink-0 lg:hidden" />}
       <h1 className={cx("truncate text-base font-semibold lg:text-2xl", !showMobileTitle && "hidden lg:block")}>
         {title}
       </h1>
+      <PageHeaderTitleSlot className="flex min-w-0 items-center gap-1 empty:hidden lg:hidden" />
     </div>
   );
 }
