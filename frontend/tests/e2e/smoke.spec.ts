@@ -90,9 +90,9 @@ test("@smoke renders the anonymous library shell", async ({ page }) => {
   const accountSheet = page.getByRole("dialog", { name: "Account" });
   await expect(accountSheet).toBeVisible();
   await expect(accountSheet.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
-  // Appearance is a header control of its own, not a view of the account panel.
-  await expect(accountSheet.getByRole("button", { name: /^Appearance/ })).toHaveCount(0);
-  await expect(page.locator("header").getByRole("button", { name: "Open appearance settings" })).toBeVisible();
+  // On phones Appearance is a view of the account panel instead of a header control.
+  await expect(accountSheet.getByRole("button", { name: /^Appearance/ })).toBeVisible();
+  await expect(page.locator("header").getByRole("button", { name: "Open appearance settings" })).toHaveCount(0);
   // Anonymous visitors choose the UI language here but have no personal metadata language.
   await accountSheet.getByRole("button", { name: /^Language/ }).click();
   await expect(accountSheet.getByRole("combobox", { name: "UI language" })).toBeVisible();

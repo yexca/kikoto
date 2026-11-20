@@ -370,15 +370,19 @@ destinations and no administration controls:
   the System page, shown to administrators and, read-only, to Demo. Deleting
   local work folders, cache files, and database records is the Cleanup page, a
   page of destructive operations apart from the settings.
-- The account panel behind the avatar holds the languages and
-  authentication. Where the sidebar is shown, it also holds Discover, Insights,
-  and Tags as shortcut tiles that repeat the sidebar's entries. A layout
-  without the sidebar lists the sidebar's pages there instead, About included,
-  with the Manage pages behind one entry, and no tile.
+- The account panel behind the avatar opens with a compact profile (the
+  handle only where it differs from the name) and closes with one row of About
+  and Sign out. Pages are tiles: where the sidebar is shown, Discover,
+  Insights, and Tags repeat the sidebar's entries; a layout without the
+  sidebar tiles the sidebar's pages the bottom navigation does not carry
+  instead. The account's own entries form one list between them: Settings and
+  the Manage group behind one entry below the sidebar breakpoint, Appearance on
+  phones, Language, and the server connection in the native shell.
 - The header shows the page title without a description. Its tray holds Quick
   actions, Notifications, and Appearance, and the avatar carries no role text.
-- A phone header holds at most three actions: Notifications, Appearance, and
-  the avatar.
+- A phone header holds two actions, Notifications and the avatar, so a page
+  title such as the Library source menu keeps its width; Quick actions and
+  Appearance open from the account panel.
 - A new destination or shell action joins an existing container (a sidebar
   group, the account panel, or Quick actions) rather than adding a persistent
   button, and Quick actions reaches every destination the viewer can open.

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Clipboard, Languages, LogIn, LogOut, RotateCcw, Server, Zap } from "lucide-react";
+import { Clipboard, Languages, LogIn, LogOut, Palette, RotateCcw, Server, Zap, type LucideIcon } from "lucide-react";
 
 import { ActionItem, MenuSection, PopoverHeader } from "@/app/header/HeaderPopover";
 import {
@@ -41,15 +41,20 @@ const placementClass: Record<AccountDestination["placement"], string | undefined
 
 const isShortcut = (item: NavigationItem) => (accountShortcutIds as readonly string[]).includes(item.id);
 
-type AccountView = "main" | "language" | CollapsibleNavigationGroup;
+type AccountView = "main" | "language" | "appearance" | "server" | CollapsibleNavigationGroup;
+
+// Settings concerns the account itself, so it stays a list entry beside Language rather than a page tile.
+const listedDestinationIds: readonly string[] = ["settings"];
 
 /**
  * The account surface behind the header avatar, or behind Sign in for anonymous
- * visitors: profile, the Language view, and authentication. Where the sidebar
- * is shown, Discover, Insights, and Tags are also shortcut tiles under the
- * profile. A layout without the sidebar lists the sidebar's pages that the
- * bottom navigation does not carry, with the Manage group behind one entry. On phones the panel also opens Quick actions, and in the native shell
- * it holds the server connection.
+ * visitors: a one-line profile, page tiles, the account's own entries, and a
+ * closing row with About and Sign out. Where the sidebar is shown, Discover,
+ * Insights, and Tags are the tiles. A layout without the sidebar tiles the
+ * sidebar's pages that the bottom navigation does not carry, and lists
+ * Settings with the Manage group behind one entry. On phones the panel also
+ * opens Quick actions and Appearance, which the header has no button for, and
+ * in the native shell it holds the server connection behind one entry.
  */
 export function AccountPanel({
   user,
@@ -59,6 +64,7 @@ export function AccountPanel({
   currentPage,
   onOpenPage,
   onOpenQuickActions,
+  appearance,
   onLogout,
   onOpenLogin,
 }: {
@@ -71,6 +77,8 @@ export function AccountPanel({
   onOpenPage: (id: PageID) => void;
   /** Present where the header has no Quick actions button of its own. */
   onOpenQuickActions?: () => void;
+  /** Present where the header has no Appearance button of its own. */
+  appearance?: { detail: string; content: ReactNode };
   onLogout: () => void;
   onOpenLogin: () => void;
 }) {
@@ -104,10 +112,34 @@ export function AccountPanel({
   });
   const groupDestinations = (group: NavigationItem["group"]) =>
     destinations.filter((destination) => destination.item.group === group);
+  // Below the sidebar breakpoint the pages the bottom navigation does not carry are tiles, except the listed ones.
+  const pageTiles = destinations.filter(
+    ({ item, placement }) =>
+      placement !== "wide" &&
+      item.group !== "app" &&
+      item.group !== "manage" &&
+      !listedDestinationIds.includes(item.id),
+  );
+  const listedDestinations = destinations.filter(({ item }) => listedDestinationIds.includes(item.id));
+  const aboutDestinations = groupDestinations("app");
   if (view === "language") {
     return (
       <NestedView title={t("account.language")} onBack={back("language")}>
         <LanguageControls {...language} />
+      </NestedView>
+    );
+  }
+  if (view === "appearance" && appearance) {
+    return (
+      <NestedView title={t("appearance.title")} subtitle={t("appearance.subtitle")} onBack={back("appearance")}>
+        {appearance.content}
+      </NestedView>
+    );
+  }
+  if (view === "server" && server) {
+    return (
+      <NestedView title={t("account.server")} onBack={back("server")}>
+        <ServerSection server={server} heading={false} />
       </NestedView>
     );
   }
@@ -139,46 +171,46 @@ export function AccountPanel({
 
       {shortcuts.length > 0 && (
         <div className="grid auto-cols-fr grid-flow-col gap-1.5 border-b p-2 max-lg:hidden">
-          {shortcuts.map((item) => {
-            const current = currentPage === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={cn(
-                  "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/60 px-1 py-2.5 text-xs font-medium text-foreground transition-[background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100",
-                  current && "bg-primary/10 text-primary hover:bg-primary/15",
-                )}
-                aria-current={current ? "page" : undefined}
-                onClick={() => onOpenPage(item.id)}
-              >
-                <item.icon
-                  className={cn("h-5 w-5", current ? "text-primary" : "text-muted-foreground")}
-                  aria-hidden="true"
-                />
-                <span className="w-full truncate text-center">{navigationLabel(item, t)}</span>
-              </button>
-            );
-          })}
+          {shortcuts.map((item) => (
+            <DestinationTile
+              key={item.id}
+              icon={item.icon}
+              label={navigationLabel(item, t)}
+              current={currentPage === item.id}
+              onClick={() => onOpenPage(item.id)}
+            />
+          ))}
         </div>
       )}
 
-      {/* Where the sidebar is shown it offers every page, so this list serves only the layouts without it. */}
-      <MenuSection className="lg:hidden">
-        {onOpenQuickActions && (
-          <ActionItem
-            icon={<Zap className="h-4 w-4" />}
-            label={t("header.quickActions")}
-            className="sm:hidden"
-            onClick={onOpenQuickActions}
-          />
-        )}
-        {groupDestinations("browse").map(destinationItem)}
-        {groupDestinations("explore").map(destinationItem)}
+      {/* Where the sidebar is shown it offers every page, so these tiles serve only the layouts without it. */}
+      {(pageTiles.length > 0 || onOpenQuickActions) && (
+        <div className="grid grid-cols-3 gap-1.5 border-b p-2 lg:hidden">
+          {pageTiles.map(({ item }) => (
+            <DestinationTile
+              key={item.id}
+              icon={item.icon}
+              label={navigationLabel(item, t)}
+              current={currentPage === item.id}
+              onClick={() => onOpenPage(item.id)}
+            />
+          ))}
+          {onOpenQuickActions && (
+            <DestinationTile
+              icon={Zap}
+              label={t("header.quickActions")}
+              className="sm:hidden"
+              onClick={onOpenQuickActions}
+            />
+          )}
+        </div>
+      )}
+
+      <MenuSection>
+        {listedDestinations.map(destinationItem)}
         {navigationGroups.map((group) => {
           const entries = groupDestinations(group.id);
-          if (entries.length === 0) return null;
-          if (group.accountPanel === "inline") return entries.map(destinationItem);
+          if (group.accountPanel === "inline" || entries.length === 0) return null;
           // A nested group is one entry that names the current page while it holds it.
           const current = entries.find((entry) => entry.item.id === currentPage);
           return (
@@ -195,10 +227,16 @@ export function AccountPanel({
             />
           );
         })}
-        {groupDestinations("app").map(destinationItem)}
-      </MenuSection>
-
-      <MenuSection className="border-t lg:border-t-0">
+        {appearance && (
+          <ActionItem
+            icon={<Palette className="h-4 w-4" />}
+            label={t("appearance.title")}
+            detail={appearance.detail}
+            navigates
+            id={`${viewIds}-appearance`}
+            onClick={() => setView("appearance")}
+          />
+        )}
         <ActionItem
           icon={<Languages className="h-4 w-4" />}
           label={t("account.language")}
@@ -207,20 +245,56 @@ export function AccountPanel({
           id={`${viewIds}-language`}
           onClick={() => setView("language")}
         />
+        {server && (
+          <ActionItem
+            icon={
+              <span className="relative">
+                <Server className="h-4 w-4" />
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-card",
+                    connectionTone[server.connection.kind] ?? "bg-muted-foreground",
+                  )}
+                />
+              </span>
+            }
+            label={t("account.server")}
+            detail={getStoredServerURL() || t("common.notConfigured")}
+            navigates
+            id={`${viewIds}-server`}
+            onClick={() => setView("server")}
+          />
+        )}
       </MenuSection>
 
-      {server && <ServerSection server={server} className="border-t" />}
-
-      {user &&
-        (user.devMode || user.demoMode ? (
-          <div className="border-t px-3 py-2.5 text-xs text-muted-foreground">
-            {user.demoMode ? t("account.demoSessionReadOnly") : t("account.devSessionNoSignOut")}
-          </div>
-        ) : (
-          <MenuSection className="border-t">
-            <ActionItem icon={<LogOut className="h-4 w-4" />} label={t("account.signOut")} onClick={onLogout} />
-          </MenuSection>
-        ))}
+      {(aboutDestinations.length > 0 || user) && (
+        <MenuSection className={cn("flex items-center gap-1 border-t", !user && "lg:hidden")}>
+          {aboutDestinations.map(({ item, placement }) => (
+            <ActionItem
+              key={item.id}
+              icon={<item.icon className="h-4 w-4" />}
+              label={navigationLabel(item, t)}
+              current={currentPage === item.id}
+              className={cn("w-auto min-w-0 flex-1", placementClass[placement])}
+              onClick={() => onOpenPage(item.id)}
+            />
+          ))}
+          {user &&
+            (user.devMode || user.demoMode ? (
+              <p className="min-w-0 flex-1 px-2 text-xs text-muted-foreground">
+                {user.demoMode ? t("account.demoSessionReadOnly") : t("account.devSessionNoSignOut")}
+              </p>
+            ) : (
+              <ActionItem
+                icon={<LogOut className="h-4 w-4" />}
+                label={t("account.signOut")}
+                className="w-auto min-w-0 flex-1"
+                onClick={onLogout}
+              />
+            ))}
+        </MenuSection>
+      )}
     </MainView>
   );
 }
@@ -267,31 +341,64 @@ function NestedView({
   );
 }
 
+/** The signed-in user on one compact block: the handle shows only where it differs from the name. */
 function ProfileHeader({ user }: { user: CurrentUser }) {
   const { t } = useTranslation();
+  const name = userDisplayName(user);
   return (
-    <div className="flex items-center gap-3 border-b p-3">
-      <UserAvatar user={user} className="h-11 w-11 text-base" />
+    <div className="flex items-center gap-2.5 border-b px-3 py-2.5">
+      <UserAvatar user={user} className="h-9 w-9 shrink-0 text-sm" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold">{userDisplayName(user)}</div>
-        <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          <Badge variant="outline" className="px-1.5 py-0 text-3xs">
-            {t(`account.roles.${user.role}`, { defaultValue: user.role })}
-          </Badge>
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <span className="truncate text-sm font-semibold">{name}</span>
+          {user.username !== name && <span className="truncate text-xs text-muted-foreground">@{user.username}</span>}
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="truncate">{t(`account.roles.${user.role}`, { defaultValue: user.role })}</span>
           {user.devMode && (
-            <Badge variant="warning" className="px-1.5 py-0 text-3xs">
+            <Badge variant="warning" className="shrink-0 px-1.5 py-0 text-3xs">
               {t("account.devMode")}
             </Badge>
           )}
           {user.demoMode && (
-            <Badge variant="secondary" className="px-1.5 py-0 text-3xs">
+            <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-3xs">
               {t("account.demoMode")}
             </Badge>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** A page tile: its icon over its name, primary while it is the page on screen. */
+function DestinationTile({
+  icon: Icon,
+  label,
+  current = false,
+  className,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  current?: boolean;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/60 px-1 py-2.5 text-xs font-medium text-foreground transition-[background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100",
+        current && "bg-primary/10 text-primary hover:bg-primary/15",
+        className,
+      )}
+      aria-current={current ? "page" : undefined}
+      onClick={onClick}
+    >
+      <Icon className={cn("h-5 w-5", current ? "text-primary" : "text-muted-foreground")} aria-hidden="true" />
+      <span className="w-full truncate text-center">{label}</span>
+    </button>
   );
 }
 
@@ -306,12 +413,21 @@ const connectionTone: Record<string, string> = {
 };
 
 /** Native-shell server details and recovery actions. */
-export function ServerSection({ server, className }: { server: ServerConnection; className?: string }) {
+export function ServerSection({
+  server,
+  heading = true,
+  className,
+}: {
+  server: ServerConnection;
+  /** False inside a view whose header already names the server. */
+  heading?: boolean;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const host = getStoredServerURL() || t("common.notConfigured");
   const message = server.status || server.connection.message;
   return (
-    <MenuSection label={t("account.server")} className={className}>
+    <MenuSection label={heading ? t("account.server") : undefined} className={className}>
       <div className="mx-1 mb-1 rounded-md border bg-muted/60 px-2.5 py-2 text-xs">
         <div className="flex min-w-0 items-center gap-2">
           <span

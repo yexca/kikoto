@@ -1689,7 +1689,7 @@ test("workflow metadata loads as one snapshot without an interim empty panel", a
   await expect(page.getByRole("status", { name: "Loading workflow data" })).toHaveCount(0);
 });
 
-test("mobile header keeps Notifications, Appearance, and the account panel, which holds the rest", async ({ page }) => {
+test("mobile header keeps Notifications and the account panel, which holds the rest", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkflows(page);
   await page.goto("/workflows");
@@ -1697,11 +1697,9 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
   await expect(page.getByRole("button", { name: "Notifications", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Quick actions" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open appearance settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open appearance settings" })).toHaveCount(0);
 
-  const headerActions = page
-    .locator("header")
-    .getByRole("button", { name: /^(Notifications|Open appearance settings|Account menu)$/ });
+  const headerActions = page.locator("header").getByRole("button", { name: /^(Notifications|Account menu)$/ });
   const actionMetrics = await headerActions.evaluateAll((elements) =>
     elements.map((element) => {
       const rect = element.getBoundingClientRect();
@@ -1714,13 +1712,13 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
       .slice()
       .sort((left, right) => left.left - right.left)
       .map((metric) => metric.label),
-  ).toEqual(["Notifications", "Open appearance settings", "Account menu"]);
+  ).toEqual(["Notifications", "Account menu"]);
 
   await page.getByRole("button", { name: "Account menu" }).click();
   const accountPopover = page.getByRole("dialog", { name: "Account" });
   await expect(accountPopover).toBeVisible();
   expect(await accountPopover.evaluate((element) => getComputedStyle(element).zIndex)).toBe("50");
-  // The account panel lists the pages the bottom navigation does not carry.
+  // The account panel tiles the pages the bottom navigation does not carry and lists the account's own entries.
   await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
   await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
@@ -1730,7 +1728,14 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
   for (const name of ["Library", "Favorites", "Circles", "Voice Actors", "Workflows", "Users"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
-  await expect(accountPopover.getByRole("button", { name: /^Appearance/ })).toHaveCount(0);
+  await expect(accountPopover.getByRole("button", { name: /^Appearance/ })).toBeVisible();
+  // About shares the closing row with Sign out, or here with the note of a session that cannot sign out.
+  const [aboutBox, noteBox] = await Promise.all([
+    accountPopover.getByRole("button", { name: "About", exact: true }).boundingBox(),
+    accountPopover.getByText("Dev mode session does not require sign out.", { exact: true }).boundingBox(),
+  ]);
+  expect(Math.abs(aboutBox!.y + aboutBox!.height / 2 - (noteBox!.y + noteBox!.height / 2))).toBeLessThan(2);
+  expect(aboutBox!.x + aboutBox!.width).toBeLessThanOrEqual(noteBox!.x);
 
   // The Manage pages sit behind one entry, which names the current page while it is one of them.
   const manageEntry = accountPopover.getByRole("button", { name: /^Manage/ });
@@ -1779,10 +1784,9 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
   await page.keyboard.press("Escape");
   await expect(accountPopover).toHaveCount(0);
 
-  // Appearance opens from its own header control.
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
-  await expect(appearancePopover.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  // Appearance opens as a view of the account panel on phones.
+  const appearancePopover = await openAppearance(page);
+  await expect(appearancePopover.getByRole("button", { name: "Back", exact: true })).toBeFocused();
   await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
 
   const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
@@ -1819,12 +1823,23 @@ test("mobile header keeps Notifications, Appearance, and the account panel, whic
   await expect(page).toHaveURL(/\/workflows$/);
 });
 
-/** Opens the Appearance popover from its header control. */
+/**
+ * Opens Appearance: its own header control on wider screens, a view of the
+ * account panel on phones. Returns the surface that holds the controls.
+ */
 async function openAppearance(page: Page) {
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const appearance = page.getByRole("dialog", { name: "Appearance" });
-  await expect(appearance.getByText("Mode, style, and color", { exact: true })).toBeVisible();
-  return appearance;
+  const headerControl = page.getByRole("button", { name: "Open appearance settings" });
+  if (await headerControl.isVisible()) {
+    await headerControl.click();
+    const appearance = page.getByRole("dialog", { name: "Appearance" });
+    await expect(appearance.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+    return appearance;
+  }
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const account = page.getByRole("dialog", { name: "Account" });
+  await account.getByRole("button", { name: /^Appearance/ }).click();
+  await expect(account.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  return account;
 }
 
 test("opening a header floating select keeps fixed mobile surfaces stable", async ({ page }) => {

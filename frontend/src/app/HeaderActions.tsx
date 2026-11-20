@@ -64,8 +64,8 @@ const appleShortcuts = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.tes
 const commandShortcutLabel = appleShortcuts ? "⌘K" : "Ctrl K";
 const commandShortcutKeys = appleShortcuts ? "Meta+K" : "Control+K";
 
-// Phones show Notifications, Appearance, and the account avatar; the account
-// panel opens Quick actions there. Wider screens group Quick actions,
+// Phones show Notifications and the account avatar; the account panel opens
+// Quick actions and Appearance there. Wider screens group Quick actions,
 // Notifications, and Appearance in a tray before the avatar. Quick actions stays
 // an icon so it is not mistaken for the library search field. Languages and the
 // native server connection live in the account panel on every screen size.
@@ -174,8 +174,20 @@ export function HeaderActions({
     if (open) server.reset();
   };
 
-  // One panel serves both triggers; `close` belongs to the popover it is in.
-  const accountPanel = (close: () => void, quickActions: boolean) => (
+  const appearanceControls = (
+    <AppearanceControls
+      mode={themeMode}
+      preset={themePreset}
+      palette={themePalette}
+      onModeChange={setThemeMode}
+      onPresetChange={setThemePreset}
+      onPaletteChange={setThemePalette}
+    />
+  );
+
+  // One panel serves both triggers; `close` belongs to the popover it is in. The phone
+  // panel also holds Quick actions and Appearance, which its header has no buttons for.
+  const accountPanel = (close: () => void, phone: boolean) => (
     <AccountPanel
       user={user}
       language={language}
@@ -187,13 +199,14 @@ export function HeaderActions({
         onOpenPage(id);
       }}
       onOpenQuickActions={
-        quickActions
+        phone
           ? () => {
               close();
               onOpenCommandPalette();
             }
           : undefined
       }
+      appearance={phone ? { detail: t(`appearance.${themeMode}`), content: appearanceControls } : undefined}
       onLogout={() => {
         close();
         onLogout();
@@ -226,7 +239,8 @@ export function HeaderActions({
 
         {user && <NotificationCenter user={user} canView={canView} readOnly={readOnly} onOpenPath={onOpenPath} />}
 
-        <div>
+        {/* Phones open Appearance from the account panel. */}
+        <div className="max-sm:hidden">
           <HeaderPopover
             open={themeOpen}
             onOpenChange={setThemeOpen}
@@ -244,14 +258,7 @@ export function HeaderActions({
           >
             <div className="w-[min(16rem,calc(100vw-1rem))]">
               <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
-              <AppearanceControls
-                mode={themeMode}
-                preset={themePreset}
-                palette={themePalette}
-                onModeChange={setThemeMode}
-                onPresetChange={setThemePreset}
-                onPaletteChange={setThemePalette}
-              />
+              {appearanceControls}
             </div>
           </HeaderPopover>
         </div>

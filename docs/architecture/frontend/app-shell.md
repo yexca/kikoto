@@ -24,8 +24,9 @@ rail that the sidebar collapses to keeps the same structure.
 
 ## Header and Panels
 
-On phones, the app header holds Notifications (when authenticated),
-Appearance, and the account avatar, or Sign in for anonymous visitors. Wider
+On phones, the app header holds Notifications (when authenticated) and the
+account avatar, or Sign in for anonymous visitors; Appearance opens as a view
+of the account panel there (`HeaderActions` passes the controls in). Wider
 screens group Quick actions, Notifications, and Appearance in one header tray
 before the avatar, which shows the display name on extra-wide screens but
 never the role. Quick actions is always an icon button, never a search field,
@@ -38,22 +39,24 @@ only those three choices. Quick actions lists every destination the viewer can
 open, in every group.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
-Sign in for anonymous visitors, on every screen size. Where the sidebar is
-shown, three shortcut tiles under the profile open Discover, Insights, and
-Tags (`accountShortcutIds` in `app/navigation`); the sidebar keeps these
-pages in their own groups, so the tiles repeat them. The sidebar itself offers
-every page, About last below a divider, so the panel lists pages only below
-the sidebar breakpoint. There one list under the profile holds, in order:
-Quick actions on phones; the browse and explore pages the bottom navigation does not
-carry, such as Discover and Record; the Personal pages; one **Manage** entry
-that opens the Manage pages as a view of the panel and names the current page
-while it is one of them; and About. The tiles do not appear below the
-breakpoint, so no destination is listed twice. While a listed page or a tile is
-current, its entry and the account trigger carry the selected state. **Language** opens a
-view of its own inside the panel and shows its current value on the entry.
-Sign-in or sign-out
-ends the panel, and in the native shell it also holds the server connection
-actions. A signed-in user also chooses the personal preferred metadata language
+Sign in for anonymous visitors, on every screen size. A compact profile leads
+it, naming the handle only where it differs from the display name. Where the
+sidebar is shown, three shortcut tiles under the profile open Discover,
+Insights, and Tags (`accountShortcutIds` in `app/navigation`); the sidebar
+keeps these pages in their own groups, so the tiles repeat them. Below the
+sidebar breakpoint a three-column grid of the same tiles holds the pages the
+bottom navigation does not carry, such as Record, For you, Discover, Insights,
+and Tags, and on phones Quick actions; the wide tiles do not appear there, so
+no destination is listed twice. One list follows: Settings, which concerns
+the account and so stays a list entry; one **Manage** entry that opens the
+Manage pages as a view of the panel and names the current page while it is
+one of them; **Appearance** on phones; **Language**; and in the native shell
+one server entry with a status dot that opens the connection details and
+recovery actions as a view. Appearance, Language, and the server each open a
+view of their own and show their current value on the entry. About and
+Sign out share the closing row; a Dev or Demo session shows its note in place
+of Sign out. While a page or a tile is current, its entry and the account
+trigger carry the selected state. A signed-in user also chooses the personal preferred metadata language
 in the Language view:
 **Origin** is shown when the user has no preference and choosing it clears the
 stored preference, and a saved change refreshes the routed page through the

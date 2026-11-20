@@ -110,9 +110,12 @@
 - The page header shows only the page title. Its tray keeps Quick actions,
   Notifications, and Appearance, and the avatar no longer shows your role
   beside it.
-- Phones show Notifications, Appearance, and the avatar in the header. Quick
-  actions, Discover, Record, the Personal pages, and a **Manage** entry for
-  the administration pages open from the avatar menu.
+- Phones show Notifications and the avatar in the header. The avatar menu
+  opens with a compact profile, shows the pages the bottom navigation does
+  not carry and Quick actions as a grid of tiles, then lists Settings, a
+  **Manage** entry for the administration pages, **Appearance**, and
+  **Language**, and closes with About and Sign out on one row. In the app, the
+  server connection is one entry that opens its details.
 - Secondary navigation has two forms. Discover, Metadata, Workflows, and
   System show their views as tabs along the top, System with an icon beside
   each name; Favorites lists its shelves by name beside the
