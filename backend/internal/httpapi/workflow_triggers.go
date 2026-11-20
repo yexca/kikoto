@@ -229,13 +229,13 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
-	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, 0, payload.TriggerType); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
 	prepared, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC(), nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := s.ensureUniqueWorkflowTrigger(r.Context(), definition, 0, payload.TriggerType, prepared.ConfigJSON); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 	enabled := true
@@ -376,12 +376,12 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "filesystem watching is a fixed trigger for the local library scan")
 	}
-	if err := s.ensureUniqueWorkflowStartupTrigger(ctx, payload.WorkflowDefinitionID, id, payload.TriggerType); err != nil {
-		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "%s", err)
-	}
 	prepared, err := s.prepareWorkflowTrigger(ctx, actor, definition, payload, time.Now().UTC(), &current)
 	if err != nil {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusBadRequest, "%s", err)
+	}
+	if err := s.ensureUniqueWorkflowTrigger(ctx, definition, id, payload.TriggerType, prepared.ConfigJSON); err != nil {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "%s", err)
 	}
 	enabled := payload.Enabled == nil || *payload.Enabled
 	return current, prepared, enabled, nil

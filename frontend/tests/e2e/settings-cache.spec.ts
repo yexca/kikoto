@@ -11,6 +11,7 @@ import type {
   FileSource,
   FileSourceDetectResult,
   FileSourceHealthCheckResult,
+  FileSourcePresenceCheck,
   LibraryLayout,
   LocalWorkCleanupPage,
   MaintenanceWorkPage,
@@ -18,10 +19,9 @@ import type {
   RecommendationConfig,
   RecordRoot,
   RecommendationTelemetrySummary,
+  SourcePresenceCheckSettings,
   TranscodeCacheClearResult,
   UserPreferences,
-  WorkflowDefinition,
-  WorkflowTrigger,
 } from "../../src/lib/api";
 import {
   type ApiErrorBody,
@@ -1694,8 +1694,14 @@ test("a remote source's library work check runs and schedules from its row", asy
     },
   });
   const runs: unknown[] = [];
-  const triggerWrites: Record<string, unknown>[] = [];
-  let triggers: WorkflowTrigger[] = [];
+  const settingsWrites: SourcePresenceCheckSettings[] = [];
+  let presenceCheck: FileSourcePresenceCheck = {
+    lastRun: { id: 61, status: "succeeded", at: fixtureTimestamp, checkedWorks: 100, availableWorks: 12 },
+    nextRunAt: null,
+    options: { sourceId: 8, library: "local", filter: "no_remote_source", limit: 100 },
+    startup: { enabled: false },
+    schedule: { enabled: false, intervalMinutes: 1440 },
+  };
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
       json: authenticatedStateFixture({
@@ -1709,62 +1715,19 @@ test("a remote source's library work check runs and schedules from its row", asy
   );
   await page.route("**/api/file-sources", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: [
-        {
-          ...remote,
-          presenceCheck: {
-            lastRun: { id: 61, status: "succeeded", at: fixtureTimestamp, checkedWorks: 100, availableWorks: 12 },
-            nextRunAt: null,
-          },
-        },
-      ] satisfies FileSource[],
-    });
+    await route.fulfill({ json: [{ ...remote, presenceCheck }] satisfies FileSource[] });
   });
-  await page.route("**/api/workflow-definitions", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: 21,
-          code: "source_presence_check",
-          displayName: "Check works on a source",
-          description: "",
-          definitionJson: "{}",
-          scope: "system",
-          editable: false,
-          ownerUserId: null,
-          triggerCount: 0,
-          createdAt: "",
-          updatedAt: "",
-        },
-      ] satisfies WorkflowDefinition[],
-    }),
-  );
-  await page.route("**/api/workflow-triggers", async (route) => {
-    if (route.request().method() === "POST") {
-      const payload = route.request().postDataJSON() as Record<string, unknown>;
-      triggerWrites.push(payload);
-      const created: WorkflowTrigger = {
-        id: 71,
-        workflowDefinitionId: 21,
-        workflowCode: "source_presence_check",
-        displayName: String(payload.displayName),
-        triggerType: String(payload.triggerType),
-        enabled: true,
-        scheduleJson: String(payload.scheduleJson),
-        configJson: String(payload.configJson),
-        nextRunAt: "2099-01-01 00:00:00",
-        lastRunAt: null,
-        lastSuccessAt: null,
-        lastErrorMessage: "",
-        createdAt: "",
-        updatedAt: "",
-      };
-      triggers = [created];
-      await route.fulfill({ status: 201, json: created });
-      return;
-    }
-    await route.fulfill({ json: triggers });
+  await page.route("**/api/file-sources/8/presence-check", async (route) => {
+    const payload = route.request().postDataJSON() as SourcePresenceCheckSettings;
+    settingsWrites.push(payload);
+    presenceCheck = {
+      ...presenceCheck,
+      nextRunAt: payload.schedule.enabled ? "2099-01-01 00:00:00" : null,
+      options: payload.options,
+      startup: payload.startup,
+      schedule: payload.schedule,
+    };
+    await route.fulfill({ json: presenceCheck });
   });
   await page.route("**/api/workflow-runs/source-presence-check", async (route) => {
     runs.push(route.request().postDataJSON());
@@ -1782,18 +1745,15 @@ test("a remote source's library work check runs and schedules from its row", asy
     "false",
   );
 
-  // A schedule stores the options Run uses, for this source.
+  // A schedule saves the options Run uses with the source's other checks, in one request.
   await dialog.getByRole("group", { name: "Works per run", exact: true }).getByRole("button", { name: "250" }).click();
   await dialog.getByRole("switch", { name: "On a schedule", exact: true }).click();
-  await expect.poll(() => triggerWrites.length).toBe(1);
-  expect(triggerWrites[0]).toMatchObject({ workflowDefinitionId: 21, triggerType: "schedule", enabled: true });
-  expect(JSON.parse(String(triggerWrites[0].configJson))).toEqual({
-    sourceId: 8,
-    library: "local",
-    filter: "no_remote_source",
-    limit: 250,
+  await expect.poll(() => settingsWrites.length).toBe(1);
+  expect(settingsWrites[0]).toEqual({
+    options: { sourceId: 8, library: "local", filter: "no_remote_source", limit: 250 },
+    startup: { enabled: false },
+    schedule: { enabled: true, intervalMinutes: 1440 },
   });
-  expect(JSON.parse(String(triggerWrites[0].scheduleJson))).toEqual({ intervalMinutes: 1440 });
   await expect(dialog.getByRole("combobox", { name: "Interval", exact: true })).toHaveValue("1440");
 
   await dialog.getByRole("button", { name: "Run", exact: true }).click();

@@ -1927,7 +1927,6 @@ export const surfaceHant = {
       queued: "庫內作品檢查已排入執行 #{{id}}。",
       queueFailed: "無法排入檢查。",
       saveFailed: "無法儲存自動檢查。",
-      loadFailed: "無法載入自動檢查。",
       never: "尚未檢查作品",
       queuedLine: "作品檢查排隊中",
       running: "正在檢查作品…",

@@ -452,6 +452,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/file-sources/{id}", s.updateFileSource)
 	mux.HandleFunc("DELETE /api/file-sources/{id}", s.deleteFileSource)
 	mux.HandleFunc("POST /api/file-sources/{id}/health-check", s.checkFileSourceHealth)
+	mux.HandleFunc("PUT /api/file-sources/{id}/presence-check", s.updateSourcePresenceCheck)
 	handleSlowFirstResponse("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("POST /api/remote-sources/{id}/recommendations", s.scoreRemoteRecommendations)
 	handleSlowFirstResponse("GET /api/remote-sources/{id}/works/{code}", s.getRemoteSourceWork)

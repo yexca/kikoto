@@ -30,6 +30,7 @@ export function useSourcePresenceCheckSlots({
   const { checks, refresh } = useSourcePresenceChecks(enabled && canRun);
   const [openSourceId, setOpenSourceId] = useState<number | null>(null);
   const openSource = sources.find((source) => source.id === openSourceId) ?? null;
+  const openCheck = openSource ? checks[openSource.id] : undefined;
   const openRun = canOpenActivity ? (runId: number) => openWorkflowPath(workflowRunPath(runId)) : undefined;
 
   return {
@@ -37,15 +38,16 @@ export function useSourcePresenceCheckSlots({
     renderSourceCheck: (source: FileSource) =>
       checks[source.id] ? <SourcePresenceCheckLine check={checks[source.id]} onOpenRun={openRun} /> : null,
     onOpenSourceCheck: canRun ? (source: FileSource) => setOpenSourceId(source.id) : undefined,
-    dialog: openSource ? (
-      <SourcePresenceCheckDialog
-        source={openSource}
-        check={checks[openSource.id]}
-        readOnly={readOnly}
-        canOpenActivity={canOpenActivity}
-        onChanged={refresh}
-        onClose={() => setOpenSourceId(null)}
-      />
-    ) : null,
+    dialog:
+      openSource && openCheck ? (
+        <SourcePresenceCheckDialog
+          source={openSource}
+          check={openCheck}
+          readOnly={readOnly}
+          canOpenActivity={canOpenActivity}
+          onChanged={refresh}
+          onClose={() => setOpenSourceId(null)}
+        />
+      ) : null,
   };
 }

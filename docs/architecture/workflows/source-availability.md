@@ -62,17 +62,33 @@ One run per source is queued or running at a time: a manual start, retry, or
 trigger dispatch for that source while one is active returns that run. Manual
 runs (`POST /api/workflow-runs/source-presence-check`), retries, and Startup
 and interval triggers require `workflows:run` and `sources:write`; a trigger
-stores the run options in its config. No trigger is seeded.
+stores the run options, its `sourceId` included, in its config. Each source
+has at most one Startup and one interval trigger, in place of the one Startup
+trigger per workflow that other workflows keep, and the workflow trigger API
+answers 409 to a second one of a kind for the same source. No trigger is
+seeded.
 
 The check is configured on its source, not on the Workflows page. `GET
 /api/file-sources` lists, for each remote source that answers work checks, a
 `presenceCheck` with the source's latest run (id, status, when it ended or
-started, and its checked and available counts) and the soonest next run of its
-enabled interval triggers. Source settings show that line under the source and
-read it again every few seconds while a check is queued or running. The
-source's check dialog keeps one set of options for Run and its triggers and
-offers at most one Startup and one interval trigger; it edits every stored
-trigger of a kind together, so older duplicates follow the same choice.
+started, and its checked and available counts), the soonest next run of its
+enabled interval trigger, the `options` Run and its triggers share, and its
+`startup` and `schedule` checks: whether each is on, the interval, and why a
+switched-off one was paused. `PUT /api/file-sources/{id}/presence-check`
+requires `workflows:run` and `sources:write` and replaces the options and
+both checks of that source in one transaction, answering with the same
+`presenceCheck`. A check switched on is created or updated, one switched off
+keeps its stored trigger paused, and a later duplicate of a kind, from a
+database that held several, is removed; until then the oldest supplies the
+interval and options and any enabled one switches the kind on. Switching a
+check on requires a source a run could check; saving options or switching
+checks off does not. An interval check that stays on at the same interval
+keeps its next run.
+
+Source settings show the check's line under the source and read it again every
+few seconds while a check is queued or running. The source's check dialog
+keeps one set of options for Run and the automatic checks and saves every
+change through that request, so a failed save changes nothing.
 Disabling a source pauses its triggers like every other source dependency;
 deleting a source deletes its source presence check triggers, which would have
 nowhere left to show.

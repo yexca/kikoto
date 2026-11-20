@@ -2036,7 +2036,6 @@ export const surfaceJapanese = {
       queued: "ライブラリの作品の確認を実行 #{{id}} としてキューに追加しました。",
       queueFailed: "確認をキューに追加できませんでした。",
       saveFailed: "自動確認を保存できませんでした。",
-      loadFailed: "自動確認を読み込めませんでした。",
       never: "作品はまだ確認されていません",
       queuedLine: "作品の確認を待機中",
       running: "作品を確認中…",

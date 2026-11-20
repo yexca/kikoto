@@ -64,7 +64,35 @@ func validateWorkflowTriggerPayload(payload workflowTriggerPayload) error {
 	return nil
 }
 
-func (s *Server) ensureUniqueWorkflowStartupTrigger(ctx context.Context, definitionID, excludeTriggerID int64, triggerType string) error {
+// ensureUniqueWorkflowTrigger enforces how many automatic triggers a workflow
+// holds: one startup trigger per definition, except the source presence
+// check, which holds one startup and one interval trigger per source. It reads
+// the source from the prepared, normalized config.
+func (s *Server) ensureUniqueWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, excludeTriggerID int64, triggerType string, preparedConfigJSON string) error {
+	if definition.Code == sourcePresenceCheckWorkflowCode {
+		if triggerType != "startup" && triggerType != "schedule" {
+			return nil
+		}
+		options, err := normalizeSourcePresenceCheckTriggerConfig(preparedConfigJSON)
+		if err != nil {
+			return err
+		}
+		var count int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM workflow_trigger
+			WHERE workflow_definition_id = ? AND trigger_type = ? AND id != ?
+				AND json_extract(config_json, '$.sourceId') = ?
+		`, definition.ID, triggerType, excludeTriggerID, options.SourceID).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		if triggerType == "startup" {
+			return fmt.Errorf("source already has a startup check")
+		}
+		return fmt.Errorf("source already has an interval check")
+	}
 	if triggerType != "startup" {
 		return nil
 	}
@@ -72,7 +100,7 @@ func (s *Server) ensureUniqueWorkflowStartupTrigger(ctx context.Context, definit
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM workflow_trigger
 		WHERE workflow_definition_id = ? AND trigger_type = 'startup' AND id != ?
-	`, definitionID, excludeTriggerID).Scan(&count); err != nil {
+	`, definition.ID, excludeTriggerID).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {

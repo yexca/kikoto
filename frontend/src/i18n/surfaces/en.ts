@@ -2082,7 +2082,6 @@ export const surfaceEnglish = {
       queued: "Library work check queued as run #{{id}}.",
       queueFailed: "The check could not be queued.",
       saveFailed: "The automatic check could not be saved.",
-      loadFailed: "Automatic checks could not be loaded.",
       never: "Works not checked yet",
       queuedLine: "Works check queued",
       running: "Checking works…",

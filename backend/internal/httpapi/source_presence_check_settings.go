@@ -12,11 +12,19 @@ import (
 // usable queued: created enabled, switched on, or pointed at another API.
 const sourceChangeTriggerType = "source_change"
 
+// sourcePresenceCheckDefaultIntervalMinutes is the interval a source's
+// interval check offers before one is stored.
+const sourcePresenceCheckDefaultIntervalMinutes = 24 * 60
+
 // fileSourcePresenceCheck is a remote source's library work check as source
-// settings show it: the latest run and the next scheduled one.
+// settings show it: the latest run, the next scheduled one, the options Run
+// and the automatic checks share, and the source's startup and interval check.
 type fileSourcePresenceCheck struct {
-	LastRun   *fileSourcePresenceCheckRun `json:"lastRun"`
-	NextRunAt *string                     `json:"nextRunAt"`
+	LastRun   *fileSourcePresenceCheckRun  `json:"lastRun"`
+	NextRunAt *string                      `json:"nextRunAt"`
+	Options   sourcePresenceCheckOptions   `json:"options"`
+	Startup   sourcePresenceCheckAutomatic `json:"startup"`
+	Schedule  sourcePresenceCheckAutomatic `json:"schedule"`
 }
 
 type fileSourcePresenceCheckRun struct {
@@ -27,8 +35,29 @@ type fileSourcePresenceCheckRun struct {
 	AvailableWorks int    `json:"availableWorks"`
 }
 
-// attachSourcePresenceChecks adds each checkable remote source's latest check
-// and next scheduled check.
+// sourcePresenceCheckAutomatic is one automatic check of a source: at startup,
+// or on an interval.
+type sourcePresenceCheckAutomatic struct {
+	Enabled bool `json:"enabled"`
+	// IntervalMinutes is the interval check's period; the startup check has none.
+	IntervalMinutes int `json:"intervalMinutes,omitempty"`
+	// PausedMessage says why a switched-off check was paused, such as its
+	// source being disabled.
+	PausedMessage string `json:"pausedMessage,omitempty"`
+}
+
+// sourcePresenceCheckTrigger is a stored automatic check of one source.
+type sourcePresenceCheckTrigger struct {
+	ID               int64
+	TriggerType      string
+	Enabled          bool
+	ScheduleJSON     string
+	ConfigJSON       string
+	NextRunAt        sql.NullString
+	LastErrorMessage string
+}
+
+// attachSourcePresenceChecks adds each checkable remote source's check.
 func (s *Server) attachSourcePresenceChecks(ctx context.Context, sources []fileSourceSummary) error {
 	for index := range sources {
 		if !isKikoeruSourceType(sources[index].SourceType) {
@@ -66,22 +95,95 @@ func (s *Server) loadSourcePresenceCheck(ctx context.Context, sourceID int64) (f
 	case !errors.Is(err, sql.ErrNoRows):
 		return check, err
 	}
-	var nextRunAt sql.NullString
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT MIN(trigger.next_run_at)
+	triggers, err := loadSourcePresenceCheckTriggers(ctx, s.db, sourceID)
+	if err != nil {
+		return check, err
+	}
+	applySourcePresenceCheckTriggers(&check, sourceID, triggers)
+	return check, nil
+}
+
+// loadSourcePresenceCheckTriggers reads a source's stored startup and interval
+// checks, oldest first.
+func loadSourcePresenceCheckTriggers(ctx context.Context, queryer workflowTriggerQueryer, sourceID int64) ([]sourcePresenceCheckTrigger, error) {
+	rows, err := queryer.QueryContext(ctx, `
+		SELECT trigger.id, trigger.trigger_type, trigger.enabled, trigger.schedule_json, trigger.config_json,
+			trigger.next_run_at, trigger.last_error_message
 		FROM workflow_trigger AS trigger
 		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
 		WHERE definition.code = ? AND definition.scope = 'system'
-			AND trigger.enabled = 1 AND trigger.trigger_type = 'schedule'
-			AND trigger.next_run_at IS NOT NULL
+			AND trigger.trigger_type IN ('startup', 'schedule')
 			AND json_extract(trigger.config_json, '$.sourceId') = ?
-	`, sourcePresenceCheckWorkflowCode, sourceID).Scan(&nextRunAt); err != nil {
-		return check, err
+		ORDER BY trigger.id
+	`, sourcePresenceCheckWorkflowCode, sourceID)
+	if err != nil {
+		return nil, err
 	}
-	if nextRunAt.Valid {
-		check.NextRunAt = &nextRunAt.String
+	defer func() { _ = rows.Close() }()
+	var triggers []sourcePresenceCheckTrigger
+	for rows.Next() {
+		var trigger sourcePresenceCheckTrigger
+		if err := rows.Scan(&trigger.ID, &trigger.TriggerType, &trigger.Enabled, &trigger.ScheduleJSON, &trigger.ConfigJSON,
+			&trigger.NextRunAt, &trigger.LastErrorMessage); err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, trigger)
 	}
-	return check, nil
+	return triggers, rows.Err()
+}
+
+// applySourcePresenceCheckTriggers fills the options and automatic checks
+// from a source's stored triggers. A database written before the one-per-kind
+// rule may hold several of a kind: any enabled one switches the kind on, the
+// oldest supplies its interval and options, and the soonest enabled interval
+// check is the next run. The next save keeps only the oldest.
+func applySourcePresenceCheckTriggers(check *fileSourcePresenceCheck, sourceID int64, triggers []sourcePresenceCheckTrigger) {
+	check.Options = sourcePresenceCheckOptions{
+		SourceID: sourceID, Library: sourcePresenceLibraryLocal, Filter: sourcePresenceFilterNoRemoteSource,
+		Limit: sourcePresenceCheckDefaultLimit,
+	}
+	check.Startup = sourcePresenceCheckAutomatic{}
+	check.Schedule = sourcePresenceCheckAutomatic{IntervalMinutes: sourcePresenceCheckDefaultIntervalMinutes}
+	check.NextRunAt = nil
+	var optionsFrom, firstStartup, firstSchedule *sourcePresenceCheckTrigger
+	for index := range triggers {
+		trigger := &triggers[index]
+		automatic := &check.Startup
+		if trigger.TriggerType == "schedule" {
+			automatic = &check.Schedule
+			if firstSchedule == nil {
+				firstSchedule = trigger
+				if schedule, err := validateWorkflowIntervalSchedule(trigger.ScheduleJSON); err == nil {
+					check.Schedule.IntervalMinutes = schedule.IntervalMinutes
+				}
+			}
+			if trigger.Enabled && trigger.NextRunAt.Valid && (check.NextRunAt == nil || trigger.NextRunAt.String < *check.NextRunAt) {
+				next := trigger.NextRunAt.String
+				check.NextRunAt = &next
+			}
+		} else if firstStartup == nil {
+			firstStartup = trigger
+		}
+		automatic.Enabled = automatic.Enabled || trigger.Enabled
+		if !trigger.Enabled && automatic.PausedMessage == "" {
+			automatic.PausedMessage = trigger.LastErrorMessage
+		}
+	}
+	if check.Startup.Enabled {
+		check.Startup.PausedMessage = ""
+	}
+	if check.Schedule.Enabled {
+		check.Schedule.PausedMessage = ""
+	}
+	optionsFrom = firstSchedule
+	if optionsFrom == nil {
+		optionsFrom = firstStartup
+	}
+	if optionsFrom != nil {
+		if options, err := normalizeSourcePresenceCheckTriggerConfig(optionsFrom.ConfigJSON); err == nil && options.SourceID == sourceID {
+			check.Options = options
+		}
+	}
 }
 
 // deleteSourcePresenceCheckTriggersTx removes the checks scheduled for a

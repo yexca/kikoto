@@ -264,8 +264,9 @@
 - **Library** folds the cards away; it folds while a run is open.
 - **Check works on a source** runs from each remote source in System →
   Library: the source shows its latest check and next scheduled one, and
-  **Check library works…** runs it and turns its startup and interval checks
-  on and off with one set of options. Deleting a source deletes its checks.
+  **Check library works…** runs it and turns that source's own startup and
+  interval checks on and off with one set of options. Deleting a source
+  deletes its checks.
 - Adding a source that is on, switching a source on, or changing its API URL
   queues one check of the library that Workflows shows as **Source change**,
   in place of an unrecorded background check after every source edit.

@@ -194,3 +194,111 @@ func TestDeletingRemoteSourceRemovesItsScheduledChecks(t *testing.T) {
 		t.Fatalf("checks left = %v, want only the other source's", remaining)
 	}
 }
+
+func (f sourcePresenceCheckFixture) savePresenceCheck(t *testing.T, sourceID int64, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	id := strconv.FormatInt(sourceID, 10)
+	request := fileSourceCRUDRequest(http.MethodPut, "/api/file-sources/"+id+"/presence-check", body,
+		account.User{ID: 1, Role: "admin", Permissions: []string{"workflows:run", "sources:write"}})
+	request.SetPathValue("id", id)
+	response := httptest.NewRecorder()
+	f.server.updateSourcePresenceCheck(response, request)
+	return response
+}
+
+func (f sourcePresenceCheckFixture) storedPresenceChecks(t *testing.T, sourceID int64) []string {
+	t.Helper()
+	rows, err := f.db.Query(`SELECT trigger_type || ':' || enabled || ':' || schedule_json || ':' || config_json FROM workflow_trigger
+		WHERE workflow_definition_id = (SELECT id FROM workflow_definition WHERE code = ?)
+			AND json_extract(config_json, '$.sourceId') = ? ORDER BY trigger_type, id`, sourcePresenceCheckWorkflowCode, sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	stored := []string{}
+	for rows.Next() {
+		var row string
+		if err := rows.Scan(&row); err != nil {
+			t.Fatal(err)
+		}
+		stored = append(stored, row)
+	}
+	return stored
+}
+
+func TestEachRemoteSourceSavesItsOwnStartupAndIntervalCheck(t *testing.T) {
+	fixture := newSourcePresenceCheckFixture(t)
+	remote := presenceRemote(t, true)
+	fixture.addRemoteSource(t, 2, true, remote.URL)
+	fixture.addRemoteSource(t, 3, true, remote.URL)
+	definitionID := fixture.presenceCheckDefinitionID(t)
+
+	// Both sources run their own check at startup, with their own options.
+	for _, save := range []struct {
+		sourceID int64
+		body     string
+	}{
+		{2, `{"options":{"library":"all","filter":"all","limit":250},"startup":{"enabled":true},"schedule":{"enabled":false,"intervalMinutes":1440}}`},
+		{3, `{"options":{},"startup":{"enabled":true},"schedule":{"enabled":true,"intervalMinutes":360}}`},
+	} {
+		if response := fixture.savePresenceCheck(t, save.sourceID, save.body); response.Code != http.StatusOK {
+			t.Fatalf("source %d save = %d, %s", save.sourceID, response.Code, response.Body.String())
+		}
+	}
+	sources := fixture.listedSources(t)
+	if check := sources[2].PresenceCheck; check == nil || !check.Startup.Enabled || check.Schedule.Enabled || check.NextRunAt != nil ||
+		check.Options != (sourcePresenceCheckOptions{SourceID: 2, Library: "all", Filter: "all", Limit: 250}) {
+		t.Fatalf("source 2 check = %#v, want its startup check with its own options", check)
+	}
+	if check := sources[3].PresenceCheck; check == nil || !check.Startup.Enabled || !check.Schedule.Enabled ||
+		check.Schedule.IntervalMinutes != 360 || check.NextRunAt == nil || check.Options.Limit != sourcePresenceCheckDefaultLimit {
+		t.Fatalf("source 3 check = %#v, want its startup and six-hour checks with the default options", check)
+	}
+
+	// The generic trigger API keeps the same rule: one startup check per source.
+	create := func(sourceID int64) int {
+		body, _ := json.Marshal(map[string]any{
+			"workflowDefinitionId": definitionID, "displayName": "Check works", "triggerType": "startup", "enabled": true,
+			"scheduleJson": `{"type":"startup"}`, "configJson": `{"sourceId":` + strconv.FormatInt(sourceID, 10) + `}`,
+		})
+		response := httptest.NewRecorder()
+		fixture.server.createWorkflowTrigger(response, fileSourceCRUDRequest(http.MethodPost, "/api/workflow-triggers", string(body),
+			account.User{ID: 1, Role: "admin", Permissions: []string{"workflows:run", "sources:write"}}))
+		return response.Code
+	}
+	if code := create(2); code != http.StatusConflict {
+		t.Fatalf("second startup check for source 2 = %d, want 409", code)
+	}
+
+	// A rejected save changes nothing.
+	before := fixture.storedPresenceChecks(t, 3)
+	if response := fixture.savePresenceCheck(t, 3, `{"options":{"limit":5000},"startup":{"enabled":false},"schedule":{"enabled":false,"intervalMinutes":360}}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid save = %d, want 400", response.Code)
+	}
+	if after := fixture.storedPresenceChecks(t, 3); !slices.Equal(after, before) {
+		t.Fatalf("checks after a rejected save = %v, want %v", after, before)
+	}
+
+	// An older duplicate interval check is folded into the one the source shows.
+	fixture.exec(t, `INSERT INTO workflow_trigger (workflow_definition_id, trigger_type, display_name, enabled, schedule_json, config_json, next_run_at)
+		VALUES (?, 'schedule', 'Check works', 1, '{"intervalMinutes":60}', '{"sourceId":3}', '2026-07-14 00:00:00')`, definitionID)
+	if response := fixture.savePresenceCheck(t, 3, `{"options":{"limit":50},"startup":{"enabled":false},"schedule":{"enabled":true,"intervalMinutes":720}}`); response.Code != http.StatusOK {
+		t.Fatalf("save = %d, %s", response.Code, response.Body.String())
+	}
+	want := []string{
+		`schedule:1:{"intervalMinutes":720}:{"sourceId":3,"library":"local","filter":"no_remote_source","limit":50}`,
+		`startup:0:{"type":"startup"}:{"sourceId":3,"library":"local","filter":"no_remote_source","limit":50}`,
+	}
+	if stored := fixture.storedPresenceChecks(t, 3); !slices.Equal(stored, want) {
+		t.Fatalf("stored checks = %v, want %v", stored, want)
+	}
+
+	// A disabled source's checks can be switched off and edited, not switched on.
+	fixture.exec(t, `UPDATE file_source SET enabled = 0 WHERE id = 2`)
+	if response := fixture.savePresenceCheck(t, 2, `{"options":{"limit":10},"startup":{"enabled":false},"schedule":{"enabled":false,"intervalMinutes":1440}}`); response.Code != http.StatusOK {
+		t.Fatalf("switching off on a disabled source = %d, %s", response.Code, response.Body.String())
+	}
+	if response := fixture.savePresenceCheck(t, 2, `{"options":{"limit":10},"startup":{"enabled":true},"schedule":{"enabled":false,"intervalMinutes":1440}}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("switching on on a disabled source = %d, want 400", response.Code)
+	}
+}

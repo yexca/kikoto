@@ -1923,7 +1923,6 @@ export const surfaceHans = {
       queued: "库内作品检查已排入运行 #{{id}}。",
       queueFailed: "无法排入检查。",
       saveFailed: "无法保存自动检查。",
-      loadFailed: "无法加载自动检查。",
       never: "尚未检查作品",
       queuedLine: "作品检查排队中",
       running: "正在检查作品…",

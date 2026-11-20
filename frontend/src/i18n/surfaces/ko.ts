@@ -2026,7 +2026,6 @@ export const surfaceKorean = {
       queued: "라이브러리 작품 확인을 실행 #{{id}}(으)로 대기열에 추가했습니다.",
       queueFailed: "확인을 대기열에 추가할 수 없습니다.",
       saveFailed: "자동 확인을 저장할 수 없습니다.",
-      loadFailed: "자동 확인을 불러올 수 없습니다.",
       never: "아직 작품을 확인하지 않음",
       queuedLine: "작품 확인 대기 중",
       running: "작품 확인 중…",

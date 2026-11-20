@@ -8,6 +8,7 @@ import {
   sharedGetJSON,
 } from "@/lib/apiTransport";
 import type { RecommendationConfig } from "@/lib/libraryApi";
+import type { SourcePresenceCheckOptions } from "@/lib/workflowApi";
 
 export type FileSourceDetectResult = {
   detected: boolean;
@@ -191,7 +192,11 @@ export type FileSource = {
   presenceCheck?: FileSourcePresenceCheck;
 };
 
-/** A remote source's latest library work check and its next scheduled one. */
+/**
+ * A remote source's library work check: its latest run, its next scheduled
+ * one, the options Run and the automatic checks share, and its startup and
+ * interval checks.
+ */
 export type FileSourcePresenceCheck = {
   lastRun: {
     id: number;
@@ -201,6 +206,22 @@ export type FileSourcePresenceCheck = {
     availableWorks: number;
   } | null;
   nextRunAt: string | null;
+  options: SourcePresenceCheckOptions;
+  startup: SourcePresenceAutomaticCheck;
+  schedule: SourcePresenceAutomaticCheck & { intervalMinutes: number };
+};
+
+export type SourcePresenceAutomaticCheck = {
+  enabled: boolean;
+  /** Why a switched-off check was paused, such as its source being disabled. */
+  pausedMessage?: string;
+};
+
+/** Replaces a source's check options and its startup and interval checks together. */
+export type SourcePresenceCheckSettings = {
+  options: SourcePresenceCheckOptions;
+  startup: { enabled: boolean };
+  schedule: { enabled: boolean; intervalMinutes: number };
 };
 
 /** Copy the work's own lyrics into Kikoto's lyrics folder, or move them there. */
@@ -409,6 +430,8 @@ export const settingsApi = {
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   checkFileSourceHealth: (id: number) => postJSON<FileSourceHealthCheckResult>(`/api/file-sources/${id}/health-check`),
+  updateSourcePresenceCheck: (id: number, payload: SourcePresenceCheckSettings) =>
+    putJSONBody<FileSourcePresenceCheck>(`/api/file-sources/${id}/presence-check`, payload),
   detectFileSource: (url: string, signal?: AbortSignal) =>
     postJSONBody<FileSourceDetectResult>("/api/file-sources/detect", { url }, signal),
   getDatabaseMaintenance: () => getJSON<DatabaseMaintenanceOverview>("/api/maintenance/database"),
