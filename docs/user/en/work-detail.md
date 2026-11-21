@@ -224,10 +224,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   shows only the roles the work credits and is absent when DLsite names no
   staff. Selecting a name adds a `staff:` clause to the library search the
   detail was opened from, which finds the name in any staff role.
-  On compact screens, the Hero actions follow the title and circle directly,
-  on one row that scrolls sideways when they do not fit, so the primary
-  action is on the first screen; the credit line, tag row, and stat strip
-  come after them, above the Info and Directory tabs. Mark and Manage show as
+  On compact screens, the credit line, tag row, stat strip, and any metadata
+  notice follow the title and circle, and the Hero actions come last, on one
+  row that scrolls sideways when they do not fit, right above the Info and
+  Directory tabs. Mark and Manage show as
   icons there, and List as on wide pages. Info shows the description, the
   Credits card, and the source panel, which lists the selected source's
   actions. A phone shows at most three lines of the title; tapping a

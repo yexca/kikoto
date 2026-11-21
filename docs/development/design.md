@@ -501,9 +501,9 @@ Mobile:
 - System and Cleanup tabs that do not fit fold into one row of icons that
   names only the open tab; tab rows scroll sideways and a page's controls move
   below its tabs.
-- Work detail places the Hero actions directly below the title and circle, on
-  one horizontally scrollable row, so Play stays on the first screen however
-  long the credits and tags run: the primary action, sized to its label, then
+- Work detail closes the Hero with its actions, on one horizontally
+  scrollable row right above the Info and Directory row, after the credits,
+  tags, and stat strip: the primary action, sized to its label, then
   Mark, your rating, List, and Manage as icons, with List naming its list as
   on desktop. Each icon keeps a 44px touch area beyond its smaller face. The
   Info and Directory switch is one slim underline row that ends with the

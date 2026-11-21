@@ -326,9 +326,9 @@
 - The work detail Hero leads with one primary action: **Resume** when the
   work has saved playback, otherwise **Play**, which plays the folder the
   Directory opens on. When nothing can play, its place says why instead of
-  showing a disabled button. On a phone the actions sit right below the title,
-  so Play is on the first screen; there Play is sized to its label, and Mark,
-  your rating, List, and Metadata keep a 44px touch area.
+  showing a disabled button. On a phone the actions close the Hero, right
+  above the Info and Directory row; there Play is sized to its label, and
+  Mark, your rating, List, and Metadata keep a 44px touch area.
 - On a phone, Info and Directory are one slim row that names the shown source
   at its end, with **Display names** and **Full names** as icons after it. The
   source opens a menu that lists every source by name, then **Check sources**,
