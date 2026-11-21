@@ -179,14 +179,14 @@ export function RemoteOnlyWorkDetailController({
   const materializedTree = useMemo(() => {
     if (!trackedWork) return emptyTree();
     if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
-      return buildTree(trackedWork.mediaItems, activeTrackedPresence?.fileSourceId ?? null, trackedWork.primaryCode);
+      return buildTree(trackedWork.mediaItems, activeTrackedPresence?.fileSourceId ?? null);
     }
     if (
       activeRemoteTabInfo?.kind === "local" &&
       activeRemoteTabInfo.status === "available" &&
       activeRemoteTabInfo.fileSourceId
     ) {
-      return buildTree(trackedWork.mediaItems, activeRemoteTabInfo.fileSourceId, trackedWork.primaryCode);
+      return buildTree(trackedWork.mediaItems, activeRemoteTabInfo.fileSourceId);
     }
     return emptyTree();
   }, [activeRemoteTabInfo, activeTrackedForked, activeTrackedPresence?.fileSourceId, trackedWork]);

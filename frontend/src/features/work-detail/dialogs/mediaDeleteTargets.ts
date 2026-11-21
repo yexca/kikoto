@@ -53,15 +53,15 @@ export function forgetWorkTargets(
     ...target,
     workId,
   }));
-  const representative = files.find(
-    (target) => target.kind === "local" && isMediaPathWithinRoot(folder.rootPath, target.path),
+  const representative = sortedFilesDeep(root).find(
+    (file) => file.localAvailable && file.localLocationId !== null && file.localFolderId === folder.id,
   );
-  if (!representative) return [];
+  if (!representative?.localLocationId) return [];
   return [
     ...files,
     {
       kind: "local_root",
-      locationId: representative.locationId,
+      locationId: representative.localLocationId,
       folderId: folder.id,
       expectedPath: folder.rootPath,
       title: rootTitle,
@@ -74,18 +74,6 @@ export function forgetWorkTargets(
 
 export function mediaDeleteTargetKey(target: MediaDeleteTarget) {
   return `${target.kind}:${target.folderId ?? target.locationId}`;
-}
-
-export function isMediaPathWithinRoot(root: string, candidate: string) {
-  const normalizedRoot = root
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "")
-    .toLowerCase();
-  const normalizedCandidate = candidate
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "")
-    .toLowerCase();
-  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
 }
 
 export function sortedFilesDeep(node: TreeNode) {

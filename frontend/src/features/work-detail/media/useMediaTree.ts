@@ -5,7 +5,6 @@ import type { MediaItem, RemoteTrack, RemoteWorkDetail } from "@/lib/api";
 export function useMediaTree<TTree>({
   mediaLoading,
   localItems,
-  localCode,
   fileSourceId,
   selectionKey,
   remoteSelected,
@@ -17,14 +16,13 @@ export function useMediaTree<TTree>({
 }: {
   mediaLoading: boolean;
   localItems: MediaItem[];
-  localCode: string;
   fileSourceId: number | null;
   selectionKey: string;
   remoteSelected: boolean;
   remoteDetail: RemoteWorkDetail | null;
   trackedUnavailable: boolean;
   emptyTree: () => TTree;
-  buildLocalTree: (items: MediaItem[], fileSourceId: number | null, workCode: string) => TTree;
+  buildLocalTree: (items: MediaItem[], fileSourceId: number | null) => TTree;
   buildRemoteTree: (tracks: RemoteTrack[], identity?: { sourceId: number; workCode: string }) => TTree;
 }) {
   const [tree, setTree] = useState<TTree>(() => emptyTree());
@@ -48,7 +46,7 @@ export function useMediaTree<TTree>({
                   sourceId: remoteDetail.sourceId,
                   workCode: remoteDetail.remoteCode || remoteDetail.primaryCode || remoteDetail.remoteId,
                 })
-              : buildLocalTree(localItems, fileSourceId, localCode);
+              : buildLocalTree(localItems, fileSourceId);
       if (!cancelled) {
         setTree(nextTree);
         setIsDirectoryLoading(false);
@@ -63,7 +61,6 @@ export function useMediaTree<TTree>({
     buildRemoteTree,
     emptyTree,
     fileSourceId,
-    localCode,
     localItems,
     mediaLoading,
     remoteDetail,

@@ -65,13 +65,10 @@ export function activeLocalFolders(work: WorkDetail | null, fileSourceId: number
  * that folder's local locations. Files at the same path in two folders of a
  * work are one media item, so its locations in the other folders are dropped.
  */
-export function mediaItemsInLocalFolder(items: MediaItem[], rootPath: string) {
-  const root = rootPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (!root) return items;
-  const insideRoot = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "").startsWith(`${root}/`);
+export function mediaItemsInLocalFolder(items: MediaItem[], folderId: number) {
   return items.flatMap((item) => {
     const locations = item.locations.filter(
-      (location) => location.locationType !== "local" || insideRoot(location.path),
+      (location) => location.locationType !== "local" || location.folderId === folderId,
     );
     return locations.some((location) => location.locationType === "local") ? [{ ...item, locations }] : [];
   });
@@ -103,7 +100,6 @@ export function persistedMediaTreeInput({
   return {
     mediaLoading,
     localItems: localDirectoryWork?.mediaItems ?? [],
-    localCode: localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
     fileSourceId: selectedTrackedForked ? selectedTrackedSourceID : (selectedSource?.fileSourceId ?? null),
     selectionKey: `${selectedSource?.key ?? ""}:${selectedTrackedSourceID ?? selectedRemoteSourceID ?? 0}`,
     remoteSelected: Boolean(selectedRemoteSource),

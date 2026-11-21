@@ -37,6 +37,8 @@ function item(id: number, kind: string, path: string, lyricsMediaItemId: number 
         fileSourceName: "Local",
         locationType: "local",
         path: `${root}/${path}`,
+        folderId: target.folderId,
+        relativePath: path,
         streamUrl: "",
         downloadUrl: "",
         remoteHash: "",
@@ -156,7 +158,7 @@ describe("lyrics edit resources", () => {
   });
 
   it("splits a folder's lyrics into the managed ones and the others", () => {
-    const { managed, loose } = folderLyrics(items, root);
+    const { managed, loose } = folderLyrics(items, target.folderId);
     expect(managed.map((file) => file.path)).toEqual([
       "lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt",
       "lyrics_kikoto/ja/02 Ending.vtt",
@@ -167,7 +169,7 @@ describe("lyrics edit resources", () => {
 
 describe("lyrics edit request", () => {
   const resources = lyricsEditResources(sources, target);
-  const { managed, loose } = folderLyrics(items, root);
+  const { managed, loose } = folderLyrics(items, target.folderId);
   const remoteFiles: FolderEditFile[] = [
     { path: "sub/01 Opening.vtt", name: "01 Opening.vtt", kind: "text", sizeBytes: 5, locationId: null },
   ];
@@ -231,7 +233,7 @@ describe("lyrics edit request", () => {
 });
 
 describe("lyrics edit result", () => {
-  const { managed } = folderLyrics(items, root);
+  const { managed } = folderLyrics(items, target.folderId);
   const kept = new Set(["lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt", "lyrics_kikoto/ja/02 Ending.vtt"]);
 
   it("marks what a planned addition does to the managed lyrics", () => {

@@ -39,6 +39,9 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 	if err := s.attachLocalDisplayPaths(ctx, mediaWorkID, mediaItems); err != nil {
 		return nil, err
 	}
+	if err := s.attachLocalLocationFolders(ctx, mediaWorkID, mediaItems); err != nil {
+		return nil, err
+	}
 	attachMediaLyricsChoices(mediaItems)
 	attachPlaybackLocations(mediaItems)
 	return mediaItems, nil

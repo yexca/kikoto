@@ -28,6 +28,7 @@ function file(id: number, title: string, kind = "audio"): TreeTrack {
     cacheStreamUrl: "",
     localLocationId: id,
     localPath: title,
+    localFolderId: 1,
     localAvailable: true,
     progress: null,
     locations: [],

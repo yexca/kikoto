@@ -43,6 +43,7 @@ import type {
   VoiceWorksPage,
   Work,
   WorkDetail,
+  WorkFolderLocation,
   WorkflowDefinition,
   WorkflowNotificationsPage,
   NotificationAttention,
@@ -275,6 +276,39 @@ export function playbackLocationsFixture(item: Pick<MediaItem, "kind" | "locatio
     })
     .filter((location) => location.streamUrl)
     .sort((left, right) => rank(left.locationType) - rank(right.locationType));
+}
+
+/**
+ * The media items with the work folder the server names on each local
+ * location: the deepest of the given folders on the location's source whose
+ * root holds its path, compared case-sensitively. A fixture work without
+ * recorded folders lies in the folder named by its code, so a location below
+ * a work-code segment is placed there. A location that already names its
+ * folder keeps it.
+ */
+export function withLocationFoldersFixture(
+  items: MediaItem[],
+  folders: Pick<WorkFolderLocation, "id" | "fileSourceId" | "rootPath">[] = [],
+): MediaItem[] {
+  const codeFolders = new Map<string, number>();
+  const place = (location: MediaFileLocation) => {
+    if (location.locationType !== "local" || location.folderId !== undefined) return location;
+    const path = location.path.replace(/^\/+|\/+$/g, "");
+    const recorded = folders
+      .filter((folder) => folder.fileSourceId === location.fileSourceId && path.startsWith(`${folder.rootPath}/`))
+      .sort((left, right) => right.rootPath.length - left.rootPath.length)[0];
+    if (recorded) {
+      return { ...location, folderId: recorded.id, relativePath: path.slice(recorded.rootPath.length + 1) };
+    }
+    if (folders.length > 0) return location;
+    const parts = path.split("/");
+    const codeIndex = parts.findIndex((part) => /^(RJ|BJ|VJ|CC)\d{8}$/.test(part));
+    if (codeIndex < 0 || codeIndex === parts.length - 1) return location;
+    const root = parts.slice(0, codeIndex + 1).join("/");
+    if (!codeFolders.has(root)) codeFolders.set(root, 9000 + codeFolders.size);
+    return { ...location, folderId: codeFolders.get(root), relativePath: parts.slice(codeIndex + 1).join("/") };
+  };
+  return items.map((item) => ({ ...item, locations: item.locations.map(place) }));
 }
 
 export function mediaItemFixture(overrides: Partial<MediaItem> = {}): MediaItem {

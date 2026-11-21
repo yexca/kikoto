@@ -262,7 +262,7 @@ export function useFolderWorkspaceFiles() {
       try {
         const loaded =
           resource.kind === "local"
-            ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.rootPath)
+            ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.folderId)
             : remoteEditionFiles(
                 (await api.getRemoteSourceWork(resource.sourceId, resource.remoteCode ?? resource.editionCode)).tracks,
               );

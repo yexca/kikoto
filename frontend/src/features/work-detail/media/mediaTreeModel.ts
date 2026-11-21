@@ -45,6 +45,8 @@ export type TreeTrack = {
   cacheStreamUrl: string;
   localLocationId: number | null;
   localPath: string;
+  /** The work folder that holds the local copy, as the server matches it. */
+  localFolderId: number | null;
   localAvailable: boolean;
   progress: MediaItem["progress"];
   locations: PlayerTrackLocation[];
@@ -75,9 +77,9 @@ export function emptyTree(): TreeNode {
   return { name: "", path: "", children: new Map(), files: [] };
 }
 
-export function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
+export function buildTree(items: MediaItem[], fileSourceId: number | null): TreeNode {
   const root = emptyTree();
-  const folderLabels = localWorkFolderLabels(items, fileSourceId, workCode);
+  const folderLabels = localWorkFolderLabels(items, fileSourceId);
   for (const item of items) {
     const sourceLocations =
       fileSourceId === null
@@ -100,7 +102,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
     const localLocation = sourceLocations.find(
       (candidate) => candidate.locationType === "local" && candidate.availability === "available",
     );
-    const parts = displayPathParts(location.path, location.locationType, workCode, folderLabels);
+    const parts = displayPathParts(location, folderLabels);
     const names = displayPathNames(location, parts.length);
     const fileName = parts.pop() ?? item.title;
     const displayTitle = names.pop();
@@ -146,6 +148,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       cacheStreamUrl: cacheLocation ? `/api/media/${cacheLocation.id}/stream` : "",
       localLocationId: localLocation?.id ?? null,
       localPath: localLocation?.path ?? "",
+      localFolderId: localLocation?.folderId ?? null,
       localAvailable: Boolean(localLocation),
       progress: item.progress,
       playbackKey: playbackKeyForLocation(location.id),
@@ -211,6 +214,7 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
           node.cacheAvailable && node.cacheLocationId !== null ? `/api/media/${node.cacheLocationId}/stream` : "",
         localLocationId: node.localLocationId,
         localPath: node.localPath,
+        localFolderId: null,
         localAvailable: node.localAvailable,
         progress: null,
         playbackKey: identity
@@ -560,22 +564,29 @@ function attachRemoteLyricsChoices(root: TreeNode, serverChoices: ReadonlyMap<Tr
   }
 }
 
+/**
+ * The segments the tree shows for a location: a local file's path below the
+ * work folder the server says holds it, behind that folder's label when the
+ * work's files lie in several folders, and any other path whole.
+ */
 function displayPathParts(
-  path: string,
-  locationType: string,
-  workCode: string,
-  folderLabels: ReadonlyMap<string, string> = noFolderLabels,
+  location: MediaItem["locations"][number],
+  folderLabels: ReadonlyMap<number, string> = noFolderLabels,
 ) {
-  const parts = path.split("/").filter(Boolean);
-  if (locationType !== "local" || !workCode) return parts;
-  const workRootIndex = localWorkRootIndex(parts, workCode);
-  if (workRootIndex < 0 || workRootIndex >= parts.length - 1) return parts;
-  const inside = parts.slice(workRootIndex + 1);
-  const label = folderLabels.get(parts.slice(0, workRootIndex + 1).join("/"));
-  return label ? [label, ...inside] : inside;
+  const place = localFolderPlace(location);
+  if (!place) return location.path.split("/").filter(Boolean);
+  const label = folderLabels.get(place.folderId);
+  return label ? [label, ...place.parts] : place.parts;
 }
 
-const noFolderLabels: ReadonlyMap<string, string> = new Map();
+/** The work folder the server says holds a local location and the path segments below it, if any does. */
+function localFolderPlace(location: MediaItem["locations"][number]) {
+  if (location.locationType !== "local" || location.folderId === undefined) return null;
+  const parts = (location.relativePath ?? "").split("/").filter(Boolean);
+  return parts.length > 0 ? { folderId: location.folderId, parts } : null;
+}
+
+const noFolderLabels: ReadonlyMap<number, string> = new Map();
 
 /**
  * The display names of the last `count` segments of a location's path, one per
@@ -595,46 +606,40 @@ function displayPathNames(location: { path: string; displayPath?: string }, coun
   return names;
 }
 
-/** The index of the path segment that is the work's folder, or -1 when no segment names the work. */
-function localWorkRootIndex(parts: string[], workCode: string) {
-  const code = workCode.toUpperCase();
-  return parts.findIndex((part) => {
-    const normalized = part.toUpperCase();
-    return normalized.includes(code) || /\b(RJ|BJ|VJ)[0-9]{5,8}\b/i.test(part);
-  });
-}
-
 /**
  * Names each work folder when the work's local files lie in several, so the
  * tree shows one folder per copy instead of mixing their files. A work in a
  * single folder needs no labels. A label is the folder's name, extended by its
  * parent folders while two folders share a name.
  */
-function localWorkFolderLabels(items: MediaItem[], fileSourceId: number | null, workCode: string) {
-  const roots = new Set<string>();
-  if (!workCode) return noFolderLabels;
+function localWorkFolderLabels(items: MediaItem[], fileSourceId: number | null) {
+  const roots = new Map<number, string>();
   for (const item of items) {
     for (const location of item.locations) {
-      if (location.locationType !== "local" || location.availability !== "available") continue;
+      if (location.availability !== "available") continue;
       if (fileSourceId !== null && location.fileSourceId !== fileSourceId) continue;
+      const place = localFolderPlace(location);
+      if (!place || roots.has(place.folderId)) continue;
+      // The server gives the path below the folder, so the rest is the folder's root.
       const parts = location.path.split("/").filter(Boolean);
-      const index = localWorkRootIndex(parts, workCode);
-      if (index >= 0 && index < parts.length - 1) roots.add(parts.slice(0, index + 1).join("/"));
+      roots.set(place.folderId, parts.slice(0, parts.length - place.parts.length).join("/"));
     }
   }
   if (roots.size < 2) return noFolderLabels;
-  const labels = new Map<string, string>();
-  for (const root of roots) {
+  const labels = new Map<number, string>();
+  for (const [folderId, root] of roots) {
     const segments = root.split("/");
     let depth = 1;
     const label = () => segments.slice(-depth).join(" / ");
     while (
       depth < segments.length &&
-      [...roots].some((other) => other !== root && other.split("/").slice(-depth).join(" / ") === label())
+      [...roots].some(
+        ([other, otherRoot]) => other !== folderId && otherRoot.split("/").slice(-depth).join(" / ") === label(),
+      )
     ) {
       depth += 1;
     }
-    labels.set(root, label());
+    labels.set(folderId, label());
   }
   return labels;
 }

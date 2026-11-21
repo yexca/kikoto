@@ -80,7 +80,7 @@ export function useFolderEditWorkspace({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const currentFiles = useMemo(() => localFolderFiles(currentItems, target.rootPath), [currentItems, target.rootPath]);
+  const currentFiles = useMemo(() => localFolderFiles(currentItems, target.folderId), [currentItems, target.folderId]);
   const currentResource = useMemo<FolderEditResource>(
     () => folderEditResources({ workId: target.workId, primaryCode: "", editions: [], warnings: [] }, target)[0],
     [target],

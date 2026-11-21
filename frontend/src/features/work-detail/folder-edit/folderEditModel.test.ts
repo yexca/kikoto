@@ -257,6 +257,8 @@ describe("folder edit files", () => {
             id: 5,
             locationType: "local",
             path: "Library/RJ00000001/mp3/01.mp3",
+            folderId: 3,
+            relativePath: "mp3/01.mp3",
             sizeBytes: 3,
             availability: "available",
           },
@@ -266,6 +268,8 @@ describe("folder edit files", () => {
             id: 6,
             locationType: "local",
             path: "Other/RJ00000001/mp3/01.mp3",
+            folderId: 4,
+            relativePath: "mp3/01.mp3",
             sizeBytes: 3,
             availability: "available",
           },
@@ -284,13 +288,15 @@ describe("folder edit files", () => {
             id: 8,
             locationType: "local",
             path: "Library/RJ00000001/mp3/03.mp3",
+            folderId: 3,
+            relativePath: "mp3/03.mp3",
             sizeBytes: 3,
             availability: "unavailable",
           },
         ],
       },
     ] as unknown as MediaItem[];
-    expect(localFolderFiles(items, "/Library/RJ00000001/")).toEqual([
+    expect(localFolderFiles(items, 3)).toEqual([
       { path: "mp3/01.mp3", name: "01.mp3", kind: "audio", sizeBytes: 3, locationId: 5 },
     ]);
   });

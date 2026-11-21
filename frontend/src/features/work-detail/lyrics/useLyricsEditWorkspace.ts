@@ -65,7 +65,7 @@ export function useLyricsEditWorkspace({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const lyrics = useMemo(() => folderLyrics(items, target.rootPath), [items, target.rootPath]);
+  const lyrics = useMemo(() => folderLyrics(items, target.folderId), [items, target.folderId]);
   const ownResources = useMemo(
     () => lyricsEditResources({ workId: target.workId, primaryCode: "", editions: [], warnings: [] }, target),
     [target],
@@ -122,7 +122,7 @@ export function useLyricsEditWorkspace({
     try {
       const found =
         resource.kind === "local"
-          ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.rootPath)
+          ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.folderId)
           : remoteEditionFiles((await api.getRemoteSourceWork(resource.sourceId, resource.editionCode)).tracks);
       setLoaded((current) => ({ ...current, [resource.id]: { status: "ready", files: lyricsFilesOf(found) } }));
     } catch {

@@ -53,7 +53,11 @@ source's actions at every width. The Hero's one primary action
 (`heroPlaybackModel`) follows from the shown directory, the folder routing
 rules, and the saved playback cursor: Resume, Play for the folder the
 Directory opens on (the tracks that folder queues when played from its first
-track), loading, or the reason nothing can play. Resume plays the queue the
+track), loading, or the reason nothing can play. The Directory, a folder's
+file list, Manage files, Manage lyrics, and Forget work place a local file in
+the work folder its location's `folderId` names and show it by its
+`relativePath`; they never match folders by path prefix or work code. A work
+with files in several folders shows one labeled branch per folder. Resume plays the queue the
 server builds for the cursor and then loads and shows the cursor's edition
 when it is another one. Beside it sit the quiet Mark,
 rating, and List controls and the Metadata button. The source action list ends

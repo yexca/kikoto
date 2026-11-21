@@ -35,6 +35,17 @@ Every active folder's files are indexed as media of the work, and each file
 belongs to the folder its path lies in. Several folders are a state the work
 detail offers to tidy up, not an error.
 
+A media read (the work detail with media and `GET /api/works/{id}/media`)
+gives each local location the `folderId` of the work folder that holds it and
+its `relativePath` below that folder's root. The folder is the deepest of the
+media work's recorded folders, in any state, on the location's file source
+whose root contains the path, compared after the same normalization and with
+the same case sensitivity as scans and cleanup, so a folder need not be named
+after the work code and two roots that differ only in case are two folders. A
+location no recorded folder holds carries neither field. The work detail
+groups, lists, and names folder files by these fields; every folder edit,
+deletion, and cleanup still checks its paths on the server.
+
 A local path of a work has one location, on one media item. A scanned file's
 item is the one its path is already recorded on, such as the remote item a
 Fetch published the file under; that item leaves any remote folder and takes

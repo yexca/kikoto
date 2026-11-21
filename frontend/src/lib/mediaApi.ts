@@ -78,6 +78,10 @@ export type MediaFileLocation = {
    * file and folders, segment for segment; only on a local location with such a name.
    */
   displayPath?: string;
+  /** The work folder that holds a local location, as the server matches it; absent where none does. */
+  folderId?: number;
+  /** The location's path below its work folder, present with `folderId`. */
+  relativePath?: string;
   streamUrl: string;
   downloadUrl: string;
   remoteHash: string;

@@ -70,7 +70,7 @@ export function usePersistedFileManagement({
   const managementTree = useMemo(() => {
     if (!isListOpen) return emptyTree();
     if (selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID) {
-      return buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode);
+      return buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID);
     }
     // A folder on an offline storage pool lists nothing to act on. Its files
     // may have copies in another folder, which must never stand in for them.
@@ -79,9 +79,8 @@ export function usePersistedFileManagement({
     }
     if (localDirectoryWork && manageFolder && localFolders.length > 1 && selectedSource?.kind === "local") {
       return buildTree(
-        mediaItemsInLocalFolder(localDirectoryWork.mediaItems, manageFolder.rootPath),
+        mediaItemsInLocalFolder(localDirectoryWork.mediaItems, manageFolder.id),
         manageFolder.fileSourceId,
-        localDirectoryWork.primaryCode,
       );
     }
     return tree;
@@ -154,9 +153,8 @@ export function usePersistedFileManagement({
       localDirectoryWork && workspaceFolder
         ? forgetWorkTargets(
             buildTree(
-              mediaItemsInLocalFolder(localDirectoryWork.mediaItems, workspaceFolder.rootPath),
+              mediaItemsInLocalFolder(localDirectoryWork.mediaItems, workspaceFolder.id),
               workspaceFolder.fileSourceId,
-              localDirectoryWork.primaryCode,
             ),
             workspaceFolder,
             localDirectoryWork.id,

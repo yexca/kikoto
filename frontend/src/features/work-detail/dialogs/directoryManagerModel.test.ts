@@ -8,7 +8,7 @@ import {
   fileExtension,
   withTargetKeys,
 } from "./directoryManagerModel";
-import { directoryManageTargets } from "./mediaDeleteTargets";
+import { directoryManageTargets, forgetWorkTargets } from "./mediaDeleteTargets";
 
 function file(id: number, sourcePath: string, overrides: Partial<TreeTrack> = {}): TreeTrack {
   const title = sourcePath.split("/").pop() ?? sourcePath;
@@ -34,6 +34,7 @@ function file(id: number, sourcePath: string, overrides: Partial<TreeTrack> = {}
     cacheStreamUrl: "",
     localLocationId: id,
     localPath: `RJ00000000/${sourcePath}`,
+    localFolderId: 1,
     localAvailable: true,
     progress: null,
     locations: [],
@@ -96,5 +97,22 @@ describe("directory manager selection model", () => {
     expect(directoryManagerSelectionState(keys, selected).checked).toBe(true);
     expect([...withTargetKeys(selected, keys, false)]).toEqual(["local:5"]);
     expect(directoryManagerSelectionState([], new Set()).checked).toBe(false);
+  });
+
+  it("names the forgotten folder by a file the server places in it", () => {
+    // The first file lies in another folder whose path differs only in case.
+    const tree = folder("", [
+      file(6, "01.mp3", { localFolderId: 2, localPath: "library/example folder/01.mp3" }),
+      file(7, "02.mp3", { localFolderId: 1, localPath: "library/Example Folder/02.mp3" }),
+    ]);
+    const workFolder = { id: 1, rootPath: "library/Example Folder" };
+    const targets = forgetWorkTargets(tree, workFolder, 3, "Work folder");
+    expect(targets[targets.length - 1]).toMatchObject({
+      kind: "local_root",
+      locationId: 7,
+      folderId: 1,
+      expectedPath: "library/Example Folder",
+    });
+    expect(forgetWorkTargets(tree, { ...workFolder, id: 9 }, 3, "Work folder")).toEqual([]);
   });
 });

@@ -58,6 +58,7 @@ import {
   workflowRunDetailFixture,
   workflowRunFixture,
   workFixture,
+  withLocationFoldersFixture,
   workResolveFixture,
   worksPageFixture,
   type ApiErrorBody,
@@ -640,7 +641,10 @@ export async function mockApplication(
           metadataSync: fixture.metadataSyncControl?.detailReady
             ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
             : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),
-          mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
+          mediaItems:
+            url.searchParams.get("includeMedia") === "false"
+              ? []
+              : withLocationFoldersFixture(mediaItems, fixture.detailLocalFolders),
         }),
       });
       return;
@@ -670,7 +674,10 @@ export async function mockApplication(
         json: {
           workId,
           mediaWorkId: workId,
-          mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItemsFixture(page, workId),
+          mediaItems: withLocationFoldersFixture(
+            mediaItems.length > 0 ? mediaItems : restoredMediaItemsFixture(page, workId),
+            fixture.detailLocalFolders,
+          ),
         } satisfies ApiResponse<"getWorkMedia">,
       });
       return;

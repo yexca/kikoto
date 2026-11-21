@@ -91,10 +91,10 @@ export function lyricsFilesOf(files: readonly FolderEditFile[]): FolderEditFile[
  * The lyrics files of a local folder: those in a language's lyrics folder,
  * which Kikoto manages, and the others.
  */
-export function folderLyrics(items: MediaItem[], rootPath: string) {
+export function folderLyrics(items: MediaItem[], folderId: number) {
   const managed: FolderEditFile[] = [];
   const loose: FolderEditFile[] = [];
-  for (const file of lyricsFilesOf(localFolderFiles(items, rootPath))) {
+  for (const file of lyricsFilesOf(localFolderFiles(items, folderId))) {
     (managedLyricsLanguage(file.path) === null ? loose : managed).push(file);
   }
   return { managed, loose };

@@ -106,7 +106,7 @@ export function LyricsManagerDialog({
   const [folderId, setFolderId] = useState(request.folderId ?? 0);
   const folder = localFolders.find((candidate) => candidate.id === folderId) ?? localFolders[0];
   const managedCount = useMemo(
-    () => (folder ? folderLyrics(work.mediaItems, folder.rootPath).managed.length : 0),
+    () => (folder ? folderLyrics(work.mediaItems, folder.id).managed.length : 0),
     [folder, work.mediaItems],
   );
   const [filesBusy, setFilesBusy] = useState(false);

@@ -195,7 +195,15 @@ type fileLocationDetail struct {
 	// DisplayPath is Path with the display names the viewer's metadata
 	// languages give its file and folders, segment for segment. It is present
 	// only on a local location that has such a name.
-	DisplayPath     string  `json:"displayPath,omitempty"`
+	DisplayPath string `json:"displayPath,omitempty"`
+	// FolderID is the work folder that holds a local location, the deepest of
+	// the media work's recorded folders on the location's file source whose
+	// root contains its path, and RelativePath is Path below that root. Both
+	// are absent on a location no recorded folder holds and on cache and
+	// remote locations. They group and display files; every change to a folder
+	// still checks its paths on the server.
+	FolderID        *int64  `json:"folderId,omitempty"`
+	RelativePath    string  `json:"relativePath,omitempty"`
 	StreamURL       string  `json:"streamUrl"`
 	DownloadURL     string  `json:"downloadUrl"`
 	RemoteHash      string  `json:"remoteHash"`

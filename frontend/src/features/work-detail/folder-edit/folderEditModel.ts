@@ -213,17 +213,15 @@ export function folderEditRemoteResource(resources: FolderEditResource[], source
   return exact ?? resources.find((resource) => resource.kind === "remote" && resource.sourceId === sourceId) ?? null;
 }
 
-/** The available local files of a work that lie inside one of its folders. */
-export function localFolderFiles(items: MediaItem[], rootPath: string): FolderEditFile[] {
-  const prefix = `${normalizePath(rootPath)}/`;
+/** The available local files of a work that the server places in one of its folders. */
+export function localFolderFiles(items: MediaItem[], folderId: number): FolderEditFile[] {
   const files: FolderEditFile[] = [];
   const seen = new Set<string>();
   for (const item of items) {
     for (const location of item.locations) {
       if (location.locationType !== "local" || location.availability !== "available") continue;
-      const full = normalizePath(location.path);
-      if (!full.startsWith(prefix)) continue;
-      const path = full.slice(prefix.length);
+      if (location.folderId !== folderId) continue;
+      const path = location.relativePath ?? "";
       if (!path || seen.has(path)) continue;
       seen.add(path);
       files.push({
