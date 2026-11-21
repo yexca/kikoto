@@ -601,8 +601,10 @@ func (s *Store) scanCatalog(ctx context.Context) (ScanResult, error) {
 	if err := s.ensureDerived(ctx); err != nil {
 		return ScanResult{}, err
 	}
-	// The images of a root that went away read as gone; the choices stay.
-	if !unmounted {
+	// The images of a root that went away read as gone, and a root without its
+	// marker may be the empty mount point an unmounted disk leaves, so artwork
+	// is chosen only while the marker names the catalog; the choices stay.
+	if root.State == "online" && !unmounted {
 		if err := s.refreshArtwork(ctx); err != nil {
 			return ScanResult{}, err
 		}

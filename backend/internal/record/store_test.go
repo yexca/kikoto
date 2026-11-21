@@ -207,6 +207,54 @@ func TestDerivedFieldsKeepArtworkWhileTheRootIsOffline(t *testing.T) {
 	}
 }
 
+// A scan of an empty mount point left by an unmounted disk adds nothing and
+// keeps every folder's artwork for when the disk is back.
+func TestScanWithoutTheMarkerKeepsArtwork(t *testing.T) {
+	store, db, root := scannedStore(t, map[string]string{"trip/poster.jpg": string(tinyJPEG), "trip/clip.mp4": "video"})
+	poster := func() sql.NullInt64 {
+		t.Helper()
+		var id sql.NullInt64
+		if err := db.QueryRow(`SELECT poster_asset_id FROM record_folder WHERE name='trip'`).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	chosen := poster()
+	if !chosen.Valid {
+		t.Fatal("the scan chose no poster")
+	}
+	away := root + "-away"
+	if err := os.Rename(root, away); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	result, err := store.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.MissingMarked {
+		t.Fatalf("scan of the empty mount point marked files missing: %+v", result)
+	}
+	if got := poster(); got != chosen {
+		t.Fatalf("poster after scanning the empty mount point = %+v, want %+v", got, chosen)
+	}
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(away, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := poster(); got != chosen {
+		t.Fatalf("poster once the disk is back = %+v, want %+v", got, chosen)
+	}
+}
+
 // A section pages on its own: each page follows the cursor the previous one
 // handed out, and the last page hands out none.
 func TestListSectionPagesThroughEveryChild(t *testing.T) {

@@ -134,9 +134,11 @@ removed. When the rows cannot be removed, the item moves back.
 
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop
-candidates, each in that order and by name among equals. Each scan chooses a
-folder's poster and backdrop, the first candidate that carries a valid image
-signature, and stores them on the folder, so a listing reads no files. The
+candidates, each in that order and by name among equals. Each scan of an
+online root chooses a folder's poster and backdrop, the first candidate that
+carries a valid image signature, and stores them on the folder, so a listing
+reads no files. A scan of a `marker_missing` root keeps the earlier choices,
+because the path may be the empty mount point of an unmounted disk. The
 server checks the signature again before serving record artwork or image
 previews and never exposes an absolute filesystem path.
 
