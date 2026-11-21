@@ -63,7 +63,12 @@ const aiModelHistory = [
   { from: "v0.5.5", to: "v0.6.0", models: ["GPT-6-Astra"] },
   { from: "v0.6.1", to: "v0.6.1", models: ["GPT-6-Astra", "Claude Opus 5", "Claude Fable 5.1"] },
   { from: "v0.7.0", to: "v0.7.1", models: ["Claude Opus 5.5", "GPT-6-Astra", "GPT-6-Sol"] },
-  { from: "v0.8.0", to: null, models: ["Claude Opus 5.5", "GPT-6.1-Sol"] },
+  { from: "v0.8.0", to: "v0.10.2", models: ["Claude Opus 5.5", "GPT-6.1-Sol"] },
+  {
+    from: "v0.11.0",
+    to: null,
+    models: ["Claude Opus 5.5", "Gemini 4 Neon", "GPT-6.2-Sol", "Gemini 4 Hydrogen", "Gemini 4 Carbon"],
+  },
 ] as const;
 
 // The projects a user would recognize; build tools and transitive libraries are left out.
