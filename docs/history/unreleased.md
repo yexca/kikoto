@@ -557,7 +557,8 @@
 - Audio whose file runs longer than its sound plays to the end instead of
   failing on the last part, and a file a folder edit moved plays its new file
   at once.
-- A legacy progress write no longer replaces a later checkpoint.
+- A legacy progress write no longer replaces a later checkpoint, and its
+  response says `stored: false` when it was not recorded.
 - A file whose library or storage pool goes offline while it plays pauses with
   a notice that says so, instead of moving to another source.
 - A restored queue plays each item from its local copy unless you picked

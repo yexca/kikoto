@@ -77,8 +77,8 @@ its duration, its audio codec, and whether it embeds cover art (a video stream
 marked as an attached picture), which does not make it a video; an image
 records its dimensions. A file the probe cannot read is marked failed without failing the
 scan, and it is probed again only after it changes. Files past the per-scan
-bound, and every pending file when `ffprobe` is missing, stay pending for the
-next scan. Cancelling the scan stops the probe and leaves the rest pending. The
+bound, files whose probe timed out, as on a disk spinning up, and every
+pending file when `ffprobe` is missing, stay pending for the next scan. Cancelling the scan stops the probe and leaves the rest pending. The
 scan records its last-scanned time only after the probe, so a client waiting
 for that time sees the new durations. The run summary reports how many files
 were probed, failed, and remain.
@@ -104,7 +104,9 @@ use. A thumbnail is named by asset, file size, and modification time, so a
 changed file gets a new thumbnail and the asset's earlier one is removed when
 it is written. A file `ffmpeg` cannot read leaves an empty failure marker for
 that revision, so it is not tried again until it changes or the cache is
-cleared. After a complete scan, the thumbnails and failure markers of assets
+cleared. A render that times out, or whose own work file cannot be written,
+leaves no marker and answers `record_thumbnail_busy`, so a later request
+tries again. After a complete scan, the thumbnails and failure markers of assets
 that are no longer available videos, images, or audio files with cover art are
 removed, and the run summary
 counts them; a partial scan leaves them in place. An evicted or cleared

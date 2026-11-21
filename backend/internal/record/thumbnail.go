@@ -30,7 +30,9 @@ var (
 	// ErrThumbnailUnavailable means a thumbnail cannot be made for this file
 	// revision; the failure is remembered until the file changes.
 	ErrThumbnailUnavailable = errors.New("record thumbnail is unavailable")
-	// ErrThumbnailBusy means too many requests already wait for a thumbnail slot.
+	// ErrThumbnailBusy means a thumbnail cannot be had now but may be later:
+	// too many requests already wait for a slot, or a passing failure, such as
+	// a timeout, stopped the last attempt.
 	ErrThumbnailBusy = errors.New("record thumbnail generation is busy")
 )
 
@@ -48,8 +50,16 @@ func FFmpeg(ctx context.Context, args []string) error {
 	command := exec.CommandContext(runContext, binary, args...)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
-	return command.Run()
+	err = command.Run()
+	if err != nil && ctx.Err() == nil && errors.Is(runContext.Err(), context.DeadlineExceeded) {
+		return ErrMediaToolTimedOut
+	}
+	return err
 }
+
+// errThumbnailWork is a failure of the thumbnail's own work file, such as a
+// full temporary directory, which says nothing about the source file.
+var errThumbnailWork = errors.New("record thumbnail work file failed")
 
 // ThumbnailSource identifies the file revision a thumbnail is made from.
 type ThumbnailSource struct {
@@ -237,6 +247,10 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 		// Nothing is remembered when ffmpeg is missing; installing it fixes every file.
 		return ErrThumbnailUnavailable
 	}
+	if errors.Is(err, ErrMediaToolTimedOut) || errors.Is(err, errThumbnailWork) {
+		// A slow disk or a full work directory passes; a later request tries again.
+		return ErrThumbnailBusy
+	}
 	_ = t.store(ctx, dir, prefix, failed, nil)
 	return ErrThumbnailUnavailable
 }
@@ -245,12 +259,12 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 func (t *Thumbnailer) render(ctx context.Context, input string, source ThumbnailSource) ([]byte, error) {
 	if t.workDir != "" {
 		if err := os.MkdirAll(t.workDir, 0o755); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", errThumbnailWork, err)
 		}
 	}
 	work, err := os.CreateTemp(t.workDir, ThumbnailPartialPrefix+"*.jpg")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errThumbnailWork, err)
 	}
 	temporary := work.Name()
 	_ = work.Close()

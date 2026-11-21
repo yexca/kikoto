@@ -202,8 +202,9 @@ func TestCanceledMediaProgressPersistenceDoesNotBlockTheNextWriter(t *testing.T)
 	// The following request still verifies recovery through the public handler.
 	done := make(chan error, 1)
 	go func() {
-		done <- server.persistMediaProgress(requestCtx, userID, 801, 802, nil, nil, "",
+		_, err := server.persistMediaProgress(requestCtx, userID, 801, 802, nil, nil, "",
 			mediaProgressUpdateRequest{PositionSeconds: 10}, "2026-01-01 00:00:00")
+		done <- err
 	}()
 
 	// The blocked write waits for the writer connection the blocker holds.
@@ -283,8 +284,9 @@ func TestUpdateMediaProgressKeepsALaterReportedCursor(t *testing.T) {
 		}
 	}
 	user := account.User{ID: 1, Username: "progress-user", Role: "user", Permissions: account.PermissionsForRole("user")}
-	if response := patchMediaProgress(t, server, user, 1, `{"positionSeconds":90}`); response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	response := patchMediaProgress(t, server, user, 1, `{"positionSeconds":90}`)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"stored":false`) {
+		t.Fatalf("status = %d, body = %s; want the write reported as not stored", response.Code, response.Body.String())
 	}
 	var position float64
 	var order int64

@@ -8,8 +8,29 @@ import { resolvedTrackLyrics } from "./playbackQueueTracks";
 import type { PlayerTrack } from "./playerTypes";
 import { applyTrackLocation } from "./trackLocations";
 
-/** The most items one resolve request names; the server refuses more. */
+/** The most items, and distinct works, one resolve request names; the server refuses more. */
 const PLAYBACK_QUEUE_RESOLVE_LIMIT = 1000;
+const PLAYBACK_QUEUE_RESOLVE_WORK_LIMIT = 100;
+
+/** Splits queue positions, in order, into parts within both request limits. */
+function resolveParts(tracks: PlayerTrack[], positions: number[]) {
+  const parts: number[][] = [];
+  let part: number[] = [];
+  let works = new Set<number>();
+  for (const index of positions) {
+    const workId = tracks[index].workId;
+    const newWork = !works.has(workId);
+    if (part.length === PLAYBACK_QUEUE_RESOLVE_LIMIT || (newWork && works.size === PLAYBACK_QUEUE_RESOLVE_WORK_LIMIT)) {
+      parts.push(part);
+      part = [];
+      works = new Set();
+    }
+    part.push(index);
+    works.add(workId);
+  }
+  if (part.length > 0) parts.push(part);
+  return parts;
+}
 
 export type ResolvePlaybackQueue = (
   items: PlaybackQueueResolveItem[],
@@ -33,8 +54,7 @@ export async function resolveQueueTracks(
   const positions = tracks.flatMap((track, index) => (resolvableQueueTrack(track) ? [index] : []));
   const resolved = new Map<number, PlaybackQueueResolvedItem>();
   const works = new Map<number, PlaybackQueueWork>();
-  for (let start = 0; start < positions.length; start += PLAYBACK_QUEUE_RESOLVE_LIMIT) {
-    const part = positions.slice(start, start + PLAYBACK_QUEUE_RESOLVE_LIMIT);
+  for (const part of resolveParts(tracks, positions)) {
     const response = await resolve(
       part.map((index) => {
         const track = tracks[index];

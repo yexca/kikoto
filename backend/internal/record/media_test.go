@@ -393,3 +393,46 @@ func TestAudioFilesAreIndexedAndProbedForTheirLengthAndCover(t *testing.T) {
 		t.Fatal("an audio file without sound was accepted")
 	}
 }
+
+// A probe that times out, as on a disk spinning up, leaves the file pending
+// for the next scan instead of failing it for good.
+func TestProbeTimeoutLeavesTheFilePending(t *testing.T) {
+	store, db, _ := scannedStore(t, map[string]string{"a.mp4": "a"})
+	result, err := store.ProbePending(context.Background(), func(context.Context, string) ([]byte, error) {
+		return nil, ErrMediaToolTimedOut
+	}, 10, 1)
+	if err != nil || result.TimedOut != 1 || result.Failed != 0 || result.Remaining != 1 {
+		t.Fatalf("result = %+v, err %v", result, err)
+	}
+	if state, _, _ := probeState(t, db, "a.mp4"); state != "pending" {
+		t.Fatalf("state after a timeout = %s", state)
+	}
+}
+
+// A thumbnail that timed out is not remembered as failed: the request is busy,
+// and a later one renders it.
+func TestThumbnailTimeoutIsTriedAgain(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "clip.mp4")
+	if err := os.WriteFile(input, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	timedOut := true
+	thumbs := NewThumbnailer(t.TempDir(), func(ctx context.Context, args []string) error {
+		if timedOut {
+			calls.Add(1)
+			return ErrMediaToolTimedOut
+		}
+		return fakeFFmpeg(&calls, tinyJPEG, nil)(ctx, args)
+	}, 1)
+	source := ThumbnailSource{AssetID: 301, Kind: "image", SizeBytes: 5, MtimeNs: 1}
+	if _, err := thumbs.Thumbnail(context.Background(), input, source); !errors.Is(err, ErrThumbnailBusy) {
+		t.Fatalf("timed out thumbnail err = %v, want ErrThumbnailBusy", err)
+	}
+	timedOut = false
+	file, err := thumbs.Thumbnail(context.Background(), input, source)
+	if err != nil {
+		t.Fatalf("thumbnail after the timeout = %v", err)
+	}
+	_ = file.Close()
+}

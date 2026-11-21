@@ -161,7 +161,9 @@ serves every playback choice: the location fallback after a failure, the
 player's source menu, Resume, and a restored queue.
 
 `POST /api/playback/queue/resolve` refreshes a restored player queue in one
-request. The body names up to 1,000 items, each with its `mediaItemId`, the
+request. The body names up to 1,000 items from at most 100 distinct works,
+and the player sends a longer queue in parts within both limits. Each item
+names its `mediaItemId`, the
 `workId` it was queued from, the `locationId` it was on, and
 `locationChosen` when the listener picked that location in the player. Each
 item comes back in request order as `playable` with its track, `unavailable`
@@ -183,8 +185,10 @@ local folder and their local locations.
 work's saved cursor, or `resume: null` when the cursor is missing, finished,
 at zero, or its track cannot play now. The queue is the cursor edition's
 playable files in the work playback order, the order the work page's
-Directory lists the edition's whole local tree in: folders before files, names
-in natural order, and chains of single folders collapsed. Every track starts
+Directory lists the edition's whole local tree in: each local file inside the
+work folder its `folderId` names, one labeled folder per work folder when
+there are several, folders before files, names in natural order, and chains
+of single folders collapsed. Every track starts
 on its first playback location, except the cursor's track, which tries the
 cursor's location, then one of the same source and type, then one of the same
 source, then its first. `startIndex` and `positionSeconds` name where Resume

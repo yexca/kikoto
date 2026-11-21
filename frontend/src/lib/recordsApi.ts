@@ -1,4 +1,4 @@
-import { deleteJSONBody, getJSON, postJSON, postJSONBody, putJSONBody, sharedGetJSON } from "@/lib/apiTransport";
+import { deleteJSONBody, getJSON, postJSON, postJSONBody, sendJSONBody, sharedGetJSON } from "@/lib/apiTransport";
 import type { VideoPlaybackInfo } from "@/lib/mediaApi";
 
 export type RecordRoot = {
@@ -157,8 +157,11 @@ export const recordsApi = {
   getRecordProgress: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<RecordProgress>(`/api/records/assets/${id}/progress`, signal),
   /** `stored` is false when the server already holds a save captured later. */
+  /** Keeps alive past page close, so the save a closing page flushes still arrives. */
   updateRecordProgress: (id: number, progress: RecordProgress) =>
-    putJSONBody<{ ok: boolean; stored?: boolean } | undefined>(`/api/records/assets/${id}/progress`, progress),
+    sendJSONBody<{ ok: boolean; stored?: boolean } | undefined>("PUT", `/api/records/assets/${id}/progress`, progress, {
+      keepalive: true,
+    }),
   /**
    * Moves a record file to the trash in the record root; `trashPath` is relative to that root.
    * `expectedPath` is the relative path the viewer confirmed; the server refuses an id that names another path.

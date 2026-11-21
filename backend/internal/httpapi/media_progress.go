@@ -31,6 +31,9 @@ type mediaProgressResponse struct {
 	DurationSeconds *float64 `json:"durationSeconds"`
 	Completed       bool     `json:"completed"`
 	LastPlayedAt    *string  `json:"lastPlayedAt"`
+	// Stored is false when a later checkpoint kept the cursor, so this write
+	// was not recorded.
+	Stored bool `json:"stored"`
 }
 
 type workProgressSummary struct {
@@ -112,14 +115,15 @@ func (s *Server) prepareAndPersistMediaProgress(ctx context.Context, userID, med
 		return mediaProgressResponse{}, err
 	}
 	lastPlayedAt := time.Now().UTC().Truncate(time.Second).Format("2006-01-02 15:04:05")
-	if err := s.persistMediaProgress(ctx, userID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType, payload, lastPlayedAt); err != nil {
+	stored, err := s.persistMediaProgress(ctx, userID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType, payload, lastPlayedAt)
+	if err != nil {
 		return mediaProgressResponse{}, err
 	}
 	return mediaProgressResponse{
 		WorkID: canonicalWorkID, MediaWorkID: workID, MediaItemID: mediaItemID,
 		FileSourceID: fileSourceID, LocationID: locationID, LocationType: locationType,
 		PositionSeconds: payload.PositionSeconds, DurationSeconds: payload.DurationSeconds,
-		Completed: payload.Completed, LastPlayedAt: &lastPlayedAt,
+		Completed: payload.Completed, LastPlayedAt: &lastPlayedAt, Stored: stored,
 	}, nil
 }
 
@@ -142,7 +146,8 @@ func decodeMediaProgressUpdate(r *http.Request) (mediaProgressUpdateRequest, err
 
 // persistMediaProgress records a legacy progress write as a checkpoint that
 // occurred when the server received it. Like a checkpoint report, it replaces
-// only an earlier cursor, so it never undoes a later report.
+// only an earlier cursor, so it never undoes a later report, and reports
+// whether it was recorded.
 func (s *Server) persistMediaProgress(
 	ctx context.Context,
 	userID, workID, mediaItemID int64,
@@ -150,8 +155,8 @@ func (s *Server) persistMediaProgress(
 	locationType string,
 	payload mediaProgressUpdateRequest,
 	lastPlayedAt string,
-) error {
-	_, err := s.db.ExecContext(ctx, `
+) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO user_work_playback_cursor (
 			user_id,
 			work_id,
@@ -181,9 +186,10 @@ func (s *Server) persistMediaProgress(
 	`, userID, workID, mediaItemID, fileSourceID, locationID, locationType,
 		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt, time.Now().UnixMilli())
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	changed, err := result.RowsAffected()
+	return changed > 0, err
 }
 
 func (s *Server) getWorkPlaybackCursor(w http.ResponseWriter, r *http.Request) {

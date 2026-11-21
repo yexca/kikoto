@@ -28,7 +28,8 @@ submitted position. Acknowledgements without a stored cursor omit `identity`.
 
 `PATCH /api/media-items/{id}/progress` and `GET/POST /api/listening-sessions`
 serve web and native clients that do not send playback reports; their responses
-carry no `identity`. `GET /api/listening-sessions` returns the history
+carry no `identity`. A progress write that a later checkpoint outranks leaves
+the cursor as it is and answers `stored: false`. `GET /api/listening-sessions` returns the history
 generation with the time zone the account fixed, `null` while it follows the
 device, and `hours: true` for a server that takes hour buckets. The listening
 statistics, calendar, breakdown, and profile endpoints take the

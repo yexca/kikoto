@@ -12,6 +12,8 @@ export type MediaProgressUpdate = {
   durationSeconds: number | null;
   completed: boolean;
   lastPlayedAt: string | null;
+  /** From a progress write: false when a later checkpoint kept the cursor, so the write was not recorded. */
+  stored?: boolean;
 };
 
 export type MediaItem = {

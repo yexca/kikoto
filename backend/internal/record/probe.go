@@ -23,6 +23,11 @@ type ProbeFunc func(ctx context.Context, path string) ([]byte, error)
 // installed. Pending assets stay pending instead of failing.
 var ErrProbeUnavailable = errors.New("record media probe is unavailable")
 
+// ErrMediaToolTimedOut means ffprobe or ffmpeg ran past its timeout, as on a
+// disk spinning up or a busy host. Nothing about the file is remembered, so
+// the next scan or request tries it again.
+var ErrMediaToolTimedOut = errors.New("record media tool timed out")
+
 const (
 	probeTimeout     = 20 * time.Second
 	probeOutputLimit = 256 << 10
@@ -39,6 +44,9 @@ type ProbeResult struct {
 	Failed      int  `json:"failed"`
 	Remaining   int  `json:"remaining"`
 	Unavailable bool `json:"unavailable,omitempty"`
+	// TimedOut counts files whose probe timed out; they stay pending for the
+	// next scan.
+	TimedOut int `json:"timedOut,omitempty"`
 }
 
 // MediaInfo is what a probe stores for a video, audio file, or image.
@@ -94,7 +102,7 @@ func FFprobe(ctx context.Context, path string) ([]byte, error) {
 			return nil, ctxErr
 		}
 		if errors.Is(probeContext.Err(), context.DeadlineExceeded) {
-			return nil, errors.New("record media probe timed out")
+			return nil, ErrMediaToolTimedOut
 		}
 		return nil, fmt.Errorf("record media probe failed: %w", err)
 	}
@@ -254,6 +262,8 @@ func (s *Store) ProbePending(ctx context.Context, probe ProbeFunc, limit, concur
 			stopErr = outcome.err
 		case ctx.Err() != nil:
 			stopErr = ctx.Err()
+		case errors.Is(outcome.err, ErrMediaToolTimedOut):
+			result.TimedOut++
 		default:
 			if _, err := s.db.ExecContext(ctx, `UPDATE record_asset SET probe_state='failed', updated_at=CURRENT_TIMESTAMP WHERE id=? AND probe_state='pending'`, outcome.candidate.id); err != nil {
 				return result, err

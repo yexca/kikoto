@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 
@@ -10,11 +9,12 @@ import (
 
 // The work playback order is the order the work page's Directory lists a
 // work's files in, from its whole local tree: every file sits at its first
-// playable location, inside the work's own folder; a work whose local files
-// lie in several work folders shows one labeled folder per copy; chains of
-// single folders collapse into one; and each folder lists its subfolders, then
-// its files, each in natural name order. The client builds the same tree from
-// the work media for the Directory; Resume queues the work in this order.
+// playable location, inside the recorded work folder that holds it; a work
+// whose local files lie in several work folders shows one labeled folder per
+// folder; chains of single folders collapse into one; and each folder lists its
+// subfolders, then its files, each in natural name order. The client builds
+// the same tree from the same folder ids and relative paths for the
+// Directory; Resume and queue resolve play in this order.
 
 // playbackTreeFile is a work file at its place in the work's tree.
 type playbackTreeFile struct {
@@ -89,16 +89,19 @@ func treeLocation(item mediaItemDetail) (fileLocationDetail, bool) {
 	return fileLocationDetail{}, false
 }
 
-func buildWorkPlaybackTree(items []mediaItemDetail, workCode string) workPlaybackTree {
+// buildWorkPlaybackTree places a work's files as the work page's Directory
+// does, by the work folder the server attached to each local location, so
+// Resume and the queue play in the order the Directory shows.
+func buildWorkPlaybackTree(items []mediaItemDetail) workPlaybackTree {
 	tree := workPlaybackTree{root: newPlaybackTreeNode(""), byLocation: map[int64]*playbackTreeFile{}, byItem: map[int64]*playbackTreeFile{}}
-	labels := localWorkFolderLabels(items, workCode)
+	labels := localWorkFolderLabels(items)
 	for index := range items {
 		item := &items[index]
 		location, ok := treeLocation(*item)
 		if !ok {
 			continue
 		}
-		parts := displayPathParts(location.Path, location.LocationType, workCode, labels)
+		parts := displayPathParts(location, labels)
 		names := displayPathNames(location, len(parts))
 		file := &playbackTreeFile{item: item, location: location, title: item.Title}
 		if len(parts) > 0 {
@@ -188,8 +191,6 @@ func collapseSinglePlaybackFolders(node *playbackTreeNode, isRoot bool) *playbac
 	return collapsed
 }
 
-var workCodePattern = regexp.MustCompile(`(?i)\b(RJ|BJ|VJ)[0-9]{5,8}\b`)
-
 func splitPathSegments(path string) []string {
 	parts := []string{}
 	for _, part := range strings.Split(path, "/") {
@@ -200,35 +201,32 @@ func splitPathSegments(path string) []string {
 	return parts
 }
 
-// localWorkRootIndex is the index of the path segment that is the work's
-// folder, or -1 when no segment names the work.
-func localWorkRootIndex(parts []string, workCode string) int {
-	code := strings.ToUpper(workCode)
-	for index, part := range parts {
-		if strings.Contains(strings.ToUpper(part), code) || workCodePattern.MatchString(part) {
-			return index
-		}
+// localFolderPlace is the work folder the server attached to a local location
+// and the path segments below it, when one holds it.
+func localFolderPlace(location fileLocationDetail) (int64, []string, bool) {
+	if location.LocationType != "local" || location.FolderID == nil {
+		return 0, nil, false
 	}
-	return -1
+	parts := splitPathSegments(location.RelativePath)
+	if len(parts) == 0 {
+		return 0, nil, false
+	}
+	return *location.FolderID, parts, true
 }
 
-// displayPathParts are the segments a location's file has in the tree: below
-// the work's folder for a local file, under its label when the work has
-// several work folders.
-func displayPathParts(path string, locationType string, workCode string, labels map[string]string) []string {
-	parts := splitPathSegments(path)
-	if locationType != "local" || workCode == "" {
-		return parts
+// displayPathParts are the segments a location's file has in the tree, as the
+// Directory places it: below the work folder that holds a local file, under
+// that folder's label when the work's files lie in several, and any other
+// path whole.
+func displayPathParts(location fileLocationDetail, labels map[int64]string) []string {
+	folderID, parts, ok := localFolderPlace(location)
+	if !ok {
+		return splitPathSegments(location.Path)
 	}
-	rootIndex := localWorkRootIndex(parts, workCode)
-	if rootIndex < 0 || rootIndex >= len(parts)-1 {
-		return parts
+	if label := labels[folderID]; label != "" {
+		return append([]string{label}, parts...)
 	}
-	inside := append([]string{}, parts[rootIndex+1:]...)
-	if label := labels[strings.Join(parts[:rootIndex+1], "/")]; label != "" {
-		return append([]string{label}, inside...)
-	}
-	return inside
+	return parts
 }
 
 // displayPathNames are the display names of the last count segments of a
@@ -252,30 +250,26 @@ func displayPathNames(location fileLocationDetail, count int) []string {
 	return names
 }
 
-// localWorkFolderLabels names each work folder when a work's available local
-// files lie in several: the folder's name, extended by its parent folders
-// while two folders share a name.
-func localWorkFolderLabels(items []mediaItemDetail, workCode string) map[string]string {
-	if workCode == "" {
-		return nil
-	}
-	roots := []string{}
-	seen := map[string]bool{}
+// localWorkFolderLabels names each work folder that holds an available local
+// file when a work's files lie in several, keyed by folder: the folder's name,
+// extended by its parent folders while two folders share a name.
+func localWorkFolderLabels(items []mediaItemDetail) map[int64]string {
+	roots := map[int64]string{}
+	order := []int64{}
 	for _, item := range items {
 		for _, location := range item.Locations {
-			if location.LocationType != "local" || location.Availability != "available" {
+			if location.Availability != "available" {
 				continue
 			}
+			folderID, inside, ok := localFolderPlace(location)
+			if _, seen := roots[folderID]; !ok || seen {
+				continue
+			}
+			// The location gives the path below the folder, so the rest is the folder's root.
 			parts := splitPathSegments(location.Path)
-			index := localWorkRootIndex(parts, workCode)
-			if index < 0 || index >= len(parts)-1 {
-				continue
-			}
-			root := strings.Join(parts[:index+1], "/")
-			if !seen[root] {
-				seen[root] = true
-				roots = append(roots, root)
-			}
+			rootLength := max(0, len(parts)-len(inside))
+			roots[folderID] = strings.Join(parts[:rootLength], "/")
+			order = append(order, folderID)
 		}
 	}
 	if len(roots) < 2 {
@@ -283,19 +277,17 @@ func localWorkFolderLabels(items []mediaItemDetail, workCode string) map[string]
 	}
 	suffix := func(root string, depth int) string {
 		segments := strings.Split(root, "/")
-		if depth > len(segments) {
-			depth = len(segments)
-		}
-		return strings.Join(segments[len(segments)-depth:], " / ")
+		return strings.Join(segments[max(0, len(segments)-depth):], " / ")
 	}
-	labels := map[string]string{}
-	for _, root := range roots {
+	labels := map[int64]string{}
+	for _, folderID := range order {
+		root := roots[folderID]
 		segments := strings.Split(root, "/")
 		depth := 1
 		for depth < len(segments) {
 			shared := false
-			for _, other := range roots {
-				if other != root && suffix(other, depth) == suffix(root, depth) {
+			for other, otherRoot := range roots {
+				if other != folderID && suffix(otherRoot, depth) == suffix(root, depth) {
 					shared = true
 					break
 				}
@@ -305,7 +297,7 @@ func localWorkFolderLabels(items []mediaItemDetail, workCode string) map[string]
 			}
 			depth++
 		}
-		labels[root] = suffix(root, depth)
+		labels[folderID] = suffix(root, depth)
 	}
 	return labels
 }

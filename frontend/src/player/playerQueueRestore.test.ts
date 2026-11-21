@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PlaybackQueueResolution, PlaybackQueueResolveItem, PlaybackQueueTrack } from "@/lib/api";
 import type { PlayerTrack } from "./playerTypes";
-import { keepPlayingTrackLocation, revalidatePersistedQueue, type ResolvePlaybackQueue } from "./playerQueueRestore";
+import {
+  keepPlayingTrackLocation,
+  resolveQueueTracks,
+  revalidatePersistedQueue,
+  type ResolvePlaybackQueue,
+} from "./playerQueueRestore";
 
 const persistedTrack = {
   queueItemId: "queue-1",
@@ -72,6 +77,24 @@ const exampleWork = {
   circle: "Example Circle",
   voiceActors: ["Example Voice"],
 };
+
+describe("resolveQueueTracks", () => {
+  it("names at most 100 works in one request, so a long queue of many works resolves in parts", async () => {
+    const tracks = Array.from({ length: 150 }, (_, index) => ({
+      ...persistedTrack,
+      queueItemId: `queue-${index}`,
+      mediaItemId: 1000 + index,
+      workId: 1 + index,
+    }));
+    const resolve = resolver((items) => ({
+      items: items.map((item) => ({ mediaItemId: item.mediaItemId, workId: item.workId, status: "missing" as const })),
+      works: [],
+    }));
+    const { resolved } = await resolveQueueTracks(tracks, resolve);
+    expect(resolve.mock.calls.map(([items]) => new Set(items.map((item) => item.workId)).size)).toEqual([100, 50]);
+    expect(resolved.size).toBe(150);
+  });
+});
 
 describe("revalidatePersistedQueue", () => {
   it("resolves the whole queue in one request and plays each item where the server chooses", async () => {

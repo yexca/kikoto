@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -66,6 +68,19 @@ func jsonString(t *testing.T, value any) string {
 	return string(encoded)
 }
 
+// libraryRootWith is a data root holding the given folders, so the work
+// folders a test records read as mounted.
+func libraryRootWith(t *testing.T, folders ...string) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, folder := range folders {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(folder)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
 func seedPlaybackQueueWork(t *testing.T, db *sqlutil.DB) account.User {
 	t.Helper()
 	result, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('queue-user', 'Queue User', 'user')")
@@ -92,6 +107,8 @@ func seedPlaybackQueueWork(t *testing.T, db *sqlutil.DB) account.User {
 			(835, 823, 812, 'local', 'RJ00000000/Extra/Bonus/bonus.mp3', '', 'available'),
 			(836, 824, 812, 'local', 'RJ00000000/Main/gone.mp3', '', 'missing'),
 			(837, 825, 812, 'local', 'RJ00000000/Main/track 2.lrc', '', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, state) VALUES
+			(841, 801, 812, 'RJ00000000', 'active');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +134,7 @@ func resolveQueue(t *testing.T, server *Server, user account.User, body string) 
 func TestResolvePlaybackQueueReportsEveryItemInOneResponse(t *testing.T) {
 	db := openMigratedTestDB(t)
 	user := seedPlaybackQueueWork(t, db)
-	server := NewServer(db, config.Config{DataRoot: t.TempDir()})
+	server := NewServer(db, config.Config{DataRoot: libraryRootWith(t, "RJ00000000")})
 
 	resolved := resolveQueue(t, server, user, `{"items":[
 		{"mediaItemId":822,"workId":801,"locationId":832},
@@ -180,7 +197,7 @@ func TestWorkResumeQueueFollowsTheDirectoryOrderAndTheCursorLocation(t *testing.
 	`, user.ID); err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(db, config.Config{DataRoot: t.TempDir()})
+	server := NewServer(db, config.Config{DataRoot: libraryRootWith(t, "RJ00000000")})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/works/801/resume-queue", nil)
 	request.SetPathValue("id", "801")
@@ -217,5 +234,83 @@ func TestWorkResumeQueueFollowsTheDirectoryOrderAndTheCursorLocation(t *testing.
 	}
 	if resume.Work.ID != 801 || resume.Work.Title != "Example Work" {
 		t.Fatalf("work = %#v", resume.Work)
+	}
+}
+
+// One resolve request names at most maxPlaybackQueueResolveWorks works, so a
+// request, which anonymous visitors may also send, never loads more works
+// than that one after another.
+func TestResolvePlaybackQueueRefusesTooManyWorks(t *testing.T) {
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: t.TempDir()})
+	items := make([]string, 0, maxPlaybackQueueResolveWorks+1)
+	for work := 1; work <= maxPlaybackQueueResolveWorks+1; work++ {
+		items = append(items, fmt.Sprintf(`{"mediaItemId":%d,"workId":%d,"locationId":0}`, work, work))
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/playback/queue/resolve", strings.NewReader(`{"items":[`+strings.Join(items, ",")+`]}`))
+	response := httptest.NewRecorder()
+	server.resolvePlaybackQueue(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "too many queue works") {
+		t.Fatalf("resolve of %d works = %d %s", len(items), response.Code, response.Body.String())
+	}
+}
+
+// A work recorded in two folders resumes in the Directory's order, one labeled
+// folder after the other, whether or not a folder's name carries the work
+// code the way the scanner's own pattern does.
+func TestWorkResumeQueueFollowsTheDirectoryAcrossWorkFolders(t *testing.T) {
+	db := openMigratedTestDB(t)
+	result, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('queue-user', 'Queue User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := result.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (801, 'RJ00000000', 'Example Work');
+		INSERT INTO file_source (id, code, display_name, source_type, priority) VALUES (812, 'example_local', 'Example Local', 'local_folder', 0);
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(821, 801, 'audio', '01.mp3', 'folders-mp3-1'),
+			(822, 801, 'audio', '02.mp3', 'folders-mp3-2'),
+			(823, 801, 'audio', '01.flac', 'folders-flac-1'),
+			(824, 801, 'audio', '02.flac', 'folders-flac-2');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, stream_url, availability) VALUES
+			(831, 821, 812, 'local', 'Voice/RJ00000000 MP3/01.mp3', '', 'available'),
+			(832, 822, 812, 'local', 'Voice/RJ00000000 MP3/02.mp3', '', 'available'),
+			(833, 823, 812, 'local', 'Voice/RJ_00000000 FLAC/01.flac', '', 'available'),
+			(834, 824, 812, 'local', 'Voice/RJ_00000000 FLAC/02.flac', '', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, state) VALUES
+			(841, 801, 812, 'Voice/RJ00000000 MP3', 'active'),
+			(842, 801, 812, 'Voice/RJ_00000000 FLAC', 'active');
+		INSERT INTO user_work_playback_cursor (user_id, work_id, media_item_id, file_source_id, location_id, location_type, position_seconds, completed)
+			VALUES (?, 801, 822, 812, 832, 'local', 5, 0);
+	`, userID); err != nil {
+		t.Fatal(err)
+	}
+	user := account.User{ID: userID, Username: "queue-user", Role: "user", Permissions: account.PermissionsForRole("user")}
+	server := NewServer(db, config.Config{DataRoot: libraryRootWith(t, "Voice/RJ00000000 MP3", "Voice/RJ_00000000 FLAC")})
+	request := httptest.NewRequest(http.MethodGet, "/api/works/801/resume-queue", nil)
+	request.SetPathValue("id", "801")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
+	response := httptest.NewRecorder()
+	server.getWorkResumeQueue(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Resume *workResumeQueue `json:"resume"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Resume == nil {
+		t.Fatalf("resume = %s, %v", response.Body.String(), err)
+	}
+	order := []string{}
+	for _, track := range body.Resume.Tracks {
+		order = append(order, track.FolderPath+"/"+track.Title)
+	}
+	// The natural order the Directory uses sorts the FLAC folder first.
+	want := "RJ_00000000 FLAC/01.flac | RJ_00000000 FLAC/02.flac | RJ00000000 MP3/01.mp3 | RJ00000000 MP3/02.mp3"
+	if got := strings.Join(order, " | "); got != want {
+		t.Fatalf("resume order = %s, want %s", got, want)
+	}
+	if body.Resume.StartIndex != 3 {
+		t.Fatalf("start = %d, want the cursor's track", body.Resume.StartIndex)
 	}
 }

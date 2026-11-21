@@ -14,6 +14,12 @@ import (
 // sends a longer queue in parts of this size.
 const maxPlaybackQueueResolveItems = 1000
 
+// maxPlaybackQueueResolveWorks bounds the distinct works one queue resolve
+// request names. Each work loads its files and details one after another, so
+// the bound keeps a request, which anonymous visitors may also send, from
+// costing more than a page of works; the player starts a new part at it.
+const maxPlaybackQueueResolveWorks = 100
+
 const (
 	// playbackQueueItemPlayable is a queued item with a location to play from.
 	playbackQueueItemPlayable = "playable"
@@ -137,7 +143,7 @@ func newQueuedWorkMedia(workID int64, code string, items []mediaItemDetail) *que
 			}
 		}
 	}
-	media.tree = buildWorkPlaybackTree(media.items, code)
+	media.tree = buildWorkPlaybackTree(media.items)
 	return media
 }
 
@@ -278,6 +284,16 @@ func (s *Server) resolvePlaybackQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(payload.Items) > maxPlaybackQueueResolveItems {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", "too many queue items", false)
+		return
+	}
+	works := map[int64]bool{}
+	for _, item := range payload.Items {
+		if item.WorkID > 0 {
+			works[item.WorkID] = true
+		}
+	}
+	if len(works) > maxPlaybackQueueResolveWorks {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "too many queue works", false)
 		return
 	}
 	response, err := s.resolvePlaybackQueueItems(r.Context(), optionalUserID(r.Context()), payload.Items, payload.TitlesOnly)
