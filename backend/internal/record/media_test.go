@@ -184,16 +184,16 @@ func TestTreeCarriesProgressAndContinueListsUnfinishedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootPage, err := store.ListTree(ctx, 0, 0, TreePageMax, 7)
-	folders := rootPage.Folders
+	rootView, err := store.FolderView(ctx, 0, SectionPageMax, 7)
+	folders := sectionOf(t, rootView, SectionFolders).Folders
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("root = %d folders, err %v", len(folders), err)
 	}
-	folderPage, err := store.ListTree(ctx, folders[0].ID, 0, TreePageMax, 7)
-	assets := folderPage.Assets
+	folderView, err := store.FolderView(ctx, folders[0].ID, SectionPageMax, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
+	assets := append(sectionOf(t, folderView, SectionVideos).Assets, sectionOf(t, folderView, SectionPhotos).Assets...)
 	progress := map[string]*Progress{}
 	for _, asset := range assets {
 		progress[asset.Name] = asset.Progress

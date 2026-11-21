@@ -1,8 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import type { RecordAsset, RecordProgress, RecordRoot, RecordTree, VideoPlaybackInfo } from "../../src/lib/api";
+import type { RecordAsset, RecordProgress, RecordRoot, VideoPlaybackInfo } from "../../src/lib/api";
 import { rolePermissions, runtimeSettingsFixture } from "./fixtures/api";
 import { mockApplication, silentWav } from "./fixtures/player-library";
+import { recordSiblingsResponse, recordTreeResponse } from "./fixtures/records";
 
 const savedProgress: RecordProgress = { positionSeconds: 60, durationSeconds: 180, completed: false };
 
@@ -81,11 +82,9 @@ async function mockRecordLibrary(page: Page) {
       };
       return route.fulfill({ json: { root } });
     }
-    if (path === "/api/records/tree") {
-      return route.fulfill({
-        json: { folderId: 0, folders: [], assets: [clip, episode], total: 2 } satisfies RecordTree,
-      });
-    }
+    if (path === "/api/records/tree") return route.fulfill({ json: recordTreeResponse(url, [], [clip, episode]) });
+    const siblings = /^\/api\/records\/assets\/(\d+)\/siblings$/.exec(path);
+    if (siblings) return route.fulfill({ json: recordSiblingsResponse([clip, episode], Number(siblings[1])) });
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (path === "/api/records/assets/1/playback") {
       playbackRequests.push(url);

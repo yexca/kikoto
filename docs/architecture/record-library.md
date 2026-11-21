@@ -134,8 +134,25 @@ removed. When the rows cannot be removed, the item moves back.
 
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop
-candidates. The server checks image signatures before serving record artwork or
-image previews and never exposes an absolute filesystem path.
+candidates, each in that order and by name among equals. Each scan chooses a
+folder's poster and backdrop, the first candidate that carries a valid image
+signature, and stores them on the folder, so a listing reads no files. The
+server checks the signature again before serving record artwork or image
+previews and never exposes an absolute filesystem path.
+
+A folder shows its children in sections, and each section pages on its own:
+`folders` (its subfolders), `videos`, `photos` (its images without the
+artwork names above), and `files` (its audio, subtitle, metadata, and other
+files). `audio` is its audio files alone, the ones the player queues. A video
+carries the folder's same-name WebVTT or SubRip sidecar, compared without the
+extension and ignoring case, WebVTT before SubRip. Each section lists in
+natural name order, the order the browser shows it in: a run of digits
+compares by its value, case, accents, and width are ignored, and a kanji
+numeral after 第 compares as the number it writes. Each folder and file stores the collation key of its name, so the
+database orders a page and a page is the next stretch of what the section
+shows. The keys and artwork choices carry the version of the collation they
+were made with; when the server's version differs, as on a catalog indexed
+before they existed, it recomputes them all before its first listing.
 
 The HTTP surface is under `/api/records`:
 
@@ -144,12 +161,23 @@ The HTTP surface is under `/api/records`:
   `{"fresh": true}` to start a new catalog in place of one whose marker is
   missing or names another disk. `POST /api/records/root/restore-marker` restores that marker with
   the same permission.
-- `GET /api/records/tree?folderId=<id>&offset=<n>` returns one page of up to
-  200 children of a folder, subfolders first and then available files, each
-  by name, with their artwork, stream, thumbnail, subtitle, and download URLs
-  and the viewer's saved progress on each video and audio file. `total`
-  counts every child, and `nextOffset`, absent on the last page, is where the
-  next page starts. The browser reads a folder to its last page.
+- `GET /api/records/tree?folderId=<id>` returns a folder, the root without
+  `folderId`: `trail` names the folder and the folders above it, below the
+  root, with their artwork, so a pasted link shows its path bar; it is empty
+  for the root and for a folder the catalog does not hold. `sections` holds
+  the first page of each section. A page has up to 100 `items`, folders with
+  their artwork or available files with their stream, thumbnail, subtitle,
+  and download URLs and the viewer's saved progress on each video and audio
+  file; `total` counts the section's children on every page, and `next`,
+  absent on the last page, is the cursor of the next one.
+  `&section=<name>&after=<cursor>` returns that next page of one section. An
+  unknown section is refused with `invalid_record_section` and a cursor the
+  server did not hand out with `invalid_record_cursor`.
+- `GET /api/records/assets/{id}/siblings` places an available video, photo,
+  or audio file in its section: the `asset` with the viewer's progress, its
+  `section`, its zero-based `index`, the section's `total`, and the
+  `previous` and `next` files, each absent at the end. Any other file is
+  `record_asset_not_found`.
 - `GET /api/records/assets/{id}` returns asset metadata; `GET
   /api/records/assets/{id}/stream` serves an authenticated Range-capable video,
   audio file, or image.

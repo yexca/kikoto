@@ -4,13 +4,14 @@ import {
   FileText,
   Folder,
   Headphones,
+  Loader2,
   Music,
   Play,
   Subtitles,
   Trash2,
   Video,
 } from "lucide-react";
-import { memo, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ActionMenu } from "@/components/ui/action-menu";
@@ -24,6 +25,54 @@ import { baseName, fileTypeLabel, formatFileSize, formatPlaybackTime } from "./r
 
 const tileFocus =
   "rounded-lg text-left outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[var(--press-scale)] motion-reduce:active:scale-100";
+
+/**
+ * The end of a section with more to read. It reads the next page as it nears
+ * the viewport, and again after each page while it stays near; after a
+ * failure it offers Retry.
+ */
+export function RecordSectionMore({
+  loading,
+  failed,
+  onMore,
+}: {
+  loading: boolean;
+  failed: boolean;
+  onMore: () => void;
+}) {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || loading || failed) return;
+    if (typeof IntersectionObserver === "undefined") {
+      onMore();
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onMore();
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [failed, loading, onMore]);
+  if (failed) {
+    return (
+      <div className="flex justify-center pt-3">
+        <Button type="button" variant="outline" size="sm" onClick={onMore}>
+          {t("records.retry")}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div ref={ref} className="flex h-10 items-center justify-center text-muted-foreground">
+      {loading && <Loader2 className="h-4 w-4 animate-spin" aria-label={t("records.loadingFolder")} />}
+    </div>
+  );
+}
 
 export function RecordSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (

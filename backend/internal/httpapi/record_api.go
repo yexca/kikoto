@@ -46,13 +46,29 @@ func (s *Server) getRecordRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"root": root})
 }
 
+// decorateRecordFolder names the URLs of the artwork a scan chose for the
+// folder.
+func decorateRecordFolder(folder *record.Folder) {
+	id := strconv.FormatInt(folder.ID, 10)
+	if folder.HasPoster {
+		folder.Artwork.PosterURL = "/api/records/folders/" + id + "/artwork/poster"
+	}
+	if folder.HasBackdrop {
+		folder.Artwork.BackdropURL = "/api/records/folders/" + id + "/artwork/backdrop"
+	}
+}
+
+// listRecordTree lists a folder, the root without folderId. Without section
+// it answers the folder's trail and the first page of every section; with
+// section it answers the page of that section after the cursor in after.
 func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "library:read")
 	if !ok {
 		return
 	}
+	query := r.URL.Query()
 	parent := int64(0)
-	if value := strings.TrimSpace(r.URL.Query().Get("folderId")); value != "" {
+	if value := strings.TrimSpace(query.Get("folderId")); value != "" {
 		parsed, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || parsed <= 0 {
 			writeAPIError(w, http.StatusBadRequest, "invalid_folder_id", "Invalid record folder.", false)
@@ -60,39 +76,104 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 		}
 		parent = parsed
 	}
-	offset := 0
-	if value := strings.TrimSpace(r.URL.Query().Get("offset")); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 0 {
-			writeAPIError(w, http.StatusBadRequest, "invalid_offset", "Invalid record listing offset.", false)
+	section := strings.TrimSpace(query.Get("section"))
+	if section == "" {
+		view, err := s.recordStore.FolderView(r.Context(), parent, record.SectionPageMax, user.ID)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "record_tree_failed", "The record directory could not be read.", true)
 			return
 		}
-		offset = parsed
+		for i := range view.Trail {
+			decorateRecordFolder(&view.Trail[i])
+		}
+		sections := map[string]any{}
+		var videos []record.Asset
+		for _, page := range view.Sections {
+			sections[page.Section] = recordSectionJSON(page)
+			if page.Section == record.SectionVideos {
+				videos = page.Assets
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"folderId": parent, "trail": view.Trail, "sections": sections})
+		s.prefetchRecordVideoKeyframes(videos)
+		return
 	}
-	page, err := s.recordStore.ListTree(r.Context(), parent, offset, record.TreePageMax, user.ID)
-	if err != nil {
+	page, err := s.recordStore.ListSection(r.Context(), parent, section, strings.TrimSpace(query.Get("after")), record.SectionPageMax, user.ID)
+	switch {
+	case errors.Is(err, record.ErrUnknownSection):
+		writeAPIError(w, http.StatusBadRequest, "invalid_record_section", "Invalid record section.", false)
+		return
+	case errors.Is(err, record.ErrInvalidCursor):
+		writeAPIError(w, http.StatusBadRequest, "invalid_record_cursor", "Invalid record listing cursor.", false)
+		return
+	case err != nil:
 		writeAPIError(w, http.StatusInternalServerError, "record_tree_failed", "The record directory could not be read.", true)
 		return
 	}
-	folders, assets := page.Folders, page.Assets
-	for i := range assets {
-		decorateRecordAsset(&assets[i])
+	response := recordSectionJSON(page)
+	response["folderId"] = parent
+	response["section"] = section
+	writeJSON(w, http.StatusOK, response)
+	if section == record.SectionVideos {
+		s.prefetchRecordVideoKeyframes(page.Assets)
 	}
-	for i := range folders {
-		id := strconv.FormatInt(folders[i].ID, 10)
-		if path, asset, artworkErr := s.recordStore.ArtworkPath(r.Context(), folders[i].ID, "poster"); artworkErr == nil && record.ValidateImageFile(path, asset.MimeType) == nil {
-			folders[i].Artwork.PosterURL = "/api/records/folders/" + id + "/artwork/poster"
+}
+
+// recordSectionJSON is one section page: its items, the section's total, and
+// the cursor of the next page while there is one.
+func recordSectionJSON(page record.SectionPage) map[string]any {
+	var items any
+	if page.Section == record.SectionFolders {
+		for i := range page.Folders {
+			decorateRecordFolder(&page.Folders[i])
 		}
-		if path, asset, artworkErr := s.recordStore.ArtworkPath(r.Context(), folders[i].ID, "backdrop"); artworkErr == nil && record.ValidateImageFile(path, asset.MimeType) == nil {
-			folders[i].Artwork.BackdropURL = "/api/records/folders/" + id + "/artwork/backdrop"
+		items = page.Folders
+	} else {
+		for i := range page.Assets {
+			decorateRecordAsset(&page.Assets[i])
 		}
+		items = page.Assets
 	}
-	response := map[string]any{"folderId": parent, "folders": folders, "assets": assets, "total": page.Total}
-	if page.NextOffset > 0 {
-		response["nextOffset"] = page.NextOffset
+	response := map[string]any{"items": items, "total": page.Total}
+	if page.Next != "" {
+		response["next"] = page.Next
+	}
+	return response
+}
+
+// getRecordAssetSiblings places a video, photo, or audio file in its section
+// of its folder, for the viewer's position, count, and previous and next
+// files.
+func (s *Server) getRecordAssetSiblings(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	id, ok := parseRecordID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid_asset_id", "Invalid record asset.", false)
+		return
+	}
+	siblings, err := s.recordStore.AssetSiblings(r.Context(), id, user.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeAPIError(w, http.StatusNotFound, "record_asset_not_found", "Record asset not found.", false)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "record_asset_failed", "The record asset could not be read.", true)
+		return
+	}
+	decorateRecordAsset(&siblings.Asset)
+	response := map[string]any{"asset": siblings.Asset, "section": siblings.Section, "index": siblings.Index, "total": siblings.Total}
+	if siblings.Previous != nil {
+		decorateRecordAsset(siblings.Previous)
+		response["previous"] = siblings.Previous
+	}
+	if siblings.Next != nil {
+		decorateRecordAsset(siblings.Next)
+		response["next"] = siblings.Next
 	}
 	writeJSON(w, http.StatusOK, response)
-	s.prefetchRecordVideoKeyframes(assets)
 }
 
 // initializeRecordRoot initializes the record root. A root whose marker does

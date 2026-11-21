@@ -224,32 +224,84 @@ func TestRecordSubtitleRouteServesSubRipAsWebVTT(t *testing.T) {
 	}
 }
 
+type recordSectionResponse struct {
+	Items json.RawMessage `json:"items"`
+	Total int             `json:"total"`
+	Next  string          `json:"next"`
+}
+
+type recordTreeResponse struct {
+	Trail    []record.Folder                  `json:"trail"`
+	Sections map[string]recordSectionResponse `json:"sections"`
+}
+
+func (server recordTestServer) tree(t *testing.T, path string) recordTreeResponse {
+	t.Helper()
+	response := server.get(path, true)
+	var tree recordTreeResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &tree); err != nil || response.Code != http.StatusOK {
+		t.Fatalf("%s = %d %s, %v", path, response.Code, response.Body.String(), err)
+	}
+	return tree
+}
+
+func sectionItems[T any](t *testing.T, tree recordTreeResponse, section string) []T {
+	t.Helper()
+	var items []T
+	if err := json.Unmarshal(tree.Sections[section].Items, &items); err != nil {
+		t.Fatalf("%s items: %v", section, err)
+	}
+	return items
+}
+
 func TestRecordTreeLinksThumbnailsAndSubtitles(t *testing.T) {
 	server := newRecordTestServer(t)
-	root := server.get("/api/records/tree", true)
-	var rootTree struct {
-		Folders []record.Folder `json:"folders"`
+	rootFolders := sectionItems[record.Folder](t, server.tree(t, "/api/records/tree"), "folders")
+	if len(rootFolders) != 1 {
+		t.Fatalf("root folders = %+v", rootFolders)
 	}
-	if err := json.Unmarshal(root.Body.Bytes(), &rootTree); err != nil || len(rootTree.Folders) != 1 {
-		t.Fatalf("root tree = %s, %v", root.Body.String(), err)
-	}
-	response := server.get("/api/records/tree?folderId="+strconv.FormatInt(rootTree.Folders[0].ID, 10), true)
-	var tree struct {
-		Assets []record.Asset `json:"assets"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &tree); err != nil {
-		t.Fatal(err)
+	tree := server.tree(t, "/api/records/tree?folderId="+strconv.FormatInt(rootFolders[0].ID, 10))
+	// The listing names the folder it lists, so a pasted link shows its breadcrumb.
+	if len(tree.Trail) != 1 || tree.Trail[0].ID != rootFolders[0].ID || tree.Trail[0].Name != rootFolders[0].Name {
+		t.Fatalf("trail = %+v", tree.Trail)
 	}
 	links := map[string]record.Asset{}
-	for _, asset := range tree.Assets {
-		links[asset.Name] = asset
+	for _, section := range []string{"videos", "files"} {
+		for _, asset := range sectionItems[record.Asset](t, tree, section) {
+			links[asset.Name] = asset
+		}
 	}
 	video := links["Day 1.mp4"]
 	if !strings.HasPrefix(video.ThumbnailURL, "/api/records/assets/") || !strings.Contains(video.ThumbnailURL, "/thumbnail?v=") {
 		t.Fatalf("video links = %+v", video)
 	}
+	// A video carries its same-name subtitle, linked to the WebVTT route.
+	if video.Subtitle == nil || video.Subtitle.Name != "Day 1.srt" || video.Subtitle.StreamURL == "" || links["Day 2.mp4"].Subtitle != nil {
+		t.Fatalf("video subtitles = %+v / %+v", video.Subtitle, links["Day 2.mp4"].Subtitle)
+	}
 	if links["Day 1.srt"].StreamURL == "" || links["notes.ass"].StreamURL != "" || links["Day 1.srt"].ThumbnailURL != "" {
 		t.Fatalf("subtitle links = %+v / %+v", links["Day 1.srt"], links["notes.ass"])
+	}
+	for path, want := range map[string]int{
+		"/api/records/tree?section=videos&folderId=" + strconv.FormatInt(rootFolders[0].ID, 10): http.StatusOK,
+		"/api/records/tree?section=everything":                                                  http.StatusBadRequest,
+		"/api/records/tree?section=videos&after=not-a-cursor":                                   http.StatusBadRequest,
+	} {
+		if response := server.get(path, true); response.Code != want {
+			t.Fatalf("%s = %d, want %d", path, response.Code, want)
+		}
+	}
+	siblings := server.get("/api/records/assets/"+strconv.FormatInt(server.ids["Day 2.mp4"], 10)+"/siblings", true)
+	var placed struct {
+		Section  string        `json:"section"`
+		Index    int           `json:"index"`
+		Total    int           `json:"total"`
+		Previous *record.Asset `json:"previous"`
+		Next     *record.Asset `json:"next"`
+	}
+	if err := json.Unmarshal(siblings.Body.Bytes(), &placed); err != nil || placed.Section != "videos" || placed.Index != 1 ||
+		placed.Total != 2 || placed.Previous == nil || placed.Previous.StreamURL == "" || placed.Next != nil {
+		t.Fatalf("siblings = %s, %v", siblings.Body.String(), err)
 	}
 
 	thumbnail := server.get(video.ThumbnailURL, true)

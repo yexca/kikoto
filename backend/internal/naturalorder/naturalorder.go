@@ -1,4 +1,8 @@
-package httpapi
+// Package naturalorder orders file and folder names the way a listener reads
+// them, the same order the client lists them in: a run of digits compares by
+// its value, case, accents, and width are ignored, and a kanji numeral after 第
+// compares as the number it writes, so 第二話 comes before 第十話.
+package naturalorder
 
 import (
 	"regexp"
@@ -10,14 +14,9 @@ import (
 	"golang.org/x/text/language"
 )
 
-// Natural name order is the order a listener reads file and folder names in,
-// the same order the client lists them in: a run of digits compares by its
-// value, case, accents, and width are ignored, and a kanji numeral after 第
-// compares as the number it writes, so 第二話 comes before 第十話.
-
-// naturalNameCollators holds collators for reuse, because a collator is not
-// safe for concurrent use.
-var naturalNameCollators = sync.Pool{New: func() any {
+// collators holds collators for reuse, because a collator is not safe for
+// concurrent use.
+var collators = sync.Pool{New: func() any {
 	return collate.New(language.Und, collate.Loose, collate.Numeric)
 }}
 
@@ -29,16 +28,31 @@ var kanjiDigitValues = map[rune]int{
 
 var kanjiUnitValues = map[rune]int{'十': 10, '百': 100, '千': 1000}
 
-// naturalNameCompare compares two names in natural order; names that read the
-// same fall back to their own text.
-func naturalNameCompare(left string, right string) int {
-	collator := naturalNameCollators.Get().(*collate.Collator)
-	defer naturalNameCollators.Put(collator)
+// Compare compares two names in natural order; names that read the same fall
+// back to their own text.
+func Compare(left string, right string) int {
+	collator := collators.Get().(*collate.Collator)
+	defer collators.Put(collator)
 	if result := collator.CompareString(naturalSortKey(left), naturalSortKey(right)); result != 0 {
 		return result
 	}
 	return collator.CompareString(left, right)
 }
+
+// Key returns a byte string whose byte order is the natural order of names,
+// for storing and ordering by in a database. Names that read the same have
+// the same key; a caller orders them by their own text. A key depends on the
+// collation tables, so a stored key is recomputed when KeyVersion changes.
+func Key(name string) []byte {
+	collator := collators.Get().(*collate.Collator)
+	defer collators.Put(collator)
+	var buffer collate.Buffer
+	return append([]byte(nil), collator.KeyFromString(&buffer, naturalSortKey(name))...)
+}
+
+// KeyVersion names the collation Key computes; it changes whenever a Key
+// result may change, such as after a collation table update.
+const KeyVersion = 1
 
 func naturalSortKey(name string) string {
 	if !strings.Contains(name, "第") {

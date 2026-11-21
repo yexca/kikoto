@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { api, type RecordAsset, type RecordFolder, type RecordRoot } from "@/lib/api";
+import {
+  api,
+  type RecordRoot,
+  type RecordSectionName,
+  type RecordSectionPage,
+  type RecordSectionPages,
+  type RecordSiblings,
+} from "@/lib/api";
 
-import { applyRecordsNavigation } from "./useRecordsLocation";
-import { crumbFromFolder, folderPathFromChildren } from "./recordsModel";
-import { historyStateWithRecordTrail, recordTrailFromState, type RecordCrumb } from "./recordsLocation";
+import { crumbFromFolder } from "./recordsModel";
+import { recordTrailFromState, type RecordCrumb } from "./recordsLocation";
 
 export type RecordRootState = { status: "loading" } | { status: "error" } | { status: "ready"; root: RecordRoot };
+
+/** A section as far as it has been read, and whether its next page is on the way or failed. */
+export type RecordSectionState<T> = RecordSectionPage<T> & { loading: boolean; failed: boolean };
+
+export type RecordSections = {
+  [S in RecordSectionName]: RecordSectionState<RecordSectionPages[S]["items"][number]>;
+};
 
 export type RecordTreeState =
   | { status: "idle" }
   | { status: "loading"; folderId: number }
   | { status: "error"; folderId: number }
-  | { status: "ready"; folderId: number; folders: RecordFolder[]; assets: RecordAsset[] };
+  | { status: "ready"; folderId: number; trail: RecordCrumb[]; sections: RecordSections };
+
+type AnySection = RecordSectionState<{ id: number }>;
+
+const sectionNames: readonly RecordSectionName[] = ["folders", "videos", "photos", "audio", "files"];
 
 /** The root state, read once and again on Retry or while a scan runs. */
 export function useRecordRoot(enabled: boolean) {
@@ -33,111 +50,190 @@ export function useRecordRoot(enabled: boolean) {
   return { state, reload, setRoot: (root: RecordRoot) => setState({ status: "ready", root }) };
 }
 
-/**
- * Walks from the root to a folder by name to recover a pasted link's
- * breadcrumb. Each step reads its listing page by page until the name turns
- * up; subfolders come first, so the walk stops at the first page of files. A
- * step that no longer matches stops the walk.
- */
-async function recoverTrail(folderId: number, path: readonly string[], signal: AbortSignal) {
-  const trail: RecordCrumb[] = [];
-  let parent = 0;
-  for (const name of path) {
-    let folder: RecordFolder | undefined;
-    let offset: number | undefined = 0;
-    while (!folder && offset !== undefined) {
-      const listing = await api.listRecordTree(parent || undefined, signal, offset);
-      folder = listing.folders.find((candidate) => candidate.name === name);
-      offset = listing.assets.length === 0 ? listing.nextOffset : undefined;
-    }
-    if (!folder) return null;
-    trail.push(crumbFromFolder(folder));
-    parent = folder.id;
-  }
-  return parent === folderId ? trail : null;
-}
-
-/** Appends a page to a listing, leaving out children an earlier page already held. */
+/** Appends a page to a section, leaving out children an earlier page already held. */
 function appendById<T extends { id: number }>(listed: readonly T[], page: readonly T[]) {
   const seen = new Set(listed.map((item) => item.id));
   return [...listed, ...page.filter((item) => !seen.has(item.id))];
 }
 
+function sectionsFromPages(pages: RecordSectionPages): RecordSections {
+  const sections = {} as Record<RecordSectionName, AnySection>;
+  for (const name of sectionNames) sections[name] = { ...pages[name], loading: false, failed: false };
+  return sections as unknown as RecordSections;
+}
+
 /**
- * The open folder's listing and breadcrumb trail. The listing arrives a page
- * at a time and is read to its end: a first visit shows each page as it
- * arrives, while a refresh keeps the current listing until the new one is
- * whole. The trail comes from the history entry; a pasted or bookmarked link
- * recovers it from the listing's relative paths and stores it on the entry.
+ * The open folder's sections and breadcrumb trail. A visit reads the first
+ * page of every section; `loadMore` reads a section's next page and
+ * `readWhole` the rest of it. A refresh reads each section again as far as it
+ * was read, keeping the current listing until the new one is whole. The
+ * listing names the folder's trail; until it arrives, the trail the history
+ * entry carries stands in.
  */
 export function useRecordTree(folderId: number, historyState: unknown, enabled: boolean) {
   const [tree, setTree] = useState<RecordTreeState>({ status: "idle" });
-  const [recoveredTrail, setRecoveredTrail] = useState<{ folderId: number; trail: RecordCrumb[] | null } | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [pending, setPending] = useState(false);
-  // The folder whose whole listing is on screen.
-  const listedFolderRef = useRef<number | null>(null);
+  const treeRef = useRef(tree);
+  useLayoutEffect(() => {
+    treeRef.current = tree;
+  });
+  // Each read of the folder starts a generation; pages of an earlier one are dropped.
+  const generationRef = useRef(0);
+  const inflightRef = useRef(new Set<string>());
   const storedTrail = recordTrailFromState(historyState, folderId);
 
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
     const signal = controller.signal;
-    const refreshing = listedFolderRef.current === folderId;
-    if (!refreshing) listedFolderRef.current = null;
+    generationRef.current += 1;
+    inflightRef.current.clear();
+    const current = treeRef.current;
+    const refreshing = current.status === "ready" && current.folderId === folderId;
+    const readSoFar = refreshing ? current.sections : null;
     setPending(true);
-    setTree((current) =>
-      current.status === "ready" && current.folderId === folderId ? current : { status: "loading", folderId },
-    );
-    const recover = async (folders: RecordFolder[], assets: RecordAsset[]) => {
-      if (recordTrailFromState(window.history.state, folderId) !== null) return;
-      const path = folderPathFromChildren(folders, assets);
-      const trail = path ? await recoverTrail(folderId, path, signal).catch(() => null) : null;
-      if (signal.aborted) return;
-      setRecoveredTrail({ folderId, trail });
-      if (trail) {
-        applyRecordsNavigation({
-          mode: "replace",
-          href: `${window.location.pathname}${window.location.search}`,
-          state: historyStateWithRecordTrail(window.history.state, trail),
-        });
-      }
-    };
+    if (!refreshing) setTree({ status: "loading", folderId });
     const load = async () => {
-      let folders: RecordFolder[] = [];
-      let assets: RecordAsset[] = [];
-      let offset: number | undefined = 0;
-      let first = true;
-      while (offset !== undefined) {
-        const page = await api.listRecordTree(folderId || undefined, signal, offset);
-        if (signal.aborted) return;
-        folders = appendById(folders, page.folders);
-        assets = appendById(assets, page.assets);
-        offset = page.nextOffset;
-        if (!refreshing || offset === undefined) setTree({ status: "ready", folderId, folders, assets });
-        if (first) {
-          first = false;
-          await recover(folders, assets);
-          if (signal.aborted) return;
+      const result = await api.listRecordTree(folderId || undefined, signal);
+      const sections = sectionsFromPages(result.sections) as unknown as Record<RecordSectionName, AnySection>;
+      if (readSoFar) {
+        for (const name of sectionNames) {
+          const wanted = readSoFar[name].items.length;
+          let section = sections[name];
+          while (section.next && section.items.length < wanted) {
+            const page = await api.listRecordSection(folderId, name, section.next, signal);
+            section = { ...section, items: appendById(section.items, page.items), total: page.total, next: page.next };
+          }
+          sections[name] = section;
         }
       }
-      listedFolderRef.current = folderId;
+      if (signal.aborted) return;
+      setTree({
+        status: "ready",
+        folderId,
+        trail: result.trail.map(crumbFromFolder),
+        sections: sections as unknown as RecordSections,
+      });
     };
     void load()
       .catch(() => {
-        if (!controller.signal.aborted) setTree({ status: "error", folderId });
+        if (!signal.aborted) setTree({ status: "error", folderId });
       })
       .finally(() => {
-        if (!controller.signal.aborted) setPending(false);
+        if (!signal.aborted) setPending(false);
       });
     return () => controller.abort();
   }, [enabled, folderId, reloadToken]);
 
+  const updateSection = useCallback(
+    (name: RecordSectionName, generation: number, change: (section: AnySection) => AnySection) => {
+      if (generation !== generationRef.current) return;
+      setTree((current) => {
+        if (current.status !== "ready" || current.folderId !== folderId) return current;
+        const sections = current.sections as unknown as Record<RecordSectionName, AnySection>;
+        return {
+          ...current,
+          sections: { ...sections, [name]: change(sections[name]) } as unknown as RecordSections,
+        };
+      });
+    },
+    [folderId],
+  );
+
+  /** Reads the next page of a section, once at a time. */
+  const loadMore = useCallback(
+    (name: RecordSectionName) => {
+      const current = treeRef.current;
+      if (current.status !== "ready" || current.folderId !== folderId) return;
+      const section = current.sections[name] as AnySection;
+      const generation = generationRef.current;
+      const key = `${generation}:${name}`;
+      if (!section.next || inflightRef.current.has(key)) return;
+      inflightRef.current.add(key);
+      updateSection(name, generation, (value) => ({ ...value, loading: true, failed: false }));
+      api
+        .listRecordSection(folderId, name, section.next)
+        .then((page) =>
+          updateSection(name, generation, (value) => ({
+            items: appendById(value.items, page.items),
+            total: page.total,
+            next: page.next,
+            loading: false,
+            failed: false,
+          })),
+        )
+        .catch(() => updateSection(name, generation, (value) => ({ ...value, loading: false, failed: true })))
+        .finally(() => inflightRef.current.delete(key));
+    },
+    [folderId, updateSection],
+  );
+
+  /** Reads a section to its end and answers every child it has, in order. */
+  const readWhole = useCallback(
+    async <S extends RecordSectionName>(name: S): Promise<RecordSections[S]["items"]> => {
+      const current = treeRef.current;
+      if (current.status !== "ready" || current.folderId !== folderId) return [];
+      const generation = generationRef.current;
+      const start = current.sections[name] as AnySection;
+      let items = start.items;
+      let next = start.next;
+      while (next) {
+        const page = await api.listRecordSection(folderId, name, next);
+        if (generation !== generationRef.current) break;
+        items = appendById(items, page.items);
+        next = page.next;
+      }
+      const whole = items;
+      updateSection(name, generation, (value) => ({
+        ...value,
+        items: appendById(value.items, whole),
+        next: undefined,
+        loading: false,
+        failed: false,
+      }));
+      return whole as RecordSections[S]["items"];
+    },
+    [folderId, updateSection],
+  );
+
+  const listedTrail =
+    tree.status === "ready" && tree.folderId === folderId && (folderId === 0 || tree.trail.length > 0)
+      ? tree.trail
+      : null;
   const trail =
+    listedTrail ??
     storedTrail ??
-    (recoveredTrail?.folderId === folderId ? recoveredTrail.trail : null) ??
-    // Until the trail is known, or for an empty folder whose path cannot be read, the folder stands alone.
+    // Until the listing arrives, or for a folder the catalog no longer holds, the folder stands alone.
     (folderId > 0 ? [{ id: folderId, name: "" }] : []);
 
-  return { tree, trail, pending, reload: () => setReloadToken((value) => value + 1) };
+  return {
+    tree,
+    trail,
+    pending,
+    version: reloadToken,
+    loadMore,
+    readWhole,
+    reload: () => setReloadToken((value) => value + 1),
+  };
+}
+
+/**
+ * Where the open overlay's file sits in its section, read for each file it
+ * opens and again with each new `version` of the folder.
+ */
+export function useRecordSiblings(assetId: number | null, version: number) {
+  const [state, setState] = useState<{ id: number; siblings: RecordSiblings | null } | null>(null);
+  useEffect(() => {
+    if (assetId === null) return;
+    const controller = new AbortController();
+    api
+      .getRecordSiblings(assetId, controller.signal)
+      .then((siblings) => setState({ id: assetId, siblings }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ id: assetId, siblings: null });
+      });
+    return () => controller.abort();
+  }, [assetId, version]);
+  return state && state.id === assetId ? state : null;
 }

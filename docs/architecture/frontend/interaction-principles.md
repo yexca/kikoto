@@ -94,7 +94,8 @@ compact icon controls, global playback) are in
 - Build Tree rows and playback queues from one folder-first natural ordering.
   Every list of file and folder names sorts with `naturalNameCompare`
   (`lib/naturalNameOrder.ts`), which compares digit runs by value and reads a
-  kanji numeral after 第 as its number.
+  kanji numeral after 第 as its number. A Record folder listing arrives in
+  the same order from the server's `internal/naturalorder` and keeps it.
 
 ## Design and Semantic Contracts
 

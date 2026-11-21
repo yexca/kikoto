@@ -46,17 +46,50 @@ export type RecordAsset = {
   downloadUrl?: string;
   /** The viewer's saved position for a video or audio file. */
   progress?: RecordProgress;
+  /** A video's same-name WebVTT or SubRip sidecar, served as WebVTT. */
+  subtitle?: RecordAsset;
 };
 
-/** One page of a folder's children: subfolders first, then files, each by name. */
+/**
+ * The sections a folder shows, each in natural name order: subfolders, videos,
+ * photos (without the folder's artwork), and its other files, audio among
+ * them. `audio` is the folder's audio files alone, which the player queues.
+ */
+export type RecordSectionName = "folders" | "videos" | "photos" | "audio" | "files";
+
+/** One page of a section. */
+export type RecordSectionPage<T> = {
+  items: T[];
+  /** Every child the section has, on every page. */
+  total: number;
+  /** The cursor of the next page; absent on the last page. */
+  next?: string;
+};
+
+export type RecordSectionPages = {
+  folders: RecordSectionPage<RecordFolder>;
+  videos: RecordSectionPage<RecordAsset>;
+  photos: RecordSectionPage<RecordAsset>;
+  audio: RecordSectionPage<RecordAsset>;
+  files: RecordSectionPage<RecordAsset>;
+};
+
+/** A folder: its trail and the first page of each section. */
 export type RecordTree = {
   folderId: number;
-  folders: RecordFolder[];
-  assets: RecordAsset[];
-  /** Every child the folder has, on every page. */
+  /** The listed folder and the folders above it, below the root; empty at the root. */
+  trail: RecordFolder[];
+  sections: RecordSectionPages;
+};
+
+/** Where a video, photo, or audio file sits in its section of its folder. */
+export type RecordSiblings = {
+  asset: RecordAsset;
+  section: "videos" | "photos" | "audio";
+  index: number;
   total: number;
-  /** Where the next page starts; absent on the last page. */
-  nextOffset?: number;
+  previous?: RecordAsset;
+  next?: RecordAsset;
 };
 
 export type RecordProgress = {
@@ -84,13 +117,21 @@ export const recordsApi = {
       : postJSON<{ root: RecordRoot }>("/api/records/root/initialize"),
   /** Writes the marker of the kept catalog into a root that lost it. */
   restoreRecordMarker: () => postJSON<{ root: RecordRoot }>("/api/records/root/restore-marker"),
-  listRecordTree: (folderId?: number, signal?: AbortSignal, offset = 0) => {
-    const query = new URLSearchParams();
+  listRecordTree: (folderId?: number, signal?: AbortSignal) =>
+    sharedGetJSON<RecordTree>(folderId ? `/api/records/tree?folderId=${folderId}` : "/api/records/tree", signal),
+  /** The page of one section that follows the cursor `after`. */
+  listRecordSection: <S extends RecordSectionName>(
+    folderId: number,
+    section: S,
+    after: string,
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams({ section, after });
     if (folderId) query.set("folderId", String(folderId));
-    if (offset > 0) query.set("offset", String(offset));
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return sharedGetJSON<RecordTree>(`/api/records/tree${suffix}`, signal);
+    return sharedGetJSON<RecordSectionPages[S]>(`/api/records/tree?${query.toString()}`, signal);
   },
+  getRecordSiblings: (id: number, signal?: AbortSignal) =>
+    sharedGetJSON<RecordSiblings>(`/api/records/assets/${id}/siblings`, signal),
   getRecordAsset: (id: number, signal?: AbortSignal) =>
     sharedGetJSON<{ asset: RecordAsset }>(`/api/records/assets/${id}`, signal),
   listRecordContinue: (signal?: AbortSignal) =>

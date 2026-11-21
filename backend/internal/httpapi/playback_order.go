@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/naturalorder"
 )
 
 // The work playback order is the order the work page's Directory lists a
@@ -132,12 +134,12 @@ func (tree workPlaybackTree) playableFiles() []*playbackTreeFile {
 		for _, name := range node.order {
 			children = append(children, node.children[name])
 		}
-		sort.SliceStable(children, func(i, j int) bool { return naturalNameCompare(children[i].name, children[j].name) < 0 })
+		sort.SliceStable(children, func(i, j int) bool { return naturalorder.Compare(children[i].name, children[j].name) < 0 })
 		for _, child := range children {
 			visit(child)
 		}
 		own := append([]*playbackTreeFile{}, node.files...)
-		sort.SliceStable(own, func(i, j int) bool { return naturalNameCompare(own[i].title, own[j].title) < 0 })
+		sort.SliceStable(own, func(i, j int) bool { return naturalorder.Compare(own[i].title, own[j].title) < 0 })
 		for _, file := range own {
 			if file.playable() {
 				files = append(files, file)

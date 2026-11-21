@@ -1,8 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import type { RecordAsset, RecordFolder, RecordRoot, RecordTree } from "../../src/lib/api";
+import type { RecordAsset, RecordFolder, RecordRoot } from "../../src/lib/api";
 import { rolePermissions, runtimeSettingsFixture } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
+import { recordSiblingsResponse, recordTreeResponse } from "./fixtures/records";
 
 // A 1×1 PNG.
 const pixel = Buffer.from(
@@ -47,7 +48,8 @@ async function mockRecordPhotos(page: Page) {
   const deletedFolders: string[] = [];
   await page.route("**/api/records**", async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const path = url.pathname;
     if (path === "/api/records") {
       const root: RecordRoot = {
         id: 1,
@@ -58,10 +60,11 @@ async function mockRecordPhotos(page: Page) {
       };
       return route.fulfill({ json: { root } });
     }
-    if (path === "/api/records/tree") {
-      return route.fulfill({
-        json: { folderId: 0, folders, assets: photos, total: folders.length + photos.length } satisfies RecordTree,
-      });
+    if (path === "/api/records/tree") return route.fulfill({ json: recordTreeResponse(url, folders, photos) });
+    const siblings = /^\/api\/records\/assets\/(\d+)\/siblings$/.exec(path);
+    if (siblings) {
+      const placed = recordSiblingsResponse(photos, Number(siblings[1]));
+      return placed ? route.fulfill({ json: placed }) : route.fulfill({ status: 404, json: { error: "not found" } });
     }
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (/^\/api\/records\/assets\/\d+\/stream$/.test(path))

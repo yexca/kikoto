@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/naturalorder"
 )
 
 // lyricsEditPlannedAssignment is an added file the edit assigns to a track of
@@ -196,7 +198,7 @@ func (s *Server) lyricsEditFolderAudio(ctx context.Context, target lyricsFetchTa
 	}); err != nil {
 		return nil, err
 	}
-	sort.SliceStable(audio, func(i, j int) bool { return naturalNameCompare(audio[i].path, audio[j].path) < 0 })
+	sort.SliceStable(audio, func(i, j int) bool { return naturalorder.Compare(audio[i].path, audio[j].path) < 0 })
 	return audio, nil
 }
 
@@ -209,7 +211,7 @@ func largestLyricsFolder(files []lyricsEditOrderFile) string {
 	}
 	best, bestCount := "", 0
 	for folder, count := range counts {
-		if count > bestCount || (count == bestCount && naturalNameCompare(folder, best) < 0) {
+		if count > bestCount || (count == bestCount && naturalorder.Compare(folder, best) < 0) {
 			best, bestCount = folder, count
 		}
 	}
@@ -232,7 +234,7 @@ func alignLyricsEditByOrder(audio []lyricsEditAudio, files []lyricsEditOrderFile
 	if len(candidates) == 0 {
 		return result
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return naturalNameCompare(candidates[i].path, candidates[j].path) < 0 })
+	sort.SliceStable(candidates, func(i, j int) bool { return naturalorder.Compare(candidates[i].path, candidates[j].path) < 0 })
 	lyricsByNumber := uniqueLeadingTrackNumbers(len(candidates), func(index int) string { return candidates[index].title })
 	folders := []string{}
 	byFolder := map[string][]lyricsEditAudio{}
@@ -244,7 +246,7 @@ func alignLyricsEditByOrder(audio []lyricsEditAudio, files []lyricsEditOrderFile
 	}
 	for _, folder := range folders {
 		entries := append([]lyricsEditAudio{}, byFolder[folder]...)
-		sort.SliceStable(entries, func(i, j int) bool { return naturalNameCompare(entries[i].path, entries[j].path) < 0 })
+		sort.SliceStable(entries, func(i, j int) bool { return naturalorder.Compare(entries[i].path, entries[j].path) < 0 })
 		audioByNumber := uniqueLeadingTrackNumbers(len(entries), func(index int) string { return entries[index].title })
 		switch {
 		case lyricsByNumber != nil && audioByNumber != nil:

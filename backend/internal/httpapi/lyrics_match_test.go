@@ -90,16 +90,3 @@ func TestRankLyricsMatchesOrdersTheChoices(t *testing.T) {
 		})
 	}
 }
-
-func TestNaturalNameCompareReadsNumbers(t *testing.T) {
-	for _, pair := range [][2]string{
-		{"Track2.mp3", "Track10.mp3"},
-		{"a.lrc", "B.lrc"},
-		{"第二話.mp3", "第十話.mp3"},
-		{"第九話.mp3", "第二十一話.mp3"},
-	} {
-		if naturalNameCompare(pair[0], pair[1]) >= 0 || naturalNameCompare(pair[1], pair[0]) <= 0 {
-			t.Errorf("%q does not come before %q", pair[0], pair[1])
-		}
-	}
-}

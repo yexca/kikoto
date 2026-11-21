@@ -14,10 +14,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/naturalorder"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"golang.org/x/text/unicode/norm"
 )
@@ -34,6 +35,9 @@ type Store struct {
 	db    *sqlutil.DB
 	root  string
 	probe ProbeFunc
+	// derivedReady records that the stored derived fields match derivedVersion.
+	derivedMu    sync.Mutex
+	derivedReady bool
 }
 
 // Option configures a Store.
@@ -69,6 +73,10 @@ type Folder struct {
 	ChildCount   int     `json:"childCount"`
 	AssetCount   int     `json:"assetCount"`
 	Artwork      Artwork `json:"artwork"`
+	// HasPoster and HasBackdrop report the artwork a scan chose for the
+	// folder; the HTTP layer names its URLs.
+	HasPoster   bool `json:"-"`
+	HasBackdrop bool `json:"-"`
 }
 
 type Asset struct {
@@ -94,6 +102,9 @@ type Asset struct {
 	// HasCover reports cover art embedded in an audio file, which becomes its
 	// thumbnail.
 	HasCover bool `json:"-"`
+	// Subtitle is a video's same-name WebVTT or SubRip sidecar, when the
+	// listing pairs one.
+	Subtitle *Asset `json:"subtitle,omitempty"`
 }
 
 type Artwork struct {
@@ -527,6 +538,12 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 			return ScanResult{}, err
 		}
 	}
+	if err := s.ensureDerived(ctx); err != nil {
+		return ScanResult{}, err
+	}
+	if err := s.refreshArtwork(ctx); err != nil {
+		return ScanResult{}, err
+	}
 	state := "complete"
 	if !complete {
 		state = "partial"
@@ -552,7 +569,7 @@ func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel strin
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM record_folder WHERE root_id=1 AND path_key=?`, key).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		res, err := s.db.ExecContext(ctx, `INSERT INTO record_folder(root_id,parent_id,name,relative_path,path_key,depth,last_seen_generation,last_scanned_at) VALUES(1,?,?,?,?,?,?,CURRENT_TIMESTAMP)`, nullableID(parent), name, rel, key, depth, generation)
+		res, err := s.db.ExecContext(ctx, `INSERT INTO record_folder(root_id,parent_id,name,sort_key,relative_path,path_key,depth,last_seen_generation,last_scanned_at) VALUES(1,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`, nullableID(parent), name, naturalorder.Key(name), rel, key, depth, generation)
 		if err != nil {
 			return 0, err
 		}
@@ -562,7 +579,7 @@ func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel strin
 	if err != nil {
 		return 0, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE record_folder SET parent_id=?, name=?, relative_path=?, depth=?, state='active', last_seen_generation=?, last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`, nullableID(parent), name, rel, depth, generation, id)
+	_, err = s.db.ExecContext(ctx, `UPDATE record_folder SET parent_id=?, name=?, sort_key=?, relative_path=?, depth=?, state='active', last_seen_generation=?, last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`, nullableID(parent), name, naturalorder.Key(name), rel, depth, generation, id)
 	return id, err
 }
 
@@ -578,7 +595,7 @@ func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind
 	key := pathKey(rel)
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND path_key=?`, key).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		res, err := s.db.ExecContext(ctx, `INSERT INTO record_asset(root_id,folder_id,name,relative_path,path_key,kind,extension,mime_type,size_bytes,mtime_ns,availability,last_seen_generation) VALUES(1,?,?,?,?,?,?,?,?,?,'available',?)`, folderID, name, rel, key, kind, strings.ToLower(filepath.Ext(name)), mime, info.Size(), info.ModTime().UnixNano(), generation)
+		res, err := s.db.ExecContext(ctx, `INSERT INTO record_asset(root_id,folder_id,name,sort_key,relative_path,path_key,kind,extension,mime_type,size_bytes,mtime_ns,availability,last_seen_generation) VALUES(1,?,?,?,?,?,?,?,?,?,?,'available',?)`, folderID, name, naturalorder.Key(name), rel, key, kind, strings.ToLower(filepath.Ext(name)), mime, info.Size(), info.ModTime().UnixNano(), generation)
 		if err != nil {
 			return 0, err
 		}
@@ -596,9 +613,9 @@ func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind
 		width=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN width ELSE NULL END,
 		height=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN height ELSE NULL END,
 		has_cover=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN has_cover ELSE NULL END,
-		folder_id=?, name=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		folder_id=?, name=?, sort_key=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind,
-		folderID, name, rel, kind, strings.ToLower(filepath.Ext(name)), mime, size, mtime, generation, id)
+		folderID, name, naturalorder.Key(name), rel, kind, strings.ToLower(filepath.Ext(name)), mime, size, mtime, generation, id)
 	return id, err
 }
 
@@ -671,104 +688,6 @@ func (f *progressFields) progress() *Progress {
 	return p
 }
 
-// TreePageMax bounds one page of a folder listing.
-const TreePageMax = 200
-
-// TreePage is one page of a folder's children: subfolders first, then
-// available files, each by name.
-type TreePage struct {
-	Folders []Folder
-	Assets  []Asset
-	// Total counts every child the folder has, on every page.
-	Total int
-	// NextOffset is where the next page starts, or 0 on the last page.
-	NextOffset int
-}
-
-// ListTree lists one page of the subfolders and available assets of one
-// folder, the root when parentID is 0, with userID's saved progress on each
-// video and audio file. The children are ordered subfolders first, then files,
-// each by name; offset counts children across both.
-func (s *Store) ListTree(ctx context.Context, parentID int64, offset, limit int, userID int64) (TreePage, error) {
-	page := TreePage{Folders: []Folder{}, Assets: []Asset{}}
-	if limit <= 0 || limit > TreePageMax {
-		limit = TreePageMax
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	if parentID <= 0 {
-		if err := s.db.QueryRowContext(ctx, `SELECT id FROM record_folder WHERE root_id=1 AND path_key='.'`).Scan(&parentID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return page, nil
-			}
-			return TreePage{}, err
-		}
-	}
-	var folderCount, assetCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM record_folder WHERE parent_id=?1 AND state='active'),
-		(SELECT COUNT(*) FROM record_asset WHERE folder_id=?1 AND availability='available')`, parentID).Scan(&folderCount, &assetCount); err != nil {
-		return TreePage{}, err
-	}
-	page.Total = folderCount + assetCount
-	if offset < folderCount {
-		folders, err := s.listFolders(ctx, parentID, offset, limit)
-		if err != nil {
-			return TreePage{}, err
-		}
-		page.Folders = folders
-	}
-	if remaining := limit - len(page.Folders); remaining > 0 {
-		assets, err := s.listAssets(ctx, parentID, max(offset-folderCount, 0), remaining, userID)
-		if err != nil {
-			return TreePage{}, err
-		}
-		page.Assets = assets
-	}
-	if next := offset + len(page.Folders) + len(page.Assets); next < page.Total && len(page.Folders)+len(page.Assets) > 0 {
-		page.NextOffset = next
-	}
-	return page, nil
-}
-
-func (s *Store) listFolders(ctx context.Context, parentID int64, offset, limit int) ([]Folder, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.parent_id, f.name, f.relative_path, f.depth, (SELECT COUNT(*) FROM record_folder c WHERE c.parent_id=f.id AND c.state='active'), (SELECT COUNT(*) FROM record_asset a WHERE a.folder_id=f.id AND a.availability='available') FROM record_folder f WHERE f.parent_id=? AND f.state='active' ORDER BY f.name COLLATE NOCASE, f.id LIMIT ? OFFSET ?`, parentID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	folders := []Folder{}
-	for rows.Next() {
-		var f Folder
-		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name, &f.RelativePath, &f.Depth, &f.ChildCount, &f.AssetCount); err != nil {
-			return nil, err
-		}
-		f.Artwork = s.artworkForFolder(f)
-		folders = append(folders, f)
-	}
-	return folders, rows.Err()
-}
-
-func (s *Store) listAssets(ctx context.Context, folderID int64, offset, limit int, userID int64) ([]Asset, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind IN ('video','audio') WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ? OFFSET ?`, userID, folderID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	assets := []Asset{}
-	for rows.Next() {
-		var progress progressFields
-		a, err := scanAsset(rows, progress.dest()...)
-		if err != nil {
-			return nil, err
-		}
-		a.Progress = progress.progress()
-		assets = append(assets, a)
-	}
-	return assets, rows.Err()
-}
-
 // ContinueLimitMax bounds the Continue watching list.
 const ContinueLimitMax = 50
 
@@ -802,12 +721,6 @@ func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) (
 		assets = append(assets, a)
 	}
 	return assets, rows.Err()
-}
-
-func (s *Store) artworkForFolder(f Folder) Artwork {
-	base := filepath.Join(s.root, filepath.FromSlash(f.RelativePath))
-	_ = base // URLs are resolved by the HTTP layer through the folder id.
-	return Artwork{}
 }
 
 func (s *Store) Asset(ctx context.Context, id int64) (Asset, error) {
@@ -864,62 +777,22 @@ func (s *Store) safePath(relative string) (string, error) {
 	return path, nil
 }
 
+// ArtworkPath returns the image a scan chose as the folder's poster or
+// backdrop, while it is available.
 func (s *Store) ArtworkPath(ctx context.Context, folderID int64, role string) (string, Asset, error) {
-	role = strings.ToLower(strings.TrimSpace(role))
-	if role != "poster" && role != "backdrop" {
+	column := map[string]string{"poster": "poster_asset_id", "backdrop": "backdrop_asset_id"}[strings.ToLower(strings.TrimSpace(role))]
+	if column == "" {
 		return "", Asset{}, errors.New("invalid artwork role")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+` FROM record_asset a WHERE a.folder_id=? AND a.kind='image' AND a.availability='available'`, folderID)
+	if err := s.ensureDerived(ctx); err != nil {
+		return "", Asset{}, err
+	}
+	a, err := scanAsset(s.db.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM record_folder f JOIN record_asset a ON a.id=f.`+column+` WHERE f.id=? AND a.kind='image' AND a.availability='available'`, folderID))
 	if err != nil {
 		return "", Asset{}, err
 	}
-	defer rows.Close()
-	type candidate struct {
-		a        Asset
-		priority int
-	}
-	candidates := []candidate{}
-	for rows.Next() {
-		a, err := scanAsset(rows)
-		if err != nil {
-			return "", Asset{}, err
-		}
-		stem := strings.TrimSuffix(strings.ToLower(a.Name), strings.ToLower(filepath.Ext(a.Name)))
-		p := 0
-		if role == "poster" {
-			switch stem {
-			case "folder":
-				p = 1
-			case "poster":
-				p = 2
-			case "cover":
-				p = 3
-			}
-		} else {
-			switch stem {
-			case "backdrop":
-				p = 1
-			case "fanart":
-				p = 2
-			case "background":
-				p = 3
-			}
-		}
-		if p > 0 {
-			candidates = append(candidates, candidate{a, p})
-		}
-	}
-	if len(candidates) == 0 {
-		return "", Asset{}, sql.ErrNoRows
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].priority != candidates[j].priority {
-			return candidates[i].priority < candidates[j].priority
-		}
-		return candidates[i].a.Name < candidates[j].a.Name
-	})
-	path, _, err := s.AssetPath(ctx, candidates[0].a.ID)
-	return path, candidates[0].a, err
+	path, err := s.safePath(a.RelativePath)
+	return path, a, err
 }
 
 func (s *Store) Progress(ctx context.Context, userID, assetID int64) (Progress, error) {

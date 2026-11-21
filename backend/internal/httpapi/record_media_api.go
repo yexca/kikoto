@@ -112,6 +112,9 @@ func decorateRecordAsset(a *record.Asset) {
 			a.StreamURL = "/api/records/assets/" + id + "/subtitle"
 		}
 	}
+	if a.Subtitle != nil {
+		decorateRecordAsset(a.Subtitle)
+	}
 }
 
 // serveRecordThumbnail serves a JPEG thumbnail of a record video, image, or

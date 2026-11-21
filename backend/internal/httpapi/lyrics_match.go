@@ -7,6 +7,8 @@ import (
 	"unicode/utf16"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/yexca/kikoto/backend/internal/naturalorder"
 )
 
 // Automatic lyrics matching by file name. It ranks the lyrics choices of the
@@ -198,7 +200,7 @@ func rankLyricsMatches(trackPath string, candidates []lyricsMatchCandidate) []ly
 		if matches[i].score != matches[j].score {
 			return matches[i].score > matches[j].score
 		}
-		return naturalNameCompare(candidates[matches[i].index].path, candidates[matches[j].index].path) < 0
+		return naturalorder.Compare(candidates[matches[i].index].path, candidates[matches[j].index].path) < 0
 	})
 	ranked := make([]lyricsRankedMatch, len(matches))
 	for index, match := range matches {

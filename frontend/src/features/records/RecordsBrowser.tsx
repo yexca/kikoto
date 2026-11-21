@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
@@ -9,7 +9,14 @@ import { useLibraryPlayer } from "@/player/PlayerProvider";
 import { RECORD_PROGRESS_SAVED_EVENT, type RecordProgressSavedDetail } from "@/player/recordTrackProgress";
 
 import { RecordDeleteDialog, type RecordDeleteTarget } from "./RecordDeleteDialog";
-import { RecordFileList, RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
+import {
+  RecordFileList,
+  RecordFolderTile,
+  RecordPhotoTile,
+  RecordSection,
+  RecordSectionMore,
+  RecordVideoTile,
+} from "./RecordGrid";
 import { RecordMediaPlayer } from "./RecordMediaPlayer";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
 import {
@@ -31,8 +38,8 @@ import {
 } from "./recordsLocation";
 import { recordPlayerTrack, recordTrackLocationId } from "./recordPlayerTrack";
 import { resumePosition } from "./recordProgress";
-import { crumbFromFolder, recordFolderView, siblingIds } from "./recordsModel";
-import { useRecordRoot, useRecordTree } from "./useRecordLibrary";
+import { crumbFromFolder, siblingIds } from "./recordsModel";
+import { useRecordRoot, useRecordSiblings, useRecordTree } from "./useRecordLibrary";
 import { useRecordContinue, useRecordProgress } from "./useRecordProgress";
 import { useRecordScan } from "./useRecordScan";
 import { useRecordsLocation } from "./useRecordsLocation";
@@ -71,6 +78,9 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     tree,
     trail,
     pending,
+    version,
+    loadMore,
+    readWhole,
     reload: reloadTree,
   } = useRecordTree(location.folderId, historyState, enabled && online);
   const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
@@ -78,14 +88,30 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   // An audio file the Continue list asked for, played once its folder's listing arrives.
   const [pendingAudio, setPendingAudio] = useState<RecordAsset | null>(null);
   const player = useLibraryPlayer();
+  // The track playing now, read when a section's later pages arrive for the queue.
+  const currentTrackRef = useRef(player.currentTrack);
+  useLayoutEffect(() => {
+    currentTrackRef.current = player.currentTrack;
+  });
 
   const listing = tree.status === "ready" && tree.folderId === location.folderId ? tree : null;
-  const view = useMemo(() => (listing ? recordFolderView(listing.folders, listing.assets) : null), [listing]);
+  const sections = listing?.sections ?? null;
 
-  const playableItems = useMemo(() => (view ? [...view.videos, ...view.audio] : noMedia), [view]);
+  const playableItems = useMemo(
+    () =>
+      sections
+        ? [
+            ...sections.videos.items,
+            ...sections.audio.items,
+            ...sections.files.items.filter((item) => item.kind === "audio"),
+          ]
+        : noMedia,
+    [sections],
+  );
   const { progress, remember } = useRecordProgress(location.folderId, playableItems);
   const [savedToken, setSavedToken] = useState(0);
   const continueAssets = useRecordContinue(enabled && online && location.overlay === null, savedToken);
+  const placement = useRecordSiblings(location.overlay?.assetId ?? null, version);
 
   const openFolder = useStableCallback((folder: RecordFolder) => {
     navigate((at) => openFolderNavigation(at, trail, crumbFromFolder(folder)));
@@ -123,18 +149,52 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
 
   const openFolderCrumb = trail.length > 0 ? trail[trail.length - 1] : undefined;
   const folderName = openFolderCrumb?.name ?? t("nav.record");
+  const tracksOf = (items: readonly RecordAsset[]) =>
+    items.map((item) => recordPlayerTrack(item, folderName, progress.get(item.id) ?? item.progress));
   // Plays `items` in the global player from `id`, at `position` or where it was left.
-  const playInPlayer = useStableCallback((items: readonly RecordAsset[], id: number, position?: number) => {
-    if (!items.some((item) => item.id === id)) return;
-    const tracks = items.map((item) => recordPlayerTrack(item, folderName, progress.get(item.id)));
-    player.playQueue(tracks, recordTrackLocationId(id), position ?? resumePosition(progress.get(id)) ?? 0);
+  const playTracks = useStableCallback((items: readonly RecordAsset[], id: number, position?: number) => {
+    const item = items.find((candidate) => candidate.id === id);
+    if (!item) return;
+    player.playQueue(
+      tracksOf(items),
+      recordTrackLocationId(id),
+      position ?? resumePosition(progress.get(id) ?? item.progress) ?? 0,
+    );
   });
-  const playAudio = useStableCallback((id: number) => playInPlayer(view?.audio ?? noMedia, id));
+  /**
+   * Plays a section's files from `id`. A file already listed plays at once,
+   * and the section's later pages join the queue as they arrive, unless
+   * something else plays by then; a file not listed yet plays once the
+   * section is read.
+   */
+  const playSection = useStableCallback((name: "audio" | "videos", id: number, position?: number) => {
+    const section = sections?.[name];
+    if (!section) return;
+    if (!section.items.some((item) => item.id === id)) {
+      void readWhole(name)
+        .then((whole) => playTracks(whole, id, position))
+        .catch(() => undefined);
+      return;
+    }
+    playTracks(section.items, id, position);
+    if (!section.next) return;
+    const queued = new Set(section.items.map((item) => item.id));
+    void readWhole(name)
+      .then((whole) => {
+        const rest = whole.filter((item) => !queued.has(item.id));
+        const playing = currentTrackRef.current?.locationId;
+        if (rest.length > 0 && whole.some((item) => recordTrackLocationId(item.id) === playing)) {
+          player.appendQueue(tracksOf(rest));
+        }
+      })
+      .catch(() => undefined);
+  });
+  const playAudio = useStableCallback((id: number) => playSection("audio", id));
   // A video tile plays its sound from where the video was left.
-  const listenToVideoTile = useStableCallback((id: number) => playInPlayer(view?.videos ?? noMedia, id));
+  const listenToVideoTile = useStableCallback((id: number) => playSection("videos", id));
   const listenToVideo = (id: number, position: number) => {
     closeOverlay();
-    playInPlayer(view?.videos ?? noMedia, id, position);
+    playSection("videos", id, position);
   };
 
   const openContinue = (asset: RecordAsset) => {
@@ -147,16 +207,47 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     navigate((at) => openFolderVideoNavigation(at, asset.folderId, asset.id));
   };
   useEffect(() => {
-    if (!pendingAudio || !view || listing?.folderId !== pendingAudio.folderId) return;
+    if (!pendingAudio || !sections || listing?.folderId !== pendingAudio.folderId) return;
+    const asset = pendingAudio;
     setPendingAudio(null);
-    if (view.audio.some((item) => item.id === pendingAudio.id)) playAudio(pendingAudio.id);
-    else
-      player.playQueue(
-        [recordPlayerTrack(pendingAudio, folderName, pendingAudio.progress)],
-        recordTrackLocationId(pendingAudio.id),
-        resumePosition(pendingAudio.progress) ?? 0,
-      );
-  }, [folderName, listing?.folderId, pendingAudio, playAudio, player, view]);
+    void readWhole("audio")
+      .then((whole) => {
+        if (whole.some((item) => item.id === asset.id)) playTracks(whole, asset.id);
+        else
+          player.playQueue(
+            [recordPlayerTrack(asset, folderName, asset.progress)],
+            recordTrackLocationId(asset.id),
+            resumePosition(asset.progress) ?? 0,
+          );
+      })
+      .catch(() => undefined);
+  }, [folderName, listing?.folderId, pendingAudio, playTracks, player, readWhole, sections]);
+
+  const overlay = location.overlay;
+  const overlaySection = overlay && sections ? (overlay.kind === "video" ? sections.videos : sections.photos) : null;
+  const placed = overlay && placement?.siblings?.asset.id === overlay.assetId ? placement.siblings : null;
+  const overlayAsset = placed?.asset ?? overlaySection?.items.find((item) => item.id === overlay?.assetId) ?? null;
+  // The server places the open file in its whole section; until it answers, the listed files stand in.
+  const overlaySiblings =
+    overlay && overlaySection && overlayAsset
+      ? placed
+        ? {
+            index: placed.index,
+            total: placed.total,
+            previous: placed.previous ?? null,
+            next: placed.next ?? null,
+            previousId: placed.previous?.id ?? null,
+            nextId: placed.next?.id ?? null,
+          }
+        : {
+            index: Math.max(0, overlaySection.items.indexOf(overlayAsset)),
+            total: overlaySection.total,
+            previous: neighbour(overlaySection.items, overlayAsset.id, "previous"),
+            next: neighbour(overlaySection.items, overlayAsset.id, "next"),
+            previousId: siblingIds(overlaySection.items, overlayAsset.id).previous,
+            nextId: siblingIds(overlaySection.items, overlayAsset.id).next,
+          }
+      : null;
 
   // The file or folder whose deletion is under review.
   const [deleting, setDeleting] = useState<RecordDeleteTarget | null>(null);
@@ -167,10 +258,8 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     setDeleting(null);
     const open = location.overlay;
     const asset = target.kind === "file" ? target.asset : null;
-    if (asset && open && open.assetId === asset.id && view) {
-      const siblings = open.kind === "video" ? view.videos : view.photos;
-      const { previous, next } = siblingIds(siblings, asset.id);
-      const target = next ?? previous;
+    if (asset && open && open.assetId === asset.id) {
+      const target = overlaySiblings?.nextId ?? overlaySiblings?.previousId ?? null;
       if (target === null) closeOverlay();
       else navigate((at, state) => stepOverlayNavigation(at, state, target));
     }
@@ -225,26 +314,24 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     );
   }
 
-  const overlay = location.overlay;
-  const overlayVideo =
-    overlay?.kind === "video" && view ? (view.videos.find((video) => video.id === overlay.assetId) ?? null) : null;
-  const overlayPhoto =
-    overlay?.kind === "photo" && view ? (view.photos.find((photo) => photo.id === overlay.assetId) ?? null) : null;
-  const isEmpty =
-    view !== null && view.folders.length + view.videos.length + view.photos.length + view.files.length === 0;
+  const overlayVideo = overlay?.kind === "video" ? overlayAsset : null;
+  const overlayPhoto = overlay?.kind === "photo" ? overlayAsset : null;
+  const shown = sections ? [sections.folders, sections.videos, sections.photos, sections.files] : [];
+  const isEmpty = sections !== null && shown.every((section) => section.total === 0);
   const scanBusy =
     scan.state.status === "queueing" || scan.state.status === "queued" || scan.state.status === "running";
-  const sectionCount = view
-    ? (view.folders.length > 0 ? 1 : 0) +
-      (view.videos.length > 0 ? 1 : 0) +
-      (view.photos.length > 0 ? 1 : 0) +
-      (view.files.length > 0 ? 1 : 0)
-    : 0;
-  const showSectionHeadings = sectionCount > 1;
+  const showSectionHeadings = shown.filter((section) => section.total > 0).length > 1;
+  // The end of a section with more to read reads the next page as it nears the viewport.
+  const more = (name: "folders" | "videos" | "photos" | "files") => {
+    const section = sections?.[name];
+    return section?.next ? (
+      <RecordSectionMore loading={section.loading} failed={section.failed} onMore={() => loadMore(name)} />
+    ) : null;
+  };
 
-  const foldersGrid = view && view.folders.length > 0 && (
+  const foldersGrid = sections && sections.folders.total > 0 && (
     <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
-      {view.folders.map((folder) => (
+      {sections.folders.items.map((folder) => (
         <RecordFolderTile
           key={folder.id}
           folder={folder}
@@ -255,9 +342,9 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     </div>
   );
 
-  const videosGrid = view && view.videos.length > 0 && (
+  const videosGrid = sections && sections.videos.total > 0 && (
     <div className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-3 xl:grid-cols-4">
-      {view.videos.map((video) => (
+      {sections.videos.items.map((video) => (
         <RecordVideoTile
           key={video.id}
           video={video}
@@ -270,17 +357,17 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     </div>
   );
 
-  const photosGrid = view && view.photos.length > 0 && (
+  const photosGrid = sections && sections.photos.total > 0 && (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-      {view.photos.map((photo) => (
+      {sections.photos.items.map((photo) => (
         <RecordPhotoTile key={photo.id} photo={photo} onOpen={openPhoto} />
       ))}
     </div>
   );
 
-  const filesList = view && view.files.length > 0 && (
+  const filesList = sections && sections.files.total > 0 && (
     <RecordFileList
-      files={view.files}
+      files={sections.files.items}
       progress={progress}
       onPlay={playAudio}
       onDelete={canDelete ? reviewDelete : undefined}
@@ -317,7 +404,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           message={t("records.folderErrorMessage")}
           onRetry={reloadTree}
         />
-      ) : !view ? (
+      ) : !sections ? (
         <RecordLoading label={t("records.loadingFolder")} />
       ) : isEmpty ? (
         <RecordEmptyNotice
@@ -330,48 +417,65 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
         <div className="space-y-8">
           {foldersGrid &&
             (showSectionHeadings ? (
-              <RecordSection title={t("records.sections.folders")} count={view.folders.length}>
+              <RecordSection title={t("records.sections.folders")} count={sections.folders.total}>
                 {foldersGrid}
+                {more("folders")}
               </RecordSection>
             ) : (
-              foldersGrid
+              <>
+                {foldersGrid}
+                {more("folders")}
+              </>
             ))}
           {videosGrid &&
             (showSectionHeadings ? (
-              <RecordSection title={t("records.sections.videos")} count={view.videos.length}>
+              <RecordSection title={t("records.sections.videos")} count={sections.videos.total}>
                 {videosGrid}
+                {more("videos")}
               </RecordSection>
             ) : (
-              videosGrid
+              <>
+                {videosGrid}
+                {more("videos")}
+              </>
             ))}
           {photosGrid &&
             (showSectionHeadings ? (
-              <RecordSection title={t("records.sections.photos")} count={view.photos.length}>
+              <RecordSection title={t("records.sections.photos")} count={sections.photos.total}>
                 {photosGrid}
+                {more("photos")}
               </RecordSection>
             ) : (
-              photosGrid
+              <>
+                {photosGrid}
+                {more("photos")}
+              </>
             ))}
           {filesList &&
             (showSectionHeadings ? (
-              <RecordSection title={t("records.sections.files")} count={view.files.length}>
+              <RecordSection title={t("records.sections.files")} count={sections.files.total}>
                 {filesList}
+                {more("files")}
               </RecordSection>
             ) : (
-              filesList
+              <>
+                {filesList}
+                {more("files")}
+              </>
             ))}
         </div>
       )}
 
-      {overlayVideo && view && (
+      {overlayVideo && overlaySiblings && (
         <RecordMediaPlayer
           key={overlayVideo.id}
           asset={overlayVideo}
-          subtitle={view.subtitles.get(overlayVideo.id)}
-          index={view.videos.indexOf(overlayVideo)}
-          total={view.videos.length}
-          {...siblingProps(view.videos, overlayVideo.id)}
-          knownProgress={progress.get(overlayVideo.id)}
+          subtitle={overlayVideo.subtitle}
+          index={overlaySiblings.index}
+          total={overlaySiblings.total}
+          previousId={overlaySiblings.previousId}
+          nextId={overlaySiblings.nextId}
+          knownProgress={progress.get(overlayVideo.id) ?? overlayVideo.progress}
           autoResume={autoResumeId === overlayVideo.id}
           canSaveProgress={canSaveProgress}
           phone={phone}
@@ -382,13 +486,13 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           onProgressSaved={rememberProgress}
         />
       )}
-      {overlayPhoto && view && (
+      {overlayPhoto && overlaySiblings && (
         <RecordPhotoViewer
           photo={overlayPhoto}
-          index={view.photos.indexOf(overlayPhoto)}
-          total={view.photos.length}
-          previous={neighbour(view.photos, overlayPhoto.id, "previous")}
-          next={neighbour(view.photos, overlayPhoto.id, "next")}
+          index={overlaySiblings.index}
+          total={overlaySiblings.total}
+          previous={overlaySiblings.previous}
+          next={overlaySiblings.next}
           onStep={(id) => navigate((at, state) => stepOverlayNavigation(at, state, id))}
           onDelete={canDelete ? () => reviewDelete(overlayPhoto) : undefined}
           onClose={closeOverlay}
@@ -397,11 +501,6 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
       {deleting && <RecordDeleteDialog target={deleting} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />}
     </div>
   );
-}
-
-function siblingProps(items: readonly { id: number }[], id: number) {
-  const { previous, next } = siblingIds(items, id);
-  return { previousId: previous, nextId: next };
 }
 
 function neighbour<T extends { id: number }>(items: readonly T[], id: number, side: "previous" | "next") {

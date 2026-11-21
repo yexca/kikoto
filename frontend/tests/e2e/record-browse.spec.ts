@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import type { RecordAsset, RecordRoot, RecordTree } from "../../src/lib/api";
+import type { RecordAsset, RecordRoot } from "../../src/lib/api";
 import { rolePermissions, runtimeSettingsFixture } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
+import { recordTreeResponse } from "./fixtures/records";
 
 // A 1×1 PNG.
 const pixel = Buffer.from(
@@ -23,7 +24,7 @@ function photo(id: number, name: string): RecordAsset {
   };
 }
 
-test("a Record folder lists every child when its listing spans several pages @desktop", async ({ page }) => {
+test("a Record section reads its later pages as the end of the section comes into view @desktop", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
     permissions: rolePermissions.user,
@@ -32,7 +33,8 @@ test("a Record folder lists every child when its listing spans several pages @de
     route.fulfill({ json: { ...runtimeSettingsFixture(), recordLibraryEnabled: true } }),
   );
   const photos = [photo(1, "Beach.png"), photo(2, "Harbor.png"), photo(3, "Lighthouse.png")];
-  const offsets: string[] = [];
+  // The cursor of each section page read after the first.
+  const cursors: string[] = [];
   await page.route("**/api/records**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/records") {
@@ -46,12 +48,10 @@ test("a Record folder lists every child when its listing spans several pages @de
       return route.fulfill({ json: { root } });
     }
     if (url.pathname === "/api/records/tree") {
-      const offset = Number(url.searchParams.get("offset") ?? 0);
-      offsets.push(String(offset));
+      const section = url.searchParams.get("section");
+      if (section) cursors.push(`${section} ${url.searchParams.get("after")}`);
       // Two children to a page.
-      const tree: RecordTree = { folderId: 0, folders: [], assets: photos.slice(offset, offset + 2), total: 3 };
-      if (offset + 2 < photos.length) tree.nextOffset = offset + 2;
-      return route.fulfill({ json: tree });
+      return route.fulfill({ json: recordTreeResponse(url, [], photos, 2) });
     }
     if (url.pathname === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (/^\/api\/records\/assets\/\d+\/stream$/.test(url.pathname)) {
@@ -61,9 +61,9 @@ test("a Record folder lists every child when its listing spans several pages @de
   });
 
   await page.goto("/records");
-  // The child on the second page is listed with the others.
+  // The photo on the section's second page is listed with the others.
   for (const name of ["Beach", "Harbor", "Lighthouse"]) {
     await expect(page.getByRole("button", { name })).toBeVisible();
   }
-  expect(new Set(offsets)).toEqual(new Set(["0", "2"]));
+  expect(cursors).toEqual(["photos 2"]);
 });

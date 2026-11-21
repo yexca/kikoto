@@ -9,16 +9,22 @@ audio, and deletes its files; the backend side is
 `features/records` owns the Record surface and the Record section of
 System → Library, which turns Record on and initializes the independent record
 root. The navigation offers Record only while the runtime settings report it
-on. The browser walks the root one folder at a time, ordering subfolders,
-videos, and photos by natural name, and lists the folder's audio, subtitle,
-metadata, and other files below them, where audio rows open the player.
+on. The browser walks the root one folder at a time, showing subfolders,
+videos, and photos in the natural name order the listing arrives in, and
+lists the folder's audio, subtitle, metadata, and other files below them,
+where audio rows open the player. A visit reads the first page of each
+section; the end of a section with more to read reads the next page as it
+nears the viewport, and again while it stays near, and offers Retry when a
+page fails. A refresh reads each section again as far as it was read. A
+section heading counts the whole section.
 
 The `/records` URL keeps the open folder and an open video (`?play=`) or photo
 (`?photo=`). Opening a folder or an overlay pushes a history entry; previous or
 next inside an overlay replaces it; closing an overlay the page opened goes
 back, and closing one opened from a pasted link replaces it with its folder.
-Each entry carries the breadcrumb trail, and a pasted folder link recovers the
-trail by walking from the root along a child's relative path.
+Each entry carries the breadcrumb trail, which shows until the folder's
+listing arrives with the trail the server names; a pasted folder link takes
+its trail from that listing.
 
 The single-row header places the breadcrumb on the left and the Continue
 watching picker and Scan (or Refresh without `library:write`) on the right.
@@ -47,7 +53,10 @@ end, and when it closes. A same-name subtitle sidecar the server serves as
 WebVTT is the video's sidecar track, a WebVTT file before a SubRip one, and
 embedded text subtitles from playback info follow it.
 
-The photo viewer steps through photos by button, arrow key, or touch swipe and
+Both overlays place their file in its whole section through the siblings
+route, so the position, count, and previous and next files cover pages the
+folder has not read yet; until it answers, the listed files stand in. The
+photo viewer steps through photos by button, arrow key, or touch swipe and
 shows each photo in the shared zoomable stage of the work file viewer. Both
 overlays are modal dialogs over authenticated asset routes; a record video that
 starts playing pauses the global audio player, and pauses when that player
@@ -61,7 +70,9 @@ locations, the `record` location type, the folder's name as its subtitle, and
 the asset's thumbnail as its cover, which for an audio file is its embedded
 cover art and otherwise absent. Selecting an audio row queues the folder's
 audio files; **Play as audio** in the video player queues the folder's videos
-as sound from the position the video reached and closes the overlay. Such a
+as sound from the position the video reached and closes the overlay. The
+files already listed play at once and the section's later pages join the
+queue as they arrive, unless something else plays by then. Such a
 track has no work, so listening history, lyrics, queue restoration, and
 display-name refresh skip it, and the cover leads to its Record folder instead
 of a work.
