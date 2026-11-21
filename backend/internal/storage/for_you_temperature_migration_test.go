@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-// Migration 107 makes the For you temperature a step from 1 to 5: a saved
+// Migration 101 makes the For you temperature a step from 1 to 5: a saved
 // Safe, Balanced, or Adventurous becomes 1, 3, or 5, the default stays NULL,
 // the account's other preferences are kept, and no other step is accepted.
 func TestMigrationKeepsSavedForYouTemperatureAsStep(t *testing.T) {
-	db := openMigratedThrough(t, 106)
+	db := openMigratedThrough(t, 100)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'synthetic-safe', 'user'), (2, 'synthetic-balanced', 'user'), (3, 'synthetic-adventurous', 'user'), (4, 'synthetic-default', 'user')`,
 		`INSERT INTO user_preference (user_id, for_you_temperature, time_zone) VALUES (1, 'safe', 'Etc/UTC'), (2, 'balanced', NULL), (3, 'adventurous', NULL), (4, NULL, NULL)`,
@@ -21,7 +21,7 @@ func TestMigrationKeepsSavedForYouTemperatureAsStep(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 107)); err != nil {
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 101)); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := db.Query(`SELECT user_id, for_you_temperature, COALESCE(time_zone, '') FROM user_preference ORDER BY user_id`)

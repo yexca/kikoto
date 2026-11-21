@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Migration 100 leaves one local location per work, file source, and path. A
+// Migration 098 leaves one local location per work, file source, and path. A
 // Fetch recorded the path on remote items and a scan recorded it again on a
 // local item: the oldest remote item keeps the fresher location and the local
 // fingerprint, the other items are removed, and of their per-user state and
@@ -14,7 +14,7 @@ import (
 // keeps it, and a playback cursor follows the location it names.
 func TestMigrationMergesDuplicateLocalLocations(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigratedThrough(t, 99)
+	db := openMigratedThrough(t, 97)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'listener', 'admin')`,
 		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES
@@ -140,7 +140,7 @@ func TestMigrationMergesDuplicateLocalLocations(t *testing.T) {
 // never takes the lyrics item for its audio track.
 func TestMigrationMergingDuplicatesKeepsATranslationOnItsAudioTrack(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigratedThrough(t, 99)
+	db := openMigratedThrough(t, 97)
 	for _, statement := range []string{
 		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES
 			(1, 'local', 'Local', 'local_folder', 1),

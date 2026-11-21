@@ -26,11 +26,11 @@ func personTriggers(t *testing.T, db *sqlutil.DB) []string {
 	return names
 }
 
-// Migration 105 keeps every person under its id with its credits, ids, and
+// Migration 100 keeps every person under its id with its credits, ids, and
 // triggers, and from then on two people may share a display name.
 func TestPersonNamesMigrationAllowsNamesakes(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigratedThrough(t, 104)
+	db := openMigratedThrough(t, 99)
 	for _, statement := range []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000018', 'Example Work')`,
 		`INSERT INTO person (id, display_name, sort_name) VALUES (7, 'Example Voice', 'example voice')`,

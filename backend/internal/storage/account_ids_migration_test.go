@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// Migration 102 keeps every account under its id, and from then on an account
+// Migration 099 keeps every account under its id, and from then on an account
 // created later never receives the id of a deleted account: neither one
 // deleted afterwards nor one deleted before whose workflow runs remain.
 func TestMigrationKeepsAccountIDsAndNeverReusesThem(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigratedThrough(t, 101)
+	db := openMigratedThrough(t, 98)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'example-admin', 'admin'), (2, 'example-user', 'user')`,
 		`INSERT INTO user_session (id, user_id, expires_at) VALUES ('synthetic-session', 2, '2999-01-01 00:00:00')`,
