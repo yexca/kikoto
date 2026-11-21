@@ -4,7 +4,7 @@ vi.mock("@/lib/api", () => ({ api: { getAudioPlaybackInfo: vi.fn(), getRecordPla
 
 import { api } from "@/lib/api";
 
-import { clearAudioSources, peekAudioSource, resolveAudioSource } from "./audioPlaybackSource";
+import { clearAudioSources, holdAudioSource, peekAudioSource, resolveAudioSource } from "./audioPlaybackSource";
 import { RECORD_LOCATION_TYPE } from "./playerTrackMedia";
 import type { PlayerTrack } from "./playerTypes";
 
@@ -107,6 +107,22 @@ describe("audio sources", () => {
     expect(info).toHaveBeenCalledTimes(1);
     // Compatibility playback is a different decision.
     expect(peekAudioSource(track, true)).toBeNull();
+  });
+
+  it("keeps a held decision for the next track's turn however long the current one plays", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    vi.mocked(api.getAudioPlaybackInfo).mockResolvedValue({
+      delivery: "direct",
+      url: "/api/media/11/stream?profile=audio",
+      durationSeconds: 3,
+      seekable: true,
+    });
+    const release = holdAudioSource(track, false);
+    const decided = await resolveAudioSource(track, false);
+    now.mockReturnValue(1_000_000 + 10 * 60_000);
+    expect(peekAudioSource(track, false)).toBe(decided);
+    release();
+    expect(peekAudioSource(track, false)).toBeNull();
   });
 
   it("falls back to the stream route when playback info is unavailable", async () => {

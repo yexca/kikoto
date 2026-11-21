@@ -23,6 +23,9 @@ type CachedSource = { source: PlayerAudioSource; expiresAt: number };
 
 const cache = new Map<string, CachedSource>();
 const pending = new Map<string, Promise<PlayerAudioSource>>();
+// Decisions a holder keeps for a later turn, such as the next auto-advance
+// track's, never expire while held, however long the current track plays.
+const held = new Map<string, number>();
 
 function remoteTrack(track: PlayerTrack) {
   return Boolean(
@@ -70,11 +73,27 @@ function fallbackAudioSource(track: PlayerTrack, compatibility: boolean): Player
 function remember(key: string, source: PlayerAudioSource, ttlMs: number) {
   cache.delete(key);
   cache.set(key, { source, expiresAt: Date.now() + ttlMs });
-  while (cache.size > CACHE_LIMIT) {
-    const oldest = cache.keys().next();
-    if (oldest.done) break;
-    cache.delete(oldest.value);
+  for (const candidate of cache.keys()) {
+    if (cache.size <= CACHE_LIMIT) break;
+    if (!held.has(candidate)) cache.delete(candidate);
   }
+}
+
+/**
+ * Keeps a track's decision from expiring until the returned release is
+ * called, so the next track's turn finds the decision its preload warmed.
+ */
+export function holdAudioSource(track: PlayerTrack, compatibility: boolean): () => void {
+  const key = audioSourceKey(track, compatibility);
+  held.set(key, (held.get(key) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const count = (held.get(key) ?? 1) - 1;
+    if (count > 0) held.set(key, count);
+    else held.delete(key);
+  };
 }
 
 /**
@@ -84,7 +103,7 @@ function remember(key: string, source: PlayerAudioSource, ttlMs: number) {
 export function peekAudioSource(track: PlayerTrack, compatibility: boolean): PlayerAudioSource | null {
   const key = audioSourceKey(track, compatibility);
   const hit = cache.get(key);
-  if (hit && hit.expiresAt > Date.now()) return hit.source;
+  if (hit && (hit.expiresAt > Date.now() || held.has(key))) return hit.source;
   if (serverDecides(track)) return null;
   const fixed = fixedAudioSource(track);
   remember(key, fixed, Number.POSITIVE_INFINITY);
@@ -106,6 +125,7 @@ export function audioSourceCheckURL(track: PlayerTrack, compatibility: boolean) 
 export function clearAudioSources() {
   cache.clear();
   pending.clear();
+  held.clear();
 }
 
 function recordSource(track: PlayerTrack, info: VideoPlaybackInfo): PlayerAudioSource {

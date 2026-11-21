@@ -37,9 +37,10 @@ answers with the original file, an HLS playlist, or a complete MP3 conversion
 and the URL to load. Compatibility playback asks for a conversion. The answer
 is shared by every caller and kept for a minute, and a track that fails asks
 again when it retries. The player holds a track back from its element until
-the server has answered, and decides the next auto-advance track as soon as
-the current one has loaded, so its turn finds the answer made and gapless
-advance waits for no request. A request that fails leaves the track on the
+the server has answered, and a loaded track keeps its answer however long it
+plays. The player decides the next auto-advance track as soon as the current
+one has loaded and keeps that answer until its turn, so its turn finds the
+answer made and gapless advance waits for no request. A request that fails leaves the track on the
 stream route, which decides between the file and a complete MP3 conversion
 from the declared formats. The player decides nothing from a file name. A
 remote stream is never converted and has no playback info; its URL is the

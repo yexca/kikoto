@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { assetURL } from "@/lib/api";
 
 import { attachAudioHls } from "./audioHlsSource";
-import type { PlayerAudioSource } from "./audioPlaybackSource";
+import { audioSourceKey, holdAudioSource, type PlayerAudioSource } from "./audioPlaybackSource";
 import { audioHlsPlayback } from "./mediaPlayback";
 import { bufferedEndAt, nextTrackPreloadWindowSeconds, shouldPreloadNextTrack } from "./nextTrackPreload";
 import type { PlayerTrack } from "./playerTypes";
@@ -221,8 +221,19 @@ export function usePlaybackSource(
     requestAudioPlay,
   ]);
 
-  // The next track is decided once the current one plays, and warmed once it nears its end.
-  const nextSource = useAudioSource(currentSourceURL === null ? null : nextTrack, nextTrackCompatibility);
+  // The next track is decided once the current one plays, and warmed once it
+  // nears its end. Its decision is held until its turn, so a current track
+  // longer than the decision lasts still hands over without asking again.
+  const upcomingTrack = currentSourceURL === null ? null : nextTrack;
+  const nextSource = useAudioSource(upcomingTrack, nextTrackCompatibility);
+  const upcomingTrackRef = useRef(upcomingTrack);
+  upcomingTrackRef.current = upcomingTrack;
+  const upcomingKey = upcomingTrack ? audioSourceKey(upcomingTrack, nextTrackCompatibility) : null;
+  useEffect(() => {
+    const upcoming = upcomingTrackRef.current;
+    if (!upcoming || upcomingKey === null) return;
+    return holdAudioSource(upcoming, nextTrackCompatibility);
+  }, [nextTrackCompatibility, upcomingKey]);
   const [preloadArmedInstanceKey, setPreloadArmedInstanceKey] = useState<string | null>(null);
   const preloadArmed = currentPlaybackInstanceKey !== null && preloadArmedInstanceKey === currentPlaybackInstanceKey;
 
