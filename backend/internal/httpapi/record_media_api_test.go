@@ -109,6 +109,27 @@ func TestRecordMediaRoutesRequireSignIn(t *testing.T) {
 	}
 }
 
+// A file whose bytes read as a page is still served as the media its
+// extension names, in a response that cannot run as a page.
+func TestRecordStreamNeverServesAFileAsAPage(t *testing.T) {
+	server := newRecordTestServer(t)
+	if err := os.WriteFile(filepath.Join(server.root, "trip", "Page.ts"), []byte("<html><script>alert(1)</script>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.server.recordStore.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := server.server.db.QueryRow(`SELECT id FROM record_asset WHERE name='Page.ts'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	response := server.get("/api/records/assets/"+strconv.FormatInt(id, 10)+"/stream", true)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "video/mp2t" ||
+		!strings.Contains(response.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Fatalf("stream = %d %q %q", response.Code, response.Header().Get("Content-Type"), response.Header().Get("Content-Security-Policy"))
+	}
+}
+
 func TestRecordRoutesAreNotFoundWhileTheRecordLibraryIsOff(t *testing.T) {
 	server := newRecordTestServer(t)
 	video := strconv.FormatInt(server.ids["Day 1.mp4"], 10)

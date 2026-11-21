@@ -278,9 +278,15 @@ func (s *Server) streamRecordAsset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if asset.Kind == "audio" && asset.MimeType != "" {
-		w.Header().Set("Content-Type", asset.MimeType)
+	// The type comes from the file's extension, never from sniffing its bytes,
+	// and the response cannot run as a page: a file in the record root is
+	// untrusted.
+	contentType := asset.MimeType
+	if contentType == "" {
+		contentType = "application/octet-stream"
 	}
+	w.Header().Set("Content-Type", contentType)
+	setUntrustedFileHeaders(w)
 	if err := record.ServeContent(w, r, path, info.ModTime()); err != nil {
 		writeAPIError(w, http.StatusNotFound, "record_media_unavailable", "The record media is unavailable.", false)
 	}
