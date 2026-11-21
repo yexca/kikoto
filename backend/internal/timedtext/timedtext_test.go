@@ -70,6 +70,8 @@ func TestParseLyricsReadsEveryLibraryFormat(t *testing.T) {
 		{"SRT", "1\n00:00:05,250 --> 00:00:06,000\ncue", []row{{5250, "cue"}}},
 		{"LRC offset and bracketed text", lrcHeaders,
 			[]row{{880, "Example [chorus] line 1"}, {1880, "Example line 2 [x]"}, {2880, "Example line 3"}, {3880, "Example line 2 [x]"}}},
+		{"LRC drops a stamp after the text", "[00:10.00]Example line 1[00:12.00]\n[00:12.00]Example [chorus] line 2 [00:14.50] end",
+			[]row{{10_000, "Example line 1"}, {12_000, "Example [chorus] line 2 end"}}},
 		{"cue file keeps an LRC-looking text", "\ufeffWEBVTT\n\n00:00:01.000 --> 00:00:02.000\n[00:30.00] Example line 1",
 			[]row{{1000, "[00:30.00] Example line 1"}}},
 		{"SRT keeps an LRC-looking text", "1\n00:00:03,000 --> 00:00:04,000\nExample line 2 [00:40.00]\n",

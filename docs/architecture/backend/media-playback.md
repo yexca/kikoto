@@ -198,8 +198,9 @@ the content, never the file name: a `WEBVTT` header, or complete cue timing
 lines at least as many as lines that start with LRC timestamps, make a cue
 file; otherwise LRC timestamps make it LRC, then ASS dialogue. A WebVTT file
 may therefore be named `.txt`. The reader keeps LRC `[offset:]` tags, hour
-fields, and minutes past 99, and drops markup, cue identifiers, settings, and
-word timestamps from line text.
+fields, and minutes past 99. The leading timestamps of an LRC line time it,
+and a timestamp later in the line is dropped; the reader also drops markup,
+cue identifiers, settings, and word timestamps from line text.
 
 The two text routes, `GET /api/media/{id}/text` and
 `GET /api/remote-sources/{id}/works/{code}/text`, answer in one of two shapes

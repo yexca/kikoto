@@ -570,7 +570,10 @@
 - A Resume position whose file location vanished is saved without it, and
   positions that cannot be saved no longer fill the waiting list.
 - An LRC file's `[offset:]` tag applies under your own lyrics offset, and a
-  `.cue` sheet is never taken for lyrics.
+  `.cue` sheet is never taken for lyrics. If you set a track's lyrics offset
+  to make up for its file's `[offset:]` tag, set it back. Only the timestamps
+  that start an LRC line time it; a timestamp later in the line, such as an
+  end time, no longer shows in the text.
 - A work card's lyrics mark, the directory, and the player match lyrics files
   to tracks by one rule, so they always agree on which lyrics a track has.
 - Removing the playing item when it is last in the queue stops playback and

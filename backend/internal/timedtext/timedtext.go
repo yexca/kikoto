@@ -196,7 +196,10 @@ func parseLRCLines(sourceLines []string) []Line {
 		if leading == "" {
 			continue
 		}
-		text := collapse(inlineTimestampTagPattern.ReplaceAllString(line[len(leading):], ""))
+		// A stamp later in the line, such as the end time some karaoke tools
+		// write, times nothing and is not lyric text.
+		rest := lrcTimestampPattern.ReplaceAllString(line[len(leading):], "")
+		text := collapse(inlineTimestampTagPattern.ReplaceAllString(rest, ""))
 		for _, match := range lrcTimestampPattern.FindAllStringSubmatch(leading, -1) {
 			var ms int64
 			if match[1] != "" {
