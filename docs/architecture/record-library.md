@@ -16,8 +16,8 @@ and thumbnails stay for when it is turned on again.
 The root carries a `.kikoto-record` marker: `kikoto-record-v1` followed by a
 random identity that the database keeps in `record_root.marker_id`. An
 administrator initializes the root explicitly in the same settings section
-before the first scan; initializing writes a new identity, adopts the one a
-marker already carries, and gives one to a marker that has none. Adopting an
+before the first scan; initializing writes a new identity or adopts the one a
+marker already carries. Adopting an
 identity other than the one the database keeps, such as initializing another
 disk mounted at the path, forgets the folders, files, progress, and states
 recorded for the earlier identity in the same transaction, so the new disk's
@@ -25,7 +25,7 @@ files never take over earlier assets by path. The root is
 online only while its marker carries the identity the database keeps. A
 database that never initialized the root leaves it unconfigured. Once the
 database keeps an identity, a missing path is offline, and a path that exists
-without a marker, or with a marker without an identity, is `marker_missing`:
+without a marker is `marker_missing`:
 the catalog is never re-initialized or forgotten for it. Users browse and play
 it as usual, a scan adds and updates the files it finds without marking any
 missing, and deletions are refused. `POST /api/records/root/restore-marker`
@@ -153,8 +153,8 @@ compares by its value, case, accents, and width are ignored, and a kanji
 numeral after 第 compares as the number it writes. Each folder and file stores the collation key of its name, so the
 database orders a page and a page is the next stretch of what the section
 shows. The keys and artwork choices carry the version of the collation they
-were made with; when the server's version differs, as on a catalog indexed
-before they existed, it recomputes them all before its first listing.
+were made with; when the server's version differs, as after a change to the
+collation, it recomputes them all before its first listing.
 
 The HTTP surface is under `/api/records`:
 
@@ -212,8 +212,9 @@ The HTTP surface is under `/api/records`:
   the client's `order`, when it captured the save in Unix milliseconds and
   increasing for each save, and replaces the stored progress only when that
   order is later, so a save that arrives late never replaces a later position.
-  A write without an order, or with one more than five minutes ahead of the
-  server's clock, is ordered by when the server receives it.
+  A write without a positive order is refused as `invalid_record_progress`,
+  and one more than five minutes ahead of the server's clock is ordered by
+  when the server receives it.
 - `DELETE /api/records/assets/{id}` moves an available record file to the
   trash for `downloads:manage` users and answers its `trashPath` relative to
   the record root; `DELETE /api/records/folders/{id}` moves a folder with

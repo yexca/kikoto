@@ -486,15 +486,12 @@ func TestInitializingAnotherDiskStartsANewCatalog(t *testing.T) {
 	}
 }
 
-func TestInitializeGivesAnUnidentifiedMarkerAnIdentity(t *testing.T) {
+func TestInitializeGivesEachRootItsOwnIdentity(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, markerName), []byte(markerVersion+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	store := NewStore(storagetest.Open(t), root)
 	ctx := context.Background()
 	if state, err := store.EnsureRoot(ctx); err != nil || state.State != "unconfigured" {
-		t.Fatalf("root with an unidentified marker = %+v, %v", state, err)
+		t.Fatalf("root before initialize = %+v, %v", state, err)
 	}
 	if state, err := store.InitializeRoot(ctx, false); err != nil || state.State != "online" {
 		t.Fatalf("initialize = %+v, %v", state, err)

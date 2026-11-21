@@ -204,7 +204,7 @@ func TestRecordProgressIsSavedByAViewerWhoCannotManageTheLibrary(t *testing.T) {
 	server := newRecordTestServer(t)
 	id := server.ids["Day 1.mp4"]
 	save := func(permissions ...string) int {
-		request := httptest.NewRequest(http.MethodPut, "/api/records/assets/"+strconv.FormatInt(id, 10)+"/progress", strings.NewReader(`{"positionSeconds":42}`))
+		request := httptest.NewRequest(http.MethodPut, "/api/records/assets/"+strconv.FormatInt(id, 10)+"/progress", strings.NewReader(`{"positionSeconds":42,"order":1767225600000}`))
 		request.SetPathValue("id", strconv.FormatInt(id, 10))
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: permissions}))
 		response := httptest.NewRecorder()

@@ -20,10 +20,9 @@ const recordProgressOrderSkew = 5 * time.Minute
 // recordProgressOrder is the order a progress save is stored under. An order
 // more than recordProgressOrderSkew ahead of the server comes from a clock
 // running fast and would hold the file's progress until the server caught
-// up; such a save, like one without an order, is ordered by when the server
-// receives it.
+// up; such a save is ordered by when the server receives it.
 func recordProgressOrder(order int64, now time.Time) int64 {
-	if order <= 0 || order > now.Add(recordProgressOrderSkew).UnixMilli() {
+	if order > now.Add(recordProgressOrderSkew).UnixMilli() {
 		return now.UnixMilli()
 	}
 	return order
@@ -408,11 +407,10 @@ func (s *Server) updateRecordProgress(w http.ResponseWriter, r *http.Request) {
 		PositionSeconds float64  `json:"positionSeconds"`
 		DurationSeconds *float64 `json:"durationSeconds"`
 		Completed       bool     `json:"completed"`
-		// Order is the client's capture order in Unix milliseconds. A save
-		// without one is ordered by when the server receives it.
+		// Order is the client's capture order in Unix milliseconds.
 		Order int64 `json:"order"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&input); err != nil || input.PositionSeconds < 0 || input.Order < 0 {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&input); err != nil || input.PositionSeconds < 0 || input.Order <= 0 {
 		writeAPIError(w, http.StatusBadRequest, "invalid_record_progress", "Invalid record progress.", false)
 		return
 	}

@@ -189,8 +189,8 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 		// A database that never initialized this root waits for an explicit
 		// initialization.
 		return setState("unconfigured")
-	case !found || markerID == "":
-		// The path is there but its marker, or the marker's identity, is not.
+	case !found:
+		// The path is there but its marker is not.
 		// Nothing proves the disk is the one the catalog describes, but
 		// nothing proves it is another either: the catalog is kept, users
 		// browse and play it, a scan adds files without marking any missing,
@@ -212,9 +212,8 @@ const markerMaxBytes = 256
 var errInvalidMarker = errors.New("record root marker is invalid")
 
 // readMarker returns the identity in the root's marker. found is false when
-// there is no marker; an identity of "" is a marker written before roots had
-// their own identities. A link, a non-regular file, an oversized file, or
-// unknown content is errInvalidMarker.
+// there is no marker. A link, a non-regular file, an oversized file, or
+// content other than the version and one identity is errInvalidMarker.
 func readMarker(root string) (id string, found bool, err error) {
 	path := filepath.Join(root, markerName)
 	info, err := os.Lstat(path)
@@ -232,11 +231,8 @@ func readMarker(root string) (id string, found bool, err error) {
 		return "", true, err
 	}
 	fields := strings.Fields(string(content))
-	if len(fields) == 0 || fields[0] != markerVersion || len(fields) > 2 {
+	if len(fields) != 2 || fields[0] != markerVersion {
 		return "", true, errInvalidMarker
-	}
-	if len(fields) == 1 {
-		return "", true, nil
 	}
 	return fields[1], true, nil
 }
@@ -348,9 +344,9 @@ func (s *Store) rootHoldsCatalog(ctx context.Context) (bool, error) {
 // a marker because an empty mount point must not be mistaken for a library.
 // A new marker carries an identity of its own, so another initialized disk
 // mounted at the same path is reported offline rather than taken for this
-// root. Initializing a root that already carries an identity adopts it; a
-// marker without one is given one. Adopting an identity other than the one the
-// database keeps starts a new catalog: the folders, files, progress, and
+// root. Initializing a root whose marker already carries an identity adopts
+// it. Adopting an identity other than the one the database keeps starts a
+// new catalog: the folders, files, progress, and
 // states recorded for the earlier identity describe another disk, so they are
 // forgotten rather than matched to this root's files by path. Forgetting a
 // catalog the database keeps takes an explicit fresh initialization: without
@@ -388,11 +384,11 @@ func (s *Store) InitializeRoot(ctx context.Context, fresh bool) (Root, error) {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return Root{}, err
 	}
-	id, _, err := readMarker(path)
+	id, found, err := readMarker(path)
 	if err != nil {
 		return Root{}, err
 	}
-	if id == "" {
+	if !found {
 		if id, err = newMarkerID(); err != nil {
 			return Root{}, err
 		}
