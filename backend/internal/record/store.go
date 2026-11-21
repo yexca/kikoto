@@ -279,6 +279,13 @@ var ErrRootNotRecognized = errors.New("record root holds none of the catalog's f
 // new catalog would be made where the disk is not.
 var ErrRootPathMissing = errors.New("record root path is missing")
 
+// ErrRootEmpty refuses a fresh initialization while the database keeps a
+// catalog of folders or files and the root's path is an empty folder without
+// a marker. That is what an unmounted disk leaves at its mount point, and a
+// new catalog there would forget everyone's progress and states for files the
+// disk still holds.
+var ErrRootEmpty = errors.New("record root is an empty folder")
+
 // RestoreMarker writes the marker again with the identity of the catalog the
 // database keeps, for a root whose marker is missing. The catalog is kept.
 func (s *Store) RestoreMarker(ctx context.Context) (Root, error) {
@@ -307,6 +314,28 @@ func (s *Store) RestoreMarker(ctx context.Context) (Root, error) {
 		return Root{}, err
 	}
 	return s.EnsureRoot(ctx)
+}
+
+// emptyRootKeepsCatalog reports whether path is a folder without a marker
+// that holds nothing but the names a scan ignores, while the catalog records
+// some folder or file.
+func (s *Store) emptyRootKeepsCatalog(ctx context.Context, path string) (bool, error) {
+	if _, found, err := readMarker(path); err != nil || found {
+		return false, nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if !ignoredNames[entry.Name()] {
+			return false, nil
+		}
+	}
+	var recorded bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM record_folder WHERE root_id=1 AND depth > 0)
+		OR EXISTS(SELECT 1 FROM record_asset WHERE root_id=1)`).Scan(&recorded)
+	return recorded, err
 }
 
 // rootHoldsCatalog reports whether some recorded folder or file of the
@@ -353,7 +382,9 @@ func (s *Store) rootHoldsCatalog(ctx context.Context) (bool, error) {
 // fresh, a root whose marker does not name the kept catalog, whether the
 // marker or the path is gone or another disk is mounted there, is refused
 // with ErrRootFreshRequired. A fresh initialization still needs the path to
-// exist while a catalog is kept, or it is refused with ErrRootPathMissing.
+// exist while a catalog is kept, or it is refused with ErrRootPathMissing, and
+// a path that is an empty folder without a marker while the catalog records
+// folders or files is refused with ErrRootEmpty.
 func (s *Store) InitializeRoot(ctx context.Context, fresh bool) (Root, error) {
 	path := filepath.Clean(strings.TrimSpace(s.root))
 	if path == "." || path == "" {
@@ -371,6 +402,11 @@ func (s *Store) InitializeRoot(ctx context.Context, fresh bool) (Root, error) {
 	if fresh && kept != "" {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			return Root{}, ErrRootPathMissing
+		}
+		if empty, err := s.emptyRootKeepsCatalog(ctx, path); err != nil {
+			return Root{}, err
+		} else if empty {
+			return Root{}, ErrRootEmpty
 		}
 	}
 	if !fresh {

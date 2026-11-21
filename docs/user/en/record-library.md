@@ -22,7 +22,9 @@ library: everyone can still browse and play it, a scan adds new files without
 marking any missing, and files cannot be deleted. Under **Record** in
 **System → Library**, **Restore marker** writes the marker again and keeps the
 library, once the disk that holds the library's folders is mounted; **Start a new catalog**, after a confirmation, forgets the library
-and indexes the directory afresh on the next scan.
+and indexes the directory afresh on the next scan. An empty directory, as an
+unmounted disk leaves behind, cannot start a new catalog: mount the disk, or
+add files to the directory first.
 While Record
 is off, the sidebar leaves it out for every account; turning it off keeps its
 folders, watched positions, and thumbnails for when it is turned on again.

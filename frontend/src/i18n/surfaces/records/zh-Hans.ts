@@ -11,9 +11,12 @@ export const recordsHans = {
     initialize: "初始化根目录",
     initializing: "正在初始化…",
     initializeFailed: "无法初始化记录根目录。",
+    initializeRootEmpty: "记录根目录是空的，和磁盘未挂载时一样。开始新的目录前，请先挂载磁盘，或向该文件夹中添加文件。",
+    initializeRootPathMissing: "记录根目录不存在。开始新的目录前，请先挂载其磁盘。",
     setupNeedsAdmin: "需要管理员初始化记录根目录。",
     restoreMarker: "恢复标记",
     restoreMarkerFailed: "无法恢复记录根目录的标记。",
+    restoreMarkerNotRecognized: "记录根目录中找不到已记录的任何文件夹或文件。请先挂载其磁盘，再恢复标记。",
     startNewCatalog: "开始新的目录",
     startNewCatalogWarning:
       "Kikoto 会忘记所有已记录的文件夹和文件，以及所有人在其上的进度和标记，并在下次扫描时将此目录作为新的媒体库编入索引。如果这是同一块磁盘，请改为恢复标记。",

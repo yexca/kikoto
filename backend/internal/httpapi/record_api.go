@@ -197,6 +197,10 @@ func (s *Server) initializeRecordRoot(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusConflict, "record_fresh_initialization_required", "The record root does not carry the marker of the kept catalog. Restore the marker to keep the catalog, or start a new catalog.", false)
 		return
 	}
+	if errors.Is(err, record.ErrRootEmpty) {
+		writeAPIError(w, http.StatusConflict, "record_root_empty", "The record root folder is empty, as the mount point of an unmounted disk is. Mount its disk, or add files to the folder, before starting a new catalog.", false)
+		return
+	}
 	if errors.Is(err, record.ErrRootPathMissing) {
 		writeAPIError(w, http.StatusConflict, "record_root_path_missing", "The record root folder is missing. Mount its disk before starting a new catalog.", false)
 		return

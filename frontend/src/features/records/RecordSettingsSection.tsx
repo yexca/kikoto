@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { api, type RecordRoot } from "@/lib/api";
+import { ApiError, api, type RecordRoot } from "@/lib/api";
 
 import { useRecordRoot } from "./useRecordLibrary";
 
@@ -20,6 +20,20 @@ const rootBadge: Record<RecordRoot["state"], "secondary" | "success" | "warning"
   unreadable: "warning",
   marker_missing: "warning",
 };
+
+// The refusals an administrator can act on name what to do; any other failure
+// shows the general message.
+const initializeFailures: Record<string, string> = {
+  record_root_empty: "records.initializeRootEmpty",
+  record_root_path_missing: "records.initializeRootPathMissing",
+};
+const restoreFailures: Record<string, string> = {
+  record_root_not_recognized: "records.restoreMarkerNotRecognized",
+};
+
+function failureKey(error: unknown, known: Record<string, string>, fallback: string) {
+  return (error instanceof ApiError && known[error.code]) || fallback;
+}
 
 /**
  * Record in System -> Library: the switch that offers the Record library to
@@ -47,7 +61,9 @@ export function RecordSettingsSection({
   const showRoot = enabled && savedEnabled && !auth.demoMode;
   const { state: rootState, reload, setRoot } = useRecordRoot(showRoot);
   const [initializing, setInitializing] = useState<"idle" | "busy" | "failed">("idle");
+  const [initializeFailure, setInitializeFailure] = useState("records.initializeFailed");
   const [restoring, setRestoring] = useState<"idle" | "busy" | "failed">("idle");
+  const [restoreFailure, setRestoreFailure] = useState("records.restoreMarkerFailed");
   const [confirmingFresh, setConfirmingFresh] = useState(false);
 
   const change = (next: boolean) =>
@@ -66,7 +82,8 @@ export function RecordSettingsSection({
       setRoot(result.root);
       setInitializing("idle");
       setConfirmingFresh(false);
-    } catch {
+    } catch (error) {
+      setInitializeFailure(failureKey(error, initializeFailures, "records.initializeFailed"));
       setInitializing("failed");
       setConfirmingFresh(false);
     }
@@ -78,7 +95,8 @@ export function RecordSettingsSection({
       const result = await api.restoreRecordMarker();
       setRoot(result.root);
       setRestoring("idle");
-    } catch {
+    } catch (error) {
+      setRestoreFailure(failureKey(error, restoreFailures, "records.restoreMarkerFailed"));
       setRestoring("failed");
     }
   };
@@ -109,12 +127,12 @@ export function RecordSettingsSection({
           <div className="flex flex-wrap items-center justify-end gap-2">
             {initializing === "failed" && (
               <p role="alert" className="text-sm text-error-foreground">
-                {t("records.initializeFailed")}
+                {t(initializeFailure)}
               </p>
             )}
             {restoring === "failed" && (
               <p role="alert" className="text-sm text-error-foreground">
-                {t("records.restoreMarkerFailed")}
+                {t(restoreFailure)}
               </p>
             )}
             {rootState.status === "loading" && (

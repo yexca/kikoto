@@ -11,9 +11,14 @@ export const recordsKorean = {
     initialize: "루트 초기화",
     initializing: "초기화 중…",
     initializeFailed: "기록 루트를 초기화할 수 없습니다.",
+    initializeRootEmpty:
+      "기록 루트 폴더가 비어 있습니다. 디스크가 마운트되지 않았을 때와 같은 상태입니다. 새 카탈로그를 시작하기 전에 디스크를 마운트하거나 폴더에 파일을 추가하세요.",
+    initializeRootPathMissing: "기록 루트 폴더가 없습니다. 새 카탈로그를 시작하기 전에 디스크를 마운트하세요.",
     setupNeedsAdmin: "관리자가 기록 루트를 초기화해야 합니다.",
     restoreMarker: "마커 복원",
     restoreMarkerFailed: "기록 루트 마커를 복원할 수 없습니다.",
+    restoreMarkerNotRecognized:
+      "기록 루트에 카탈로그의 폴더나 파일이 하나도 없습니다. 디스크를 마운트한 다음 마커를 복원하세요.",
     startNewCatalog: "새 카탈로그 시작",
     startNewCatalogWarning:
       "기록된 모든 폴더와 파일, 그리고 그에 대한 모든 사용자의 진행 상황과 표시를 지우고, 다음 스캔에서 이 디렉터리를 새 라이브러리로 색인합니다. 같은 디스크라면 대신 마커를 복원하세요.",

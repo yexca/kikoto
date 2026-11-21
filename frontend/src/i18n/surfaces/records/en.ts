@@ -11,9 +11,14 @@ export const recordsEnglish = {
     initialize: "Initialize root",
     initializing: "Initializing…",
     initializeFailed: "The record root could not be initialized.",
+    initializeRootEmpty:
+      "The record root folder is empty, as an unmounted disk leaves it. Mount the disk, or add files to the folder, before starting a new catalog.",
+    initializeRootPathMissing: "The record root folder is missing. Mount its disk before starting a new catalog.",
     setupNeedsAdmin: "An administrator must initialize the record root.",
     restoreMarker: "Restore marker",
     restoreMarkerFailed: "The record root marker could not be restored.",
+    restoreMarkerNotRecognized:
+      "The record root holds none of the catalog's folders or files. Mount its disk, then restore the marker.",
     startNewCatalog: "Start a new catalog",
     startNewCatalogWarning:
       "Kikoto forgets every recorded folder and file, with everyone's progress and marks on them, and indexes this directory as a new library on the next scan. Restore the marker instead if this is the same disk.",

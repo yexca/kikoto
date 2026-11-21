@@ -39,7 +39,11 @@ identity, only a fresh initialization forgets its catalog: initializing a root
 whose marker does not carry that identity, whether the marker or the path is
 gone or another disk is mounted there, is refused with
 `record_fresh_initialization_required`, and a fresh initialization of a path
-that is gone is refused with `record_root_path_missing`. An unavailable root
+that is gone is refused with `record_root_path_missing`. While the catalog
+records folders or files, a fresh initialization of a path that is an empty
+folder without a marker, holding nothing but names a scan ignores, is refused
+with `record_root_empty`: that is what an unmounted disk leaves at its mount
+point. The settings section shows each refusal's reason. An unavailable root
 leaves existing record rows unchanged; it never marks the whole library
 missing, and deletions are refused.
 

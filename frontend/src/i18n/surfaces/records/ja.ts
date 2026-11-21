@@ -11,9 +11,15 @@ export const recordsJapanese = {
     initialize: "ルートを初期化",
     initializing: "初期化中…",
     initializeFailed: "記録ルートを初期化できませんでした。",
+    initializeRootEmpty:
+      "記録ルートのフォルダーが空です。ディスクがマウントされていないときと同じ状態です。新しいカタログを始める前に、ディスクをマウントするか、フォルダーにファイルを追加してください。",
+    initializeRootPathMissing:
+      "記録ルートのフォルダーが見つかりません。新しいカタログを始める前に、ディスクをマウントしてください。",
     setupNeedsAdmin: "記録ルートの初期化は管理者が行う必要があります。",
     restoreMarker: "マーカーを復元",
     restoreMarkerFailed: "記録ルートのマーカーを復元できませんでした。",
+    restoreMarkerNotRecognized:
+      "記録ルートにカタログのフォルダーやファイルが一つもありません。ディスクをマウントしてから、マーカーを復元してください。",
     startNewCatalog: "新しいカタログを始める",
     startNewCatalogWarning:
       "記録済みのフォルダーとファイル、およびそれらに対する全員の進行状況とマークを破棄し、次のスキャンでこのディレクトリを新しいライブラリとして登録します。同じディスクであれば、代わりにマーカーを復元してください。",

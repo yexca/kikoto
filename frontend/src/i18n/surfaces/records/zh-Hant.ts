@@ -11,9 +11,12 @@ export const recordsHant = {
     initialize: "初始化根目錄",
     initializing: "正在初始化…",
     initializeFailed: "無法初始化記錄根目錄。",
+    initializeRootEmpty: "記錄根目錄是空的，和磁碟未掛載時一樣。開始新的目錄前，請先掛載磁碟，或在該資料夾中加入檔案。",
+    initializeRootPathMissing: "記錄根目錄不存在。開始新的目錄前，請先掛載其磁碟。",
     setupNeedsAdmin: "需要管理員初始化記錄根目錄。",
     restoreMarker: "還原標記",
     restoreMarkerFailed: "無法還原記錄根目錄的標記。",
+    restoreMarkerNotRecognized: "記錄根目錄中找不到已記錄的任何資料夾或檔案。請先掛載其磁碟，再還原標記。",
     startNewCatalog: "開始新的目錄",
     startNewCatalogWarning:
       "Kikoto 會忘記所有已記錄的資料夾和檔案，以及所有人在其上的進度和標記，並在下次掃描時將此目錄作為新的媒體庫編入索引。如果這是同一顆磁碟，請改為還原標記。",
