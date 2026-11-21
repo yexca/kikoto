@@ -57,7 +57,7 @@ func (s *Store) DrawForYou(ctx context.Context, request ForYouRequest) (ForYouDr
 	if request.UserID <= 0 {
 		return ForYouDraw{}, errors.New("for you requires an account")
 	}
-	if _, ok := ParseForYouTemperature(string(request.Temperature)); !ok {
+	if !request.Temperature.Valid() {
 		request.Temperature = DefaultForYouTemperature
 	}
 	if request.Now.IsZero() {

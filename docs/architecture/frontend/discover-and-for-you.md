@@ -128,7 +128,7 @@ names the feed page.
 The For you page (`/for-you`, for accounts with `library:read`) composes
 `features/for-you`, which holds the draws and their reason sentences, with
 Discover's display choice; the display options and the settings icon sit at
-the end of the temperature button's row. It shows its three columns side by
+the end of the temperature's row. It shows its three columns side by
 side on a wide screen with row cards, and one after another with full,
 simple, or mini cards, and a labelled random sample in the demo. Below the
 three-column width, tabs choose the one column shown and replace its heading,

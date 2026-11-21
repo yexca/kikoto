@@ -41,9 +41,9 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Columns     []string `json:"columns"`
-		Temperature string   `json:"temperature"`
-		Exclude     []int64  `json:"exclude"`
+		Columns     []string                   `json:"columns"`
+		Temperature *library.ForYouTemperature `json:"temperature"`
+		Exclude     []int64                    `json:"exclude"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
 	decoder.DisallowUnknownFields()
@@ -66,13 +66,12 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 		seenColumns[column] = true
 		request.Columns = append(request.Columns, column)
 	}
-	if payload.Temperature != "" {
-		temperature, ok := library.ParseForYouTemperature(payload.Temperature)
-		if !ok {
-			writeAPIError(w, http.StatusBadRequest, "invalid_request", "unknown For you temperature", false)
+	if payload.Temperature != nil {
+		if !payload.Temperature.Valid() {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "For you temperature must be 1 to 5", false)
 			return
 		}
-		request.Temperature = temperature
+		request.Temperature = *payload.Temperature
 	} else {
 		temperature, err := s.forYouTemperature(r.Context(), user.ID)
 		if err != nil {
@@ -114,14 +113,14 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// forYouTemperature is the account's saved temperature, Balanced by default.
+// forYouTemperature is the account's saved temperature, 3 by default.
 func (s *Server) forYouTemperature(ctx context.Context, userID int64) (library.ForYouTemperature, error) {
-	var raw sql.NullString
+	var raw sql.NullInt64
 	err := s.db.QueryRowContext(ctx, "SELECT for_you_temperature FROM user_preference WHERE user_id = ?", userID).Scan(&raw)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
+		return 0, err
 	}
-	if temperature, ok := library.ParseForYouTemperature(raw.String); ok {
+	if temperature := library.ForYouTemperature(raw.Int64); raw.Valid && temperature.Valid() {
 		return temperature, nil
 	}
 	return library.DefaultForYouTemperature, nil

@@ -136,7 +136,7 @@ function ForYouDraws({
             <div
               role="tablist"
               aria-label={t("subscriptions.forYou.columnsLabel")}
-              className={segmentedListClassName()}
+              className={segmentedListClassName("scrollbar-hidden")}
             >
               {FOR_YOU_COLUMNS.map((column) => {
                 const Icon = COLUMN_ICONS[column];

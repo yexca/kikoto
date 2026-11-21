@@ -189,7 +189,7 @@ async function mockCacheSettings(
     recommendationDefaults: currentSettings.recommendationDefaults,
     metadataLanguages,
     timeZone,
-    forYouTemperature: "balanced",
+    forYouTemperature: 3,
   });
   const replaceRemoteSource = (source: FileSource) => {
     currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
@@ -1265,7 +1265,7 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect(page).toHaveURL(/\/for-you\?panel=tuning$/);
   await expect.poll(() => forYouDraws).toBe(1);
 
-  // The For you temperature button behind the dialog also names Balanced.
+  // The Balanced tuning preset is the one selected.
   await expect(page.getByRole("dialog").getByRole("button", { name: /Balanced/ })).toHaveAttribute(
     "aria-pressed",
     "true",

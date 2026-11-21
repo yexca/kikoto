@@ -19,15 +19,6 @@ export const subscriptionsEnglish = {
       settings: "For you settings",
       temperature: {
         label: "Temperature",
-        current: "Temperature: {{value}}",
-        safe: "Safe",
-        balanced: "Balanced",
-        adventurous: "Adventurous",
-        hints: {
-          safe: "Close to what you already like.",
-          balanced: "What you like, with some surprises.",
-          adventurous: "Further from your usual listening.",
-        },
       },
       columnsLabel: "For you column",
       columns: {

@@ -34,20 +34,22 @@ func TestForYouTemperatureIsSavedPerAccountAndValidated(t *testing.T) {
 		}
 		return result.ForYouTemperature
 	}
-	if got := temperature(1); got != library.ForYouBalanced {
-		t.Fatalf("default temperature = %q", got)
+	if got := temperature(1); got != library.DefaultForYouTemperature {
+		t.Fatalf("default temperature = %d", got)
 	}
-	if code := patch(`{"forYouTemperature":"adventurous"}`); code != http.StatusOK {
+	if code := patch(`{"forYouTemperature":5}`); code != http.StatusOK {
 		t.Fatalf("patch status = %d", code)
 	}
-	if code := patch(`{"forYouTemperature":"scorching"}`); code != http.StatusBadRequest {
-		t.Fatalf("invalid temperature status = %d", code)
+	for _, body := range []string{`{"forYouTemperature":0}`, `{"forYouTemperature":6}`, `{"forYouTemperature":"adventurous"}`} {
+		if code := patch(body); code != http.StatusBadRequest {
+			t.Fatalf("patch %s status = %d", body, code)
+		}
 	}
-	if got, other := temperature(1), temperature(2); got != library.ForYouAdventurous || other != library.ForYouBalanced {
-		t.Fatalf("temperatures = %q, other account %q", got, other)
+	if got, other := temperature(1), temperature(2); got != 5 || other != library.DefaultForYouTemperature {
+		t.Fatalf("temperatures = %d, other account %d", got, other)
 	}
 
-	for _, body := range []string{`{"columns":["elsewhere"]}`, `{"columns":["maybe_like","maybe_like"]}`, `{"temperature":"scorching"}`, `{"query":"private"}`} {
+	for _, body := range []string{`{"columns":["elsewhere"]}`, `{"columns":["maybe_like","maybe_like"]}`, `{"temperature":0}`, `{"temperature":"safe"}`, `{"query":"private"}`} {
 		response := httptest.NewRecorder()
 		server.drawForYou(response, as(1, httptest.NewRequest(http.MethodPost, "/api/for-you/draw", strings.NewReader(body))))
 		if response.Code != http.StatusBadRequest {

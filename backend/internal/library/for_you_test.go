@@ -69,7 +69,7 @@ func TestForYouDrawsLocalWorksIntoOneColumnEach(t *testing.T) {
 	store, userID, now := seedForYouLibrary(t)
 	ctx := context.Background()
 	for seed := int64(1); seed <= 5; seed++ {
-		draw, err := store.DrawForYou(ctx, ForYouRequest{UserID: userID, Temperature: ForYouBalanced, Seed: seed, Now: now})
+		draw, err := store.DrawForYou(ctx, ForYouRequest{UserID: userID, Temperature: DefaultForYouTemperature, Seed: seed, Now: now})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,10 +119,10 @@ func TestForYouTemperatureWidensListenAgain(t *testing.T) {
 		}
 		return forYouColumnIDs(result, ForYouListenAgain)
 	}
-	if safe := draw(ForYouSafe); len(safe) != 1 || safe[1].WorkID != 1 {
+	if safe := draw(1); len(safe) != 1 || safe[1].WorkID != 1 {
 		t.Fatalf("safe listen again = %+v", safe)
 	}
-	adventurous := draw(ForYouAdventurous)
+	adventurous := draw(5)
 	if pick, ok := adventurous[3]; !ok || pick.Reason.Kind != "unfinished" || pick.Reason.Days != 60 {
 		t.Fatalf("adventurous listen again = %+v", adventurous)
 	}
@@ -133,7 +133,7 @@ func TestForYouColdStartRanksByPopularity(t *testing.T) {
 	if _, err := store.db.Exec("DELETE FROM user_work_state"); err != nil {
 		t.Fatal(err)
 	}
-	draw, err := store.DrawForYou(context.Background(), ForYouRequest{UserID: userID, Temperature: ForYouSafe, Seed: 3})
+	draw, err := store.DrawForYou(context.Background(), ForYouRequest{UserID: userID, Temperature: 1, Seed: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestForYouTryNewSkipsDislikedSimilarity(t *testing.T) {
 	unknown := recommendationFeature{Kind: "circle", ID: 2}
 	profile := emptyRecommendationProfile()
 	profile.Entities[disliked.key()] = recommendationProfileEntity{Negative: 125, Disliked: 1, Specificity: 1}
-	settings := ForYouAdventurous.settings()
+	settings := ForYouTemperature(5).settings()
 	similar := &forYouCandidate{WorkID: 1, State: recommendationFrozenState{ListeningStatus: "none"}, Features: []recommendationFeature{disliked}}
 	if _, ok := forYouTryNew(similar, profile, config, map[string]int{}, settings); ok {
 		t.Fatal("try new offered a work like a disliked one")
@@ -170,9 +170,9 @@ func TestForYouTryNewSkipsDislikedSimilarity(t *testing.T) {
 	if !ok || scored.reason.Kind != "new_circle" || scored.score != 100 {
 		t.Fatalf("try new = %+v, %v", scored, ok)
 	}
-	// Safe aims at works near the listened profile, not the most novel ones.
+	// Temperature 1 aims at works near the listened profile, not the most novel ones.
 	familiar := map[string]int{unknown.key(): 1}
-	safe, _ := forYouTryNew(fresh, profile, config, familiar, ForYouSafe.settings())
+	safe, _ := forYouTryNew(fresh, profile, config, familiar, ForYouTemperature(1).settings())
 	adventurous, _ := forYouTryNew(fresh, profile, config, familiar, settings)
 	if safe.score <= adventurous.score {
 		t.Fatalf("half-familiar work: safe = %v, adventurous = %v", safe.score, adventurous.score)
@@ -185,7 +185,7 @@ func TestForYouRotationLowersUnopenedWorks(t *testing.T) {
 		pool = append(pool, forYouScored{candidate: &forYouCandidate{WorkID: id}, score: 60})
 	}
 	pool[0].score, pool[0].candidate.Unopened = 90, 3
-	order := forYouSample(pool, ForYouSafe.settings(), rand.New(rand.NewPCG(1, 2)))
+	order := forYouSample(pool, ForYouTemperature(1).settings(), rand.New(rand.NewPCG(1, 2)))
 	if len(order) != 2*ForYouDrawSize || order[0].candidate.WorkID == 1 {
 		t.Fatalf("rotated work still leads: %d candidates, first %d", len(order), order[0].candidate.WorkID)
 	}
@@ -200,7 +200,7 @@ func TestForYouAssembleGivesSharedWorkToItsStrongerColumn(t *testing.T) {
 		tryNew = append(tryNew, forYouScored{candidate: &forYouCandidate{WorkID: id + 10}, score: 50})
 	}
 	drawn := forYouAssemble(map[ForYouColumn][]forYouScored{ForYouMaybeLike: maybe, ForYouTryNew: tryNew},
-		[]ForYouColumn{ForYouMaybeLike, ForYouTryNew}, map[int64]bool{}, ForYouBalanced.settings(), rand.New(rand.NewPCG(3, 4)))
+		[]ForYouColumn{ForYouMaybeLike, ForYouTryNew}, map[int64]bool{}, DefaultForYouTemperature.settings(), rand.New(rand.NewPCG(3, 4)))
 	contains := func(items []forYouScored, id int64) bool {
 		for _, item := range items {
 			if item.candidate.WorkID == id {

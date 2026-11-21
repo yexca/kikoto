@@ -23,14 +23,14 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
   files; works only on a remote source or only in a catalog are not drawn.
 - Above each card is why it was drawn, such as **A circle you like: …**,
   **A tag you rarely hear: …**, or **4 months since last played, rated 5**.
-- **Safe**, **Balanced**, and **Adventurous** set how far the draws stray.
-  **Safe** keeps to the best matches, **Try new** stays near what you know,
-  and **Listen again** offers only finished works you liked or heard more
-  than once. **Adventurous** draws from every candidate, **Try new** goes as
-  far from your usual listening as the library allows, and **Listen again**
-  adds works you heard once or left half-finished. **Balanced**, the default,
-  sits between them. The choice is saved for your account. The temperature
-  button at the top of the page names the current choice and opens the three.
+- The temperature, from 1 to 5, sets how far the draws stray. At 1 the draws
+  keep to the best matches and **Try new** stays near what you know; at 5 they
+  come from every candidate and **Try new** goes as far from your usual
+  listening as the library allows. **Listen again** offers finished works you
+  liked or heard more than once at 1 and 2, adds finished works heard once at
+  3, and adds works left half-finished at 4 and 5. The default is 3, and the
+  choice is saved for your account. The five steps follow **Temperature** at
+  the top of the page.
 - The columns stay as drawn while you use Kikoto in the same browser tab,
   including when you open another page or a work, or reload the page. A new
   tab, a fresh start of the app, or saving your own preferences, such as the

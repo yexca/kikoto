@@ -18,16 +18,7 @@ export const subscriptionsHant = {
       label: "為你推薦",
       settings: "為你推薦設定",
       temperature: {
-        label: "探索程度",
-        current: "探索程度：{{value}}",
-        safe: "穩妥",
-        balanced: "均衡",
-        adventurous: "大膽",
-        hints: {
-          safe: "貼近你已經喜歡的作品。",
-          balanced: "在喜歡的作品之外加一點意外。",
-          adventurous: "離你平常聽的更遠一些。",
-        },
+        label: "溫度",
       },
       columnsLabel: "推薦欄",
       columns: {

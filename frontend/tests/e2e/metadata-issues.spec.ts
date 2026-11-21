@@ -364,7 +364,7 @@ test("@desktop personal metadata language refreshes the current list and preserv
         recommendationThreshold: settings.recommendationThreshold,
         metadataLanguages: languages,
         timeZone: null,
-        forYouTemperature: "balanced",
+        forYouTemperature: 3,
       } satisfies ApiResponse<"getUserPreferences">,
     });
   });

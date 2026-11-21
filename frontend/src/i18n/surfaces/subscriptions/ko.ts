@@ -18,16 +18,7 @@ export const subscriptionsKorean = {
       label: "맞춤 추천",
       settings: "맞춤 추천 설정",
       temperature: {
-        label: "모험도",
-        current: "모험도: {{value}}",
-        safe: "안전",
-        balanced: "균형",
-        adventurous: "모험",
-        hints: {
-          safe: "이미 좋아하는 것에 가깝게 고릅니다.",
-          balanced: "좋아하는 것에 약간의 의외성을 더합니다.",
-          adventurous: "평소 듣던 것에서 더 멀리 고릅니다.",
-        },
+        label: "온도",
       },
       columnsLabel: "맞춤 추천 열",
       columns: {

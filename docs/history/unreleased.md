@@ -218,12 +218,14 @@
   Settings Recommendations tab open them. Saving the tuning draws For you
   anew.
 - For you's column headings and Watch's summary drop their descriptions. For
-  you's temperature is one button that names the current choice and opens the
-  three, each with a line that tells it apart.
+  you's temperature is a step from 1 to 5 instead of Safe, Balanced, and
+  Adventurous, with the five steps in a row after its name. A saved
+  Safe, Balanced, or Adventurous becomes 1, 3, or 5, which draw as before.
 - For you drops the note shown before you have rated anything and the counts
   in its column headings, and **Draw again** is a shuffle button beside each
   heading. On a narrow window or a phone, the column tabs take the place of
   the column heading, with the shown column's shuffle button beside them.
+  The tabs scroll sideways without a scrollbar when they do not fit.
 - Each For you column draws about six works instead of ten.
 - For you's settings are one wider panel without tabs: the tuning, followed by
   your recommendation activity.

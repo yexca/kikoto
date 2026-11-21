@@ -5,8 +5,8 @@ import type { Work } from "@/lib/libraryApi";
 export const FOR_YOU_COLUMNS = ["maybe_like", "try_new", "listen_again"] as const;
 export type ForYouColumn = (typeof FOR_YOU_COLUMNS)[number];
 
-/** How far For you draws stray from what the account likes. */
-export const FOR_YOU_TEMPERATURES = ["safe", "balanced", "adventurous"] as const;
+/** How far For you draws stray from what the account likes, from 1 (closest) to 5. */
+export const FOR_YOU_TEMPERATURES = [1, 2, 3, 4, 5] as const;
 export type ForYouTemperature = (typeof FOR_YOU_TEMPERATURES)[number];
 
 /**

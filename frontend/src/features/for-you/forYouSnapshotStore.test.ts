@@ -23,7 +23,7 @@ function snapshot(id: number): ForYouSnapshot {
   };
   const column = { items: [item], coldStart: false };
   return {
-    temperature: "balanced",
+    temperature: 3,
     algorithmVersion: "for-you-v1",
     columns: { maybe_like: column, try_new: column, listen_again: column },
   };

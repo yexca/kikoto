@@ -130,8 +130,7 @@ reads candidates through the Local-scope recall above plus the account's most
 recent 1,000 works with playback history, and measures novelty against the
 catalog features of the works the account has heard or marked. It writes no
 profile evidence and no generation of its own. `user_preference.for_you_temperature`
-holds the account's temperature (`safe`, `balanced`, or `adventurous`; NULL is
-balanced). Every drawn work is a `recommendation_event` impression with
+holds the account's temperature, a step from 1 to 5 (NULL is 3). Every drawn work is a `recommendation_event` impression with
 `surface = 'for_you'` and the column as `context_id`; opens report the same
 surface. Impressions of the last three days not followed by an open or play
 lower a work's score in later draws. Library events use `surface = 'library'`,

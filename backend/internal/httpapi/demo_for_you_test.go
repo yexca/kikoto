@@ -79,7 +79,7 @@ func TestDemoForYouSamplesAdmittedWorksWithoutRecording(t *testing.T) {
 	}
 	// Saving a temperature is still a write.
 	response = httptest.NewRecorder()
-	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPatch, "/api/auth/me/preferences", strings.NewReader(`{"forYouTemperature":"safe"}`)))
+	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPatch, "/api/auth/me/preferences", strings.NewReader(`{"forYouTemperature":1}`)))
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("PATCH preferences in Demo = %d", response.Code)
 	}

@@ -5,7 +5,7 @@ import type { ForYouColumn, ForYouItem, ForYouReason, ForYouTemperature } from "
 
 // Kept here as type-checked key sets so the model stays free of the API transport.
 const COLUMN_KEYS: Record<ForYouColumn, true> = { maybe_like: true, try_new: true, listen_again: true };
-const TEMPERATURE_KEYS: Record<ForYouTemperature, true> = { safe: true, balanced: true, adventurous: true };
+const TEMPERATURE_KEYS: Record<ForYouTemperature, true> = { 1: true, 2: true, 3: true, 4: true, 5: true };
 const FOR_YOU_COLUMNS = Object.keys(COLUMN_KEYS) as ForYouColumn[];
 
 /** One column as the view holds it: the drawn works and whether a draw is under way or failed. */
@@ -99,7 +99,7 @@ export function forYouColumnsFromSnapshot(snapshot: ForYouSnapshot): Record<ForY
 export function parseForYouSnapshot(value: unknown): ForYouSnapshot | null {
   if (!isRecord(value) || !isRecord(value.columns)) return null;
   const { temperature, algorithmVersion, columns } = value;
-  if (typeof temperature !== "string" || !Object.prototype.hasOwnProperty.call(TEMPERATURE_KEYS, temperature)) {
+  if (typeof temperature !== "number" || !Object.prototype.hasOwnProperty.call(TEMPERATURE_KEYS, temperature)) {
     return null;
   }
   if (typeof algorithmVersion !== "string") return null;

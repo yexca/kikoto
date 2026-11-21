@@ -18,16 +18,7 @@ export const subscriptionsHans = {
       label: "为你推荐",
       settings: "为你推荐设置",
       temperature: {
-        label: "探索程度",
-        current: "探索程度：{{value}}",
-        safe: "稳妥",
-        balanced: "均衡",
-        adventurous: "大胆",
-        hints: {
-          safe: "贴近你已经喜欢的作品。",
-          balanced: "在喜欢的作品之外加一点意外。",
-          adventurous: "离你平常听的更远一些。",
-        },
+        label: "温度",
       },
       columnsLabel: "推荐列",
       columns: {

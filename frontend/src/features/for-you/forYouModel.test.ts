@@ -67,13 +67,13 @@ describe("For you model", () => {
 
   it("keeps only a settled draw and restores it as shown", () => {
     const columns = emptyForYouColumns();
-    expect(forYouSnapshotFromColumns(columns, "balanced", "for-you-v1")).toBeNull();
+    expect(forYouSnapshotFromColumns(columns, 3, "for-you-v1")).toBeNull();
 
     for (const column of ["maybe_like", "try_new", "listen_again"] as const) columns[column].drawing = false;
     columns.maybe_like.items = [item(1)];
     columns.try_new = { items: [item(2)], coldStart: false, drawing: false, failed: true };
     columns.listen_again.coldStart = true;
-    const snapshot = forYouSnapshotFromColumns(columns, "safe", "for-you-v1");
+    const snapshot = forYouSnapshotFromColumns(columns, 1, "for-you-v1");
     expect(snapshot).not.toBeNull();
     const restored = forYouColumnsFromSnapshot(parseForYouSnapshot(JSON.parse(JSON.stringify(snapshot)))!);
     expect(restored.maybe_like.items.map((entry) => entry.work.id)).toEqual([1]);
@@ -82,16 +82,16 @@ describe("For you model", () => {
     expect(restored.listen_again).toMatchObject({ items: [], coldStart: true });
 
     columns.try_new.items = [];
-    expect(forYouSnapshotFromColumns(columns, "safe", "for-you-v1")).toBeNull();
+    expect(forYouSnapshotFromColumns(columns, 1, "for-you-v1")).toBeNull();
   });
 
   it("rejects a stored value this version did not write", () => {
     expect(parseForYouSnapshot(null)).toBeNull();
-    expect(parseForYouSnapshot({ temperature: "warm", algorithmVersion: "", columns: {} })).toBeNull();
+    expect(parseForYouSnapshot({ temperature: "balanced", algorithmVersion: "", columns: {} })).toBeNull();
     const columns = { items: [{ work: { id: "1" }, score: 1, reason: { kind: "want" } }], coldStart: false };
     expect(
       parseForYouSnapshot({
-        temperature: "balanced",
+        temperature: 3,
         algorithmVersion: "for-you-v1",
         columns: { maybe_like: columns, try_new: columns, listen_again: columns },
       }),

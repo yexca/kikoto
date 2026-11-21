@@ -18,16 +18,7 @@ export const subscriptionsJapanese = {
       label: "あなた向け",
       settings: "あなた向けの設定",
       temperature: {
-        label: "冒険度",
-        current: "冒険度：{{value}}",
-        safe: "控えめ",
-        balanced: "バランス",
-        adventurous: "冒険",
-        hints: {
-          safe: "好みに近い作品を選びます。",
-          balanced: "好みの作品に少し意外性を加えます。",
-          adventurous: "いつもの好みから離れた作品も選びます。",
-        },
+        label: "温度",
       },
       columnsLabel: "あなた向けの列",
       columns: {

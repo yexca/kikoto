@@ -204,7 +204,7 @@ const FOR_YOU_COLUMNS: ForYouColumn[] = ["maybe_like", "try_new", "listen_again"
 /** A For you draw of `columns` whose one work per column is titled after the draw number. */
 function forYouDrawFixture(draw: number, columns: ForYouColumn[]): ForYouDraw {
   return {
-    temperature: "balanced",
+    temperature: 3,
     algorithmVersion: "for-you-v1",
     columns: columns.map((column) => {
       const ordinal = FOR_YOU_COLUMNS.indexOf(column) + 1;
@@ -1370,11 +1370,12 @@ test("@desktop For you keeps its draw across pages and reloads until a column is
   await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
   expect(server.forYouDraws).toHaveLength(2);
 
-  // The temperature button names the choice; a new choice draws every column with it.
-  await page.getByRole("button", { name: "Temperature: Balanced" }).click();
-  await page.getByRole("button", { name: /^Adventurous/ }).click();
+  // The temperature shows its steps in a row; a new step draws every column with it.
+  const temperature = page.getByRole("radiogroup", { name: "Temperature" });
+  await expect(temperature.getByRole("radio", { name: "3", exact: true })).toHaveAttribute("aria-checked", "true");
+  await temperature.getByRole("radio", { name: "5", exact: true }).click();
   await expect(maybeLike.getByText("Example Work 1 from draw 3")).toBeVisible();
-  expect(server.forYouDraws?.[2]).toMatchObject({ temperature: "adventurous" });
+  expect(server.forYouDraws?.[2]).toMatchObject({ temperature: 5 });
 });
 
 test("Demo shows a sample feed without actions", async ({ page }) => {

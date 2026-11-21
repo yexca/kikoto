@@ -38,22 +38,18 @@ func ParseForYouColumn(value string) (ForYouColumn, bool) {
 	return "", false
 }
 
-type ForYouTemperature string
+// ForYouTemperature is the account's draw temperature, from 1 (closest to
+// what it already likes) to 5 (furthest from it).
+type ForYouTemperature int
 
 const (
-	ForYouSafe        ForYouTemperature = "safe"
-	ForYouBalanced    ForYouTemperature = "balanced"
-	ForYouAdventurous ForYouTemperature = "adventurous"
+	MinForYouTemperature     ForYouTemperature = 1
+	MaxForYouTemperature     ForYouTemperature = 5
+	DefaultForYouTemperature ForYouTemperature = 3
 )
 
-const DefaultForYouTemperature = ForYouBalanced
-
-func ParseForYouTemperature(value string) (ForYouTemperature, bool) {
-	switch ForYouTemperature(value) {
-	case ForYouSafe, ForYouBalanced, ForYouAdventurous:
-		return ForYouTemperature(value), true
-	}
-	return "", false
+func (t ForYouTemperature) Valid() bool {
+	return t >= MinForYouTemperature && t <= MaxForYouTemperature
 }
 
 // forYouTemperatureSettings is how every column reads one temperature step.
@@ -68,15 +64,22 @@ type forYouTemperatureSettings struct {
 	listenTier    int
 }
 
+// forYouTemperatureSteps holds the settings of temperatures 1 to 5. Softness
+// grows by about √2 a step; Listen again has three tiers, so the two lowest
+// and the two highest steps share one.
+var forYouTemperatureSteps = [...]forYouTemperatureSettings{
+	{softness: 5, window: 2, noveltyTarget: 0.55, listenTier: 0},
+	{softness: 7, window: 3, noveltyTarget: 0.65, listenTier: 0},
+	{softness: 10, window: 4, noveltyTarget: 0.75, listenTier: 1},
+	{softness: 14, window: 6, noveltyTarget: 0.875, listenTier: 2},
+	{softness: 20, window: 0, noveltyTarget: 1, listenTier: 2},
+}
+
 func (t ForYouTemperature) settings() forYouTemperatureSettings {
-	switch t {
-	case ForYouSafe:
-		return forYouTemperatureSettings{softness: 5, window: 2, noveltyTarget: 0.55, listenTier: 0}
-	case ForYouAdventurous:
-		return forYouTemperatureSettings{softness: 20, window: 0, noveltyTarget: 1, listenTier: 2}
-	default:
-		return forYouTemperatureSettings{softness: 10, window: 4, noveltyTarget: 0.75, listenTier: 1}
+	if !t.Valid() {
+		t = DefaultForYouTemperature
 	}
+	return forYouTemperatureSteps[t-MinForYouTemperature]
 }
 
 const (
@@ -261,8 +264,8 @@ func forYouNovelty(workID int64, features []recommendationFeature, exposure map[
 }
 
 // forYouTryNew offers an unheard work with little exposure and no disliked
-// similarity. The temperature sets the novelty it aims at: Safe stays near the
-// listened profile, Adventurous goes as far from it as the library allows.
+// similarity. The temperature sets the novelty it aims at: 1 stays near the
+// listened profile, 5 goes as far from it as the library allows.
 func forYouTryNew(candidate *forYouCandidate, profile RecommendationProfile, config RecommendationConfig, exposure map[string]int, temperature forYouTemperatureSettings) (forYouScored, bool) {
 	if !candidate.unheard() {
 		return forYouScored{}, false
@@ -286,9 +289,9 @@ func forYouTryNew(candidate *forYouCandidate, profile RecommendationProfile, con
 
 // forYouListenAgain offers a work with playback history that the account is
 // not listening to now. The score is how much the account likes the work
-// times how long ago it was last played. Safe offers finished works heard
-// more than once or rated well, Balanced adds finished works heard once, and
-// Adventurous adds works left half-finished.
+// times how long ago it was last played. Temperatures 1 and 2 offer finished
+// works heard more than once or rated well, 3 adds finished works heard once,
+// and 4 and 5 add works left half-finished.
 func forYouListenAgain(candidate *forYouCandidate, now time.Time, temperature forYouTemperatureSettings) (forYouScored, bool) {
 	history := candidate.History
 	if !history.played() || candidate.disliked() {

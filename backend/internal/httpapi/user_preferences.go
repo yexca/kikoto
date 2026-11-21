@@ -21,7 +21,7 @@ type userPreferences struct {
 	// follow the device the account is used from.
 	TimeZone *string `json:"timeZone"`
 	// ForYouTemperature is how far For you draws stray from what the user
-	// likes: safe, balanced, or adventurous.
+	// likes, from 1 to 5.
 	ForYouTemperature library.ForYouTemperature `json:"forYouTemperature"`
 }
 
@@ -89,8 +89,8 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		MetadataLanguages json.RawMessage `json:"metadataLanguages"`
 		// TimeZone is an IANA zone name, or null to follow the device.
 		// Omitting it keeps the current choice.
-		TimeZone          json.RawMessage `json:"timeZone"`
-		ForYouTemperature *string         `json:"forYouTemperature"`
+		TimeZone          json.RawMessage            `json:"timeZone"`
+		ForYouTemperature *library.ForYouTemperature `json:"forYouTemperature"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
@@ -151,8 +151,8 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if payload.ForYouTemperature != nil {
-		if _, ok := library.ParseForYouTemperature(*payload.ForYouTemperature); !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "forYouTemperature must be safe, balanced, or adventurous"})
+		if !payload.ForYouTemperature.Valid() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "forYouTemperature must be 1 to 5"})
 			return
 		}
 	}
