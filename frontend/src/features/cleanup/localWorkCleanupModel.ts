@@ -74,6 +74,14 @@ export function reconcileSelection(
   return next;
 }
 
+/**
+ * The page a reloaded list shows: the requested page while it still exists,
+ * otherwise the last page left, or the first when the list is empty.
+ */
+export function availableCleanupPage(page: number, total: number, pageSize: number) {
+  return Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+}
+
 /** Works another source still provides, which forgetting keeps. */
 export function retainedWorkCount(works: readonly LocalWorkCleanupWork[]) {
   return works.filter((work) => work.sourceAvailable).length;

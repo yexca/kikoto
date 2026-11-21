@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LocalWorkCleanupWork } from "@/lib/api";
 
 import {
+  availableCleanupPage,
   defaultLocalWorkCleanupOptions,
   highRatedWorks,
   localWorkCleanupRequest,
@@ -77,5 +78,13 @@ describe("local work cleanup selection", () => {
     const request = localWorkCleanupRequest([work(1, 1)], defaultLocalWorkCleanupOptions, false);
     expect(request.works).toEqual([{ workId: 1, folders: [{ id: 1, path: "RJ00000001" }] }]);
     expect(request.forget).toBe(false);
+  });
+});
+
+describe("local work cleanup paging", () => {
+  it("moves back to the last page left after a run empties the shown page", () => {
+    expect(availableCleanupPage(2, 51, 50)).toBe(2);
+    expect(availableCleanupPage(2, 50, 50)).toBe(1);
+    expect(availableCleanupPage(3, 0, 50)).toBe(1);
   });
 });

@@ -17,6 +17,7 @@ import { cn } from "@/lib/tailwindClassNames";
 
 import { formatByteSize } from "./cacheCleanupModel";
 import {
+  availableCleanupPage,
   canForgetWorks,
   defaultLocalWorkCleanupOptions,
   highRatedWorks,
@@ -60,6 +61,13 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
     api
       .listLocalWorkCleanup({ maxRating, includeUnrated, page, pageSize }, controller.signal)
       .then((next) => {
+        // A run that removed every work of the last page moves back to the
+        // last page left, which loads in turn.
+        const available = availableCleanupPage(page, next.total, pageSize);
+        if (available !== page) {
+          setPage(available);
+          return;
+        }
         setResult(next);
         setSelected((current) => reconcileSelection(current, next.works));
         setLoading(false);
