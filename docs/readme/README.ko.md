@@ -51,6 +51,8 @@ Kikoto는 파일이 로컬 폴더, 다른 디스크, 캐시, 원격 소스 중 �
 - **가사**: 트랙과 언어마다 LRC, SRT, WebVTT, ASS, 음성 인식 전사, 가사, 제목,
   태그, 파일 이름의 AI 번역. [Kikoto Helper](https://github.com/yexca/kikoto-helper)가
   둘 다 로컬에서 실행합니다.
+- **기록**: 직접 찍은 동영상, 사진, 오디오 파일을 위한 별도 라이브러리. 폴더별로
+  탐색하고 멈춘 곳부터 재생합니다.
 - **메타데이터**: 계정마다 고르는 언어별 이름, 그리고 제목, 표지, 태그, 크레딧,
   묶음 편집기.
 - **원격 소스**: Kikoeru 호환 소스를 탐색한 뒤 원하는 것을 **추적**, **캐시**,
@@ -68,7 +70,7 @@ Kikoto는 파일이 로컬 폴더, 다른 디스크, 캐시, 원격 소스 중 �
 아래에 추가한 다음 Kikoto를 시작하세요.
 
 ```sh
-mkdir config cache data
+mkdir config cache data record
 docker compose up -d
 ```
 

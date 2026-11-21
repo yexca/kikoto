@@ -54,6 +54,8 @@ and iOS apps.
 - **Lyrics**: LRC, SRT, WebVTT, and ASS per track and language, speech
   transcription, and AI translation of lyrics, titles, tags, and file names;
   [Kikoto Helper](https://github.com/yexca/kikoto-helper) runs both locally.
+- **Record**: a separate library for your own videos, photos, and audio
+  files, browsed by folder and played where you stopped.
 - **Metadata**: names per language, chosen by each account, and editors for
   titles, covers, tags, credits, and bundles.
 - **Remote sources**: browse Kikoeru-compatible sources, then **Track**,
@@ -70,7 +72,7 @@ and 64-bit Raspberry Pi OS. Put [`docker-compose.yml`](docker-compose.yml) in
 an empty directory, add your work folders under `data/`, and start Kikoto:
 
 ```sh
-mkdir config cache data
+mkdir config cache data record
 docker compose up -d
 ```
 

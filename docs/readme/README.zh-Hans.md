@@ -41,6 +41,7 @@ Kikoto 为每部作品只保留一个条目，以其 DLsite 商品编号为键�
 - **发现**：你所订阅的社团、系列和声优的新作，DLsite 排行榜及其历史，以及从你自己媒体库中抽取作品的**为你推荐**。
 - **播放**：一个播放器，播放进度在各设备间保持同步，对浏览器无法播放的格式在服务器端转换，并在**数据面板**中提供收听日历和报告。
 - **歌词**：按音轨和语言保存 LRC、SRT、WebVTT 和 ASS 歌词，支持语音转写，以及歌词、标题、标签和文件名的 AI 翻译；[Kikoto Helper](https://github.com/yexca/kikoto-helper) 可在本地运行这两者。
+- **记录**：用于你自己的视频、照片和音频文件的独立库，按文件夹浏览，并从上次停下的地方继续播放。
 - **元数据**：按语言保存名称，由每个账号自行选择，并提供标题、封面、标签、署名信息和合集的编辑器。
 - **远程来源**：浏览兼容 Kikoeru 的来源，然后**跟踪**、**缓存**或**获取**你想要的内容。
 - **家庭共用**：用角色决定谁可以浏览、获取、编辑和管理，长时间任务以工作流的形式运行，可以查看进度并重试。
@@ -52,7 +53,7 @@ Kikoto 为每部作品只保留一个条目，以其 DLsite 商品编号为键�
 镜像可在 `linux/amd64` 和 `linux/arm64` 主机上运行，包括 ARM NAS 设备和 64 位 Raspberry Pi OS。把 [`docker-compose.yml`](../../docker-compose.yml) 放到一个空目录中，把作品文件夹添加到 `data/` 下，然后启动 Kikoto：
 
 ```sh
-mkdir config cache data
+mkdir config cache data record
 docker compose up -d
 ```
 
