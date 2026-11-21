@@ -81,6 +81,7 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
   // Each read of the folder starts a generation; pages of an earlier one are dropped.
   const generationRef = useRef(0);
   const inflightRef = useRef(new Set<string>());
+  const wholeReadsRef = useRef(new Map<string, Promise<readonly { id: number }[] | null>>());
   const storedTrail = recordTrailFromState(historyState, folderId);
 
   useEffect(() => {
@@ -169,30 +170,46 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
     [folderId, updateSection],
   );
 
-  /** Reads a section to its end and answers every child it has, in order. */
+  /**
+   * Reads a section to its end and answers every child it has, in order, or
+   * null when the folder is not listed or the folder changes or reloads first.
+   * Calls while a read of the section runs share it, and More reads nothing
+   * of the section meanwhile.
+   */
   const readWhole = useCallback(
-    async <S extends RecordSectionName>(name: S): Promise<RecordSections[S]["items"]> => {
+    <S extends RecordSectionName>(name: S): Promise<RecordSections[S]["items"] | null> => {
       const current = treeRef.current;
-      if (current.status !== "ready" || current.folderId !== folderId) return [];
+      if (current.status !== "ready" || current.folderId !== folderId) return Promise.resolve(null);
       const generation = generationRef.current;
+      const key = `${generation}:${name}`;
+      const reading = wholeReadsRef.current.get(key);
+      if (reading) return reading as Promise<RecordSections[S]["items"] | null>;
       const start = current.sections[name] as AnySection;
-      let items = start.items;
-      let next = start.next;
-      while (next) {
-        const page = await api.listRecordSection(folderId, name, next);
-        if (generation !== generationRef.current) break;
-        items = appendById(items, page.items);
-        next = page.next;
-      }
-      const whole = items;
-      updateSection(name, generation, (value) => ({
-        ...value,
-        items: appendById(value.items, whole),
-        next: undefined,
-        loading: false,
-        failed: false,
-      }));
-      return whole as RecordSections[S]["items"];
+      inflightRef.current.add(key);
+      const read = (async () => {
+        let items = start.items;
+        let next = start.next;
+        while (next) {
+          const page = await api.listRecordSection(folderId, name, next);
+          if (generation !== generationRef.current) return null;
+          items = appendById(items, page.items);
+          next = page.next;
+        }
+        const whole = items;
+        updateSection(name, generation, (value) => ({
+          ...value,
+          items: appendById(value.items, whole),
+          next: undefined,
+          loading: false,
+          failed: false,
+        }));
+        return whole;
+      })().finally(() => {
+        wholeReadsRef.current.delete(key);
+        inflightRef.current.delete(key);
+      });
+      wholeReadsRef.current.set(key, read);
+      return read as Promise<RecordSections[S]["items"] | null>;
     },
     [folderId, updateSection],
   );

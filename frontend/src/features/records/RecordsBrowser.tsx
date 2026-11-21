@@ -161,6 +161,8 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
       position ?? resumePosition(progress.get(id) ?? item.progress) ?? 0,
     );
   });
+  // Counts the plays this page starts; a section read finishing after a later one does nothing.
+  const playRequestRef = useRef(0);
   /**
    * Plays a section's files from `id`. A file already listed plays at once,
    * and the section's later pages join the queue as they arrive, unless
@@ -170,9 +172,12 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const playSection = useStableCallback((name: "audio" | "videos", id: number, position?: number) => {
     const section = sections?.[name];
     if (!section) return;
+    const request = ++playRequestRef.current;
     if (!section.items.some((item) => item.id === id)) {
       void readWhole(name)
-        .then((whole) => playTracks(whole, id, position))
+        .then((whole) => {
+          if (whole && request === playRequestRef.current) playTracks(whole, id, position);
+        })
         .catch(() => undefined);
       return;
     }
@@ -181,6 +186,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     const queued = new Set(section.items.map((item) => item.id));
     void readWhole(name)
       .then((whole) => {
+        if (!whole || request !== playRequestRef.current) return;
         const rest = whole.filter((item) => !queued.has(item.id));
         const playing = currentTrackRef.current?.locationId;
         if (rest.length > 0 && whole.some((item) => recordTrackLocationId(item.id) === playing)) {
@@ -207,11 +213,22 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     navigate((at) => openFolderVideoNavigation(at, asset.folderId, asset.id));
   };
   useEffect(() => {
-    if (!pendingAudio || !sections || listing?.folderId !== pendingAudio.folderId) return;
+    if (!pendingAudio) return;
+    // Leaving the folder, or a folder listing that fails, drops the request.
+    if (
+      location.folderId !== pendingAudio.folderId ||
+      (tree.status === "error" && tree.folderId === pendingAudio.folderId)
+    ) {
+      setPendingAudio(null);
+      return;
+    }
+    if (!sections || listing?.folderId !== pendingAudio.folderId) return;
     const asset = pendingAudio;
     setPendingAudio(null);
+    const request = ++playRequestRef.current;
     void readWhole("audio")
       .then((whole) => {
+        if (!whole || request !== playRequestRef.current) return;
         if (whole.some((item) => item.id === asset.id)) playTracks(whole, asset.id);
         else
           player.playQueue(
@@ -221,7 +238,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           );
       })
       .catch(() => undefined);
-  }, [folderName, listing?.folderId, pendingAudio, playTracks, player, readWhole, sections]);
+  }, [folderName, listing?.folderId, location.folderId, pendingAudio, playTracks, player, readWhole, sections, tree]);
 
   const overlay = location.overlay;
   const overlaySection = overlay && sections ? (overlay.kind === "video" ? sections.videos : sections.photos) : null;

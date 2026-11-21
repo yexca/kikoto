@@ -42,7 +42,7 @@ const coverImage = Buffer.from(
   "base64",
 );
 
-async function mockRecordLibrary(page: Page) {
+async function mockRecordLibrary(page: Page, assets: readonly RecordAsset[] = [clip, episode], pageSize?: number) {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
     // A listener who cannot manage the library still saves where they stopped.
@@ -82,9 +82,9 @@ async function mockRecordLibrary(page: Page) {
       };
       return route.fulfill({ json: { root } });
     }
-    if (path === "/api/records/tree") return route.fulfill({ json: recordTreeResponse(url, [], [clip, episode]) });
+    if (path === "/api/records/tree") return route.fulfill({ json: recordTreeResponse(url, [], assets, pageSize) });
     const siblings = /^\/api\/records\/assets\/(\d+)\/siblings$/.exec(path);
-    if (siblings) return route.fulfill({ json: recordSiblingsResponse([clip, episode], Number(siblings[1])) });
+    if (siblings) return route.fulfill({ json: recordSiblingsResponse(assets, Number(siblings[1])) });
     if (path === "/api/records/continue") return route.fulfill({ json: { assets: [] } });
     if (path === "/api/records/assets/1/playback") {
       playbackRequests.push(url);
@@ -101,11 +101,11 @@ async function mockRecordLibrary(page: Page) {
       });
     }
     if (path === "/api/records/assets/1/unplayable") return route.fulfill({ status: 415, body: "" });
-    if (path === "/api/records/assets/1/stream" || path === "/api/records/assets/2/stream") return serveMedia(route);
+    if (/^\/api\/records\/assets\/\d+\/stream$/.test(path)) return serveMedia(route);
     if (path === "/api/records/assets/2/thumbnail") {
       return route.fulfill({ contentType: "image/png", body: coverImage });
     }
-    const progress = /^\/api\/records\/assets\/([12])\/progress$/.exec(path);
+    const progress = /^\/api\/records\/assets\/(\d+)\/progress$/.exec(path);
     if (progress) {
       if (route.request().method() === "PUT") {
         const saved = progress[1] === "1" ? savedPositions : savedAudioPositions;
@@ -138,6 +138,43 @@ test("a Record audio file plays in the global player from where it was left, wit
 
   await pause.click();
   await expect.poll(() => savedAudioPositions.at(-1)?.positionSeconds ?? 0).toBeGreaterThan(31);
+});
+
+test("quick clicks on Record audio queue the folder's later pages once @desktop", async ({ page }) => {
+  const episodes = [1, 2, 3].map((number) => ({
+    ...episode,
+    id: number + 1,
+    name: `Episode ${number}.wav`,
+    relativePath: `Episode ${number}.wav`,
+    streamUrl: `/api/records/assets/${number + 1}/stream`,
+    thumbnailUrl: undefined,
+  }));
+  await mockRecordLibrary(page, episodes, 2);
+  // The audio section's later page waits until both clicks have played.
+  let releaseLaterPage = () => {};
+  const laterPage = new Promise<void>((resolve) => (releaseLaterPage = resolve));
+  await page.route(
+    (url) => url.pathname === "/api/records/tree" && url.searchParams.get("section") === "audio",
+    async (route) => {
+      await laterPage;
+      await route.fallback();
+    },
+  );
+  await page.goto("/records");
+
+  await page.getByRole("button", { name: /^Episode 1\.wav/ }).click();
+  await page.getByRole("button", { name: /^Episode 2\.wav/ }).click();
+  const laterPageServed = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/records/tree" && url.searchParams.get("section") === "audio";
+  });
+  releaseLaterPage();
+  await laterPageServed;
+
+  await page.getByRole("button", { name: "Playback queue" }).click();
+  const queue = page.getByRole("list", { name: "Playback queue" });
+  await expect(queue.getByRole("listitem")).toHaveCount(3);
+  await expect(queue.getByText("Episode 3.wav")).toHaveCount(1);
 });
 
 test("a Record video hands its sound to the global player from the moment it reached @desktop", async ({ page }) => {
