@@ -209,28 +209,41 @@ function parseColumnSearchValue(value: string | null) {
   return value === "auto" ? "auto" : Number(value);
 }
 
+/**
+ * The top-level paths that another page renders or redirects from. Every other
+ * single segment that is not a work code is a library source's own route.
+ */
+const otherPageTopLevelPaths = new Set([
+  "/about",
+  "/activity",
+  "/circles",
+  "/cleanup",
+  "/discover",
+  "/favorites",
+  "/for-you",
+  "/history",
+  "/insights",
+  "/maintenance",
+  "/metadata",
+  "/no-source",
+  "/records",
+  "/runs",
+  "/settings",
+  "/subscriptions",
+  "/system",
+  "/tags",
+  "/translation",
+  "/user-data",
+  "/users",
+  "/voices",
+  "/work-management",
+  "/workflows",
+]);
+
+/** Whether a path is one of the Library's lists: a local scope or a library source. */
 function isLibraryBrowsePath(path: string) {
-  if (["/", "/tracked", "/library", "/library/tracked"].includes(path)) {
-    return true;
-  }
-  if (["/no-source", "/library/no-source", "/library/all", "/library/remote"].includes(path)) {
-    return false;
-  }
-  if (/^\/library\/source\/[^/]+\/?$/.test(path)) return true;
-  if (
-    [
-      "/favorites",
-      "/circles",
-      "/voices",
-      "/workflows",
-      "/runs",
-      "/settings",
-      "/maintenance",
-      "/users",
-      "/about",
-    ].includes(path.replace(/\/$/, ""))
-  ) {
-    return false;
-  }
-  return /^\/[^/]+\/?$/.test(path) && !isWorkCodePath(path);
+  const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  if (["/", "/tracked", "/library", "/library/tracked"].includes(normalized)) return true;
+  if (/^\/library\/source\/[^/]+$/.test(normalized)) return true;
+  return /^\/[^/]+$/.test(normalized) && !isWorkCodePath(normalized) && !otherPageTopLevelPaths.has(normalized);
 }
