@@ -28,7 +28,11 @@ var artworkStems = map[string][]string{
 }
 
 // ensureDerived recomputes every derived field once when the stored ones were
-// computed for another derivedVersion, as after an upgrade.
+// computed for another derivedVersion, as after an upgrade. Sort keys come
+// from the catalog alone; artwork is chosen from the image files, so it waits
+// until the root is online: an unmounted root reads as if every image were
+// gone, and choosing then would clear every poster and backdrop. Until then
+// the earlier choices stay and the stored version is left as it was.
 func (s *Store) ensureDerived(ctx context.Context) error {
 	s.derivedMu.Lock()
 	defer s.derivedMu.Unlock()
@@ -40,8 +44,18 @@ func (s *Store) ensureDerived(ctx context.Context) error {
 		return err
 	}
 	if version != derivedVersion {
-		if err := s.refreshSortKeys(ctx); err != nil {
+		if !s.sortKeysReady {
+			if err := s.refreshSortKeys(ctx); err != nil {
+				return err
+			}
+			s.sortKeysReady = true
+		}
+		root, err := s.EnsureRoot(ctx)
+		if err != nil {
 			return err
+		}
+		if root.State != "online" {
+			return nil
 		}
 		if err := s.refreshArtwork(ctx); err != nil {
 			return err
@@ -98,9 +112,20 @@ func (s *Store) refreshSortKeys(ctx context.Context) error {
 // role, the available image whose stem comes first in the role's list, by
 // name among equals, that carries a valid image signature.
 func (s *Store) refreshArtwork(ctx context.Context) error {
+	return s.chooseArtwork(ctx, 0)
+}
+
+// refreshFolderArtwork chooses one folder's poster and backdrop again.
+func (s *Store) refreshFolderArtwork(ctx context.Context, folderID int64) error {
+	return s.chooseArtwork(ctx, folderID)
+}
+
+// chooseArtwork chooses the artwork of one folder, or of every folder when
+// folderID is 0.
+func (s *Store) chooseArtwork(ctx context.Context, folderID int64) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.folder_id, a.name, a.relative_path, a.mime_type
 		FROM record_asset a JOIN record_folder f ON f.id=a.folder_id AND f.state='active'
-		WHERE a.root_id=1 AND a.kind='image' AND a.availability='available'`)
+		WHERE a.root_id=1 AND a.kind='image' AND a.availability='available' AND (?1=0 OR a.folder_id=?1)`, folderID)
 	if err != nil {
 		return err
 	}
@@ -168,7 +193,8 @@ func (s *Store) refreshArtwork(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `UPDATE record_folder SET poster_asset_id=NULL, backdrop_asset_id=NULL WHERE root_id=1 AND (poster_asset_id IS NOT NULL OR backdrop_asset_id IS NOT NULL)`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE record_folder SET poster_asset_id=NULL, backdrop_asset_id=NULL
+		WHERE root_id=1 AND (?1=0 OR id=?1) AND (poster_asset_id IS NOT NULL OR backdrop_asset_id IS NOT NULL)`, folderID); err != nil {
 		return err
 	}
 	for folderID, chosen := range choices {

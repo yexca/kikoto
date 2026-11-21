@@ -63,6 +63,11 @@ type TrashedFolder struct {
 // relative path the viewer confirmed; another path under the same id is
 // refused.
 func (s *Store) TrashAsset(ctx context.Context, id int64, expectedPath string, now time.Time) (TrashedAsset, error) {
+	unlock, err := s.lockCatalog(ctx)
+	if err != nil {
+		return TrashedAsset{}, err
+	}
+	defer unlock()
 	if err := s.requireOnline(ctx); err != nil {
 		return TrashedAsset{}, err
 	}
@@ -85,6 +90,12 @@ func (s *Store) TrashAsset(ctx context.Context, id int64, expectedPath string, n
 	})
 	if err != nil {
 		return TrashedAsset{}, err
+	}
+	if asset.Kind == "image" {
+		// An image that was the folder's poster or backdrop leaves the role to
+		// the next candidate. The file is already in the trash, so a failure
+		// here only leaves the role empty until the next scan.
+		_ = s.refreshFolderArtwork(ctx, asset.FolderID)
 	}
 	return TrashedAsset{Asset: asset, TrashPath: trashRel}, nil
 }
@@ -121,6 +132,11 @@ func (s *Store) FolderAssetIDs(ctx context.Context, folderID int64) ([]int64, er
 // may be deleted, before it moves. expectedPath is the relative path the
 // viewer confirmed; another path under the same id is refused.
 func (s *Store) TrashFolder(ctx context.Context, id int64, expectedPath string, now time.Time, beforeMove func(assetIDs []int64)) (TrashedFolder, error) {
+	unlock, err := s.lockCatalog(ctx)
+	if err != nil {
+		return TrashedFolder{}, err
+	}
+	defer unlock()
 	if err := s.requireOnline(ctx); err != nil {
 		return TrashedFolder{}, err
 	}

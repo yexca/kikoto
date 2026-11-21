@@ -78,6 +78,31 @@ func TestTrashNeverReachesAFileIndexedAfterTheDeletedOne(t *testing.T) {
 	}
 }
 
+func TestTrashingAFoldersPosterChoosesTheNextCandidate(t *testing.T) {
+	store, db, _ := scannedStore(t, map[string]string{
+		"trip/folder.jpg": string(tinyJPEG), "trip/poster.jpg": string(tinyJPEG), "trip/clip.mp4": "video",
+	})
+	poster := func() sql.NullInt64 {
+		t.Helper()
+		var id sql.NullInt64
+		if err := db.QueryRow(`SELECT poster_asset_id FROM record_folder WHERE relative_path='trip'`).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	first := assetID(t, db, "folder.jpg")
+	if chosen := poster(); chosen.Int64 != first {
+		t.Fatalf("poster before = %+v, want folder.jpg %d", chosen, first)
+	}
+	next := assetID(t, db, "poster.jpg")
+	if _, err := store.TrashAsset(context.Background(), first, "trip/folder.jpg", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if chosen := poster(); chosen.Int64 != next {
+		t.Fatalf("poster after = %+v, want poster.jpg %d", chosen, next)
+	}
+}
+
 func TestTrashAssetKeepsTheRowOfAFileItCannotMove(t *testing.T) {
 	store, db, root := scannedStore(t, map[string]string{"clip.mp4": "video"})
 	id := assetID(t, db, "clip.mp4")

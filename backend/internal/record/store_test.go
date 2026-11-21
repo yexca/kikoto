@@ -177,6 +177,36 @@ func TestFolderViewFillsInDerivedFieldsOfAnEarlierCatalog(t *testing.T) {
 	}
 }
 
+// An upgraded catalog read while its disk is unmounted keeps the artwork it
+// had, and chooses it again once the disk is back.
+func TestDerivedFieldsKeepArtworkWhileTheRootIsOffline(t *testing.T) {
+	_, db, root := scannedStore(t, map[string]string{"trip/poster.jpg": string(tinyJPEG), "trip/clip.mp4": "video"})
+	if _, err := db.Exec(`UPDATE record_root SET derived_version=0`); err != nil {
+		t.Fatal(err)
+	}
+	away := root + "-away"
+	if err := os.Rename(root, away); err != nil {
+		t.Fatal(err)
+	}
+	upgraded := NewStore(db, root)
+	ctx := context.Background()
+	view, err := upgraded.FolderView(ctx, 0, SectionPageMax, 0)
+	folders := sectionOf(t, view, SectionFolders).Folders
+	if err != nil || len(folders) != 1 || !folders[0].HasPoster {
+		t.Fatalf("offline root folders = %+v, %v", folders, err)
+	}
+	if err := os.Rename(away, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upgraded.FolderView(ctx, 0, SectionPageMax, 0); err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := db.QueryRow(`SELECT derived_version FROM record_root WHERE id=1`).Scan(&version); err != nil || version != derivedVersion {
+		t.Fatalf("derived version once online = %d, %v", version, err)
+	}
+}
+
 // A section pages on its own: each page follows the cursor the previous one
 // handed out, and the last page hands out none.
 func TestListSectionPagesThroughEveryChild(t *testing.T) {

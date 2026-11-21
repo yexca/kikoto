@@ -35,9 +35,15 @@ type Store struct {
 	db    *sqlutil.DB
 	root  string
 	probe ProbeFunc
-	// derivedReady records that the stored derived fields match derivedVersion.
-	derivedMu    sync.Mutex
-	derivedReady bool
+	// catalog holds one token, taken by whatever reads the disk into the
+	// catalog or changes what the disk holds: a scan's walk, an
+	// initialization, a marker restore, and a move to the trash.
+	catalog chan struct{}
+	// derivedReady records that the stored derived fields match derivedVersion;
+	// sortKeysReady that the sort keys do while the artwork waits for the root.
+	derivedMu     sync.Mutex
+	derivedReady  bool
+	sortKeysReady bool
 }
 
 // Option configures a Store.
@@ -48,11 +54,21 @@ type Option func(*Store)
 func WithProber(probe ProbeFunc) Option { return func(s *Store) { s.probe = probe } }
 
 func NewStore(db *sqlutil.DB, root string, options ...Option) *Store {
-	store := &Store{db: db, root: root}
+	store := &Store{db: db, root: root, catalog: make(chan struct{}, 1)}
 	for _, option := range options {
 		option(store)
 	}
 	return store
+}
+
+// lockCatalog waits for the catalog token, or for ctx to end.
+func (s *Store) lockCatalog(ctx context.Context) (func(), error) {
+	select {
+	case s.catalog <- struct{}{}:
+		return func() { <-s.catalog }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 type Root struct {
@@ -270,6 +286,11 @@ var ErrRootPathMissing = errors.New("record root path is missing")
 // RestoreMarker writes the marker again with the identity of the catalog the
 // database keeps, for a root whose marker is missing. The catalog is kept.
 func (s *Store) RestoreMarker(ctx context.Context) (Root, error) {
+	unlock, err := s.lockCatalog(ctx)
+	if err != nil {
+		return Root{}, err
+	}
+	defer unlock()
 	root, err := s.EnsureRoot(ctx)
 	if err != nil {
 		return Root{}, err
@@ -342,6 +363,11 @@ func (s *Store) InitializeRoot(ctx context.Context, fresh bool) (Root, error) {
 	if path == "." || path == "" {
 		return Root{}, errors.New("record root is not configured")
 	}
+	unlock, err := s.lockCatalog(ctx)
+	if err != nil {
+		return Root{}, err
+	}
+	defer unlock()
 	var kept string
 	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&kept); err != nil {
 		return Root{}, err
@@ -432,6 +458,33 @@ func (s *Store) rootRecord(ctx context.Context) (Root, error) {
 func (s *Store) Root(ctx context.Context) (Root, error) { return s.rootRecord(ctx) }
 
 func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
+	result, err := s.scanCatalog(ctx)
+	if err != nil || result.State != "complete" && result.State != "partial" {
+		return result, err
+	}
+	// The probe runs before the scan is recorded as finished, so a client that
+	// waits for the last-scanned time sees durations and dimensions. It runs
+	// outside the catalog lock: it only fills in files' details.
+	if s.probe != nil {
+		probe, err := s.ProbePending(ctx, s.probe, DefaultProbeLimit, DefaultProbeConcurrency)
+		if err != nil {
+			return ScanResult{}, err
+		}
+		result.Probe = &probe
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
+		return ScanResult{}, err
+	}
+	return result, nil
+}
+
+// scanCatalog walks the root into the catalog under the catalog lock.
+func (s *Store) scanCatalog(ctx context.Context) (ScanResult, error) {
+	unlock, err := s.lockCatalog(ctx)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	defer unlock()
 	root, err := s.EnsureRoot(ctx)
 	if err != nil {
 		return ScanResult{}, err
@@ -523,13 +576,20 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 	if walkErr != nil && walkErr != filepath.SkipDir {
 		unreadable++
 	}
+	if errors.Is(walkErr, context.Canceled) || errors.Is(walkErr, context.DeadlineExceeded) {
+		return ScanResult{}, walkErr
+	}
+	// A disk unmounted after its marker was read leaves a mount point that
+	// walks without errors, so the marker is read again before anything the
+	// walk did not see is marked missing.
+	unmounted := root.State == "online" && !s.markerStillNamesCatalog(ctx, base)
+	if unmounted {
+		unreadable++
+	}
 	complete := walkErr == nil && unreadable == 0
 	// Without its marker the root may not be the disk the catalog describes,
 	// so the scan adds and updates what it finds and marks nothing missing.
 	markMissing := complete && root.State == "online"
-	if errors.Is(walkErr, context.Canceled) || errors.Is(walkErr, context.DeadlineExceeded) {
-		return ScanResult{}, walkErr
-	}
 	if markMissing {
 		if _, err := s.db.ExecContext(ctx, `UPDATE record_folder SET state=CASE WHEN last_seen_generation=? THEN 'active' ELSE 'missing' END, updated_at=CURRENT_TIMESTAMP WHERE root_id=1`, generation); err != nil {
 			return ScanResult{}, err
@@ -541,27 +601,28 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 	if err := s.ensureDerived(ctx); err != nil {
 		return ScanResult{}, err
 	}
-	if err := s.refreshArtwork(ctx); err != nil {
-		return ScanResult{}, err
+	// The images of a root that went away read as gone; the choices stay.
+	if !unmounted {
+		if err := s.refreshArtwork(ctx); err != nil {
+			return ScanResult{}, err
+		}
 	}
 	state := "complete"
 	if !complete {
 		state = "partial"
 	}
-	result := ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: markMissing}
-	// The probe runs before the scan is recorded as finished, so a client that
-	// waits for the last-scanned time sees durations and dimensions.
-	if s.probe != nil {
-		probe, err := s.ProbePending(ctx, s.probe, DefaultProbeLimit, DefaultProbeConcurrency)
-		if err != nil {
-			return ScanResult{}, err
-		}
-		result.Probe = &probe
+	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: markMissing}, nil
+}
+
+// markerStillNamesCatalog reports whether the root's marker still carries the
+// identity of the catalog the database keeps.
+func (s *Store) markerStillNamesCatalog(ctx context.Context, base string) bool {
+	var expected string
+	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&expected); err != nil || expected == "" {
+		return false
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
-		return ScanResult{}, err
-	}
-	return result, nil
+	id, found, err := readMarker(base)
+	return err == nil && found && id == expected
 }
 
 func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel string, depth int, generation int64) (int64, error) {
