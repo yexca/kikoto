@@ -671,6 +671,48 @@ test("mobile notification center opens fetched works and dismisses individual re
   await expect(page).toHaveURL(/\/RJ00000003\?view=local$/);
 });
 
+test("notification center keeps what it shows when a refresh fails", async ({ page }) => {
+  await mockWorkflows(page, undefined, {
+    total: 1,
+    notifications: [
+      notificationFixture({
+        id: 1,
+        workflowRunId: 71,
+        type: "remote_fetch",
+        status: "succeeded",
+        workId: 11,
+        workCode: "RJ00000002",
+        message: "Fetch completed for RJ00000002.",
+        createdAt: "2026-07-27T01:00:00Z",
+      }),
+    ],
+  });
+  await page.goto("/workflows");
+
+  const notificationButton = page.getByRole("button", { name: "Notifications", exact: true });
+  await notificationButton.click();
+  const dialog = page.getByRole("dialog", { name: "Notifications" });
+  const row = dialog.getByRole("button", {
+    name: "Workflow update for RJ00000002. Workflow #71 · succeeded",
+    exact: true,
+  });
+  await expect(row).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await page.route("**/api/notifications/summary**", (route) =>
+    route.fulfill({ status: 500, json: { error: "Unavailable" } satisfies ApiErrorBody }),
+  );
+  const failedRefresh = page.waitForResponse(
+    (response) => response.url().includes("/api/notifications/summary") && response.status() === 500,
+  );
+  // Opening the panel refreshes it.
+  await notificationButton.click();
+  await failedRefresh;
+  await expect(dialog.getByText("1 item", { exact: true })).toBeVisible();
+  await expect(row).toBeVisible();
+});
+
 test("notification center paginates and clears only succeeded remote notifications", async ({ page }) => {
   let cleared = false;
   const futureActionNotification = notificationFixture({

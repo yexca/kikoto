@@ -74,8 +74,9 @@ export function NotificationCenter({
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Stable so the polling effect re-subscribes only when its inputs change,
-  // while each poll reads the current page and open state.
-  const refresh = useStableCallback((requestedPage: number = notificationPage) => {
+  // while each poll reads the current page and open state. A failed refresh
+  // keeps the notifications and counts already shown until the next one.
+  const refresh = useStableCallback((requestedPage: number = notificationPage) =>
     api
       .getNotificationSummary(requestedPage, NOTIFICATION_PAGE_SIZE)
       .then((summary) => {
@@ -92,19 +93,8 @@ export function NotificationCenter({
         setRunningRun(attention?.runningRun ?? null);
         setUnreadCount(summary.unreadCount);
       })
-      .catch(() => {
-        setNotifications([]);
-        setNotificationCount(0);
-        setNotificationPage(1);
-        setNotificationTotalPages(1);
-        setClearableCount(0);
-        setAttentionRuns([]);
-        setAttentionCount(0);
-        setRunningCount(0);
-        setRunningRun(null);
-        setUnreadCount(0);
-      });
-  });
+      .catch(() => undefined),
+  );
 
   const userId = user.id;
   const pollFast = open && runningCount > 0;
