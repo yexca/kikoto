@@ -18,6 +18,7 @@ import { AlertTriangle, ChevronLeft, Download, ExternalLink, Lock, Server, WifiO
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import {
   INSIGHTS_PATH,
+  accountListIds,
   accountShortcutIds,
   canAccessPage,
   navItems,
@@ -345,13 +346,14 @@ function AuthenticatedApp() {
     const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
     return [...preferred, ...additions].slice(0, tabCount);
   }, [visibleNavItems]);
-  // The account panel lists, below the sidebar breakpoint, the sidebar's pages
-  // that the bottom navigation does not carry. Where the sidebar is shown, the
-  // panel also repeats the shortcut destinations as tiles.
+  // The account panel tiles the shortcut destinations and lists Tags and
+  // Settings on every layout, and lists below the sidebar breakpoint the
+  // sidebar's other pages that the bottom navigation does not carry.
   const accountDestinations = useMemo<AccountDestination[]>(() => {
     const inBottomNavigation = (id: PageID) => mobileNavItems.some((item) => item.id === id);
+    const everyLayoutIds: readonly string[] = [...accountShortcutIds, ...accountListIds];
     return visibleNavItems.flatMap<AccountDestination>((item) => {
-      if ((accountShortcutIds as readonly string[]).includes(item.id)) {
+      if (everyLayoutIds.includes(item.id)) {
         return [{ item, placement: inBottomNavigation(item.id) ? "wide" : "always" }];
       }
       return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];

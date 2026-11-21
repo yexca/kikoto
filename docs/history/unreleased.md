@@ -103,16 +103,18 @@
 - Personal tags are a page of their own, **Tags** (`/tags`), instead of a
   Settings tab.
 - **About** closes the sidebar below a divider. **Language** opens from the
-  menu behind your avatar, which marks the page you are on. On a wide screen
-  the menu also holds Discover, Insights, and Tags as shortcuts under your
-  profile, repeating their sidebar entries; without the sidebar it lists the
-  pages the bottom navigation does not carry, About included.
+  menu behind your avatar, which marks the page you are on. The menu holds
+  For you, Discover, and Insights as one row of tiles under your profile and
+  lists Tags and Settings, repeating their sidebar entries on a wide screen;
+  without the sidebar it also lists the pages the bottom navigation does not
+  carry, About included.
 - The page header shows only the page title. Its tray keeps Quick actions,
   Notifications, and Appearance, and the avatar no longer shows your role
   beside it.
 - Phones show Notifications and the avatar in the header. The avatar menu
-  opens with a compact profile, shows the pages the bottom navigation does
-  not carry and Quick actions as a grid of tiles, then lists Settings, a
+  opens with a compact profile and the same row of tiles, then lists Quick
+  actions, Tags, Settings, the other pages the bottom navigation does not
+  carry, a
   **Manage** entry for the administration pages, **Appearance**, and
   **Language**, and closes with About and Sign out on one row. In the app, the
   server connection is one entry that opens its details.

@@ -230,11 +230,17 @@ export const navItems = [
 export type PageID = (typeof navItems)[number]["id"];
 
 /**
- * The destinations the account panel repeats as shortcut tiles where the
- * sidebar is shown, in the order the tiles appear. The sidebar keeps them in
- * their own groups.
+ * The destinations the account panel shows as its row of tiles on every
+ * layout, in the order the tiles appear. Where the sidebar is shown it keeps
+ * them in their own groups, so the tiles repeat them.
  */
-export const accountShortcutIds = ["subscriptions", "insights", "tags"] as const satisfies readonly PageID[];
+export const accountShortcutIds = ["for-you", "subscriptions", "insights"] as const satisfies readonly PageID[];
+
+/**
+ * The account's own pages the account panel lists on every layout, under its
+ * tiles. Where the sidebar is shown they also sit in its Personal group.
+ */
+export const accountListIds = ["tags", "settings"] as const satisfies readonly PageID[];
 export type NavigationItem = (typeof navItems)[number];
 export type AuthViewState = "anonymous" | "authenticated";
 

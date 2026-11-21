@@ -27,9 +27,7 @@ import { cn } from "@/lib/tailwindClassNames";
  * A destination the account panel lists. `compact` destinations appear only
  * below the sidebar breakpoint, for pages the sidebar offers and the bottom
  * navigation does not carry; `wide` ones only where the sidebar is shown, for
- * pages the bottom navigation already carries. A shortcut destination is a tile
- * where the sidebar is shown and, below it, a list entry unless the bottom
- * navigation carries it, so `always` and `wide` both hold its tile.
+ * pages the bottom navigation already carries; `always` ones on every layout.
  */
 export type AccountDestination = { item: NavigationItem; placement: "always" | "compact" | "wide" };
 
@@ -39,22 +37,20 @@ const placementClass: Record<AccountDestination["placement"], string | undefined
   wide: "max-lg:hidden",
 };
 
-const isShortcut = (item: NavigationItem) => (accountShortcutIds as readonly string[]).includes(item.id);
+const isTile = (item: NavigationItem) => (accountShortcutIds as readonly string[]).includes(item.id);
 
 type AccountView = "main" | "language" | "appearance" | "server" | CollapsibleNavigationGroup;
 
-// Settings concerns the account itself, so it stays a list entry beside Language rather than a page tile.
-const listedDestinationIds: readonly string[] = ["settings"];
-
 /**
  * The account surface behind the header avatar, or behind Sign in for anonymous
- * visitors: a one-line profile, page tiles, the account's own entries, and a
- * closing row with About and Sign out. Where the sidebar is shown, Discover,
- * Insights, and Tags are the tiles. A layout without the sidebar tiles the
- * sidebar's pages that the bottom navigation does not carry, and lists
- * Settings with the Manage group behind one entry. On phones the panel also
- * opens Quick actions and Appearance, which the header has no button for, and
- * in the native shell it holds the server connection behind one entry.
+ * visitors: a one-line profile, one row of page tiles, the account's own
+ * entries, and a closing row with About and Sign out. The tiles are For you,
+ * Discover, and Insights, and Tags and Settings lead the list, on every
+ * layout. A layout without the sidebar also lists the sidebar's other pages
+ * that the bottom navigation does not carry, with the Manage group behind one
+ * entry. On phones the list opens with Quick actions and holds Appearance,
+ * which the phone header has no button for, and in the native shell it holds
+ * the server connection behind one entry.
  */
 export function AccountPanel({
   user,
@@ -91,36 +87,26 @@ export function AccountPanel({
     setView("main");
   };
 
-  // A shortcut is a tile where the sidebar is shown, so its list entry only serves the layouts below it.
-  const destinationItem = ({ item, placement }: AccountDestination) => {
-    const shortcut = isShortcut(item);
-    if (shortcut && placement === "wide") return null;
-    return (
-      <ActionItem
-        key={item.id}
-        icon={<item.icon className="h-4 w-4" />}
-        label={navigationLabel(item, t)}
-        current={currentPage === item.id}
-        className={shortcut ? placementClass.compact : placementClass[placement]}
-        onClick={() => onOpenPage(item.id)}
-      />
-    );
-  };
-  const shortcuts = accountShortcutIds.flatMap((id) => {
+  const destinationItem = ({ item, placement }: AccountDestination) => (
+    <ActionItem
+      key={item.id}
+      icon={<item.icon className="h-4 w-4" />}
+      label={navigationLabel(item, t)}
+      current={currentPage === item.id}
+      className={placementClass[placement]}
+      onClick={() => onOpenPage(item.id)}
+    />
+  );
+  const tiles = accountShortcutIds.flatMap((id) => {
     const destination = destinations.find((entry) => entry.item.id === id);
-    return destination ? [destination.item] : [];
+    return destination ? [destination] : [];
   });
   const groupDestinations = (group: NavigationItem["group"]) =>
     destinations.filter((destination) => destination.item.group === group);
-  // Below the sidebar breakpoint the pages the bottom navigation does not carry are tiles, except the listed ones.
-  const pageTiles = destinations.filter(
-    ({ item, placement }) =>
-      placement !== "wide" &&
-      item.group !== "app" &&
-      item.group !== "manage" &&
-      !listedDestinationIds.includes(item.id),
+  // Every page without a tile, except the Manage group and About, which have places of their own.
+  const listedDestinations = destinations.filter(
+    ({ item }) => item.group !== "app" && item.group !== "manage" && !isTile(item),
   );
-  const listedDestinations = destinations.filter(({ item }) => listedDestinationIds.includes(item.id));
   const aboutDestinations = groupDestinations("app");
   if (view === "language") {
     return (
@@ -169,44 +155,30 @@ export function AccountPanel({
         </div>
       )}
 
-      {shortcuts.length > 0 && (
-        <div className="grid auto-cols-fr grid-flow-col gap-1.5 border-b p-2 max-lg:hidden">
-          {shortcuts.map((item) => (
+      {tiles.length > 0 && (
+        <div className="grid auto-cols-fr grid-flow-col gap-1.5 border-b p-2">
+          {tiles.map(({ item, placement }) => (
             <DestinationTile
               key={item.id}
               icon={item.icon}
               label={navigationLabel(item, t)}
               current={currentPage === item.id}
+              className={placementClass[placement]}
               onClick={() => onOpenPage(item.id)}
             />
           ))}
-        </div>
-      )}
-
-      {/* Where the sidebar is shown it offers every page, so these tiles serve only the layouts without it. */}
-      {(pageTiles.length > 0 || onOpenQuickActions) && (
-        <div className="grid grid-cols-3 gap-1.5 border-b p-2 lg:hidden">
-          {pageTiles.map(({ item }) => (
-            <DestinationTile
-              key={item.id}
-              icon={item.icon}
-              label={navigationLabel(item, t)}
-              current={currentPage === item.id}
-              onClick={() => onOpenPage(item.id)}
-            />
-          ))}
-          {onOpenQuickActions && (
-            <DestinationTile
-              icon={Zap}
-              label={t("header.quickActions")}
-              className="sm:hidden"
-              onClick={onOpenQuickActions}
-            />
-          )}
         </div>
       )}
 
       <MenuSection>
+        {onOpenQuickActions && (
+          <ActionItem
+            icon={<Zap className="h-4 w-4" />}
+            label={t("header.quickActions")}
+            className="sm:hidden"
+            onClick={onOpenQuickActions}
+          />
+        )}
         {listedDestinations.map(destinationItem)}
         {navigationGroups.map((group) => {
           const entries = groupDestinations(group.id);

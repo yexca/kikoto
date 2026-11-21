@@ -40,15 +40,14 @@ open, in every group.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
 Sign in for anonymous visitors, on every screen size. A compact profile leads
-it, naming the handle only where it differs from the display name. Where the
-sidebar is shown, three shortcut tiles under the profile open Discover,
-Insights, and Tags (`accountShortcutIds` in `app/navigation`); the sidebar
-keeps these pages in their own groups, so the tiles repeat them. Below the
-sidebar breakpoint a three-column grid of the same tiles holds the pages the
-bottom navigation does not carry, such as For you, Discover, Insights,
-and Tags, and on phones Quick actions; the wide tiles do not appear there, so
-no destination is listed twice. One list follows: Settings, which concerns
-the account and so stays a list entry; one **Manage** entry that opens the
+it, naming the handle only where it differs from the display name. One row of
+three tiles under the profile opens For you, Discover, and Insights on every
+layout (`accountShortcutIds` in `app/navigation`); where the sidebar is shown
+it keeps these pages in their own groups, so the tiles repeat them. One list
+follows: on phones Quick actions, which the phone header has no button for;
+Tags and Settings on every layout (`accountListIds`), repeating the sidebar's
+Personal group where it is shown; below the sidebar breakpoint the sidebar's
+other pages the bottom navigation does not carry; one **Manage** entry that opens the
 Manage pages as a view of the panel and names the current page while it is
 one of them; **Appearance** on phones; **Language**; and in the native shell
 one server entry with a status dot that opens the connection details and

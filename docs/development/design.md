@@ -384,12 +384,12 @@ destinations and no administration controls:
   page of destructive operations apart from the settings.
 - The account panel behind the avatar opens with a compact profile (the
   handle only where it differs from the name) and closes with one row of About
-  and Sign out. Pages are tiles: where the sidebar is shown, Discover,
-  Insights, and Tags repeat the sidebar's entries; a layout without the
-  sidebar tiles the sidebar's pages the bottom navigation does not carry
-  instead. The account's own entries form one list between them: Settings and
-  the Manage group behind one entry below the sidebar breakpoint, Appearance on
-  phones, Language, and the server connection in the native shell.
+  and Sign out. One row of three tiles opens For you, Discover, and Insights
+  on every layout. One list sits between them: Quick actions on phones, Tags
+  and Settings on every layout, below the sidebar breakpoint the sidebar's
+  other pages the bottom navigation does not carry and the Manage group behind
+  one entry, Appearance on phones, Language, and the server connection in the
+  native shell.
 - The header shows the page title without a description. Its tray holds Quick
   actions, Notifications, and Appearance, and the avatar carries no role text.
 - A phone header holds two actions, Notifications and the avatar, so a page

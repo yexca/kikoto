@@ -1817,13 +1817,28 @@ test("mobile header keeps Notifications and the account panel, which holds the r
   const accountPopover = page.getByRole("dialog", { name: "Account" });
   await expect(accountPopover).toBeVisible();
   expect(await accountPopover.evaluate((element) => getComputedStyle(element).zIndex)).toBe("50");
-  // The account panel tiles the pages the bottom navigation does not carry and lists the account's own entries.
+  // A phone's account panel tiles For you, Discover, and Insights in one row like a wide screen, then lists
+  // Quick actions first, the pages the bottom navigation does not carry, and the account's own entries.
   await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
   await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
-  for (const name of ["Quick actions", "Discover", "Insights", "Tags", "Settings", "About"]) {
+  for (const name of ["For you", "Quick actions", "Discover", "Insights", "Tags", "Settings", "About"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toBeVisible();
   }
+  const tileBoxes = await Promise.all(
+    ["For you", "Discover", "Insights"].map((name) =>
+      accountPopover.getByRole("button", { name, exact: true }).boundingBox(),
+    ),
+  );
+  const listBoxes = await Promise.all(
+    ["Quick actions", "Tags", "Settings"].map((name) =>
+      accountPopover.getByRole("button", { name, exact: true }).boundingBox(),
+    ),
+  );
+  expect(tileBoxes.every((box) => Math.abs(box!.y - tileBoxes[0]!.y) < 1)).toBe(true);
+  expect(tileBoxes.map((box) => box!.x)).toEqual([...tileBoxes.map((box) => box!.x)].sort((a, b) => a - b));
+  expect(listBoxes[0]!.y).toBeGreaterThan(tileBoxes[0]!.y + tileBoxes[0]!.height);
+  expect(listBoxes.map((box) => box!.y)).toEqual([...listBoxes.map((box) => box!.y)].sort((a, b) => a - b));
   for (const name of ["Library", "Record", "Favorites", "Circles", "Voice Actors", "Workflows", "Users"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
@@ -2035,16 +2050,19 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
     await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
   }
 
-  // The account panel adds Discover, Insights, and Tags as shortcuts, repeats nothing else the sidebar
-  // holds, and marks the current page.
+  // The account panel adds For you, Discover, and Insights as tiles and lists Tags and Settings, repeats
+  // nothing else the sidebar holds, and marks the current page.
   await page.getByRole("button", { name: "User menu" }).click();
   const account = page.getByRole("dialog", { name: "Account" });
-  await expect(account.getByRole("button", { name: /^(Discover|Insights|Tags)$/ })).toHaveText([
+  await expect(account.getByRole("button", { name: /^(For you|Discover|Insights)$/ })).toHaveText([
+    "For you",
     "Discover",
     "Insights",
-    "Tags",
   ]);
-  for (const name of ["Record", "Library", "Settings", "Users", "About"]) {
+  for (const name of ["Tags", "Settings"]) {
+    await expect(account.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Record", "Library", "Users", "About"]) {
     await expect(account.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
   await expect(account.getByRole("button", { name: /^(Manage|Appearance)/ })).toHaveCount(0);
@@ -2052,7 +2070,10 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
   await expect(page).toHaveURL(/\/insights/);
   await page.getByRole("button", { name: "User menu" }).click();
   await expect(account.getByRole("button", { name: "Insights", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(account.getByRole("button", { name: "Tags", exact: true })).not.toHaveAttribute("aria-current", "page");
+  await expect(account.getByRole("button", { name: "Discover", exact: true })).not.toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await page.keyboard.press("Escape");
   await sidebar.getByRole("button", { name: "About", exact: true }).click();
   await expect(page.getByRole("heading", { name: "About", exact: true, level: 1 })).toBeVisible();
