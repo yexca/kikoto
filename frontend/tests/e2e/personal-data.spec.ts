@@ -210,7 +210,12 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await page.goto("/about");
 
   const bottomNavigation = page.locator("footer nav");
-  await expect(bottomNavigation.getByRole("button")).toHaveText(["Library", "Favorites", "Circles", "Voice Actors"]);
+  const bottomTabs = bottomNavigation.getByRole("button");
+  const bottomTabNames = ["Library", "Favorites", "Circles", "Voice Actors"];
+  await expect(bottomTabs).toHaveCount(bottomTabNames.length);
+  for (const [index, name] of bottomTabNames.entries()) {
+    await expect(bottomTabs.nth(index)).toHaveAccessibleName(name);
+  }
 
   await page.getByRole("button", { name: "Account menu" }).click();
   const account = page.getByRole("dialog", { name: "Account" });

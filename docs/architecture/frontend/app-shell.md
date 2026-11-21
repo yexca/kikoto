@@ -45,7 +45,7 @@ sidebar is shown, three shortcut tiles under the profile open Discover,
 Insights, and Tags (`accountShortcutIds` in `app/navigation`); the sidebar
 keeps these pages in their own groups, so the tiles repeat them. Below the
 sidebar breakpoint a three-column grid of the same tiles holds the pages the
-bottom navigation does not carry, such as Record, For you, Discover, Insights,
+bottom navigation does not carry, such as For you, Discover, Insights,
 and Tags, and on phones Quick actions; the wide tiles do not appear there, so
 no destination is listed twice. One list follows: Settings, which concerns
 the account and so stays a list entry; one **Manage** entry that opens the
@@ -76,6 +76,10 @@ newest five runs needing attention with their total, the count of queued and
 running runs, and the newest of them; null without `workflows:run`). A dot
 marks running work. It polls every 30 seconds, every 5 seconds while open over
 a running job, and skips hidden documents.
+
+The bottom navigation shows one icon per tab, named by its accessible label:
+Library, Favorites, Circles, and Voice Actors, with Record as the second of
+five tabs while the instance offers it.
 
 The header owns the desktop page title and carries no description, so page
 content owns any additional context it needs. Mobile browsing destinations use

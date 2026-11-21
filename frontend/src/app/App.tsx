@@ -159,7 +159,8 @@ const commandPalette = preloadableComponent(() =>
 );
 const CommandPalette = commandPalette.Component;
 
-const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
+// Record takes the second tab while the instance offers it, making five tabs.
+const preferredMobileTabs: PageID[] = ["library", "records", "favorites", "circles", "voice-actors"];
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 
 enableInAppBackStack(isNativeApp());
@@ -339,9 +340,10 @@ function AuthenticatedApp() {
     const preferred = preferredMobileTabs
       .map((id) => visibleNavItems.find((item) => item.id === id))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
-    if (preferred.length >= 4) return preferred.slice(0, 4);
+    const tabCount = preferred.some((item) => item.id === "records") ? 5 : 4;
+    if (preferred.length >= tabCount) return preferred.slice(0, tabCount);
     const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
-    return [...preferred, ...additions].slice(0, 4);
+    return [...preferred, ...additions].slice(0, tabCount);
   }, [visibleNavItems]);
   // The account panel lists, below the sidebar breakpoint, the sidebar's pages
   // that the bottom navigation does not carry. Where the sidebar is shown, the
@@ -754,21 +756,24 @@ function AuthenticatedApp() {
             data-mobile-navigation
             className="theme-shell-surface fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden"
           >
-            <nav className="grid grid-cols-4">
+            <nav className={cx("grid", mobileNavItems.length === 5 ? "grid-cols-5" : "grid-cols-4")}>
               {mobileNavItems.map((item) => {
+                const label = navigationLabel(item, t);
                 return (
                   <button
                     key={item.id}
                     className={cx(
-                      "group flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground transition-colors",
-                      page === item.id && "font-medium text-foreground",
+                      "group flex h-[var(--mobile-navigation-height)] items-center justify-center text-muted-foreground transition-colors",
+                      page === item.id && "text-foreground",
                     )}
+                    aria-label={label}
+                    title={label}
                     aria-current={page === item.id ? "page" : undefined}
                     onClick={() => openMobilePage(item.id)}
                   >
                     <span
                       className={cx(
-                        "relative grid h-7 w-12 place-items-center rounded-full transition-colors",
+                        "relative grid h-9 w-14 place-items-center rounded-full transition-colors",
                         page === item.id ? "text-primary" : "group-active:bg-muted",
                       )}
                     >
@@ -779,9 +784,11 @@ function AuthenticatedApp() {
                           className="mobile-nav-pill absolute inset-0 rounded-full bg-primary/15"
                         />
                       )}
-                      <item.icon className="relative h-[1.125rem] w-[1.125rem] transition-transform duration-150 group-active:scale-90" />
+                      <item.icon
+                        aria-hidden="true"
+                        className="relative h-[1.375rem] w-[1.375rem] transition-transform duration-150 group-active:scale-90"
+                      />
                     </span>
-                    <span>{navigationLabel(item, t)}</span>
                   </button>
                 );
               })}

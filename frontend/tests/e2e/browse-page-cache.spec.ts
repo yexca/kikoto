@@ -537,7 +537,7 @@ test("keeps every visited browse workspace mounted on mobile", async ({ page }) 
 async function switchMobileTabAndSampleScroll(page: Page, name: string) {
   return page.evaluate(async (label) => {
     const button = Array.from(document.querySelectorAll<HTMLButtonElement>("footer button")).find(
-      (candidate) => candidate.textContent?.trim() === label,
+      (candidate) => candidate.getAttribute("aria-label") === label,
     );
     if (!button) throw new Error(`Missing bottom navigation button: ${label}`);
     const samples: number[] = [];

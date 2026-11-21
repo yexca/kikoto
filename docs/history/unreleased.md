@@ -116,6 +116,8 @@
   **Manage** entry for the administration pages, **Appearance**, and
   **Language**, and closes with About and Sign out on one row. In the app, the
   server connection is one entry that opens its details.
+- The bottom navigation on a phone shows icons only, each named for screen
+  readers, and Record is its second tab while Record is turned on.
 - Secondary navigation has two forms. Discover, Metadata, Workflows, and
   System show their views as tabs along the top, System with an icon beside
   each name; Favorites lists its shelves by name beside the

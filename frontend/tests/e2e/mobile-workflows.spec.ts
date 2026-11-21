@@ -1805,6 +1805,14 @@ test("mobile header keeps Notifications and the account panel, which holds the r
       .map((metric) => metric.label),
   ).toEqual(["Notifications", "Account menu"]);
 
+  // With the Record library on, Record is the second of five bottom tabs.
+  const bottomTabs = page.locator("footer nav").getByRole("button");
+  const bottomTabNames = ["Library", "Record", "Favorites", "Circles", "Voice Actors"];
+  await expect(bottomTabs).toHaveCount(bottomTabNames.length);
+  for (const [index, name] of bottomTabNames.entries()) {
+    await expect(bottomTabs.nth(index)).toHaveAccessibleName(name);
+  }
+
   await page.getByRole("button", { name: "Account menu" }).click();
   const accountPopover = page.getByRole("dialog", { name: "Account" });
   await expect(accountPopover).toBeVisible();
@@ -1813,10 +1821,10 @@ test("mobile header keeps Notifications and the account panel, which holds the r
   await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
   await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
-  for (const name of ["Quick actions", "Discover", "Record", "Insights", "Tags", "Settings", "About"]) {
+  for (const name of ["Quick actions", "Discover", "Insights", "Tags", "Settings", "About"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toBeVisible();
   }
-  for (const name of ["Library", "Favorites", "Circles", "Voice Actors", "Workflows", "Users"]) {
+  for (const name of ["Library", "Record", "Favorites", "Circles", "Voice Actors", "Workflows", "Users"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
   await expect(accountPopover.getByRole("button", { name: /^Appearance/ })).toBeVisible();
