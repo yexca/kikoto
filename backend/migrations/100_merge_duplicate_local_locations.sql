@@ -71,9 +71,8 @@ UPDATE asr_transcription
 SET audio_media_item_id = (SELECT media_item_id FROM media_file_location WHERE id = asr_transcription.audio_location_id)
 WHERE audio_location_id IN (SELECT kept_location_id FROM local_path_group);
 
-UPDATE llm_lyrics_asset
-SET audio_media_item_id = (SELECT media_item_id FROM media_file_location WHERE id = llm_lyrics_asset.source_location_id)
-WHERE source_location_id IN (SELECT kept_location_id FROM local_path_group);
+-- A lyrics translation names the lyrics file it was made from, not its audio
+-- track, so its audio item follows the merged items below.
 
 CREATE TEMP TABLE local_item_merge AS
 SELECT location.item_id AS loser_id, MIN(path_group.keeper_item_id) AS keeper_id
