@@ -44,7 +44,7 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     return `/metadata?${params}`;
   }
   // Cleanup is a page of its own.
-  if ((path === "/settings" || path === SYSTEM_SETTINGS_PATH) && new URLSearchParams(search).get("tab") === "cleanup") {
+  if (path === "/settings" && new URLSearchParams(search).get("tab") === "cleanup") {
     const params = new URLSearchParams(search);
     params.delete("tab");
     return `${CLEANUP_PATH}${params.size ? `?${params}` : ""}`;

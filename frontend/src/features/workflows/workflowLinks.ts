@@ -38,8 +38,8 @@ export function openWorkflowPath(path: string) {
 /**
  * Where an earlier address of the run log leads: `/activity` and `/runs`, and
  * `/workflows?activity=1`, open Workflows with the run they named and, for a
- * list of ended runs, History with its workflow. Any other address returns
- * null.
+ * list of ended runs, History with the workflow `runsOf` named. Any other
+ * address returns null.
  */
 export function legacyRunLogPath(path: string, search: string): string | null {
   const params = new URLSearchParams(search);
@@ -50,7 +50,7 @@ export function legacyRunLogPath(path: string, search: string): string | null {
   const target = workflowsPath({
     tab,
     status: view === "failed" ? "failed" : "",
-    workflow: params.get("runsOf") ?? (path === WORKFLOWS_PATH ? "" : (params.get("workflow") ?? "")),
+    workflow: params.get("runsOf") ?? "",
   });
   if (!Number.isSafeInteger(run) || run <= 0) return target;
   return `${target}${target.includes("?") ? "&" : "?"}run=${run}`;

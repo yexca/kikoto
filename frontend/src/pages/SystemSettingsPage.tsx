@@ -11,12 +11,7 @@ import {
   useSettingsLocation,
   type SettingsLocation,
 } from "@/pages/settingsLocation";
-import {
-  SYSTEM_SETTINGS_PATH,
-  systemSettingsTabAliases,
-  systemSettingsTabs,
-  type SystemSettingsTab,
-} from "@/pages/settingsPaths";
+import { SYSTEM_SETTINGS_PATH, systemSettingsTabs, type SystemSettingsTab } from "@/pages/settingsPaths";
 
 const tabPresentation: Record<SystemSettingsTab, { labelKey: string; icon: LucideIcon }> = {
   library: { labelKey: "maintenance.tabs.library", icon: Folder },
@@ -28,7 +23,7 @@ const tabPresentation: Record<SystemSettingsTab, { labelKey: string; icon: Lucid
 
 function resolveSystemTab(tab: string): SettingsLocation<SystemSettingsTab> {
   if (systemSettingsTabs.includes(tab as SystemSettingsTab)) return { tab: tab as SystemSettingsTab };
-  return { tab: systemSettingsTabAliases[tab] ?? "library" };
+  return { tab: "library" };
 }
 
 /**

@@ -24,6 +24,7 @@ describe("legacyLibraryRedirect", () => {
   it("opens earlier run log addresses on Workflows with the run and list they named", () => {
     expect(legacyLibraryRedirect("/activity", "?view=failed&run=7")).toBe("/workflows?tab=history&status=failed&run=7");
     expect(legacyLibraryRedirect("/runs", "?run=7")).toBe("/workflows?run=7");
+    expect(legacyLibraryRedirect("/activity", "?workflow=metadata_sync")).toBe("/workflows");
     expect(legacyLibraryRedirect("/workflows", "?activity=1")).toBe("/workflows");
     expect(legacyLibraryRedirect("/workflows", "?activity=1&workflow=metadata_sync&view=history&run=7")).toBe(
       "/workflows?tab=history&run=7",
@@ -84,8 +85,7 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/cleanup", "?tab=database")).toBeNull();
   });
 
-  it("opens Cleanup tab links of Settings and System on the Cleanup page", () => {
-    expect(legacyLibraryRedirect("/system", "?tab=cleanup")).toBe("/cleanup");
+  it("opens Cleanup tab links of Settings on the Cleanup page", () => {
     expect(legacyLibraryRedirect("/settings/", "?tab=cleanup")).toBe("/cleanup");
   });
 
