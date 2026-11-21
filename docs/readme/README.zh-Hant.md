@@ -24,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="寬版桌面瀏覽器、平板、Android 手機與 iPhone 上的 Kikoto">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto 在桌面瀏覽器上的媒體庫、平板上的作品詳情、Android 手機上附翻譯歌詞的播放器，以及 iPhone 上的發現排行榜">
+  </picture>
 </p>
 
 Kikoto 為每個作品只保留一筆項目，以 DLsite 商品代碼為索引，無論它的檔案位於本機資料夾、另一顆磁碟、快取，還是遠端來源。它在你自己的伺服器上執行，可用任何瀏覽器，以及 Android 與 iOS 應用程式開啟。

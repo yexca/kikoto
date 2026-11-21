@@ -24,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="ワイドなデスクトップブラウザー、タブレット、Android スマートフォン、iPhone 上の Kikoto">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="デスクトップブラウザーの Kikoto ライブラリ、タブレットの作品詳細、Android スマートフォンの翻訳歌詞付きプレーヤー、iPhone の見つけるランキング">
+  </picture>
 </p>
 
 Kikoto は、ファイルがローカルフォルダー、別のディスク、キャッシュ、リモートソースのどこにあっても、DLsite の商品コードをキーとして作品ごとに 1 つの項目を保持します。ご自身のサーバーで動作し、あらゆるブラウザーと Android・iOS アプリで開けます。

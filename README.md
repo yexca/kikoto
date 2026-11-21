@@ -24,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto on a wide desktop browser, a tablet, an Android phone, and an iPhone">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kikoto-readme-showcase-dark.webp">
+    <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto's Library in a desktop browser, a work on a tablet, the player with translated lyrics on an Android phone, and Discover rankings on an iPhone">
+  </picture>
 </p>
 
 Kikoto keeps one entry per work, keyed by its DLsite product code, whether its

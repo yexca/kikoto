@@ -24,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="넓은 화면의 데스크톱 브라우저, 태블릿, Android 휴대폰, iPhone에서 실행 중인 Kikoto">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="데스크톱 브라우저의 Kikoto 라이브러리, 태블릿의 작품 상세, Android 휴대폰의 번역 가사가 표시된 플레이어, iPhone의 둘러보기 순위">
+  </picture>
 </p>
 
 Kikoto는 파일이 로컬 폴더, 다른 디스크, 캐시, 원격 소스 중 어디에 있든 DLsite
