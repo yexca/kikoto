@@ -67,6 +67,18 @@ describe("native asset URLs", () => {
     expect(nativeAssetURL(`${SERVER}/api/media/7/hls/index.m3u8`, SERVER)).toBe(
       "kikoto-asset://asset/api/media/7/hls/index.m3u8",
     );
+    expect(nativeAssetURL(`${SERVER}/api/media/7/subtitles/2.vtt`, SERVER)).toBe(
+      "kikoto-asset://asset/api/media/7/subtitles/2.vtt",
+    );
+    expect(nativeAssetURL(`${SERVER}/api/records/assets/7/thumbnail?v=revision`, SERVER)).toBe(
+      "kikoto-asset://asset/api/records/assets/7/thumbnail?v=revision",
+    );
+    expect(nativeAssetURL(`${SERVER}/api/records/assets/7/hls/index.m3u8`, SERVER)).toBe(
+      "kikoto-asset://asset/api/records/assets/7/hls/index.m3u8",
+    );
+    expect(nativeAssetURL(`${SERVER}/api/records/folders/7/artwork/poster`, SERVER)).toBe(
+      "kikoto-asset://asset/api/records/folders/7/artwork/poster",
+    );
     expect(nativeAssetURL(`${SERVER}/api/remote-sources/7/works/RJ00000000/media?path=track.mp3`, SERVER)).toBe(
       "kikoto-asset://asset/api/remote-sources/7/works/RJ00000000/media?path=track.mp3",
     );
@@ -80,6 +92,9 @@ describe("native asset URLs", () => {
 
   it("leaves other routes, origins, and look-alike base paths on the network", () => {
     expect(nativeAssetURL(`${SERVER}/api/works/1`, SERVER)).toBe(`${SERVER}/api/works/1`);
+    expect(nativeAssetURL(`${SERVER}/api/records/assets/7/progress`, SERVER)).toBe(
+      `${SERVER}/api/records/assets/7/progress`,
+    );
     expect(nativeAssetURL(`${SERVER}/api/assets/manual/a/b.jpg`, SERVER)).toBe(`${SERVER}/api/assets/manual/a/b.jpg`);
     expect(nativeAssetURL(`${SERVER}/api/remote-sources/7/works/RJ00000000/media/extra`, SERVER)).toBe(
       `${SERVER}/api/remote-sources/7/works/RJ00000000/media/extra`,

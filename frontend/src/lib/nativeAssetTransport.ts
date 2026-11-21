@@ -25,7 +25,7 @@ export async function clearNativeAssetTransport() {
 const IOS_ASSET_ORIGIN = "kikoto-asset://asset";
 // The native policy enforces the same routes; this only decides which URLs to rewrite.
 const IOS_ASSET_ROUTE =
-  /^\/api\/(?:assets\/covers\/.+|assets\/manual\/[^/]+|media\/[1-9][0-9]*\/(?:stream|asset|text|download|hls\/(?:index\.m3u8|segment-[0-9]{6}\.ts))|remote-sources\/[1-9][0-9]*\/works\/[^/]+\/(?:media|text)|remote-sources\/[1-9][0-9]*\/images\/[^/]+)$/;
+  /^\/api\/(?:assets\/covers\/.+|assets\/manual\/[^/]+|media\/[1-9][0-9]*\/(?:stream|asset|text|download|subtitles\/[0-9]{1,4}\.vtt)|records\/assets\/[1-9][0-9]*\/(?:stream|thumbnail|subtitle|download|subtitles\/[0-9]{1,4}\.vtt)|records\/folders\/[1-9][0-9]*\/artwork\/(?:poster|backdrop)|(?:media|records\/assets)\/[1-9][0-9]*\/hls\/(?:index\.m3u8|init\.m4s|segment-[0-9]{6}\.(?:ts|m4s))|remote-sources\/[1-9][0-9]*\/works\/[^/]+\/(?:media|text)|remote-sources\/[1-9][0-9]*\/images\/[^/]+)$/;
 
 /**
  * The Android WebView attaches the session credential to media, image, and

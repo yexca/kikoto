@@ -8,13 +8,20 @@ struct KikotoAssetRequestPolicy {
     private static let coverPrefix = "/api/assets/covers/"
     private static let manualPrefix = "/api/assets/manual/"
     private static let mediaPath = try! NSRegularExpression(
-        pattern: "^/api/media/[1-9][0-9]*/(?:stream|asset|text|download)$"
+        pattern: "^/api/media/[1-9][0-9]*/(?:stream|asset|text|download|subtitles/[0-9]{1,4}\\.vtt)$"
     )
+    private static let recordAssetPath = try! NSRegularExpression(
+        pattern: "^/api/records/assets/[1-9][0-9]*/(?:stream|thumbnail|subtitle|download|subtitles/[0-9]{1,4}\\.vtt)$"
+    )
+    private static let recordArtworkPath = try! NSRegularExpression(
+        pattern: "^/api/records/folders/[1-9][0-9]*/artwork/(?:poster|backdrop)$"
+    )
+    // A playlist lists MPEG-TS segments, or fMP4 segments after their initialization section.
     private static let hlsPath = try! NSRegularExpression(
-        pattern: "^/api/media/[1-9][0-9]*/hls/(?:index\\.m3u8|segment-[0-9]{6}\\.ts)$"
+        pattern: "^/api/(?:media|records/assets)/[1-9][0-9]*/hls/(?:index\\.m3u8|init\\.m4s|segment-[0-9]{6}\\.(?:ts|m4s))$"
     )
     private static let hlsSegmentPath = try! NSRegularExpression(
-        pattern: "^/api/media/[1-9][0-9]*/hls/segment-[0-9]{6}\\.ts$"
+        pattern: "^/api/(?:media|records/assets)/[1-9][0-9]*/hls/(?:init\\.m4s|segment-[0-9]{6}\\.(?:ts|m4s))$"
     )
     private static let remoteWorkPath = try! NSRegularExpression(
         pattern: "^/api/remote-sources/[1-9][0-9]*/works/[^/]+/(?:media|text)$"
@@ -113,6 +120,8 @@ struct KikotoAssetRequestPolicy {
             return !route.dropFirst(manualPrefix.count).contains("/")
         }
         return matches(mediaPath, route) ||
+            matches(recordAssetPath, route) ||
+            matches(recordArtworkPath, route) ||
             matches(hlsPath, route) ||
             matches(remoteWorkPath, route) ||
             matches(remoteImagePath, route)

@@ -26,6 +26,18 @@ public class KikotoAssetRequestPolicyTest {
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/download", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/index.m3u8?v=revision", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-000042.ts?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/init.m4s?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-000042.m4s?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/subtitles/2.vtt", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/stream", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/thumbnail?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/subtitle", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/download", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/subtitles/0.vtt", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/hls/index.m3u8?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/hls/segment-000042.ts?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/folders/7/artwork/poster", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/records/folders/7/artwork/backdrop", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/media?path=track.mp3", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/text?path=lyrics.lrc", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/images/AbCd0123_-", "GET"));
@@ -36,6 +48,11 @@ public class KikotoAssetRequestPolicyTest {
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/stream/extra", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-42.ts", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/other.ts", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/progress", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/records/assets/7/stream", "DELETE"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/records/folders/7/artwork/other", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/records/tree", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/assets/manual/nested/example.png", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/0/works/RJ00000000/media?path=track.mp3", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/media/extra?path=track.mp3", "GET"));
@@ -45,6 +62,8 @@ public class KikotoAssetRequestPolicyTest {
     @Test
     public void identifiesOnlyTranscodingSegmentRequests() throws Exception {
         assertTrue(policy.isHLSSegment(new URI("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-000042.ts?v=revision")));
+        assertTrue(policy.isHLSSegment(new URI("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-000042.m4s?v=revision")));
+        assertTrue(policy.isHLSSegment(new URI("https://server.example.invalid:8443/kikoto/api/records/assets/7/hls/init.m4s?v=revision")));
         assertFalse(policy.isHLSSegment(new URI("https://server.example.invalid:8443/kikoto/api/media/7/hls/index.m3u8?v=revision")));
         assertFalse(policy.isHLSSegment(new URI("https://server.example.invalid:8443/kikoto/api/media/7/stream")));
     }

@@ -9,13 +9,20 @@ final class KikotoAssetRequestPolicy {
     private static final String COVER_PREFIX = "/api/assets/covers/";
     private static final String MANUAL_PREFIX = "/api/assets/manual/";
     private static final Pattern MEDIA_PATH = Pattern.compile(
-        "^/api/media/[1-9][0-9]*/(?:stream|asset|text|download)$"
+        "^/api/media/[1-9][0-9]*/(?:stream|asset|text|download|subtitles/[0-9]{1,4}\\.vtt)$"
     );
+    private static final Pattern RECORD_ASSET_PATH = Pattern.compile(
+        "^/api/records/assets/[1-9][0-9]*/(?:stream|thumbnail|subtitle|download|subtitles/[0-9]{1,4}\\.vtt)$"
+    );
+    private static final Pattern RECORD_ARTWORK_PATH = Pattern.compile(
+        "^/api/records/folders/[1-9][0-9]*/artwork/(?:poster|backdrop)$"
+    );
+    // A playlist lists MPEG-TS segments, or fMP4 segments after their initialization section.
     private static final Pattern HLS_PATH = Pattern.compile(
-        "^/api/media/[1-9][0-9]*/hls/(?:index\\.m3u8|segment-[0-9]{6}\\.ts)$"
+        "^/api/(?:media|records/assets)/[1-9][0-9]*/hls/(?:index\\.m3u8|init\\.m4s|segment-[0-9]{6}\\.(?:ts|m4s))$"
     );
     private static final Pattern HLS_SEGMENT_PATH = Pattern.compile(
-        "^/api/media/[1-9][0-9]*/hls/segment-[0-9]{6}\\.ts$"
+        "^/api/(?:media|records/assets)/[1-9][0-9]*/hls/(?:init\\.m4s|segment-[0-9]{6}\\.(?:ts|m4s))$"
     );
     private static final Pattern REMOTE_WORK_PATH = Pattern.compile(
         "^/api/remote-sources/[1-9][0-9]*/works/[^/]+/(?:media|text)$"
@@ -111,6 +118,8 @@ final class KikotoAssetRequestPolicy {
             return route.indexOf('/', MANUAL_PREFIX.length()) < 0;
         }
         return MEDIA_PATH.matcher(route).matches() ||
+            RECORD_ASSET_PATH.matcher(route).matches() ||
+            RECORD_ARTWORK_PATH.matcher(route).matches() ||
             HLS_PATH.matcher(route).matches() ||
             REMOTE_WORK_PATH.matcher(route).matches() ||
             REMOTE_IMAGE_PATH.matcher(route).matches();
