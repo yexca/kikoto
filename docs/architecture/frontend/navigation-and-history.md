@@ -71,10 +71,11 @@ history entries.
   destination's list. On wide layouts, and for a track with no recorded
   origin, the work opens in the current page.
 - Tapping the active destination from a detail route, including a work opened
-  from it, returns to that workspace's last list state. Each destination
-  resumes only the entries it owns, so a work opened from Favorites, Circles,
-  or Voice Actors resumes under that destination and never replaces Library's
-  saved destination.
+  from it, returns to that workspace's last list state. A Record folder, or a
+  file open over one, is such a detail, and Record's list is its root. Each
+  destination resumes only the entries it owns, so a work opened from
+  Favorites, Circles, or Voice Actors resumes under that destination and never
+  replaces Library's saved destination.
 - Detail-page Back returns to the entry that opened the detail on both layouts,
   including Favorites and nested creator routes. A resumed mobile detail uses
   its captured return entry; a direct link falls back to its workspace list.

@@ -9,6 +9,15 @@ import { isVoiceDetailPath } from "@/lib/voiceRoute";
 /** The bottom-navigation workspaces whose list controls live in their location. */
 const browseWorkspaces: readonly PageID[] = ["library", "favorites", "circles", "voice-actors"];
 
+// A Record location below its root names a folder, or a file open over one.
+const recordDetailParams = ["folder", "play", "photo"];
+
+function isRecordRootLocation(parsed: URL) {
+  return (
+    pageFromPath(parsed.pathname) === "records" && !recordDetailParams.some((name) => parsed.searchParams.has(name))
+  );
+}
+
 export function isMobileTabDetailLocation(id: PageID, location: string) {
   try {
     const parsed = new URL(location, "https://kikoto.invalid");
@@ -19,6 +28,7 @@ export function isMobileTabDetailLocation(id: PageID, location: string) {
     }
     if (id === "circles") return /^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/i.test(pathname);
     if (id === "voice-actors") return isVoiceDetailPath(pathname);
+    if (id === "records") return pageFromPath(pathname) === "records" && !isRecordRootLocation(parsed);
   } catch {
     return false;
   }
@@ -30,6 +40,7 @@ function isWorkspaceListLocation(id: PageID, location: string) {
   if (id === "library") return normalizeLibraryBrowseLocation(location) !== null;
   if (id === "circles") return isCircleListLocation(location);
   if (id === "voice-actors") return isVoiceListLocation(location);
+  if (id === "records") return isRecordRootLocation(new URL(location, "https://kikoto.invalid"));
   return pageFromPath(new URL(location, "https://kikoto.invalid").pathname) === id;
 }
 

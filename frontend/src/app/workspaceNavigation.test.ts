@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { changesWorkspace, replacesWorkspaceList } from "./workspaceNavigation";
+import { changesWorkspace, isMobileTabDetailLocation, replacesWorkspaceList } from "./workspaceNavigation";
+
+describe("isMobileTabDetailLocation", () => {
+  it("takes a Record folder or an open file for a detail, so the Record tab returns to its root", () => {
+    expect(isMobileTabDetailLocation("records", "/records?folder=4")).toBe(true);
+    expect(isMobileTabDetailLocation("records", "/records?folder=4&play=7")).toBe(true);
+    expect(isMobileTabDetailLocation("records", "/records?photo=8")).toBe(true);
+    expect(isMobileTabDetailLocation("records", "/records")).toBe(false);
+  });
+});
 
 describe("replacesWorkspaceList", () => {
   afterEach(() => vi.unstubAllGlobals());

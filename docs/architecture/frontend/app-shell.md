@@ -81,9 +81,10 @@ Library, Favorites, Circles, and Voice Actors, with Record as the second of
 five tabs while the instance offers it.
 
 The header owns the desktop page title and carries no description, so page
-content owns any additional context it needs. Mobile browsing destinations use
-the bottom navigation as their location cue and show a compact Kikoto mark
-instead; other destinations retain a single-line title.
+content owns any additional context it needs. The destinations the bottom
+navigation carries, Record among them while it is a tab, use it as their
+location cue and show a compact Kikoto mark instead; other destinations
+retain a single-line title.
 
 ## Sheets and Safe Areas
 

@@ -359,7 +359,8 @@ function AuthenticatedApp() {
       return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];
     });
   }, [mobileNavItems, visibleNavItems]);
-  const showMobilePageTitle = !["library", "favorites", "circles", "voice-actors"].includes(page);
+  // The bottom navigation names its own destinations, so they show the Kikoto mark.
+  const showMobilePageTitle = !mobileNavItems.some((item) => item.id === page);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
   const canAccessCurrentPage =
     page !== "not-found" && canAccessPage(page, authState, navigationHasPermission, viewsAdministration);
