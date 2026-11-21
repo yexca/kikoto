@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="docs/assets/kikoto-readme-banner.webp" width="1600" alt="The Kikoto mascot listening on headphones while album covers, a folder, and a cloud drift into one stream">
+  <img src="docs/assets/kikoto-readme-icon.png" width="112" alt="The Kikoto mascot listening closely">
 </p>
 
 <h1 align="center">Kikoto</h1>
 
 <p align="center">
-  <b>Your purchased audio works, from every folder, cache, and source, in one library.</b><br>
-  A local-first, self-hosted library, lyrics workshop, and player.
+  Every audio work you have bought, in one library you host yourself.
 </p>
 
 <p align="center">
@@ -24,14 +23,14 @@
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/github/license/yexca/kikoto"></a>
 </p>
 
-Kikoto keeps one entry per work, keyed by its product code, and attaches
-DLsite-style metadata, local folders, a rebuildable cache, and
-Kikoeru-compatible remote sources to it. It runs on your own server and opens
-in any browser and in the Android and iOS apps.
-
 <p align="center">
   <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto on a wide desktop browser, a tablet, an Android phone, and an iPhone">
 </p>
+
+Kikoto keeps one entry per work, keyed by its DLsite product code, whether its
+files sit in a local folder, on another disk, in the cache, or on a remote
+source. It runs on your own server and opens in any browser and in the Android
+and iOS apps.
 
 > [!NOTE]
 > Kikoto is self-hosted software only and provides no service or content. It
@@ -40,75 +39,32 @@ in any browser and in the Android and iOS apps.
 
 ## Features
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>📚 One library, every location</h3>
-      Local, cached, tracked, and remote files are states of one work. Use
-      one data directory or a <b>storage pool</b> per disk, and
-      <b>Manage files</b> to gather scattered copies into one folder.
-    </td>
-    <td width="50%" valign="top">
-      <h3>🌐 Remote sources</h3>
-      Browse compatible sources, <b>Track</b> their trees, <b>Cache</b>
-      media for playback, or <b>Fetch</b> reviewed files into your library.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>🏷️ Metadata in your language</h3>
-      Titles, tags, circles, voice actors, and local files carry names per
-      language, and each user picks theirs. Editors fix titles, covers, tags,
-      credits, and bundle contents.
-    </td>
-    <td width="50%" valign="top">
-      <h3>💬 Lyrics, transcribed and translated</h3>
-      Keep lyrics per track and language, transcribe tracks with speech
-      recognition, and translate with an LLM. Every result is reviewed, and
-      <b>Kikoto Helper</b> runs both locally.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>🎧 Listening and Insights</h3>
-      A persistent player with synced progress across devices, plus a
-      listening calendar, year reports, and a taste profile in
-      <b>Insights</b>.
-    </td>
-    <td width="50%" valign="top">
-      <h3>🔔 Subscriptions and smart lists</h3>
-      Follow circles, series, and voice actors for new releases, and let smart
-      lists fill themselves from tags.
-    </td>
-  </tr>
-</table>
+- **Library**: one data directory or a storage pool per disk, search by
+  title, circle, voice actor, tag, or staff, and **Manage files** to gather a
+  work's scattered copies into one folder.
+- **Discover**: new releases from the circles, series, and voice actors you
+  subscribe to, DLsite rankings with their history, and **For you** draws from
+  your own library.
+- **Playback**: one player with progress kept in step across devices,
+  server-side conversion for formats the browser cannot play, and a listening
+  calendar and reports in **Insights**.
+- **Lyrics**: LRC, SRT, WebVTT, and ASS per track and language, speech
+  transcription, and AI translation of lyrics, titles, tags, and file names;
+  [Kikoto Helper](https://github.com/yexca/kikoto-helper) runs both locally.
+- **Metadata**: names per language, chosen by each account, and editors for
+  titles, covers, tags, credits, and bundles.
+- **Remote sources**: browse Kikoeru-compatible sources, then **Track**,
+  **Cache**, or **Fetch** what you want.
+- **Household**: roles for who may browse, fetch, edit, and administer, and
+  long jobs as workflows you can follow and retry.
 
-Scans, syncs, file edits, and AI tasks run as workflows you can follow in
-Workflows, roles decide who may browse, fetch, edit, and administer, and all
-state lives in one SQLite database. The APK and IPA for the apps are attached
-to each [release](https://github.com/yexca/kikoto/releases).
+The [User Guide](docs/user/index.md) describes each of them.
 
-## How It Works
+## Install
 
-Metadata describes a work; file sources only say where its audio is. Both
-attach to the same work, so caching, fetching, or translating never creates a
-second one. See [Core Boundaries](docs/architecture/core-boundaries.md).
-
-```mermaid
-flowchart LR
-  MD["DLsite-style metadata"] -- describes --> W(("One work<br/>per product code"))
-  LF["Local folders"] -- Local --> W
-  CA["Cache"] -- Cached --> W
-  RS["Remote sources"] -- "Tracked / Remote" --> W
-  W --> UI["Web · Android · iOS"]
-```
-
-## Quick Start
-
-The image runs on `linux/amd64` and `linux/arm64` hosts, including ARM NAS
-devices and 64-bit Raspberry Pi OS. With Docker Compose, put
-[`docker-compose.yml`](docker-compose.yml) in an empty directory, add your
-work folders under `data/`, and start Kikoto:
+The image runs on `linux/amd64` and `linux/arm64`, including ARM NAS devices
+and 64-bit Raspberry Pi OS. Put [`docker-compose.yml`](docker-compose.yml) in
+an empty directory, add your work folders under `data/`, and start Kikoto:
 
 ```sh
 mkdir config cache data
@@ -116,33 +72,31 @@ docker compose up -d
 ```
 
 Open <http://127.0.0.1:7655>, enter the setup token from
-`docker compose logs kikoto`, and create the administrator. **Set up your
-library** then runs the first scan. On Windows,
-[Kikoto Helper](https://github.com/yexca/kikoto-helper) does all of this for
-you. [Getting Started](docs/user/en/getting-started.md) covers each step.
+`docker compose logs kikoto`, and create the administrator; **Set up your
+library** runs the first scan. See
+[Getting Started](docs/user/en/getting-started.md) for each step.
+
+- **Windows**: [Kikoto Helper](https://github.com/yexca/kikoto-helper) deploys
+  and manages Kikoto for you.
+- **Android and iOS**: the APK and the unsigned IPA are attached to each
+  [release](https://github.com/yexca/kikoto/releases).
+- **Upgrade**: back up `config/`, run `docker compose up -d --pull always`,
+  and read the [release notes](docs/history/index.md).
 
 > [!WARNING]
 > The default port mapping listens on every host interface. Bind it to
 > loopback, use a VPN, or put a protected reverse proxy in front; see
 > [Security](docs/operations/security.md).
 
-Back up `config/` before upgrading, then run
-`docker compose up -d --pull always` and read the
-[release notes](docs/history/index.md). Settings in `.env` are described in
-[Docker](docs/operations/docker.md#configure-with-env).
-
 ## Documentation
 
-- [User Guide](docs/user/index.md): library, sources, lyrics, playback,
-  subscriptions, and settings.
-- [Operations](docs/operations/configuration.md): configuring and running an
-  instance.
-- [Architecture](docs/architecture/index.md): data and system boundaries.
+- [User Guide](docs/user/index.md) and [Operations](docs/operations/configuration.md)
+- [Architecture](docs/architecture/index.md), starting with
+  [Core Boundaries](docs/architecture/core-boundaries.md)
 - [Contributing](CONTRIBUTING.md), [Local Development](docs/development/local-dev.md),
-  and [Testing](docs/development/testing.md).
-- [Security](SECURITY.md) and [Privacy](PRIVACY.md), including how to report a
-  vulnerability.
-- [Documentation Index](docs/README.md): every public document.
+  and [Testing](docs/development/testing.md)
+- [Security](SECURITY.md) and [Privacy](PRIVACY.md)
+- [Documentation Index](docs/README.md)
 
 ## Disclaimer
 

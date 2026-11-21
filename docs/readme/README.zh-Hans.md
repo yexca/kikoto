@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="../assets/kikoto-readme-banner.webp" width="1600" alt="Kikoto 吉祥物戴着耳机聆听，专辑封面、文件夹和云盘汇聚成同一条数据流">
+  <img src="../assets/kikoto-readme-icon.png" width="112" alt="专注聆听的 Kikoto 吉祥物">
 </p>
 
 <h1 align="center">Kikoto</h1>
 
 <p align="center">
-  <b>你购买的音频作品，无论来自哪个文件夹、缓存或来源，都汇集在同一个媒体库中。</b><br>
-  本地优先、可自托管的媒体库、歌词工坊和播放器。
+  你购买的每一部音频作品，都汇集在一个由你自己托管的媒体库中。
 </p>
 
 <p align="center">
@@ -24,89 +23,52 @@
   <a href="../../LICENSE"><img alt="许可证：AGPL-3.0" src="https://img.shields.io/github/license/yexca/kikoto"></a>
 </p>
 
-Kikoto 为每部作品只保留一个条目，以商品编号为键，并把 DLsite 风格的元数据、本地文件夹、可重建的缓存和兼容 Kikoeru 的远程来源附着到它上面。它运行在你自己的服务器上，可在任何浏览器以及 Android 和 iOS 应用中打开。
-
 <p align="center">
   <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="宽屏桌面浏览器、平板、Android 手机和 iPhone 上的 Kikoto">
 </p>
+
+Kikoto 为每部作品只保留一个条目，以其 DLsite 商品编号为键，无论它的文件位于本地文件夹、另一块磁盘、缓存还是远程来源。它运行在你自己的服务器上，可在任何浏览器以及 Android 和 iOS 应用中打开。
 
 > [!NOTE]
 > Kikoto 只是自托管软件，不提供任何服务或内容，仅用于你自己购买的 DLsite 作品；参见[免责声明](#免责声明)。
 
 ## 功能特性
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>📚 一个媒体库，多处位置</h3>
-      本地、缓存、已跟踪和远程的文件，都是同一部作品的不同状态。可以使用单一的数据目录，也可以为每块磁盘使用一个<b>存储池</b>，并用<b>管理文件</b>把分散的副本收集到同一个文件夹。
-    </td>
-    <td width="50%" valign="top">
-      <h3>🌐 远程来源</h3>
-      浏览兼容的来源，<b>跟踪</b>其目录树，<b>缓存</b>媒体用于播放，或将经过审阅的文件<b>获取</b>到你的媒体库。
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>🏷️ 用你的语言呈现元数据</h3>
-      标题、标签、社团、声优和本地文件都按语言保存名称，每位用户可以选择自己的语言。编辑者可以更正标题、封面、标签、署名信息和合集内容。
-    </td>
-    <td width="50%" valign="top">
-      <h3>💬 歌词，转写与翻译</h3>
-      按音轨和语言保存歌词，用语音识别转写音轨，并用 LLM 翻译。所有结果都需经过审阅，<b>Kikoto Helper</b> 可在本地运行两者。
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>🎧 聆听与数据面板</h3>
-      常驻的播放器，播放进度在各设备间同步，另有收听日历、年度报告和口味画像，位于<b>数据面板</b>。
-    </td>
-    <td width="50%" valign="top">
-      <h3>🔔 订阅与智能列表</h3>
-      关注社团、系列和声优的新作发布，并让智能列表根据标签自动填充。
-    </td>
-  </tr>
-</table>
+- **媒体库**：使用单一的数据目录，或为每块磁盘使用一个存储池，可按标题、社团、声优、标签或制作人员搜索，并用**管理文件**把一部作品分散的副本收集到同一个文件夹。
+- **发现**：你所订阅的社团、系列和声优的新作，DLsite 排行榜及其历史，以及从你自己媒体库中抽取作品的**为你推荐**。
+- **播放**：一个播放器，播放进度在各设备间保持同步，对浏览器无法播放的格式在服务器端转换，并在**数据面板**中提供收听日历和报告。
+- **歌词**：按音轨和语言保存 LRC、SRT、WebVTT 和 ASS 歌词，支持语音转写，以及歌词、标题、标签和文件名的 AI 翻译；[Kikoto Helper](https://github.com/yexca/kikoto-helper) 可在本地运行这两者。
+- **元数据**：按语言保存名称，由每个账号自行选择，并提供标题、封面、标签、署名信息和合集的编辑器。
+- **远程来源**：浏览兼容 Kikoeru 的来源，然后**跟踪**、**缓存**或**获取**你想要的内容。
+- **家庭共用**：用角色决定谁可以浏览、获取、编辑和管理，长时间任务以工作流的形式运行，可以查看进度并重试。
 
-扫描、同步、文件编辑和 AI 任务都以工作流的形式运行，可在工作流中查看进度；角色决定谁可以浏览、获取、编辑和管理；所有状态都保存在同一个 SQLite 数据库中。应用的 APK 和 IPA 会附在每个[发布版本](https://github.com/yexca/kikoto/releases)中。
+[用户指南](../user/index.md)介绍了其中的每一项。
 
-## 工作原理
+## 安装
 
-元数据描述一部作品；文件来源只说明它的音频在哪里。两者都附着在同一部作品上，因此缓存、获取或翻译绝不会产生第二部作品。参见[核心边界](../architecture/core-boundaries.md)。
-
-```mermaid
-flowchart LR
-  MD["DLsite 风格元数据"] -- 描述 --> W(("一部作品<br/>对应一个商品编号"))
-  LF["本地文件夹"] -- 本地 --> W
-  CA["缓存"] -- 已缓存 --> W
-  RS["远程来源"] -- "已跟踪 / 远程" --> W
-  W --> UI["Web · Android · iOS"]
-```
-
-## 快速开始
-
-镜像可在 `linux/amd64` 和 `linux/arm64` 主机上运行，包括 ARM NAS 设备和 64 位 Raspberry Pi OS。使用 Docker Compose：把 [`docker-compose.yml`](../../docker-compose.yml) 放到一个空目录中，把作品文件夹添加到 `data/` 下，然后启动 Kikoto：
+镜像可在 `linux/amd64` 和 `linux/arm64` 主机上运行，包括 ARM NAS 设备和 64 位 Raspberry Pi OS。把 [`docker-compose.yml`](../../docker-compose.yml) 放到一个空目录中，把作品文件夹添加到 `data/` 下，然后启动 Kikoto：
 
 ```sh
 mkdir config cache data
 docker compose up -d
 ```
 
-打开 <http://127.0.0.1:7655>，输入 `docker compose logs kikoto` 中的初始化令牌，并创建管理员。随后**设置媒体库**会运行首次扫描。在 Windows 上，[Kikoto Helper](https://github.com/yexca/kikoto-helper)会为你完成这一切。[入门指南](../user/zh-Hans/getting-started.md)介绍了每一步。
+打开 <http://127.0.0.1:7655>，输入 `docker compose logs kikoto` 中的初始化令牌，并创建管理员；随后**设置媒体库**会运行首次扫描。每一步的说明参见[入门指南](../user/zh-Hans/getting-started.md)。
+
+- **Windows**：[Kikoto Helper](https://github.com/yexca/kikoto-helper) 会为你部署和管理 Kikoto。
+- **Android 和 iOS**：APK 和未签名的 IPA 会附在每个[发布版本](https://github.com/yexca/kikoto/releases)中。
+- **升级**：备份 `config/`，运行 `docker compose up -d --pull always`，并阅读[发布说明](../history/index.md)。
 
 > [!WARNING]
 > 默认的端口映射会监听主机的所有网络接口。请把它绑定到回环地址、使用 VPN，或在前面放置受保护的反向代理；参见[安全](../operations/security.md)。
 
-升级前请备份 `config/`，然后运行 `docker compose up -d --pull always`，并阅读[发布说明](../history/index.md)。`.env` 中的设置请参阅 [Docker](../operations/docker.md#configure-with-env)。
-
 ## 文档
 
-- [用户指南](../user/index.md)：媒体库、来源、歌词、播放、订阅和设置。
-- [运维](../operations/configuration.md)：配置和运行实例。
-- [架构](../architecture/index.md)：数据和系统边界。
-- [贡献指南](../../CONTRIBUTING.md)、[本地开发](../development/local-dev.md)和[测试](../development/testing.md)。
-- [安全](../../SECURITY.md)和[隐私](../../PRIVACY.md)，包括如何报告漏洞。
-- [文档索引](../README.md)：所有公开文档。
+- [用户指南](../user/index.md)和[运维](../operations/configuration.md)
+- [架构](../architecture/index.md)，从[核心边界](../architecture/core-boundaries.md)开始
+- [贡献指南](../../CONTRIBUTING.md)、[本地开发](../development/local-dev.md)和[测试](../development/testing.md)
+- [安全](../../SECURITY.md)和[隐私](../../PRIVACY.md)
+- [文档索引](../README.md)
 
 ## 免责声明
 
