@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
-    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="デスクトップブラウザーの Kikoto ライブラリ、タブレットの作品詳細、Android スマートフォンの翻訳歌詞付きプレーヤー、iPhone の見つけるランキング">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="デスクトップブラウザーの Kikoto ライブラリと、スマートフォンの再生中画面">
   </picture>
 </p>
 

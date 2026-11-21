@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
-    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="데스크톱 브라우저의 Kikoto 라이브러리, 태블릿의 작품 상세, Android 휴대폰의 번역 가사가 표시된 플레이어, iPhone의 둘러보기 순위">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="데스크톱 브라우저의 Kikoto 라이브러리와 휴대폰의 재생 중 화면">
   </picture>
 </p>
 

@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kikoto-readme-showcase-dark.webp">
-    <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto's Library in a desktop browser, a work on a tablet, the player with translated lyrics on an Android phone, and Discover rankings on an iPhone">
+    <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto's Library in a desktop browser and Now Playing on a phone">
   </picture>
 </p>
 

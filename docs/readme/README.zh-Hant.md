@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/kikoto-readme-showcase-dark.webp">
-    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto 在桌面瀏覽器上的媒體庫、平板上的作品詳情、Android 手機上附翻譯歌詞的播放器，以及 iPhone 上的發現排行榜">
+    <img src="../assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto 在桌面瀏覽器上的媒體庫，以及手機上的正在播放頁面">
   </picture>
 </p>
 
