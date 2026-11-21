@@ -359,8 +359,10 @@ function AuthenticatedApp() {
       return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];
     });
   }, [mobileNavItems, visibleNavItems]);
-  // The bottom navigation names its own destinations, so they show the Kikoto mark.
-  const showMobilePageTitle = !mobileNavItems.some((item) => item.id === page);
+  // The bottom navigation names its own tabs, so they show the Kikoto mark. A
+  // page that only fills a slot an account cannot use, such as About for an
+  // anonymous visitor, keeps its title.
+  const showMobilePageTitle = !mobileNavItems.some((item) => item.id === page && preferredMobileTabs.includes(item.id));
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
   const canAccessCurrentPage =
     page !== "not-found" && canAccessPage(page, authState, navigationHasPermission, viewsAdministration);

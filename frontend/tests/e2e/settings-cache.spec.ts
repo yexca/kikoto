@@ -718,8 +718,8 @@ test("Settings links land on their section and System keeps its open tab in the 
 
 test("Cleanup is its own page with Works, Cache, and Database tabs", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
-  // A link to the former System tab opens the page.
-  await page.goto("/system?tab=cleanup");
+  // A link to the former Settings tab opens the page.
+  await page.goto("/settings?tab=cleanup");
   await expect(page).toHaveURL(/\/cleanup$/);
   await expect(page.getByRole("heading", { name: "Cleanup", exact: true, level: 1 })).toBeVisible();
   const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
