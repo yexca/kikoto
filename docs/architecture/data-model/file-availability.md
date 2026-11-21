@@ -78,6 +78,9 @@ poster and backdrop; `record_asset` stores one row per regular file and its
 discovery/probe state; both keep the natural-order `sort_key` of the name,
 computed for the collation `record_root.derived_version` names; `record_asset_progress`
 stores per-user playback position; and `record_asset_state` stores per-user
-favorite, watched, and note state. These tables do not reference `work`,
+favorite, watched, and note state. Every column that references a
+`record_asset` row is indexed, so deleting files, as forgetting a catalog or
+trashing a folder does, checks each reference through an index. These tables
+do not reference `work`,
 `media_item`, or `primary_code`. See [Record library](../record-library.md) for
 scan and serving rules.
