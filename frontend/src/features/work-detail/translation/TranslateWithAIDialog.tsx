@@ -150,13 +150,8 @@ export function TranslateWithAIDialog({
   }, [languages, work.id]);
   const loadItems = useCallback(async () => {
     try {
-      const [review, active, attention, history] = await Promise.all([
-        api.listTranslationItems("review", { workId: work.id }),
-        api.listTranslationItems("active", { workId: work.id }),
-        api.listTranslationItems("attention", { workId: work.id }),
-        api.listTranslationItems("history", { workId: work.id }),
-      ]);
-      setItems([...review.items, ...active.items, ...attention.items, ...history.items]);
+      const result = await api.listTranslationItems(["review", "active", "attention", "history"], { workId: work.id });
+      setItems(result.items);
     } catch (error) {
       toast.notify(toastFromError(error, t("aiTranslation.reviewLoadFailed")));
     }

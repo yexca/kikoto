@@ -275,6 +275,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/works/{id}/llm-translations/{language}/{field}", s.revokeLLMTranslation)
 	mux.HandleFunc("GET /api/works/{id}/ai-translation", s.getAITranslationPlan)
 	mux.HandleFunc("POST /api/works/{id}/ai-translation", s.createAITranslation)
+	mux.HandleFunc("POST /api/translation/batch", s.createAITranslationBatch)
 	mux.HandleFunc("GET /api/translation/items", s.listTranslationItems)
 	mux.HandleFunc("GET /api/translation/items/{id}/text", s.translationItemText)
 	mux.HandleFunc("POST /api/translation/items/accept", s.acceptTranslationItems)

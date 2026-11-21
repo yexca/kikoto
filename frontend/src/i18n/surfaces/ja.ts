@@ -265,6 +265,8 @@ export const surfaceJapanese = {
       queued_other: "{{count}} 作品の翻訳をキューに追加しました。",
       skipped_one: "{{count}} 作品は足りないものがありませんでした。",
       skipped_other: "{{count}} 作品は足りないものがありませんでした。",
+      failed_one: "{{count}} 作品を登録できませんでした。",
+      failed_other: "{{count}} 作品を登録できませんでした。",
       reviewHint: "結果はこのページでレビューを待ちます。",
       unsupported: "選択したモデルは{{language}}に翻訳できません。",
       scopeHint: "歌詞は各作品の「AIで翻訳」でトラックごとに選びます。",

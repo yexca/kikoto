@@ -259,6 +259,8 @@ export const surfaceHant = {
       queued_other: "已排入 {{count}} 個作品的翻譯。",
       skipped_one: "{{count}} 個作品沒有缺少的內容。",
       skipped_other: "{{count}} 個作品沒有缺少的內容。",
+      failed_one: "{{count}} 個作品未能排入佇列。",
+      failed_other: "{{count}} 個作品未能排入佇列。",
       reviewHint: "結果在本頁等待審核。",
       unsupported: "所選模型無法翻譯為{{language}}。",
       scopeHint: "歌詞在各作品的「AI 翻譯」中依音軌選擇。",

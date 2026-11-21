@@ -636,8 +636,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
     await selection.runBusy(async () => {
       setMessage("");
       try {
-        const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
-        await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
+        const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest", status);
         toast.success(t("creatorBrowse.savedAndMarked", { code: syncResult.primaryCode }));
         await refreshDetail();
       } catch (error) {

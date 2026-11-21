@@ -50,7 +50,7 @@ export function BatchTranslationDialog({
     files: permissions.files && works.some((work) => work.translation.files.done < work.translation.files.total),
   }));
   const [queueing, setQueueing] = useState(false);
-  const [result, setResult] = useState<{ queued: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ queued: number; skipped: number; failed: number } | null>(null);
 
   useEffect(() => {
     void api
@@ -76,31 +76,23 @@ export function BatchTranslationDialog({
   const queue = async () => {
     if (!canQueue || !choice) return;
     setQueueing(true);
-    let queued = 0;
-    let skipped = 0;
     try {
-      for (const work of works) {
-        try {
-          await api.requestTranslation(work.id, {
-            languages: [language],
-            categories: selected,
-            providerId: choice.service.id,
-            model: choice.model,
-            lyrics: [],
-          });
-          queued++;
-        } catch (error) {
-          // A work with nothing missing is skipped; any other refusal stops the batch.
-          if (error instanceof ApiError && error.code === "nothing_to_translate") skipped++;
-          else throw error;
-        }
+      const { results } = await api.requestTranslationBatch(
+        works.map((work) => work.id),
+        { languages: [language], categories: selected, providerId: choice.service.id, model: choice.model },
+      );
+      // A work with nothing missing is skipped; another refusal fails only that work.
+      const failures = results.filter((item) => item.code && item.code !== "nothing_to_translate");
+      const skipped = results.filter((item) => item.code === "nothing_to_translate").length;
+      setResult({ queued: results.length - skipped - failures.length, skipped, failed: failures.length });
+      if (failures.length > 0) {
+        toast.notify(toastFromError(new ApiError("", 422, failures[0].code), t("aiTranslation.requestFailed")));
       }
+      onQueued();
     } catch (error) {
       toast.notify(toastFromError(error, t("aiTranslation.requestFailed")));
     } finally {
       setQueueing(false);
-      setResult({ queued, skipped });
-      onQueued();
     }
   };
 
@@ -118,6 +110,9 @@ export function BatchTranslationDialog({
               <p className="text-muted-foreground">
                 {t("translationCoverage.batch.skipped", { count: result.skipped })}
               </p>
+            )}
+            {result.failed > 0 && (
+              <p className="text-destructive">{t("translationCoverage.batch.failed", { count: result.failed })}</p>
             )}
             <p className="text-muted-foreground">{t("translationCoverage.batch.reviewHint")}</p>
           </div>

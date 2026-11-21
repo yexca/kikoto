@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -57,6 +58,8 @@ var translationListStates = map[string][]string{
 
 // listTranslationItems lists translation items by view: review (waiting for
 // review), active, attention (stopped) or history, across works or for one.
+// Several view parameters list each view in turn, in the order given and with
+// its own order and limit, so a dialog that shows every view polls once.
 func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
 	actor, ok := userFromContext(r.Context())
 	if ok && s.cfg.IsDemo() {
@@ -68,17 +71,22 @@ func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 		return
 	}
-	view := r.URL.Query().Get("view")
-	if view == "" {
-		view = "review"
+	views := []string{}
+	for _, view := range r.URL.Query()["view"] {
+		if view == "" || slices.Contains(views, view) {
+			continue
+		}
+		if _, ok := translationListStates[view]; !ok {
+			writeAPIError(w, 400, "invalid_filter", "Invalid translation view.", false)
+			return
+		}
+		views = append(views, view)
 	}
-	states, ok := translationListStates[view]
-	if !ok {
-		writeAPIError(w, 400, "invalid_filter", "Invalid translation view.", false)
-		return
+	if len(views) == 0 {
+		views = []string{"review"}
 	}
-	where := "item.state IN (" + strings.TrimSuffix(strings.Repeat("?,", len(states)), ",") + ")"
-	args := stringsToAny(states)
+	filter := ""
+	args := []any{}
 	if raw := r.URL.Query().Get("workId"); raw != "" {
 		workID, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || workID <= 0 {
@@ -100,7 +108,7 @@ func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			ids = append(ids, mediaWorkID)
 		}
-		where += " AND item.work_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + ")"
+		filter += " AND item.work_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + ")"
 		args = append(args, ids...)
 	}
 	if raw := r.URL.Query().Get("runId"); raw != "" {
@@ -109,17 +117,23 @@ func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, 400, "invalid_run_id", "Invalid run id.", false)
 			return
 		}
-		where += " AND item.workflow_run_id = ?"
+		filter += " AND item.workflow_run_id = ?"
 		args = append(args, runID)
 	}
-	order := "item.work_id, item.language, item.category, item.id"
-	if view == "history" {
-		order = "item.updated_at DESC, item.id DESC"
-	}
-	items, err := s.translationItemResponses(r.Context(), where+" ORDER BY "+order+" LIMIT 1000", args...)
-	if err != nil {
-		writeError(w, err)
-		return
+	items := []translationItemResponse{}
+	for _, view := range views {
+		states := translationListStates[view]
+		where := "item.state IN (" + strings.TrimSuffix(strings.Repeat("?,", len(states)), ",") + ")" + filter
+		order := "item.work_id, item.language, item.category, item.id"
+		if view == "history" {
+			order = "item.updated_at DESC, item.id DESC"
+		}
+		viewItems, err := s.translationItemResponses(r.Context(), where+" ORDER BY "+order+" LIMIT 1000", append(stringsToAny(states), args...)...)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		items = append(items, viewItems...)
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
 }

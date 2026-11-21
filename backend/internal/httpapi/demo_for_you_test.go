@@ -144,6 +144,11 @@ func TestDemoShowsTranslationPlanAndSampleModels(t *testing.T) {
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("Demo translation request = %d", response.Code)
 	}
+	response = httptest.NewRecorder()
+	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/translation/batch", strings.NewReader(`{"workIds":[1],"languages":["en-us"],"categories":["title"]}`)))
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("Demo batch translation request = %d", response.Code)
+	}
 }
 
 // Demo lists where Manage files could take files from without recording

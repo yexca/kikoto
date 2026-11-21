@@ -89,13 +89,6 @@ export function useRemoteSourceActions({
     setSaveConfirm({ codes: selectedSaveable.map((work) => work.primaryCode), run: runBulkSaveSelected });
   };
 
-  const ensureRemoteWorkForState = async (work: RemoteWork, reason: string) => {
-    const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), reason);
-    onWorkStateChanged(work.primaryCode, { workId: result.workId });
-    await onSynced(result.workId);
-    return result.workId;
-  };
-
   /** A mark or list on a work not yet in the Library adds it there first, which is tracking. */
   const canStateRemoteWork = (work: RemoteWork) => Boolean(work.workId) || requireTrack();
 
@@ -103,9 +96,10 @@ export function useRemoteSourceActions({
     if (!work.primaryCode || !canStateRemoteWork(work)) return;
     setIsSyncingCode(work.primaryCode);
     try {
-      const workId = work.workId ?? (await ensureRemoteWorkForState(work, "mark_interest"));
-      if (!workId) return;
-      await api.updateWorkUserState(workId, { listeningStatus: status });
+      // A work not yet in the Library is added and marked in one request.
+      const workId = work.workId
+        ? (await api.updateWorkUserState(work.workId, { listeningStatus: status })).workId
+        : (await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), "mark_interest", status)).workId;
       onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
       toast.success(t("library.savedAndMarked", { code: work.primaryCode }));
       await onSynced(workId);

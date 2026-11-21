@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +86,47 @@ func insertTranslationAccessRun(t *testing.T, f manualOverrideFixture, code, sta
 		t.Fatal(err)
 	}
 	return runID
+}
+
+// A dialog that shows every view of a work reads them in one request, each
+// view in the order asked.
+func TestTranslationItemsListSeveralViewsInOrder(t *testing.T) {
+	f := newManualOverrideFixture(t, config.Config{})
+	runID := insertTranslationAccessRun(t, f, aiTranslationWorkflowCode, "running", f.userID)
+	for _, item := range []struct{ category, state string }{
+		{"title", "accepted"}, {"description", "failed"}, {"tag", "queued"}, {"file_name", "ready"},
+	} {
+		if _, err := f.db.Exec(`INSERT INTO translation_item(workflow_run_id, work_id, language, category, dedup_key, state)
+			VALUES (?, ?, 'en-us', ?, ?, ?)`, runID, f.workID, item.category, "en-us|"+item.category, item.state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	viewer := currentUser{ID: f.userID, Permissions: []string{"library:read", "library:write"}}
+	list := func(query string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/api/translation/items?"+query, nil)
+		r = r.WithContext(context.WithValue(r.Context(), currentUserKey, viewer))
+		response := httptest.NewRecorder()
+		f.server.listTranslationItems(response, r)
+		return response
+	}
+
+	response := list(fmt.Sprintf("view=review&view=active&view=attention&view=history&view=review&workId=%d", f.workID))
+	var body struct {
+		Items []translationItemResponse `json:"items"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	states := []string{}
+	for _, item := range body.Items {
+		states = append(states, item.State)
+	}
+	if response.Code != http.StatusOK || strings.Join(states, ",") != "ready,queued,failed,accepted" {
+		t.Fatalf("items = %d %v", response.Code, states)
+	}
+	if response := list("view=review&view=everything"); response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown view = %d %s", response.Code, response.Body.String())
+	}
 }
 
 func TestAITranslationCancellationEnforcesFeatureAndOwnership(t *testing.T) {

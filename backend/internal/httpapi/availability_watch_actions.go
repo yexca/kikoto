@@ -24,7 +24,8 @@ type availabilityWatchActionResult struct {
 	// Runs are the bulk runs queued, one per remote source.
 	Runs []remoteBulkWorkflowResult `json:"runs"`
 	// Queued lists the targets a run now acts for; Skipped counts listed
-	// targets that are not available or already have the action running.
+	// targets that are not available, are in the library, or already have
+	// the action running.
 	Queued  []int64 `json:"queued"`
 	Skipped int     `json:"skipped"`
 }
@@ -78,9 +79,9 @@ func (s *Server) actOnAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 }
 
 // queueAvailabilityWatchAction queues one remote bulk run per source for the
-// listed targets that are available and have no run of the action in
-// progress. Each target references the bulk run until the run starts the
-// target's own Track or Fetch.
+// listed targets that are available, not in the library, and have no run of
+// the action in progress. Each target references the bulk run until the run
+// starts the target's own Track or Fetch.
 func (s *Server) queueAvailabilityWatchAction(ctx context.Context, userID int64, action string, targetIDs []int64, excluded []string) (availabilityWatchActionResult, error) {
 	column := availabilityWatchRunColumn(action)
 	rows, err := s.db.QueryContext(ctx, `
@@ -90,6 +91,7 @@ func (s *Server) queueAvailabilityWatchAction(ctx context.Context, userID int64,
 		WHERE target.watch_id = ? AND target.active = 1 AND target.state = 'ready'
 			AND target.available_source_id IS NOT NULL
 			AND COALESCE(run.status, '') NOT IN ('queued', 'running')
+			AND NOT `+availabilityWatchInLibrarySQL+`
 			AND target.id IN (SELECT value FROM json_each(?))
 		ORDER BY target.id
 	`, availabilityWatchID, mustJSON(targetIDs))
@@ -181,10 +183,15 @@ func (s *Server) recordAvailabilityWatchActionFailure(ctx context.Context, targe
 }
 
 // cleanUpAvailabilityWatchTargets removes the listed targets that the library
-// has or whose Track or Fetch succeeded. A listed target that no longer
+// has or whose Track or Fetch succeeded, unless a Track or Fetch of the
+// target is still queued or running. A listed target that no longer
 // qualifies stays, so the caller removes only what it showed.
 func (s *Server) cleanUpAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
-	s.removeAvailabilityWatchTargetList(w, r, `AND (`+availabilityWatchInLibrarySQL+`
+	s.removeAvailabilityWatchTargetList(w, r, `AND NOT EXISTS (
+			SELECT 1 FROM workflow_run AS run
+			WHERE run.id IN (target.track_run_id, target.fetch_run_id) AND run.status IN ('queued', 'running')
+		)
+		AND (`+availabilityWatchInLibrarySQL+`
 		OR EXISTS (SELECT 1 FROM workflow_run AS run WHERE run.id IN (target.track_run_id, target.fetch_run_id) AND run.status = 'succeeded'))`)
 }
 

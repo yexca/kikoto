@@ -535,14 +535,13 @@ export function CircleDetailPage({
     if (!target) return;
     await selection.runBusy(async () => {
       try {
-        const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
-        const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
+        const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest", status);
         toast.success(t("creatorBrowse.savedAndMarked", { code: syncResult.primaryCode }));
         const next = await api.getCircle(externalId, detailQuery);
         setDetail({
           ...next,
           works: next.works.map((item) =>
-            item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item,
+            item.primaryCode === work.primaryCode ? { ...item, listeningMark: status } : item,
           ),
         });
       } catch (error) {

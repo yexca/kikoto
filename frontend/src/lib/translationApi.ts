@@ -68,6 +68,9 @@ export type TranslationRequest = {
 
 export type TranslationSkip = { category: string; language?: string; subject?: string; reason: string };
 
+/** One work of a batch: the run it queued, or the code that refused it. */
+export type TranslationBatchResult = { workId: number; runId?: number; items?: number; code?: string };
+
 export type TranslationItem = {
   id: number;
   runId: number;
@@ -143,8 +146,16 @@ export const translationApi = {
       `/api/works/${workId}/ai-translation`,
       request,
     ),
-  listTranslationItems: (view: TranslationItemView, filter: { workId?: number; runId?: number } = {}) => {
-    const query = new URLSearchParams({ view });
+  /** Queues the request, without lyrics, for each work; each result reports its own outcome. */
+  requestTranslationBatch: (workIds: number[], request: Omit<TranslationRequest, "lyrics">) =>
+    postJSONBody<{ results: TranslationBatchResult[] }>("/api/translation/batch", { workIds, ...request }),
+  /** Several views list each view in turn, in the order given. */
+  listTranslationItems: (
+    view: TranslationItemView | readonly TranslationItemView[],
+    filter: { workId?: number; runId?: number } = {},
+  ) => {
+    const query = new URLSearchParams();
+    for (const name of typeof view === "string" ? [view] : view) query.append("view", name);
     if (filter.workId !== undefined) query.set("workId", String(filter.workId));
     if (filter.runId !== undefined) query.set("runId", String(filter.runId));
     return getJSON<{ items: TranslationItem[] }>(`/api/translation/items?${query}`);

@@ -213,18 +213,23 @@ func TestAvailabilityWatchCleanUpRemovesOnlyListedTargetsInLibraryOrDone(t *test
 		`INSERT INTO availability_watch (id, configured_by_user_id) VALUES (1, 1)`,
 		`INSERT INTO workflow_run (id, workflow_code, display_name, status, trigger_type) VALUES
 			(10, 'remote_fetch', 'Fetch', 'succeeded', 'manual'), (11, 'remote_fetch', 'Fetch', 'running', 'manual')`,
-		// RJ00000001 has local files; RJ00000005 has them too but is not listed.
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Local'), (5, 'RJ00000005', 'Local')`,
-		`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'Track'), (5, 5, 'audio', 'Track')`,
+		// RJ00000001 and RJ00000006 have local files; RJ00000005 has them too
+		// but is not listed.
+		`INSERT INTO work (id, primary_code, title) VALUES
+			(1, 'RJ00000001', 'Local'), (5, 'RJ00000005', 'Local'), (6, 'RJ00000006', 'Local')`,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'Track'), (5, 5, 'audio', 'Track'), (6, 6, 'audio', 'Track')`,
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (11, 'example_local', 'Example Local', 'local_folder')`,
 		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES
-			(1, 11, 'local', '/library/RJ00000001/track.mp3', 'available'), (5, 11, 'local', '/library/RJ00000005/track.mp3', 'available')`,
-		`INSERT INTO availability_watch_target (id, watch_id, work_code, active, state, fetch_run_id) VALUES
-			(1, 1, 'RJ00000001', 1, 'ready', NULL),
-			(2, 1, 'RJ00000002', 1, 'ready', 10),
-			(3, 1, 'RJ00000003', 1, 'ready', 11),
-			(4, 1, 'RJ00000004', 1, 'monitoring', NULL),
-			(5, 1, 'RJ00000005', 1, 'ready', NULL)`,
+			(1, 11, 'local', '/library/RJ00000001/track.mp3', 'available'), (5, 11, 'local', '/library/RJ00000005/track.mp3', 'available'),
+			(6, 11, 'local', '/library/RJ00000006/track.mp3', 'available')`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, active, state, track_run_id, fetch_run_id) VALUES
+			(1, 1, 'RJ00000001', 1, 'ready', NULL, NULL),
+			(2, 1, 'RJ00000002', 1, 'ready', NULL, 10),
+			(3, 1, 'RJ00000003', 1, 'ready', NULL, 11),
+			(4, 1, 'RJ00000004', 1, 'monitoring', NULL, NULL),
+			(5, 1, 'RJ00000005', 1, 'ready', NULL, NULL),
+			(6, 1, 'RJ00000006', 1, 'ready', NULL, 11),
+			(7, 1, 'RJ00000007', 1, 'ready', 10, 11)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -259,10 +264,12 @@ func TestAvailabilityWatchCleanUpRemovesOnlyListedTargetsInLibraryOrDone(t *test
 	}
 
 	// Target 3's Fetch is still running and target 4 is waiting, so both
-	// stay; target 5 was not listed, so it stays too.
+	// stay; target 5 was not listed, so it stays too. Targets 6 (in the
+	// library) and 7 (Track succeeded) qualify but have a Fetch running, so
+	// they stay in progress.
 	cleaned := httptest.NewRecorder()
 	server.cleanUpAvailabilityWatchTargets(cleaned, availabilityWatchAPIRequest(
-		http.MethodPost, "/api/availability-watch/targets/clean-up", `{"targetIds":[1,2,3,4]}`, &actor,
+		http.MethodPost, "/api/availability-watch/targets/clean-up", `{"targetIds":[1,2,3,4,6,7]}`, &actor,
 	))
 	if cleaned.Code != http.StatusOK {
 		t.Fatalf("clean up status = %d, body = %s", cleaned.Code, cleaned.Body.String())
@@ -275,13 +282,13 @@ func TestAvailabilityWatchCleanUpRemovesOnlyListedTargetsInLibraryOrDone(t *test
 		codes = append(codes, target.WorkCode)
 	}
 	sort.Strings(codes)
-	if strings.Join(codes, ",") != "RJ00000003,RJ00000004,RJ00000005" {
+	if strings.Join(codes, ",") != "RJ00000003,RJ00000004,RJ00000005,RJ00000006,RJ00000007" {
 		t.Fatalf("remaining targets = %v", codes)
 	}
 
 	removed := httptest.NewRecorder()
 	server.removeAvailabilityWatchTargets(removed, availabilityWatchAPIRequest(
-		http.MethodPost, "/api/availability-watch/targets/remove", `{"targetIds":[3,4]}`, &actor,
+		http.MethodPost, "/api/availability-watch/targets/remove", `{"targetIds":[3,4,6,7]}`, &actor,
 	))
 	if err := json.NewDecoder(removed.Body).Decode(&view); err != nil {
 		t.Fatal(err)
@@ -342,11 +349,18 @@ func TestAvailabilityWatchFetchQueuesAvailableTargetsThroughRemoteBulkFetch(t *t
 			(1, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1),
 			(2, 'other_remote', 'Other Remote', 'kikoeru_compatible', 1)`,
 		`INSERT INTO availability_watch (id, configured_by_user_id) VALUES (1, 1)`,
-		// RJ00000066 is available only as its edition RJ00000088.
+		// RJ00000066 is available only as its edition RJ00000088; RJ00000004
+		// is available but already in the library.
 		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, available_source_id, available_code) VALUES
 			(1, 1, 'RJ00000066', 'ready', 1, 'RJ00000088'),
 			(2, 1, 'RJ00000002', 'ready', 2, 'RJ00000002'),
-			(3, 1, 'RJ00000003', 'monitoring', NULL, '')`,
+			(3, 1, 'RJ00000003', 'monitoring', NULL, ''),
+			(4, 1, 'RJ00000004', 'ready', 2, 'RJ00000004')`,
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (11, 'example_local', 'Example Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (4, 'RJ00000004', 'Local')`,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (4, 4, 'audio', 'Track')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES
+			(4, 11, 'local', '/library/RJ00000004/track.mp3', 'available')`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -369,7 +383,7 @@ func TestAvailabilityWatchFetchQueuesAvailableTargetsThroughRemoteBulkFetch(t *t
 
 	response := httptest.NewRecorder()
 	server.fetchAvailabilityWatchTargets(response, availabilityWatchAPIRequest(
-		http.MethodPost, "/api/availability-watch/fetch", `{"targetIds":[1,2,3],"excludeExtensions":[".WAV","flac"]}`, &actor,
+		http.MethodPost, "/api/availability-watch/fetch", `{"targetIds":[1,2,3,4],"excludeExtensions":[".WAV","flac"]}`, &actor,
 	))
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("fetch status = %d, body = %s", response.Code, response.Body.String())
@@ -378,8 +392,9 @@ func TestAvailabilityWatchFetchQueuesAvailableTargetsThroughRemoteBulkFetch(t *t
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
-	// One bulk run per source; the waiting target is skipped.
-	if len(result.Runs) != 2 || result.Skipped != 1 || len(result.Queued) != 2 {
+	// One bulk run per source; the waiting target and the one in the
+	// library are skipped.
+	if len(result.Runs) != 2 || result.Skipped != 2 || strings.Trim(fmt.Sprint(result.Queued), "[]") != "1 2" {
 		t.Fatalf("fetch result = %#v", result)
 	}
 	if result.Runs[0].SourceID != 1 || strings.Join(result.Runs[0].Codes, ",") != "RJ00000088" || result.Runs[0].Action != "fetch" {

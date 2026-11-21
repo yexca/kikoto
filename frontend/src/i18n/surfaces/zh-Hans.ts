@@ -259,6 +259,8 @@ export const surfaceHans = {
       queued_other: "已排队翻译 {{count}} 个作品。",
       skipped_one: "{{count}} 个作品没有缺少的内容。",
       skipped_other: "{{count}} 个作品没有缺少的内容。",
+      failed_one: "{{count}} 个作品未能排队。",
+      failed_other: "{{count}} 个作品未能排队。",
       reviewHint: "结果在本页等待审核。",
       unsupported: "所选模型不能翻译为{{language}}。",
       scopeHint: "歌词在各作品的「AI 翻译」中按音轨选择。",

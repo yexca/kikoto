@@ -383,7 +383,8 @@ Metadata sync may look up a purchase bonus's parent product (see
   write. Add an explicit Demo regression test for every new mutation surface.
 - Check capabilities, never role names. `remote:track` guards every path that
   adds a remote work to the shared Library or removes a tracked source,
-  including a sync for a mark or list and a work-level cache request;
+  including a sync for a mark or list and a work-level cache request (a sync
+  that sets the mark in its own transaction also requires `favorites:write`);
   `remote:fetch` guards every path that makes the server download remote files;
   Fetch workflows additionally require `metadata:sync` because preparation may
   refresh and materialize DLsite family metadata. A new handler or background

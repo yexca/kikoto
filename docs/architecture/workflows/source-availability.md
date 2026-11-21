@@ -140,8 +140,9 @@ at most 100 `targetIds`, and Fetch an `excludeExtensions` list. They need the
 permissions of a bulk Track or Fetch (see
 [Workflow Permissions](workflows-page.md#workflow-permissions)): `remote:track`, or
 `remote:fetch` with `metadata:sync`. Each queues one `remote_bulk_action`
-run per source for the listed targets that are available and have no run of
-that action queued or running, acting on the edition each target found. In
+run per source for the listed targets that are available, are not in the
+library, and have no run of that action queued or running, acting on the
+edition each target found. In
 the same transaction the targets reference the bulk run; when the bulk run
 starts a target's Track or Fetch, the target references that run instead, and
 a failure leaves the target on the bulk run with a reason. The view reports
@@ -160,9 +161,9 @@ targets added by someone else; a code added again after removal starts over
 with a new added time. `DELETE /api/availability-watch/targets/{id}` removes
 one target and `POST /api/availability-watch/targets/remove` the listed ones.
 `POST /api/availability-watch/targets/clean-up` removes, in one statement,
-the listed targets that are in the library or whose Track or Fetch succeeded,
-so a target that no longer qualifies stays; nothing removes targets on its
-own. The view returns each target's title and cached cover (its own, or the
+the listed targets that are in the library or whose Track or Fetch succeeded
+and have no Track or Fetch queued or running, so a target that no longer
+qualifies stays; nothing removes targets on its own. The view returns each target's title and cached cover (its own, or the
 family original's), its known family editions with their titles and
 languages, when it was added, its release date when known, whether it is in
 the library, and the status of its Track and Fetch runs.

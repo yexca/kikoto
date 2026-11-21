@@ -882,6 +882,79 @@ func TestRemoteWorkMaterializeSyncKeepsSourceWithoutTracking(t *testing.T) {
 	}
 }
 
+func TestRemoteWorkMaterializeSyncSetsTheMarkInTheSameTransaction(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/workInfo/RJ00000009":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 11, SourceID: "RJ00000009", Title: "Marked work"})
+		case "/api/tracks/11":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaStreamURL: "/media/track.mp3"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'sync-mark-user', 'contributor')`,
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	sync := func(body string, permissions []string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/1/works/RJ00000009/sync", strings.NewReader(body))
+		request.SetPathValue("id", "1")
+		request.SetPathValue("code", "RJ00000009")
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "contributor", Permissions: permissions}))
+		response := httptest.NewRecorder()
+		server.syncRemoteSourceWork(response, request)
+		return response
+	}
+	works := func() int {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000009'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
+	// A mark that cannot be set adds no work.
+	if response := sync(`{"listeningStatus":"bogus"}`, account.PermissionsForRole("contributor")); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid mark status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if response := sync(`{"listeningStatus":"want_to_listen"}`, []string{"remote:track"}); response.Code != http.StatusForbidden {
+		t.Fatalf("mark without favorites:write status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if count := works(); count != 0 {
+		t.Fatalf("works after refused marks = %d, want 0", count)
+	}
+
+	response := sync(`{"triggerReason":"circle_mark_interest","listeningStatus":"want_to_listen"}`, account.PermissionsForRole("contributor"))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("sync and mark status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var result remoteWorkSyncResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT listening_status FROM user_work_state WHERE user_id = 1 AND work_id = ?`, result.WorkID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if result.ListeningStatus != "want_to_listen" || status != "want_to_listen" {
+		t.Fatalf("mark = result %q stored %q, want want_to_listen", result.ListeningStatus, status)
+	}
+}
+
 func TestRemoteFetchEnqueueDoesNotReenterConnectionPoolInsideTransaction(t *testing.T) {
 	const code = "TEST-WORK-001"
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

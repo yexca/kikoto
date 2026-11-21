@@ -131,18 +131,16 @@ export function watchTargetOtherEdition(target: Pick<AvailabilityWatchTarget, "w
 
 /**
  * What Clean up removes: targets the library already has, and targets whose
- * Track or Fetch is done. A target counts once, in the library first.
+ * Track or Fetch is done, but never one with a Track or Fetch in progress. A
+ * target counts once, in the library first. The server applies the same rule.
  */
 export function cleanableWatchTargets(targets: readonly AvailabilityWatchTarget[]) {
   const inLibrary: AvailabilityWatchTarget[] = [];
   const done: AvailabilityWatchTarget[] = [];
   for (const target of targets) {
-    if (target.state === "disabled") continue;
+    if (target.state === "disabled" || activeRun(watchTargetRun(target))) continue;
     if (target.inLibrary) inLibrary.push(target);
-    else if (
-      !activeRun(watchTargetRun(target)) &&
-      (targetRun(target, "fetch")?.state === "done" || targetRun(target, "track")?.state === "done")
-    )
+    else if (targetRun(target, "fetch")?.state === "done" || targetRun(target, "track")?.state === "done")
       done.push(target);
   }
   return { inLibrary, done };

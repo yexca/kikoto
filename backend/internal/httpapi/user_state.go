@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/personal"
 )
 
 type workUserStateResponse struct {
@@ -100,6 +102,23 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, workUserStateResponse{WorkID: workID, ListeningStatus: status, Favorite: currentFavorite != 0, UserRating: rating})
+}
+
+// setWorkListeningStatus sets the account's listening mark on the family's
+// canonical work inside tx, keeping its favorite and rating.
+func setWorkListeningStatus(ctx context.Context, tx *sql.Tx, userID, workID int64, status string) error {
+	stateWorkID, err := personal.CanonicalWorkID(ctx, tx, workID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO user_work_state (user_id, work_id, listening_status)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, work_id) DO UPDATE SET
+			listening_status = excluded.listening_status,
+			updated_at = CURRENT_TIMESTAMP
+	`, userID, stateWorkID, status)
+	return err
 }
 
 // validUserRating reads a stored rating, treating anything outside one to five

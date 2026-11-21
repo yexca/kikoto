@@ -310,6 +310,8 @@ export const surfaceEnglish = {
       queued_other: "Queued translation of {{count}} works.",
       skipped_one: "{{count}} work had nothing missing.",
       skipped_other: "{{count}} works had nothing missing.",
+      failed_one: "{{count}} work could not be queued.",
+      failed_other: "{{count}} works could not be queued.",
       reviewHint: "Results wait for review on this page.",
       unsupported: "The chosen model does not translate into {{language}}.",
       scopeHint: "Lyrics are chosen track by track in each work's Translate with AI.",

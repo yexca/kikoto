@@ -1,6 +1,9 @@
 package library
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -122,5 +125,42 @@ func TestParseSearchClausesKeepsQuotedPhraseAsOneTextClause(t *testing.T) {
 	want := []SearchClause{{Kind: "text", Value: "calm night"}, {Kind: "text", Value: "rain"}}
 	if got := ParseSearchClauses(`"calm night" rain`); !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+}
+
+// testdata/search_clauses.json is shared with the frontend's
+// librarySearchClauses tests, so the two parsers cannot drift apart.
+func TestParseSearchClausesMatchesTheSharedFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "search_clauses.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Name     string `json:"name"`
+			Query    string `json:"query"`
+			Compiled string `json:"compiled"`
+			Clauses  []struct {
+				Kind  string `json:"kind"`
+				Value string `json:"value"`
+			} `json:"clauses"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) == 0 {
+		t.Fatal("shared search fixture has no cases")
+	}
+	for _, tc := range fixture.Cases {
+		want := make([]SearchClause, 0, len(tc.Clauses))
+		for _, clause := range tc.Clauses {
+			want = append(want, SearchClause{Kind: clause.Kind, Value: clause.Value})
+		}
+		for _, query := range []string{tc.Query, tc.Compiled} {
+			if got := ParseSearchClauses(query); !reflect.DeepEqual(got, want) {
+				t.Errorf("%s: ParseSearchClauses(%q) = %#v, want %#v", tc.Name, query, got, want)
+			}
+		}
 	}
 }

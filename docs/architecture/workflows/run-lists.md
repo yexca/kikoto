@@ -9,7 +9,14 @@ every run as the administrators' diagnostic view; features with their own
 pages show their runs there too. The Translation page reads Translate with
 AI runs and items through `/api/translation/runs` and
 `/api/translation/items`, open to accounts with `library:write` without
-`workflows:run`, and a work's Manage lyrics lists its transcriptions.
+`workflows:run`, and a work's Manage lyrics lists its transcriptions. Items
+take one or more `view` values (review, active, attention, history) and list
+each view in the order given, so a work's Translate with AI dialog reads all
+four in one request; `workId` narrows them to the work's family.
+`POST /api/translation/batch` queues the coverage view's batch: the same
+request without lyrics for each of at most 1,000 `workIds`, one run per work.
+It returns each work's run and item count, or the code that refused it, such
+as `nothing_to_translate`, and a refused work does not stop the others.
 `POST /api/translation/runs/{id}/cancel` cancels a queued or running
 `ai_translation` run under the [ownership rule](workflows-page.md#workflow-permissions).
 Each returned translation run carries `canCancel`, which controls whether

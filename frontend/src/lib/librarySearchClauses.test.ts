@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { syntheticWorkCode } from "@/test-support/workCode";
@@ -7,6 +9,7 @@ import {
   formatSearchClause,
   normalizeSearchClauseDraft,
   parseSearchClauses,
+  type SearchClause,
 } from "./librarySearchClauses";
 
 describe("Library shelf search clause", () => {
@@ -141,5 +144,19 @@ describe("Library structured search clauses", () => {
   it("quotes values with spaces when serializing editable filters", () => {
     expect(formatSearchClause({ kind: "circle", value: 'Example "Circle"' })).toBe('circle:"Example Circle"');
     expect(formatSearchClause({ kind: "shelf", value: "unexpected" })).toBe("shelf:true");
+  });
+});
+
+// The backend's ParseSearchClauses reads the same fixture, so the two parsers
+// and the compiled query the Library sends cannot drift apart.
+const sharedSearchFixture = JSON.parse(
+  readFileSync(new URL("../../../backend/internal/library/testdata/search_clauses.json", import.meta.url), "utf8"),
+) as { cases: { name: string; query: string; compiled: string; clauses: SearchClause[] }[] };
+
+describe("Search clauses shared with the server", () => {
+  it.each(sharedSearchFixture.cases)("$name", ({ query, compiled, clauses }) => {
+    expect(parseSearchClauses(query)).toEqual(clauses);
+    expect(compileLibrarySearchQuery(clauses)).toBe(compiled);
+    expect(parseSearchClauses(compiled)).toEqual(clauses);
   });
 });

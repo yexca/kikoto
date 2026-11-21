@@ -231,13 +231,16 @@ export function RemoteOnlyWorkDetailController({
     }
   };
 
-  /** A mark or list adds a work that is not yet in the Library, which is tracking. */
-  const syncForUserState = async (reason: string) => {
+  /**
+   * A mark or list adds a work that is not yet in the Library, which is
+   * tracking; a mark is set in the same request.
+   */
+  const syncForUserState = async (reason: string, status?: ListeningStatus) => {
     if (!detail?.primaryCode || !requireTrack()) return null;
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
+      const result = await api.syncRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason, status);
       await onWorksChanged();
       setDetail((current) => (current ? { ...current, workId: result.workId, importStatus: "synced" } : current));
       return result.workId;
@@ -251,16 +254,15 @@ export function RemoteOnlyWorkDetailController({
 
   const updateRemoteMark = async (status: ListeningStatus) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? (await syncForUserState("detail_mark_interest"));
-    if (!workID) return;
+    const markedAs = (marked: ListeningStatus) =>
+      toast.success(t("library.markedAs", { code: detail.primaryCode, status: listeningStatusLabel(marked, t) }));
+    if (!detail.workId) {
+      if (await syncForUserState("detail_mark_interest", status)) markedAs(status);
+      return;
+    }
     try {
-      const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-      toast.success(
-        t("library.markedAs", {
-          code: detail.primaryCode,
-          status: listeningStatusLabel(result.listeningStatus, t),
-        }),
-      );
+      const result = await api.updateWorkUserState(detail.workId, { listeningStatus: status });
+      markedAs(result.listeningStatus);
       await onWorksChanged();
     } catch (error) {
       toast.notify(toastFromError(error, t("errors.unavailable")));

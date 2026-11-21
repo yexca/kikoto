@@ -175,6 +175,8 @@ export type RemoteWorkSyncResult = {
   syncedMediaItems: number;
   syncedLocations: number;
   triggerReason: string;
+  /** The mark the sync set, when the request asked for one. */
+  listeningStatus?: ListeningStatus;
 };
 
 export type RemoteWorkTrackResult = {
@@ -468,9 +470,11 @@ export const remoteSourceApi = {
     postJSONBody<RemoteWorkTrackResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {
       triggerReason,
     }),
-  syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
+  /** A listeningStatus also marks the added work, in the same transaction. */
+  syncRemoteSourceWork: (id: number, code: string, triggerReason: string, listeningStatus?: ListeningStatus) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, {
       triggerReason,
+      ...(listeningStatus ? { listeningStatus } : {}),
     }),
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),

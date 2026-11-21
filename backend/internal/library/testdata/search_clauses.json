@@ -1,0 +1,87 @@
+{
+  "description": "Search clauses both parsers read the same way. The frontend's parseSearchClauses and the backend's ParseSearchClauses turn each query into its clauses; the frontend's compileLibrarySearchQuery turns the clauses into compiled, the query the Library sends, and the backend reads compiled back into the same clauses. A compiled query lists wrapped $key:value$ clauses before the others, so each case orders its clauses that way.",
+  "cases": [
+    {
+      "name": "structured keys with quoted values and a work code",
+      "query": "circle:\"Example Circle\" -va:Example tag:ASMR rating:4.5 RJ00000000",
+      "compiled": "$circle:Example Circle$ $-va:Example$ $tag:ASMR$ rating:4.5 RJ00000000",
+      "clauses": [
+        { "kind": "circle", "value": "Example Circle" },
+        { "kind": "exclude_voice_actor", "value": "Example" },
+        { "kind": "tag", "value": "ASMR" },
+        { "kind": "rating_min", "value": "4.5" },
+        { "kind": "code", "value": "RJ00000000" }
+      ]
+    },
+    {
+      "name": "key aliases",
+      "query": "voice:'Example Voice' creator:Second tagw:Example -tagw:Other illustration:Artist -illust:Other language:ja sell:100",
+      "compiled": "$va:Example Voice$ $va:Second$ $tag:Example$ $-tag:Other$ $illust:Artist$ $-illust:Other$ $lang:ja$ sales:100",
+      "clauses": [
+        { "kind": "voice_actor", "value": "Example Voice" },
+        { "kind": "voice_actor", "value": "Second" },
+        { "kind": "tag", "value": "Example" },
+        { "kind": "exclude_tag", "value": "Other" },
+        { "kind": "illustration", "value": "Artist" },
+        { "kind": "exclude_illustration", "value": "Other" },
+        { "kind": "language", "value": "ja" },
+        { "kind": "sales_min", "value": "100" }
+      ]
+    },
+    {
+      "name": "staff credits, personal tags, duration bounds, age, and shelf",
+      "query": "staff:Example author:Writer -scenario:Other mytag:\"Sleep aid\" -mytag:Archived duration:30 -duration:90 age:general shelf:TRUE",
+      "compiled": "$staff:Example$ $author:Writer$ $-scenario:Other$ $mytag:Sleep aid$ $-mytag:Archived$ $duration:30$ $-duration:90$ $age:general$ shelf:true",
+      "clauses": [
+        { "kind": "staff", "value": "Example" },
+        { "kind": "author", "value": "Writer" },
+        { "kind": "exclude_scenario", "value": "Other" },
+        { "kind": "user_tag", "value": "Sleep aid" },
+        { "kind": "exclude_user_tag", "value": "Archived" },
+        { "kind": "duration_min", "value": "30" },
+        { "kind": "duration_max", "value": "90" },
+        { "kind": "age", "value": "general" },
+        { "kind": "shelf", "value": "true" }
+      ]
+    },
+    {
+      "name": "a key followed by its value as the next part",
+      "query": "circle: \"Example Circle\" quiet",
+      "compiled": "$circle:Example Circle$ quiet",
+      "clauses": [
+        { "kind": "circle", "value": "Example Circle" },
+        { "kind": "text", "value": "quiet" }
+      ]
+    },
+    {
+      "name": "wrapped clauses",
+      "query": "$-tag:Example tag$ $sell:100$ RJ00000001",
+      "compiled": "$-tag:Example tag$ sales:100 RJ00000001",
+      "clauses": [
+        { "kind": "exclude_tag", "value": "Example tag" },
+        { "kind": "sales_min", "value": "100" },
+        { "kind": "code", "value": "RJ00000001" }
+      ]
+    },
+    {
+      "name": "keys in any case",
+      "query": "CIRCLE:Example -VA:Other",
+      "compiled": "$circle:Example$ $-va:Other$",
+      "clauses": [
+        { "kind": "circle", "value": "Example" },
+        { "kind": "exclude_voice_actor", "value": "Other" }
+      ]
+    },
+    {
+      "name": "unknown keys, invalid shelf values, quoted phrases, and short codes stay text",
+      "query": "unknown:value shelf:maybe \"Example phrase\" RJ0000",
+      "compiled": "unknown:value shelf:maybe \"Example phrase\" RJ0000",
+      "clauses": [
+        { "kind": "text", "value": "unknown:value" },
+        { "kind": "text", "value": "shelf:maybe" },
+        { "kind": "text", "value": "Example phrase" },
+        { "kind": "text", "value": "RJ0000" }
+      ]
+    }
+  ]
+}

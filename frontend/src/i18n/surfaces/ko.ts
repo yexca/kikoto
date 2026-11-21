@@ -265,6 +265,8 @@ export const surfaceKorean = {
       queued_other: "작품 {{count}}개의 번역을 대기열에 추가했습니다.",
       skipped_one: "작품 {{count}}개는 빠진 항목이 없었습니다.",
       skipped_other: "작품 {{count}}개는 빠진 항목이 없었습니다.",
+      failed_one: "작품 {{count}}개를 대기열에 등록하지 못했습니다.",
+      failed_other: "작품 {{count}}개를 대기열에 등록하지 못했습니다.",
       reviewHint: "결과는 이 페이지에서 검토를 기다립니다.",
       unsupported: "선택한 모델은 {{language}}(으)로 번역할 수 없습니다.",
       scopeHint: "가사는 각 작품의 AI로 번역에서 트랙별로 선택합니다.",

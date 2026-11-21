@@ -416,9 +416,10 @@ test("Translate with AI sends only what each language lacks and shows what it wr
     });
   });
   let applied: TranslationItem[] = [];
+  // The dialog reads every view in one request.
   await page.route("**/api/translation/items?*", (route) => {
-    const view = new URL(route.request().url()).searchParams.get("view");
-    return route.fulfill({ json: { items: view === "history" ? applied : [] } });
+    const views = new URL(route.request().url()).searchParams.getAll("view");
+    return route.fulfill({ json: { items: views.includes("history") ? applied : [] } });
   });
 
   await page.goto("/");

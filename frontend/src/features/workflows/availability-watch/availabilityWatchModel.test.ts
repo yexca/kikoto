@@ -96,13 +96,14 @@ describe("watchTargetAllows", () => {
 });
 
 describe("cleanableWatchTargets", () => {
-  it("counts works in the library and works whose Track or Fetch is done, each once", () => {
+  it("counts works in the library and works whose Track or Fetch is done, each once, never one in progress", () => {
     const { inLibrary, done } = cleanableWatchTargets([
       available(1, { inLibrary: true, fetchRunId: 10, fetchRunStatus: "succeeded" }),
       available(2, { trackRunId: 20, trackRunStatus: "succeeded" }),
       available(3, { trackRunId: 30, trackRunStatus: "succeeded", fetchRunId: 31, fetchRunStatus: "running" }),
       available(4, { fetchRunId: 40, fetchRunStatus: "failed" }),
       target(5),
+      available(6, { inLibrary: true, fetchRunId: 60, fetchRunStatus: "queued" }),
     ]);
     expect(inLibrary.map((item) => item.id)).toEqual([1]);
     expect(done.map((item) => item.id)).toEqual([2]);
