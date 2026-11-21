@@ -220,12 +220,14 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
       )
       .toBeGreaterThan(framesBeforeSeek);
     await expect(video).toHaveJSProperty("error", null);
-    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog
+      .getByRole("button", { name: "Close player", exact: true })
+      .click();
     await expect(dialog).toHaveCount(0);
     const reopened = await openVideo();
     await expect(reopened.video).toHaveJSProperty("paused", false);
     await reopened.dialog
-      .getByRole("button", { name: "Close", exact: true })
+      .getByRole("button", { name: "Close player", exact: true })
       .click();
     const currentURL = page.url();
     const downloaded = page.waitForEvent("download");
