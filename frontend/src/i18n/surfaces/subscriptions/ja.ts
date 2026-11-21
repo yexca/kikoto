@@ -32,8 +32,8 @@ export const subscriptionsJapanese = {
       columnFailed: "この列を選べませんでした。",
       empty: {
         maybe_like: "まだ聴いていないローカル作品はすべて他の列にあります。",
-        try_new: "この冒険度で新しいと言える作品はありません。",
-        listen_again: "この冒険度でもう一度聴く作品はありません。",
+        try_new: "この温度で新しいと言える作品はありません。",
+        listen_again: "この温度でもう一度聴く作品はありません。",
         listenAgainCold: "再生した作品は、しばらく経つとここに表示されます。",
       },
       elapsed: {

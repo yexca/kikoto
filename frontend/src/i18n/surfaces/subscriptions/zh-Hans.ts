@@ -32,8 +32,8 @@ export const subscriptionsHans = {
       columnFailed: "无法抽取这一列。",
       empty: {
         maybe_like: "所有未听过的本地作品都在其他列中。",
-        try_new: "在这个探索程度下没有足够新的作品。",
-        listen_again: "在这个探索程度下没有可以再听的作品。",
+        try_new: "在这个温度下没有足够新的作品。",
+        listen_again: "在这个温度下没有可以再听的作品。",
         listenAgainCold: "播放过的作品过一段时间后会显示在这里。",
       },
       elapsed: {

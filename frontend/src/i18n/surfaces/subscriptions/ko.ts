@@ -32,8 +32,8 @@ export const subscriptionsKorean = {
       columnFailed: "이 열을 뽑지 못했습니다.",
       empty: {
         maybe_like: "아직 듣지 않은 로컬 작품은 모두 다른 열에 있습니다.",
-        try_new: "이 모험도에서 새롭다고 할 작품이 없습니다.",
-        listen_again: "이 모험도에서 다시 들을 작품이 없습니다.",
+        try_new: "이 온도에서 새롭다고 할 작품이 없습니다.",
+        listen_again: "이 온도에서 다시 들을 작품이 없습니다.",
         listenAgainCold: "재생한 작품은 시간이 조금 지나면 여기에 표시됩니다.",
       },
       elapsed: {

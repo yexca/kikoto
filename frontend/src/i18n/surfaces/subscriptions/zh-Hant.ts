@@ -32,8 +32,8 @@ export const subscriptionsHant = {
       columnFailed: "無法抽取這一欄。",
       empty: {
         maybe_like: "所有未聽過的本機作品都在其他欄中。",
-        try_new: "在這個探索程度下沒有足夠新的作品。",
-        listen_again: "在這個探索程度下沒有可以再聽的作品。",
+        try_new: "在這個溫度下沒有足夠新的作品。",
+        listen_again: "在這個溫度下沒有可以再聽的作品。",
         listenAgainCold: "播放過的作品過一段時間後會顯示在這裡。",
       },
       elapsed: {
