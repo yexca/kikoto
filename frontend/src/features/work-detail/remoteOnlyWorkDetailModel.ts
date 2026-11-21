@@ -34,6 +34,7 @@ export function remoteOnlySourceInfo(
     : { kind: "remote" as const, status: "degraded" as const, statusLabel: i18n.t("libraryDetail.loadingSource") };
   return {
     label: displaySourceName,
+    tabLabel: activeTab?.label ?? displaySourceName,
     ...activeSource,
     stats,
     loading: remoteOnlyDirectoryLoading({

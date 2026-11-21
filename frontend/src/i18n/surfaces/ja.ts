@@ -2330,6 +2330,7 @@ export const surfaceJapanese = {
     filesLabel: "ファイル",
     copyWorkCode: "作品コードをコピー",
     directory: "ディレクトリ",
+    directorySource: "ディレクトリのソース",
     workCodeActions: "作品コード操作",
     trackedSources: "追跡済みソース",
     moreDirectoryActions: "その他のディレクトリ操作",

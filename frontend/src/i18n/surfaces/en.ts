@@ -2382,6 +2382,7 @@ export const surfaceEnglish = {
     filesLabel: "Files",
     copyWorkCode: "Copy work code",
     directory: "Directory",
+    directorySource: "Directory source",
     workCodeActions: "Work code actions",
     trackedSources: "Tracked sources",
     moreDirectoryActions: "More directory actions",

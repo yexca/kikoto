@@ -22,7 +22,7 @@ import {
   workflowRunFixture,
 } from "./fixtures/api";
 import { playbackReportResultFixture } from "./fixtures/playback-reports";
-import { openWorkMetadataEditor } from "./fixtures/work-detail";
+import { closeDetailSources, openDetailSources, openWorkMetadataEditor } from "./fixtures/work-detail";
 import { showFullWorkCards } from "./fixtures/library-view";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
@@ -252,7 +252,41 @@ test("a library card rates its work and follows a rating set in work detail", as
   expect(ratings).toEqual([2, 5]);
 });
 
-test("a lone local source is named in the directory header until the viewer always shows its tab", async ({ page }) => {
+test("a phone names the shown source in the detail tab row and lists its sources in a menu", async ({ page }) => {
+  const mediaItems = [
+    mediaItemFixture({
+      id: 1,
+      title: "track.mp3",
+      locations: [mediaLocationFixture({ id: 1, fileSourceName: "Main local library", path: "RJ00000000/track.mp3" })],
+    }),
+  ];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  // The Directory has no source row of its own; the tab row names the source.
+  const directory = page.getByTestId("directory-panel");
+  await expect(directory.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(directory.getByRole("button", { name: /^(Local|Tracked)/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  const sourceButton = page.getByRole("button", { name: "Directory source: Local", exact: true });
+  await expect(sourceButton).toBeVisible();
+
+  // From Info, the source opens the Directory with its source menu, which
+  // lists the sources by name without visibility choices and leaves out the
+  // Tracked placeholder that has nothing to browse.
+  const sources = await openDetailSources(page);
+  await expect(directory).toBeVisible();
+  await expect(sources.getByRole("radio")).toHaveCount(1);
+  await expect(sources.locator('button[title="Local: Local files available"]')).toHaveAttribute("aria-checked", "true");
+  await expect(sources.getByText("Main local library")).toHaveCount(0);
+  await expect(sources.getByRole("radiogroup", { name: "Local visibility" })).toHaveCount(0);
+  await closeDetailSources(page);
+});
+
+test("@desktop a lone local source is named in the directory header until the viewer always shows its tab", async ({
+  page,
+}) => {
   const mediaItems = [
     mediaItemFixture({
       id: 1,
@@ -270,7 +304,6 @@ test("a lone local source is named in the directory header until the viewer alwa
   await expect(directory.getByRole("button", { name: /^(Local|Tracked)/ })).toHaveCount(0);
 
   // The viewer can always show the lone tab, or show the hidden Tracked placeholder.
-  // A compact detail keeps the source controls in its Directory tab menu.
   await page.getByRole("button", { name: "Source tab visibility", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Local visibility" }).getByRole("radio", { name: "Always show" }).click();
   await expect(directory.locator('button[title="Local: Local files available"]')).toHaveAttribute(
@@ -367,7 +400,8 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   // A phone stops a long name at two lines until the viewer asks for full names.
   const cutShort = () => fileName.evaluate((element) => element.scrollHeight > element.clientHeight + 1);
   expect(await cutShort()).toBe(true);
-  const fullNames = page.getByTestId("directory-panel").getByRole("button", { name: "Full names", exact: true });
+  // Full names sits at the end of the Info and Directory row.
+  const fullNames = page.getByRole("button", { name: "Full names", exact: true });
   await fullNames.click();
   await expect(fullNames).toHaveAttribute("aria-pressed", "true");
   expect(await cutShort()).toBe(false);

@@ -2216,6 +2216,7 @@ export const surfaceHant = {
     filesLabel: "檔案",
     copyWorkCode: "複製作品代碼",
     directory: "目錄",
+    directorySource: "目錄來源",
     workCodeActions: "作品代碼操作",
     trackedSources: "已追蹤來源",
     moreDirectoryActions: "更多目錄操作",

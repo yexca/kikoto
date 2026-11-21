@@ -13,6 +13,31 @@ export async function showWorkDetailTab(page: Page, tab: "Info" | "Directory") {
   await page.getByRole("button", { name: tab, exact: true }).click();
 }
 
+/**
+ * Opens the Directory's sources: a compact detail's source menu, which lists
+ * each source as a radio titled `<label>: <status>`, or a wider detail's
+ * source tab row. Close the menu with `closeDetailSources`.
+ */
+export async function openDetailSources(page: Page) {
+  if (!isCompactWorkDetail(page)) return page.getByTestId("directory-panel");
+  await page.getByRole("button", { name: /^Directory source: / }).click();
+  const menu = page.getByRole("dialog", { name: "Directory source", exact: true });
+  await menu.waitFor();
+  return menu;
+}
+
+export async function closeDetailSources(page: Page) {
+  if (!isCompactWorkDetail(page)) return;
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "Directory source", exact: true }).waitFor({ state: "hidden" });
+}
+
+/** Shows the Directory from the source titled `<label>: <status>`. */
+export async function selectDetailSource(page: Page, title: string) {
+  const sources = await openDetailSources(page);
+  await sources.locator(`button[title="${title}"]`).click();
+}
+
 export async function openWorkMetadataEditor(page: Page) {
   await page.getByTestId("hero-actions").getByRole("button", { name: "Edit metadata", exact: true }).click();
 }

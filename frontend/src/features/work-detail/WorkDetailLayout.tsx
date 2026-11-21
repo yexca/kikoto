@@ -809,11 +809,15 @@ function MobileWorkDetailLayout({
 
       {/* The actions follow the title so Play stays on the first screen however long
           the credits and tags run. The row scrolls sideways into the page gutter;
-          its padding keeps the 44px touch targets and focus rings inside the
-          clipped strip, and the flow root keeps that padding out of the Hero spacing. */}
+          each control's touch area reaches past its 32px face to 44px, and the
+          padding keeps those areas and focus rings inside the clipped strip; the
+          flow root keeps that padding out of the Hero spacing. */}
       <div className="flow-root">
         <div className="-mx-4 -my-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div data-testid="hero-actions" className="flex w-max items-center gap-3">
+          <div
+            data-testid="hero-actions"
+            className="flex w-max items-center gap-3 [&_button]:relative [&_button]:before:absolute [&_button]:before:-inset-1.5"
+          >
             {actions}
           </div>
         </div>
@@ -855,6 +859,7 @@ function MobileWorkDetailLayout({
       <CompactDetailTabs
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
+        source={{ label: sourceInfo.tabLabel, status: sourceInfo.status, statusLabel: sourceInfo.statusLabel }}
         info={
           <div className="space-y-4">
             <WorkDescription description={description} />

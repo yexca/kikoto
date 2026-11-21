@@ -327,7 +327,13 @@
   work has saved playback, otherwise **Play**, which plays the folder the
   Directory opens on. When nothing can play, its place says why instead of
   showing a disabled button. On a phone the actions sit right below the title,
-  so Play is on the first screen.
+  so Play is on the first screen; there Play is sized to its label, and Mark,
+  your rating, List, and Metadata keep a 44px touch area.
+- On a phone, Info and Directory are one slim row that names the shown source
+  at its end, with **Display names** and **Full names** as icons after it. The
+  source opens a menu that lists every source by name, then **Check sources**,
+  so the Directory has no source row of its own and the phone has no source
+  visibility choices.
 - Mark, your rating, and List are quieter controls beside it, followed by
   **Metadata**, and List has no border in or out of a list. Source info lists
   the selected source's actions at every width, and for the local source

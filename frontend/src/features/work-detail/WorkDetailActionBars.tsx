@@ -81,7 +81,8 @@ export function HeroPrimaryAction({
   const name = resume ? t("detailActions.resumeSavedPlayback") : t("detailActions.playWork");
   return (
     <Button
-      className="min-w-[6.5rem] gap-2 px-4"
+      // A phone sizes it to its label so it leads the row without outweighing it.
+      className="gap-2 px-4 max-sm:h-10 max-sm:gap-1.5 max-sm:px-3.5 sm:min-w-[6.5rem]"
       disabled={pending}
       aria-busy={pending || undefined}
       aria-label={name}

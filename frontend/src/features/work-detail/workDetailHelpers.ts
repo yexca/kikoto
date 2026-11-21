@@ -24,6 +24,8 @@ export const emptyRemoteWorkPreview: RemoteWorkPreview = {
 
 export type ActiveSourceInfoModel = {
   label: string;
+  /** The source's short name, as its source tab names it. */
+  tabLabel: string;
   kind: SourceTabInfo["kind"];
   status: SourceTabInfo["status"];
   statusLabel: string;

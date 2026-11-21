@@ -1,4 +1,5 @@
 # Work Detail
+
 [English](../en/work-detail.md) · [简体中文](../zh-Hans/work-detail.md) · [繁體中文](../zh-Hant/work-detail.md) · [日本語](../ja/work-detail.md) · [한국어](../ko/work-detail.md)
 
 Work detail presents metadata, editions, file trees, source availability, and
@@ -199,7 +200,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   origin link shows to everyone.
 - Aggregates tracked presences into one Tracked tab. When a work is tracked by
   more than one file source, the tab exposes a dropdown that switches the
-  active tracked directory without adding source names to the tab row.
+  active tracked directory without adding source names to the tab row; a
+  phone lists those sources under Tracked in its source menu instead.
 - Keeps the selected tracked source in the detail URL.
 - Opens with a Hero whose background is tinted from the cover. Beside the
   cover it shows the work code with the DLsite link and any language chips,
@@ -250,10 +252,13 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Presents Directory as one panel that opens on its underline source tabs with
   status dots, or on the name of its only source, with the source controls at
   the end of that row, followed by a folder explorer.
-  On a phone, the arrow on the selected Directory tab opens the source tab
-  visibility list with **Check sources** below it, and file and folder names
-  stop at two lines; **Full names** at the top right of Directory shows them
-  in full, and the choice is remembered on that device.
+  On a phone, the Directory has no source row: the slim Info and Directory row
+  names the shown source by its short name with its status dot, then shows
+  **Display names** and **Full names** as icons at its end. Selecting the
+  source opens the Directory with a source menu that lists every source to
+  switch to by name, whatever the source tab visibility on wider screens, then
+  **Check sources**. File and folder names stop at two lines there until
+  **Full names** shows them in full; the choice is remembered on that device.
   When the directory is wide enough and the work has folders, a sticky folder
   column sits beside the selected folder's contents; otherwise a Folders button
   opens the same navigator as a bottom sheet on phones or a popover elsewhere.

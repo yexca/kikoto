@@ -35,6 +35,16 @@ export function sourceTabStrip(tabs: SourceTabInfo[], preferences: SourceVisibil
   return { visibleTabs, showStrip: visibleTabs.length > 1 || alwaysShown };
 }
 
+/**
+ * The sources a compact detail's source sheet lists. The sheet already keeps
+ * them out of the way, so the viewer's visibility choices do not apply; only a
+ * placeholder with nothing to browse, or a disabled source, stays out unless
+ * it is the one shown.
+ */
+export function sourcePickerTabs(tabs: SourceTabInfo[], activeKey: string) {
+  return tabs.filter((tab) => tab.key === activeKey || tab.autoVisible !== false);
+}
+
 /** One visibility entry per source, in tab order; several local file sources share one. */
 export function sourceTabVisibilityEntries(
   tabs: SourceTabInfo[],

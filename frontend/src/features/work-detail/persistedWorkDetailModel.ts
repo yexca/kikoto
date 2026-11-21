@@ -276,6 +276,7 @@ export function persistedSourceInfo({
     : { kind: "no_source" as const, status: "degraded" as const, statusLabel: i18n.t("libraryDetail.loadingSource") };
   return {
     label,
+    tabLabel: selectedSource?.label ?? label,
     ...source,
     stats: directoryStats,
     loading: isDirectoryLoading || selectedSourceDetailsLoading,

@@ -31,13 +31,16 @@ import { buttonVariants } from "@/components/ui/button";
 import { createPortal } from "react-dom";
 import { useDirectoryTabMenu } from "@/features/work-detail/directory/directoryTabMenu";
 import {
-  SourceVisibilityList,
   SourceVisibilityPicker,
   sourceVisibilityIcon,
   type SourceVisibilityRow,
 } from "@/components/source-visibility/SourceVisibilityPicker";
 import { sourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
-import { sourceTabStrip, sourceTabVisibilityEntries } from "@/features/work-detail/source/sourceTabVisibility";
+import {
+  sourcePickerTabs,
+  sourceTabStrip,
+  sourceTabVisibilityEntries,
+} from "@/features/work-detail/source/sourceTabVisibility";
 import { useSourceTabVisibility } from "@/features/work-detail/source/useSourceTabVisibility";
 
 export function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -429,13 +432,32 @@ export function SourceDirectoryPanel({
     : checkedAt
       ? i18n.t("libraryDetail.checkSourcesLastChecked", { time: formatDateTime(checkedAt) })
       : i18n.t("libraryDetail.checkSources");
-  // A compact detail keeps the source controls in its Directory tab's menu,
-  // with Check sources below the visibility list; elsewhere the header has them.
+  // A compact detail has no header row. Its source menu lists every source,
+  // since the menu keeps them out of the way already, then Check sources; the
+  // name toggles sit at the end of its Info and Directory row.
+  const tabMenuTools =
+    tabMenu?.tools &&
+    (hasDisplayNames || clampableNames) &&
+    createPortal(
+      <>
+        {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
+        {clampableNames && <FullNamesToggle full={fullNames} onToggle={toggleFullNames} />}
+      </>,
+      tabMenu.tools,
+    );
   const tabMenuControls =
     tabMenu?.host &&
     createPortal(
       <>
-        <SourceVisibilityList title={visibilityTitle} rows={visibilityRows} onChange={sourceTabVisibility.changeMode} />
+        <SourcePickerList
+          sources={sourcePickerTabs(tabs, activeKey)}
+          activeKey={activeKey}
+          onActiveKeyChange={onActiveKeyChange}
+          trackedPresenceOptions={trackedPresenceOptions}
+          selectedTrackedPresenceKey={selectedTrackedPresenceKey}
+          onTrackedPresenceChange={onTrackedPresenceChange}
+          onPicked={tabMenu.close}
+        />
         {onCheckSources && (
           <div className="mt-1 border-t pt-1">
             <button
@@ -505,7 +527,7 @@ export function SourceDirectoryPanel({
       onTrackedPresenceChange={onTrackedPresenceChange}
     />
   );
-  const headerControls = (hasDisplayNames || clampableNames || headerSourceControls) && (
+  const headerControls = !tabMenu && (hasDisplayNames || clampableNames || headerSourceControls) && (
     <div className="flex shrink-0 items-center gap-1">
       {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
       {clampableNames && <FullNamesToggle full={fullNames} onToggle={toggleFullNames} />}
@@ -515,14 +537,15 @@ export function SourceDirectoryPanel({
   return (
     <section className="pb-4 lg:pb-8" data-testid="directory-panel" aria-label={title} aria-describedby={descriptionId}>
       {/* The panel opens on its sources: the source tabs, or the one source by
-          name, with the name and source controls at the row's end. What the
-          files are is stated only to assistive technology. */}
+          name, with the name and source controls at the row's end; a compact
+          detail moves all of them into its source sheet. What the files are is
+          stated only to assistive technology. */}
       <p id={descriptionId} className="sr-only">
         {description}
       </p>
       {/* Clip rather than hide overflow so the folder navigator can stay sticky. */}
       <div className="overflow-clip rounded-xl border bg-card">
-        {(showSourceTabs || singleSource || headerControls) && (
+        {!tabMenu && (showSourceTabs || singleSource || headerControls) && (
           <div className="flex min-w-0 items-center gap-2 border-b pr-2 sm:pr-3">
             {showSourceTabs ? (
               <div className="app-scrollbar flex min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden px-2">
@@ -547,6 +570,7 @@ export function SourceDirectoryPanel({
           </div>
         )}
         {tabMenuControls}
+        {tabMenuTools}
 
         <div className="p-2 sm:p-3">
           {toolbar}
@@ -675,6 +699,99 @@ function SourceTabStrip({
         ),
       )}
     </>
+  );
+}
+
+/**
+ * The sources of a compact detail's source menu, one choice each by name;
+ * several tracked forks are listed under Tracked. Picking one closes the menu.
+ */
+function SourcePickerList({
+  sources,
+  activeKey,
+  onActiveKeyChange,
+  trackedPresenceOptions,
+  selectedTrackedPresenceKey,
+  onTrackedPresenceChange,
+  onPicked,
+}: {
+  sources: SourceTabInfo[];
+  activeKey: string;
+  onActiveKeyChange: (key: string) => void;
+  trackedPresenceOptions: TrackedPresenceOption[];
+  selectedTrackedPresenceKey: string;
+  onTrackedPresenceChange?: (key: string) => void;
+  onPicked: () => void;
+}) {
+  const title = i18n.t("libraryDetail.directorySource");
+  return (
+    <div role="radiogroup" aria-label={title}>
+      {sources.map((source) =>
+        source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
+          <div key={source.key} role="group" aria-label={i18n.t("libraryDetail.trackedSources")}>
+            <div className="px-3 pb-1 pt-2 text-xs font-semibold text-muted-foreground">{source.label}</div>
+            {trackedPresenceOptions.map((option) => (
+              <SourcePickerOption
+                key={option.key}
+                label={option.label}
+                status={option.status}
+                statusLabel={option.statusLabel}
+                checked={source.key === activeKey && option.key === selectedTrackedPresenceKey}
+                onSelect={() => {
+                  onTrackedPresenceChange?.(option.key);
+                  onPicked();
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <SourcePickerOption
+            key={source.key}
+            label={source.label}
+            status={source.status}
+            statusLabel={source.statusLabel}
+            checked={source.key === activeKey}
+            onSelect={() => {
+              onActiveKeyChange(source.key);
+              onPicked();
+            }}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+function SourcePickerOption({
+  label,
+  status,
+  statusLabel,
+  checked,
+  onSelect,
+}: {
+  label: string;
+  status: SourceTabInfo["status"];
+  statusLabel: string;
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      className={cn(
+        "flex min-h-11 w-full items-center gap-2.5 rounded-md px-3 text-left hover:bg-muted focus:bg-muted focus:outline-none",
+        checked && "font-medium text-primary",
+      )}
+      title={`${label}: ${statusLabel}`}
+      onClick={onSelect}
+    >
+      <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(status)}`} aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="sr-only">{statusLabel}</span>
+      {checked && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
+    </button>
   );
 }
 

@@ -2354,6 +2354,7 @@ export const surfaceKorean = {
     filesLabel: "파일",
     copyWorkCode: "작품 코드 복사",
     directory: "디렉터리",
+    directorySource: "디렉터리 소스",
     workCodeActions: "작품 코드 작업",
     trackedSources: "추적된 소스",
     moreDirectoryActions: "추가 디렉터리 작업",

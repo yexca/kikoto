@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SourceTabInfo } from "./sourceContextModel";
-import { sourceTabStrip, sourceTabVisibilityEntries } from "./sourceTabVisibility";
+import { sourcePickerTabs, sourceTabStrip, sourceTabVisibilityEntries } from "./sourceTabVisibility";
 
 const local: SourceTabInfo = {
   key: "3:local",
@@ -61,6 +61,16 @@ describe("source tab visibility", () => {
     ]);
     expect(keys(sourceTabStrip(tabs, { "remote:7": "never" }, remote.key).visibleTabs)).toEqual([
       local.key,
+      remote.key,
+    ]);
+  });
+
+  it("lists every real source in a phone's source sheet and keeps the shown placeholder", () => {
+    const tabs = [local, trackedPlaceholder, remote, disabledRemote];
+    expect(keys(sourcePickerTabs(tabs, local.key))).toEqual([local.key, remote.key]);
+    expect(keys(sourcePickerTabs(tabs, trackedPlaceholder.key))).toEqual([
+      local.key,
+      trackedPlaceholder.key,
       remote.key,
     ]);
   });

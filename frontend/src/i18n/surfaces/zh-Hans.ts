@@ -2220,6 +2220,7 @@ export const surfaceHans = {
     filesLabel: "文件",
     copyWorkCode: "复制作品代码",
     directory: "目录",
+    directorySource: "目录来源",
     workCodeActions: "作品代码操作",
     trackedSources: "已跟踪来源",
     moreDirectoryActions: "更多目录操作",
