@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { WorkCoverThumbnail } from "@/components/work-card/WorkCoverThumbnail";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { dateTimeFormat } from "@/i18n/format";
@@ -548,6 +549,7 @@ function LocalWorkRow({
         onCheckedChange={onCheckedChange}
         aria-label={t("cleanup.ratedWorks.selectWork", { code: work.primaryCode })}
       />
+      <WorkCoverThumbnail url={work.coverUrl} />
       <div className="min-w-0 flex-1">
         <a
           href={`/${encodeURIComponent(work.primaryCode)}`}

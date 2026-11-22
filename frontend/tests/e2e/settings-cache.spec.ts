@@ -1787,6 +1787,7 @@ test("@desktop cleanup works searches only when asked and keeps its pages while 
         workId,
         primaryCode: code,
         title: `Example Work ${code}`,
+        coverUrl: "",
         rating: 1,
         listeningStatus: "none" as const,
         sizeBytes: 1024 ** 2 * (100 - workId),

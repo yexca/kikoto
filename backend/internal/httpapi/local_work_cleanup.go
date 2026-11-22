@@ -67,6 +67,7 @@ type localWorkCleanupCandidate struct {
 	WorkID           int64                    `json:"workId"`
 	PrimaryCode      string                   `json:"primaryCode"`
 	Title            string                   `json:"title"`
+	CoverURL         string                   `json:"coverUrl"`
 	Rating           *int                     `json:"rating"`
 	ListeningStatus  string                   `json:"listeningStatus"`
 	SizeBytes        int64                    `json:"sizeBytes"`
@@ -187,6 +188,16 @@ func (s *Server) listLocalWorkCleanup(w http.ResponseWriter, r *http.Request) {
 	if err := s.applyLocalWorkCleanupTitles(r.Context(), works); err != nil {
 		writeError(w, err)
 		return
+	}
+	// Covers are looked up for the returned page only: each lookup reads the
+	// cover cache on disk.
+	for index := range works {
+		coverURL, err := s.workCoverURL(r.Context(), works[index].WorkID, works[index].PrimaryCode)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		works[index].CoverURL = coverURL
 	}
 	pools, err := s.localWorkCleanupPools(r.Context())
 	if err != nil {
