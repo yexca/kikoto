@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -43,12 +44,15 @@ func (s *Server) getRecordRoot(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusServiceUnavailable, "record_root_unavailable", "The record library is unavailable.", true)
 		return
 	}
-	activity, err := s.recordLibraryActivity(r.Context())
-	if err != nil {
-		writeAPIError(w, http.StatusServiceUnavailable, "record_root_unavailable", "The record library is unavailable.", true)
-		return
+	// The workflows' activity only decorates the root: a failure to read it
+	// leaves it out rather than failing a root that loaded.
+	body := map[string]any{"root": root}
+	if activity, err := s.recordLibraryActivity(r.Context()); err == nil {
+		body["activity"] = activity
+	} else if r.Context().Err() == nil {
+		slog.Warn("read record workflow activity", "error", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"root": root, "activity": activity})
+	writeJSON(w, http.StatusOK, body)
 }
 
 // recordRunActivity is a record workflow run as the Records page follows it.

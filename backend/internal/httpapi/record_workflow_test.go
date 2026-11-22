@@ -78,6 +78,12 @@ func TestRecordScanQueuesTheProbeAsItsOwnWorkflowThatYieldsToQueuedWork(t *testi
 		t.Fatalf("activity after the scan = %+v scan %+v probe %+v", activity, activity.Scan, activity.Probe)
 	}
 	probeRunID := activity.Probe.RunID
+	// The scan run names the probe it queued as it finished.
+	var queuedEvents int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'record_library_scan.follow_up_queued'
+		AND json_extract(detail_json, '$.probe_run_id') = ?`, scan.RunID, probeRunID).Scan(&queuedEvents); err != nil || queuedEvents != 1 {
+		t.Fatalf("follow-up events on the scan run = %d, %v", queuedEvents, err)
+	}
 
 	// The probe yields once the scan queued during it waits.
 	if err := s.runNextQueuedWorkflowJob(ctx); err != nil {
