@@ -58,7 +58,7 @@ export function CollectionFilterPicker<Value extends string>({
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
-        className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="w-max min-w-40 max-w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div role="menu" aria-label={label}>
           <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">

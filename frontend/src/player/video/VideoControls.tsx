@@ -539,7 +539,7 @@ function ControlMenu({
         container={container}
         floatingLayer
         // The menus share the video area's dark scope, inline and fullscreen alike.
-        className="dark w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="dark w-max min-w-32 max-w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
         zIndex={70}
       >
         <div id={menuId} ref={menuRef} role="menu" aria-label={label} onKeyDown={handleKeyDown}>

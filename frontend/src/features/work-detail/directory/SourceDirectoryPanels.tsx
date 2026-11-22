@@ -491,7 +491,6 @@ export function SourceDirectoryPanel({
       <SourceVisibilityPicker
         title={visibilityTitle}
         rows={visibilityRows}
-        align="end"
         zIndex={70}
         triggerClassName={(open) =>
           buttonVariants({
@@ -648,7 +647,7 @@ function SourceTabStrip({
               open={trackedMenuOpen}
               anchorRef={trackedMenuRef}
               onOpenChange={setTrackedMenuOpen}
-              className="w-56 p-1 text-sm"
+              className="w-max min-w-40 max-w-[min(14rem,calc(100vw-1.5rem))] p-1 text-sm"
               zIndex={70}
             >
               <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>

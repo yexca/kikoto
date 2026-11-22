@@ -293,7 +293,7 @@ const workCardKorean = {
   listSearch: "목록 검색",
   listSearchOrCreate: "목록 검색 또는 만들기",
   createList: "“{{name}}” 만들기",
-  listMatchedByRule: "규칙과 일치 · 해제하면 이 목록에서 제외",
+  listMatchedByRule: "자동 일치",
   listCreateFailed: "목록을 만들 수 없습니다.",
   selectWork: "작품 선택",
   openDLsite: "DLsite 열기",

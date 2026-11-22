@@ -25,11 +25,10 @@ export function ActionMenu({
   items,
   triggerClassName = "h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs",
   buttonLabelClassName = "hidden lg:inline",
-  align = "end",
+  align = "start",
   keepWhenEmpty = false,
   toolbar = false,
   quiet = false,
-  compact = false,
 }: {
   label: string;
   /** Visible on wide layouts; phones show the icon only. */
@@ -45,8 +44,6 @@ export function ActionMenu({
   toolbar?: boolean;
   /** A borderless trigger for a row or tile that carries its own actions. */
   quiet?: boolean;
-  /** Fits the menu to its items, for a menu of a few short ones. */
-  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -126,10 +123,8 @@ export function ActionMenu({
         onOpenChange={setOpen}
         align={align}
         floatingLayer
-        className={cn(
-          "p-1 text-sm",
-          compact ? "w-max min-w-32 max-w-[min(16rem,calc(100vw-1.5rem))]" : "w-[min(16rem,calc(100vw-1.5rem))]",
-        )}
+        // The menu fits its longest item; a long label truncates and a hint wraps at the cap.
+        className="w-max min-w-32 max-w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
         bottomCollisionPadding={96}
         zIndex={70}
       >

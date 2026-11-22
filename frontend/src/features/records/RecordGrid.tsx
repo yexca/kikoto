@@ -165,7 +165,6 @@ function RecordItemMenu({
       buttonLabel={t("records.actions.more")}
       buttonLabelClassName="hidden"
       triggerClassName={triggerClassName}
-      compact
       items={[
         {
           key: "delete",

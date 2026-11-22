@@ -59,7 +59,6 @@ export function RankingHistoryPopover({
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
-        align="end"
         onOpenChange={setOpen}
         ariaLabel={t("subscriptions.rankings.history.label")}
         className="w-[min(22rem,calc(100vw-1.5rem))] p-3 text-sm"

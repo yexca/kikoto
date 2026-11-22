@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/tailwindClassNames";
 
+import { popoverLeft, type PopoverAlign } from "./anchoredPopoverPosition";
+
 type PopoverPosition = { left: number; top: number; maxHeight: number; anchorWidth: number; visible: boolean };
 const openFloatingLayerSelector = "[data-app-floating-layer][data-state='open']";
 // Layers that are spawned from inside a popover but portaled elsewhere: modal dialogs
@@ -23,7 +25,7 @@ export function AnchoredPopover({
   anchorRef,
   children,
   className,
-  align = "end",
+  align = "start",
   gap = 8,
   collisionPadding = 12,
   bottomCollisionPadding = collisionPadding,
@@ -40,7 +42,8 @@ export function AnchoredPopover({
   anchorRef: RefObject<HTMLElement | null>;
   children: ReactNode;
   className?: string;
-  align?: "start" | "end";
+  /** The anchor edge to line up with; the other edge takes over when this one would run off screen. */
+  align?: PopoverAlign;
   gap?: number;
   collisionPadding?: number;
   bottomCollisionPadding?: number;
@@ -85,14 +88,19 @@ export function AnchoredPopover({
     const availableAbove = anchorRect.top - viewportTop - collisionPadding - gap;
     const openBelow = availableBelow >= contentRect.height || availableBelow >= availableAbove;
     const desiredTop = openBelow ? anchorRect.bottom + gap : anchorRect.top - contentRect.height - gap;
-    const desiredLeft = align === "start" ? anchorRect.left : anchorRect.right - contentWidth;
-    const minLeft = viewportLeft + collisionPadding;
-    const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - contentWidth - collisionPadding);
     const minTop = viewportTop + collisionPadding;
     const maxTop = Math.max(minTop, viewportBottom - contentRect.height - bottomCollisionPadding);
     const availableHeight = Math.max(8, openBelow ? availableBelow : availableAbove);
     setPosition({
-      left: Math.max(minLeft, Math.min(maxLeft, desiredLeft)),
+      left: popoverLeft({
+        align,
+        anchorLeft: anchorRect.left,
+        anchorRight: anchorRect.right,
+        contentWidth,
+        viewportLeft,
+        viewportWidth,
+        collisionPadding,
+      }),
       top: Math.max(minTop, Math.min(maxTop, desiredTop)),
       maxHeight: availableHeight,
       anchorWidth: anchorRect.width,

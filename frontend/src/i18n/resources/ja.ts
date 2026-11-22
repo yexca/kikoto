@@ -293,7 +293,7 @@ const workCardJapanese = {
   listSearch: "リストを検索",
   listSearchOrCreate: "リストを検索または作成",
   createList: "「{{name}}」を作成",
-  listMatchedByRule: "ルールで一致 · 外すとこのリストから除外",
+  listMatchedByRule: "自動一致",
   listCreateFailed: "リストを作成できませんでした。",
   selectWork: "作品を選択",
   openDLsite: "DLsiteを開く",

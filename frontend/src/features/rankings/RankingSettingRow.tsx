@@ -350,10 +350,9 @@ function AddYearsPicker({
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
-        align="end"
         onOpenChange={setOpen}
         ariaLabel={t("subscriptions.rankings.settings.addYears")}
-        className="w-[min(14rem,calc(100vw-1.5rem))] p-2 text-sm"
+        className="w-max min-w-40 max-w-[min(14rem,calc(100vw-1.5rem))] p-2 text-sm"
       >
         <div className="app-scroll max-h-64 overflow-y-auto">
           {years.map((year) => (

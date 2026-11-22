@@ -57,7 +57,6 @@ export function CreatorMoreMenu({ label, items }: { label: string; items: Action
       items={items}
       triggerClassName={cn(creatorQuietActionClassName, "border-transparent bg-transparent")}
       buttonLabelClassName="hidden sm:inline"
-      compact
     />
   );
 }

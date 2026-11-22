@@ -75,7 +75,6 @@ export function RankingStatusPopover({
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
-        align="end"
         onOpenChange={setOpen}
         ariaLabel={t("subscriptions.rankings.details")}
         className="w-[min(20rem,calc(100vw-1.5rem))] p-3 text-sm"

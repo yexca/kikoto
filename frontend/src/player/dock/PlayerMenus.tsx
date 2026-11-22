@@ -289,7 +289,7 @@ export function SourceMenu({
       anchorRef={anchorRef}
       onOpenChange={onOpenChange}
       ariaLabel={t("player.chooseSource")}
-      className={cn("w-[min(16rem,calc(100vw-1.5rem))]", menuSurface)}
+      className={cn("w-max min-w-40 max-w-[min(16rem,calc(100vw-1.5rem))]", menuSurface)}
     >
       {locations.map((location) => {
         const selected = location.locationId === currentLocationId;

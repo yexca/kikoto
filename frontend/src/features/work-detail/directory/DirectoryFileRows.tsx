@@ -606,7 +606,7 @@ function MoreActions({
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
-        className={`w-52 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl ${hasQueueActions ? "" : "lg:hidden"}`}
+        className={`w-max min-w-40 max-w-[min(13rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl ${hasQueueActions ? "" : "lg:hidden"}`}
       >
         <div role="menu" aria-label={i18n.t("libraryDetail.moreActionsFor", { title: name })}>
           {choices.length > 0 && (

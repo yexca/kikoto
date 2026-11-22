@@ -294,7 +294,7 @@ const workCardHant = {
   listSearch: "搜尋清單",
   listSearchOrCreate: "搜尋或建立清單",
   createList: "建立「{{name}}」",
-  listMatchedByRule: "依規則符合 · 取消即排除",
+  listMatchedByRule: "自動符合",
   listCreateFailed: "清單建立失敗。",
   selectWork: "選取作品",
   openDLsite: "開啟 DLsite",

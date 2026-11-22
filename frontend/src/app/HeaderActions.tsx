@@ -253,7 +253,6 @@ export function HeaderActions({
                 className={trayButtonClass}
               />
             }
-            align="right"
             ariaLabel={t("appearance.title")}
           >
             <div className="w-[min(16rem,calc(100vw-1rem))]">
@@ -293,7 +292,6 @@ export function HeaderActions({
               </Button>
             )
           }
-          align="right"
           ariaLabel={t("account.account")}
         >
           <div className="w-[min(20rem,calc(100vw-1rem))]">{accountPanel(() => setMobileAccountOpen(false), true)}</div>
@@ -324,7 +322,6 @@ export function HeaderActions({
               </Button>
             )
           }
-          align="right"
           ariaLabel={t("account.account")}
         >
           <div className="w-72">{accountPanel(() => setUserOpen(false), false)}</div>

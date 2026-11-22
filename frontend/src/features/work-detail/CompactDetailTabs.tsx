@@ -134,7 +134,6 @@ export function CompactDetailTabs({
         open={menuShown}
         anchorRef={sourceButtonRef}
         onOpenChange={changeMenuOpen}
-        align="end"
         zIndex={70}
         ariaLabel={showingEditions ? editionTitle : sourceTitle}
         className={cn(

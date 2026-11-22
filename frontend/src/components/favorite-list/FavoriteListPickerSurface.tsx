@@ -13,7 +13,7 @@ export function FavoriteListPickerSurface({
   anchorRef,
   title,
   mobile,
-  align = "end",
+  align = "start",
   dismissOnOutsidePointer = true,
   children,
 }: {
@@ -49,7 +49,7 @@ export function FavoriteListPickerSurface({
       align={align}
       dismissOnOutsidePointer={dismissOnOutsidePointer}
       onOpenChange={onOpenChange}
-      className="flex w-72 flex-col overflow-hidden p-0 text-left"
+      className="flex w-[min(15rem,calc(100vw-1.5rem))] flex-col overflow-hidden p-0 text-left"
     >
       {children}
     </AnchoredPopover>

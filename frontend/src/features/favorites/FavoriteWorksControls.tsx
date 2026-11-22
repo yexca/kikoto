@@ -144,7 +144,6 @@ export function FavoriteFilterMenu({
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
-        align="end"
         ariaLabel={t("favorites.filters")}
         bottomCollisionPadding={compact ? 168 : undefined}
         className="w-[min(16rem,calc(100vw-1.5rem))] p-1.5 text-sm"
@@ -318,7 +317,6 @@ export function FavoriteSortControls({
       onChange={onChange}
       onDirectionChange={onDirectionChange}
       reshuffle={value === "random" ? { label: t("library.reshuffle"), onReshuffle } : undefined}
-      align="end"
     />
   );
 }

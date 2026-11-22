@@ -195,7 +195,7 @@ function RemoteWorkEditionsButton({
         anchorRef={anchorRef}
         onOpenChange={setOpen}
         ariaLabel={label}
-        className="w-64 p-1 text-sm"
+        className="w-max min-w-40 max-w-[min(16rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">{label}</div>
         {editions.map((edition) => {

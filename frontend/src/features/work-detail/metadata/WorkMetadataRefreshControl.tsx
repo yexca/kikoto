@@ -98,7 +98,7 @@ export function WorkMetadataRefreshControl({
               else close();
             }}
             floatingLayer
-            className="w-64 p-1"
+            className="w-max min-w-40 max-w-[min(16rem,calc(100vw-1.5rem))] p-1"
             zIndex={70}
           >
             <div

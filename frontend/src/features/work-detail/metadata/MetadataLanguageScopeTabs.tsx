@@ -139,7 +139,7 @@ export function MetadataLanguageScopeTabs({
           else close();
         }}
         floatingLayer
-        className="w-56 p-1"
+        className="w-max min-w-40 max-w-[min(14rem,calc(100vw-1.5rem))] p-1"
         zIndex={70}
       >
         <div

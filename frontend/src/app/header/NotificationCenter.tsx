@@ -230,7 +230,6 @@ export function NotificationCenter({
           )}
         </Button>
       }
-      align="right"
       ariaLabel={t("notifications.title")}
     >
       <div className="flex min-h-0 w-[min(24rem,calc(100vw-1rem))] max-w-full flex-col">

@@ -412,7 +412,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
         anchorRef={optionsRef}
         onOpenChange={setOptionsOpen}
         zIndex={70}
-        className="w-48 rounded-2xl p-1.5 text-sm"
+        className="w-max min-w-36 max-w-[min(12rem,calc(100vw-1.5rem))] rounded-2xl p-1.5 text-sm"
       >
         <div role="menu" aria-label={t("player.queueOptionsFor", { title })}>
           <button

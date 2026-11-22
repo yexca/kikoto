@@ -61,7 +61,7 @@ test("detail list picker saves each toggle, creates a list from the search, and 
     "aria-selected",
     "true",
   );
-  await expect(picker.getByRole("option", { name: /^Synthetic smart list/ })).toContainText("Matched by its rule");
+  await expect(picker.getByRole("option", { name: /^Synthetic smart list/ })).toContainText("Auto-matched");
 
   const search = picker.getByRole("combobox", { name: "Search or create a list", exact: true });
   await search.fill("synthetic EXISTING list");

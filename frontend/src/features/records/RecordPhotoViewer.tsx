@@ -86,7 +86,6 @@ export function RecordPhotoViewer({
             buttonLabel={t("records.actions.more")}
             buttonLabelClassName="hidden"
             triggerClassName="h-11 w-11"
-            compact
             items={[
               {
                 key: "delete",

@@ -285,7 +285,7 @@ export const workCardEnglish = {
   listSearch: "Search lists",
   listSearchOrCreate: "Search or create a list",
   createList: "Create “{{name}}”",
-  listMatchedByRule: "Matched by its rule · clear to leave it out",
+  listMatchedByRule: "Auto-matched",
   listCreateFailed: "The list could not be created.",
   selectWork: "Select work",
   openDLsite: "Open DLsite",

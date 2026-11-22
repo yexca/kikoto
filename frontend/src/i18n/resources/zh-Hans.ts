@@ -293,7 +293,7 @@ export const workCardHans = {
   listSearch: "搜索列表",
   listSearchOrCreate: "搜索或新建列表",
   createList: "新建“{{name}}”",
-  listMatchedByRule: "按规则匹配 · 取消即排除",
+  listMatchedByRule: "自动匹配",
   listCreateFailed: "列表创建失败。",
   selectWork: "选择作品",
   openDLsite: "打开 DLsite",

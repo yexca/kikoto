@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide, Check, RefreshCw } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -129,7 +129,6 @@ export function SortControl<Value extends string>({
                 }}
               >
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
               </button>
             );
           })}

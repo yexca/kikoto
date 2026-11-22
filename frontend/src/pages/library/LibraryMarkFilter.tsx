@@ -1,4 +1,4 @@
-import { Check, ListFilter } from "lucide-react";
+import { ListFilter } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -72,7 +72,7 @@ export function LibraryMarkFilter({
         onOpenChange={setOpen}
         ariaLabel={title}
         bottomCollisionPadding={phone ? 168 : undefined}
-        className="w-[min(15rem,calc(100vw-1.5rem))] p-1.5 text-sm"
+        className="w-max min-w-40 max-w-[min(15rem,calc(100vw-1.5rem))] p-1.5 text-sm"
       >
         <ul>
           <MarkFilterOption
@@ -127,7 +127,6 @@ function MarkFilterOption({
           {icon}
         </span>
         <span className="min-w-0 flex-1 truncate">{children}</span>
-        {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
       </button>
     </li>
   );

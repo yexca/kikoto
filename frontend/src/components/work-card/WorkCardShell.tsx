@@ -1494,7 +1494,12 @@ function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: str
       >
         +{names.length}
       </button>
-      <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-56 p-2">
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        className="w-max min-w-32 max-w-[min(14rem,calc(100vw-1.5rem))] p-2"
+      >
         <div className="flex flex-col gap-1">
           {names.map((name) =>
             onOpen ? (
