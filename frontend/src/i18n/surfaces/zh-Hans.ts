@@ -402,6 +402,7 @@ export const surfaceHans = {
   },
   workflowActivity: {
     backToHistory: "返回运行记录",
+    closeRun: "关闭运行详情",
     allWorkflows: "所有工作流",
     workflowFilter: "工作流",
     search: "搜索运行记录",

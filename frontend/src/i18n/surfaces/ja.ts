@@ -414,6 +414,7 @@ export const surfaceJapanese = {
   },
   workflowActivity: {
     backToHistory: "実行履歴に戻る",
+    closeRun: "実行を閉じる",
     allWorkflows: "すべてのワークフロー",
     workflowFilter: "ワークフロー",
     search: "実行を検索",

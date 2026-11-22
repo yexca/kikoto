@@ -34,7 +34,8 @@ schedule) with the soonest next scheduled run, says automatic runs are paused
 when every trigger is off, and is absent for an operation that runs only by
 hand; Media details states instead that it runs after each Record scan. The
 cards sit three across where the tab is at least 42rem wide (a container
-query) and stack below, as they do in the list column beside an open run.
+query) and stack below. Operations never shares the page with a run: a run its
+cards open takes the page until Back.
 
 Run starts the operation without further options. Metadata and Index run
 incrementally: metadata sync with scope `all`, mode `missing`, DLsite, and

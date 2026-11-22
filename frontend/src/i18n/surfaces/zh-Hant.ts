@@ -401,6 +401,7 @@ export const surfaceHant = {
   },
   workflowActivity: {
     backToHistory: "返回執行記錄",
+    closeRun: "關閉執行詳情",
     allWorkflows: "所有工作流程",
     workflowFilter: "工作流程",
     search: "搜尋執行記錄",

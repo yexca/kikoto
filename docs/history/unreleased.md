@@ -31,6 +31,10 @@
   files an earlier run gave up on after a timeout.
 - Links and Quick actions that open the runs needing attention open the
   Needs attention tab.
+- A run opens beside its list only from Needs attention or History, stays in
+  view while the list scrolls, and closes with **Close run**, Escape, its row,
+  or another tab or filter. A run opened from Running, a card, or a link takes
+  the page, and Back returns to the list it was opened from.
 
 </details>
 

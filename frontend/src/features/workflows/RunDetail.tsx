@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -28,6 +28,7 @@ export function RunDetail({
   onRunAction,
   readOnly,
   canSyncMetadata,
+  closeControl,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
   candidates: WorkflowCandidate[];
@@ -37,13 +38,23 @@ export function RunDetail({
   onRunAction: () => Promise<void>;
   readOnly: boolean;
   canSyncMetadata: boolean;
+  /** Ends the header, after the run actions, while the run sits beside its list. */
+  closeControl?: ReactNode;
 }) {
   const { t } = useTranslation();
   if (!run) {
-    return loading ? (
+    const placeholder = loading ? (
       <RunDetailSkeleton />
     ) : (
       <p className="py-6 text-center text-sm text-muted-foreground">{workflowCopy("selectRunNodeDetail")}</p>
+    );
+    return closeControl ? (
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">{placeholder}</div>
+        {closeControl}
+      </div>
+    ) : (
+      placeholder
     );
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
@@ -59,7 +70,12 @@ export function RunDetail({
             <span className="tabular-nums">#{run.id}</span>
           </div>
         </div>
-        {!actionsReadOnly && <RunActions run={run} onRunAction={onRunAction} />}
+        {(!actionsReadOnly || closeControl) && (
+          <div className="flex shrink-0 items-start gap-2">
+            {!actionsReadOnly && <RunActions run={run} onRunAction={onRunAction} />}
+            {closeControl}
+          </div>
+        )}
       </header>
       {!loading && <RunTransferProgress run={run} />}
       {!loading && run.workflowCode === "remote_work_fetch" && <RunFetchFiles key={run.id} run={run} />}

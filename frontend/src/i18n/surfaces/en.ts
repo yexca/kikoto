@@ -459,6 +459,7 @@ export const surfaceEnglish = {
   },
   workflowActivity: {
     backToHistory: "Back to runs",
+    closeRun: "Close run",
     allWorkflows: "All workflows",
     workflowFilter: "Workflow",
     search: "Search runs",

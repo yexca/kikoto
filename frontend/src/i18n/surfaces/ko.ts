@@ -413,6 +413,7 @@ export const surfaceKorean = {
   },
   workflowActivity: {
     backToHistory: "실행 기록으로 돌아가기",
+    closeRun: "실행 닫기",
     allWorkflows: "모든 워크플로",
     workflowFilter: "워크플로",
     search: "실행 검색",

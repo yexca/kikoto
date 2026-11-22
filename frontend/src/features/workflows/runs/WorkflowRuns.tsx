@@ -1,5 +1,5 @@
-import { ArrowLeft } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, X } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -18,11 +18,21 @@ const panelId = "workflow-runs";
 
 export type RunWorkflowOption = { code: string; name: string };
 
+/** Escape in a field clears or leaves the field, not the run. */
+function isTextEntry(target: EventTarget) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+  );
+}
+
 /**
  * The Workflows page below its alerts: what is running, over three tabs,
  * Operations (the cards and what runs next), Needs attention, and History
- * (the runs that ended, narrowed by status, workflow, and search). A selected
- * run opens beside the tabs on wide screens and in place of them otherwise.
+ * (the runs that ended, narrowed by status, workflow, and search). A run
+ * chosen from Needs attention or History opens beside its list on wide
+ * screens; any other open run, and every run below 1280px, takes the place of
+ * the tabs.
  */
 export function WorkflowRuns({
   tab,
@@ -40,8 +50,9 @@ export function WorkflowRuns({
   onQueryChange,
   note,
   selectedRunId,
+  runInList,
   onSelectRun,
-  onBack,
+  onCloseRun,
   detail,
   refreshKey,
   staticDemo,
@@ -67,9 +78,12 @@ export function WorkflowRuns({
   /** Shown above History, such as where the selected workflow is configured. */
   note?: ReactNode;
   selectedRunId: number | null;
+  /** The open run was chosen from Needs attention or History rather than opened on its own. */
+  runInList: boolean;
   onSelectRun: (run: WorkflowRun) => void;
-  onBack: () => void;
-  detail?: ReactNode;
+  onCloseRun: () => void;
+  /** The open run's details, given the control that closes them when they sit beside the list. */
+  detail?: (closeControl: ReactNode) => ReactNode;
   refreshKey: number;
   staticDemo: boolean;
   canSyncMetadata: boolean;
@@ -78,16 +92,32 @@ export function WorkflowRuns({
 }) {
   const { t } = useTranslation();
   const detailRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const wide = useMediaQuery("(min-width: 1280px)");
   const runOpen = selectedRunId !== null;
-  // Below 1280px an open run replaces the list rather than sitting beside it.
-  const listShown = !runOpen || (wide && !mobile);
+  // A run of Needs attention or History sits beside its list from 1280px; any other open run takes the page.
+  const beside = runOpen && runInList && wide && !mobile;
+  const listShown = !runOpen || beside;
 
-  // A run chosen low in a long list opens with its detail in view.
+  // A run chosen low in a long list opens with its detail in view, from its top.
   useEffect(() => {
     const element = detailRef.current;
-    if (selectedRunId && element && element.getBoundingClientRect().top < 0) element.scrollIntoView({ block: "start" });
+    if (!selectedRunId || !element) return;
+    element.scrollTop = 0;
+    if (element.getBoundingClientRect().top < 0) element.scrollIntoView({ block: "start" });
   }, [selectedRunId]);
+
+  /** Closing the run beside the list returns focus to its row. */
+  const closeBeside = () => {
+    const row = listRef.current?.querySelector<HTMLElement>("[aria-current='true']");
+    onCloseRun();
+    row?.focus({ preventScroll: true });
+  };
+  const closeOnEscape = (event: ReactKeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented || isTextEntry(event.target)) return;
+    event.preventDefault();
+    closeBeside();
+  };
 
   return (
     <section aria-label={t("workflowPage.runs.label")} className="min-w-0 space-y-4">
@@ -144,13 +174,13 @@ export function WorkflowRuns({
       <div
         className={cn(
           "grid min-w-0 gap-5",
-          runOpen &&
-            listShown &&
+          beside &&
             "grid-cols-[minmax(0,22rem)_minmax(0,1fr)] items-start 2xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]",
         )}
+        onKeyDown={beside ? closeOnEscape : undefined}
       >
         {listShown && (
-          <div id={panelId} role="tabpanel" aria-labelledby={`workflow-runs-${tab}`} className="min-w-0">
+          <div ref={listRef} id={panelId} role="tabpanel" aria-labelledby={`workflow-runs-${tab}`} className="min-w-0">
             {tab === "operations" ? (
               operations
             ) : tab === "attention" ? (
@@ -171,14 +201,35 @@ export function WorkflowRuns({
           </div>
         )}
         {runOpen && (
-          <div ref={detailRef} className={cn("min-w-0 scroll-mt-20", listShown && "border-l pl-5")}>
-            {!mobile && (
-              <Button variant="ghost" size="sm" className="-ml-2 mb-3 min-w-0 px-2" onClick={onBack}>
+          <div
+            ref={detailRef}
+            className={cn(
+              "min-w-0 scroll-mt-20",
+              // Beside a long list the run stays in view and scrolls on its own.
+              beside &&
+                "app-scroll sticky top-[calc(var(--header-height)+1rem)] max-h-[calc(100dvh-var(--header-height)-2rem-var(--app-content-bottom-clearance))] overflow-y-auto border-l pl-5 pr-1",
+            )}
+          >
+            {!beside && !mobile && (
+              <Button variant="ghost" size="sm" className="-ml-2 mb-3 min-w-0 px-2" onClick={onCloseRun}>
                 <ArrowLeft className="h-4 w-4 shrink-0" />
                 <span className="truncate">{t("workflowActivity.backToHistory")}</span>
               </Button>
             )}
-            {detail}
+            {detail?.(
+              beside ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="-mr-1 -mt-1 h-8 w-8 shrink-0 text-muted-foreground"
+                  aria-label={t("workflowActivity.closeRun")}
+                  title={t("workflowActivity.closeRun")}
+                  onClick={closeBeside}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              ) : null,
+            )}
           </div>
         )}
       </div>
