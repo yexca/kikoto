@@ -94,7 +94,7 @@ the work folder, `remote_fetch` for a file a lyrics edit downloaded,
 `library_import` for a file it copied from another local folder of the family,
 `transcription` when an accepted [speech transcription](speech-transcription.md#speech-transcription)
 published it, or `translation` when an accepted
-[lyrics translation](llm-translation.md#llm-translation) published it. `media_lyrics_ai_source`
+[lyrics translation](translate-with-ai.md#translate-with-ai) published it. `media_lyrics_ai_source`
 names, per lyrics media item Kikoto published from speech recognition or
 translation, the speech model and the translation model that wrote it; media
 reads give the item `aiLyrics`, which the player shows as an AI mark.

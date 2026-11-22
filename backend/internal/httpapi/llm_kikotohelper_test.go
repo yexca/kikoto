@@ -14,8 +14,8 @@ import (
 	"github.com/yexca/kikoto/backend/internal/llm"
 )
 
-// A helper rejection that retrying cannot fix names its cause, both for an
-// interactive translation and for a queued one.
+// A helper rejection that retrying unchanged cannot fix names its cause on the
+// translation item.
 func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 	var answer atomic.Value
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,41 +49,21 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	answer.Store("ok")
-	if w := llmTestTranslate(t, f, p); w.Code != http.StatusOK {
-		t.Fatalf("translate: %d %s", w.Code, w.Body.String())
-	}
-	answer.Store("pair")
-	w := llmTestTranslate(t, f, p)
-	var failure struct {
-		Code string `json:"code"`
-	}
-	if w.Code != http.StatusUnprocessableEntity || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "llm_unsupported_language_pair" {
-		t.Fatalf("unsupported pair: %d %s", w.Code, w.Body.String())
-	}
-
-	// A model that ran out of memory while loading is not a missing model.
-	answer.Store("out_of_memory")
-	if w := llmTestTranslate(t, f, p); w.Code != http.StatusUnprocessableEntity || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "llm_service_out_of_memory" {
-		t.Fatalf("out of memory: %d %s", w.Code, w.Body.String())
-	}
-
-	// A model whose risk notice is not accepted in the helper says so.
-	answer.Store("agreement")
-	if w := llmTestTranslate(t, f, p); w.Code != http.StatusUnprocessableEntity || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "llm_service_agreement_required" {
-		t.Fatalf("agreement required: %d %s", w.Code, w.Body.String())
-	}
-
-	// A Translate with AI item names the cause, and a start failure stays
-	// retryable once memory is freed.
+	// A Translate with AI item names the cause and stays retryable: a model
+	// that ran out of memory while loading is not a missing model, and one
+	// whose risk notice is not accepted in the helper says so.
 	ctx := context.Background()
-	answer.Store("not_installed")
 	actor := translationActor(t, f.server, f.userID)
 	response, err := f.server.submitAITranslation(ctx, actor, f.workID, aiTranslationRequest{Languages: []string{"zh-cn"}, Categories: []string{"title"}, ProviderID: p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, want := range []struct{ answer, code string }{{"not_installed", "service_not_ready"}, {"out_of_memory", "service_out_of_memory"}, {"agreement", "service_agreement_required"}} {
+	for i, want := range []struct{ answer, code string }{
+		{"not_installed", "service_not_ready"},
+		{"out_of_memory", "service_out_of_memory"},
+		{"agreement", "service_agreement_required"},
+		{"pair", "unsupported_language_pair"},
+	} {
 		answer.Store(want.answer)
 		if i > 0 {
 			if _, err := f.server.retryAITranslationRun(ctx, actor, response.RunID); err != nil {

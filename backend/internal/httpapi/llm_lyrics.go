@@ -2,10 +2,8 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -124,76 +122,6 @@ func (s *Server) loadLLMLyrics(ctx context.Context, workID int64, payload llmTra
 		Text                    string
 	}{result.LocationID, result.AudioID, result.FolderID, text})
 	return result, nil
-}
-
-func saveLLMLyricsAsset(ctx context.Context, tx *sql.Tx, id string, p llmPreview, userID int64) error {
-	text, err := p.Lyrics.Document.Render(p.Result.Lyrics)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO llm_lyrics_asset(id,work_id,source_location_id,audio_media_item_id,folder_id,language,source_hash,value_text,extension,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, p.WorkID, p.Lyrics.LocationID, p.Lyrics.AudioID, p.Lyrics.FolderID, p.Target, p.Lyrics.Hash, text, p.Lyrics.Extension, userID)
-	return err
-}
-
-// The durable database asset precedes filesystem publication. A failed
-// publication is completed from the asset without another LLM request. The
-// asset joins the target language's lyrics folder of the track's work folder,
-// under the track's own path, and is assigned to the track in that language.
-func (s *Server) publishLLMLyricsAsset(ctx context.Context, id string) error {
-	var workID, audioID, folderID, userID int64
-	var language, text, extension, status string
-	if err := s.db.QueryRowContext(ctx, "SELECT work_id,audio_media_item_id,folder_id,COALESCE(created_by_user_id,0),language,value_text,extension,status FROM llm_lyrics_asset WHERE id=?", id).Scan(&workID, &audioID, &folderID, &userID, &language, &text, &extension, &status); err != nil {
-		return err
-	}
-	if status == "accepted" {
-		return nil
-	}
-	if status != "publishing" {
-		return errors.New("lyrics asset is not publishable")
-	}
-	track, err := s.loadLocalTrack(ctx, audioID)
-	if err != nil {
-		return err
-	}
-	if track.FolderID != folderID {
-		return lyricsFetchBadRequest("the audio track moved to another work folder")
-	}
-	lyricsPath, lyricsID, err := s.publishTrackLyrics(ctx, userID, workID, audioID, folderID, language, track.Path, extension, text, "translation")
-	if err != nil {
-		return err
-	}
-	result, err := s.db.ExecContext(ctx, "UPDATE llm_lyrics_asset SET status='accepted',relative_path=?,media_item_id=? WHERE id=? AND status='publishing'", lyricsPath, nullableInt64(lyricsID), id)
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count != 1 {
-		return errors.New("lyrics asset was already published")
-	}
-	return nil
-}
-
-func (s *Server) retryLLMLyricsPublication(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
-		return
-	}
-	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
-		return
-	}
-	if err := s.publishLLMLyricsAsset(r.Context(), r.PathValue("asset")); err != nil {
-		if errors.Is(err, errLyricsFolderBlocked) {
-			writeAPIError(w, errLyricsFolderBlocked.status, errLyricsFolderBlocked.code, errLyricsFolderBlocked.message, false)
-			return
-		}
-		slog.Warn("lyrics translation publication failed", "asset", r.PathValue("asset"), "error", err)
-		writeAPIError(w, 409, "llm_asset_pending", "The translation is kept; adding it to the lyrics did not finish. Check the work folder's storage pool and try again.", true)
-		return
-	}
-	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // A rooted pool handle rejects symlink escapes into another pool or out of the library.

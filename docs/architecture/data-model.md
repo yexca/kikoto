@@ -10,7 +10,7 @@ Kikoto uses SQLite and a unified work model. These pages describe the tables, th
 | [Creators and Voice Catalog](data-model/creators-and-voice-catalog.md) | Circle or voice actor identity, aliases, merges, credits, `/voices` routes, or the voice catalog discovery tables. |
 | [Overrides, Normalized Fields and Bundles](data-model/overrides-normalized-fields-bundles.md) | `work_manual_override`, title fallback order, rating/sales/price columns, `work_metadata_link`, purchase bonuses, or bundle membership. |
 | [Remote Metadata Fallback](data-model/remote-metadata-fallback.md) | A remote source supplying metadata, its title variants, or the not-found fallback rules. |
-| [LLM translation](data-model/llm-translation.md) | LLM providers, the content policy, `llm_translation_preview`, `work_llm_translation`, or lyrics translation publication. |
+| [LLM translation](data-model/llm-translation.md) | LLM providers, the content policy, `work_llm_translation`, accepted tag names, lyrics translation input, or the stored rows of `llm_translation` runs. |
 | [Translate with AI](data-model/translate-with-ai.md) | Translate with AI runs, `translation_item` states, auto-accept, or the Translation page reads. |
 | [Speech transcription](data-model/speech-transcription.md) | `asr_providers`, `asr_transcription`, chunking, or lyrics published from a transcription. |
 | [Custom Works](data-model/custom-works.md) | `KT` custom work codes, their counter, local metadata, editions, lyrics origins, or folder-edit effects on a custom work. |

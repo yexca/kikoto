@@ -276,7 +276,14 @@ const translationSourceLyrics = "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nSynthe
 // returns its location.
 func translationLyricsFile(t *testing.T, fixture asrFixture) int64 {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(fixture.dataRoot, "RJ00000001", "mp3", "Track1.vtt"), []byte(translationSourceLyrics), 0o644); err != nil {
+	return translationLyricsFileWith(t, fixture, translationSourceLyrics)
+}
+
+// translationLyricsFileWith adds a lyrics file with content beside the
+// fixture's track and returns its location.
+func translationLyricsFileWith(t *testing.T, fixture asrFixture, content string) int64 {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(fixture.dataRoot, "RJ00000001", "mp3", "Track1.vtt"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var fileSourceID, locationID int64
@@ -325,6 +332,15 @@ func TestAITranslationTranslatesLyricsFromAFileAndPublishesThem(t *testing.T) {
 	translated, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "zh-hans", "mp3", "Track1.vtt"))
 	if err != nil || string(translated) != want {
 		t.Fatalf("translated = %q %v", translated, err)
+	}
+	// The translation joins the track's lyrics beside the original file.
+	original, err := os.ReadFile(filepath.Join(fixture.dataRoot, "RJ00000001", "mp3", "Track1.vtt"))
+	if err != nil || string(original) != translationSourceLyrics {
+		t.Fatalf("original = %q %v", original, err)
+	}
+	var origin string
+	if err := fixture.db.QueryRow("SELECT origin FROM media_lyrics_assignment WHERE audio_media_item_id = ? AND language = 'zh-cn'", fixture.audioID).Scan(&origin); err != nil || origin != "translation" {
+		t.Fatalf("assignment origin = %q %v", origin, err)
 	}
 	var sources int
 	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM media_lyrics_ai_source WHERE asr_model = '' AND llm_model = 'example-llm'").Scan(&sources); err != nil || sources != 1 {

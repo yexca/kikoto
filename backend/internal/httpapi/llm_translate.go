@@ -2,19 +2,14 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
-	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/llm"
@@ -42,25 +37,6 @@ type llmWorkInput struct {
 	Age               string
 	Tags              []int64
 	TagNames          string
-}
-
-type llmPreview struct {
-	Source     llm.Text
-	Lyrics     *llmLyricsInput
-	Payload    llmTranslatePayload
-	Assessment llm.Assessment
-	TagIDs     []int64
-	PolicyHash string
-	ConfigHash string
-	WorkID     int64
-	UserID     int64
-	Expires    time.Time
-	Hash       string
-	Input      llmWorkInput
-	Fields     []string
-	Result     llm.Text
-	Provider   llm.Provider
-	Target     string
 }
 
 type llmInputQuerier interface {
@@ -174,237 +150,6 @@ func llmFields(input llmWorkInput, fields []string) (llm.Text, map[string]string
 }
 func llmAllowed(class string, provider llm.Provider) bool {
 	return contentpolicy.Allows(class, provider.MaxContentClass)
-}
-
-func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
-		return
-	}
-	actor, ok := s.requirePermission(w, r, "metadata:sync")
-	if !ok {
-		return
-	}
-	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
-		return
-	}
-	workID, err := parseInt64PathValue(r, "id")
-	if err != nil {
-		writeAPIError(w, 400, "invalid_work_id", "Invalid work id.", false)
-		return
-	}
-	var payload llmTranslatePayload
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&payload); err != nil {
-		writeAPIError(w, 400, "invalid_translation_request", "Invalid translation request.", false)
-		return
-	}
-	if !s.acquireLLMSlot(w, r) {
-		return
-	}
-	defer func() { <-s.llmRequestSlots }()
-	plan, err := s.prepareLLMTranslation(r.Context(), workID, payload)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeAPIError(w, 404, "work_not_found", "Work not found.", false)
-		} else {
-			writeLLMRequestError(w, err)
-		}
-		return
-	}
-	payload.Model = plan.Model
-	provider, policy, input, fields, tagIDs, text, assessment := plan.Provider, plan.Policy, plan.Input, plan.Fields, plan.TagIDs, plan.Source, plan.Assessment
-	var count int
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM llm_translation_preview WHERE user_id=? AND status='proposed' AND expires_at>?", actor.ID, time.Now().Unix()).Scan(&count); err != nil {
-		writeError(w, err)
-		return
-	}
-	if count >= 64 {
-		writeAPIError(w, 429, "llm_preview_limit", "Too many translation previews. Try again later.", false)
-		return
-	}
-	result, err := s.requestLLMTranslation(r.Context(), plan, payload.Target, func(ctx context.Context) error { return s.validateLLMSend(ctx, actor.ID, workID, payload, plan) })
-	if err != nil {
-		writeLLMRequestError(w, err)
-		return
-	}
-	var token [16]byte
-	if err := s.saveLLMTagCandidates(r.Context(), actor.ID, payload.Target, plan, result); err != nil {
-		writeError(w, err)
-		return
-	}
-	if _, err := rand.Read(token[:]); err != nil {
-		writeError(w, err)
-		return
-	}
-	id := hex.EncodeToString(token[:])
-
-	preview := llmPreview{WorkID: workID, UserID: actor.ID, Expires: time.Now().Add(15 * time.Minute), Hash: llmInputHash(input), Input: input, Fields: fields, Result: result, Provider: provider, Target: payload.Target, PolicyHash: llmValueHash(policy), ConfigHash: s.llmConfigHash(provider, plan.Model)}
-	preview.TagIDs = tagIDs
-	preview.Lyrics = plan.Lyrics
-	preview.Payload = payload
-	preview.Assessment = assessment
-	preview.Source = text
-	if err := s.saveLLMPreview(r.Context(), id, preview); err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, 200, map[string]any{"previewId": id, "providerId": provider.ID, "providerName": provider.Name, "model": plan.Model, "targetLanguage": payload.Target, "assessment": assessment, "source": text, "translation": result})
-}
-
-func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
-		return
-	}
-	actor, ok := s.requirePermission(w, r, "library:write")
-	if !ok {
-		return
-	}
-	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
-		return
-	}
-	workID, err := parseInt64PathValue(r, "id")
-	if err != nil {
-		writeAPIError(w, 400, "invalid_work_id", "Invalid work id.", false)
-		return
-	}
-	var payload struct {
-		PreviewID string `json:"previewId"`
-	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload) != nil {
-		writeAPIError(w, 400, "invalid_translation", "Invalid translation preview.", false)
-		return
-	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	preview, err := loadLLMPreview(r.Context(), tx, payload.PreviewID, actor.ID, workID)
-	if err != nil || time.Now().After(preview.Expires) {
-		writeAPIError(w, 404, "llm_preview_expired", "Translation preview expired or has already been reviewed. Translate again.", false)
-		return
-	}
-	provider, policy, err := loadLLMCurrent(r.Context(), tx, preview.Provider.ID)
-	if err != nil || !provider.Enabled || s.llmConfigHash(provider, preview.Payload.Model) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
-		s.expireLLMPreview(w, r, tx, payload.PreviewID, "llm_config_changed", "Provider or content policy changed. Translate again.")
-		return
-	}
-	current, err := loadLLMWorkInput(r.Context(), tx, workID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if preview.Lyrics != nil {
-		// Read only the explicitly chosen file again; its content and scope
-		// must remain identical before accepting the generated asset.
-		_ = tx.Rollback()
-		lyrics, err := s.loadLLMLyrics(r.Context(), workID, preview.Payload, policy)
-		if err != nil || lyrics.Hash != preview.Lyrics.Hash {
-			writeAPIError(w, 409, "work_changed", "Lyrics changed or are unavailable. Translate again.", false)
-			return
-		}
-		current.LyricsHash = lyrics.Hash
-		tx, err = s.db.BeginTx(r.Context(), nil)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		defer func() { _ = tx.Rollback() }()
-		// Retake the bound preview after the file read releases the database.
-		preview, err = loadLLMPreview(r.Context(), tx, payload.PreviewID, actor.ID, workID)
-		if err != nil {
-			writeAPIError(w, 404, "llm_preview_expired", "Translation preview is unavailable.", false)
-			return
-		}
-		provider, policy, err = loadLLMCurrent(r.Context(), tx, preview.Provider.ID)
-		if err != nil || s.llmConfigHash(provider, preview.Payload.Model) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
-			writeAPIError(w, 409, "llm_config_changed", "Provider or policy changed. Translate again.", false)
-			return
-		}
-		fresh, err := loadLLMWorkInput(r.Context(), tx, workID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		fresh.LyricsHash = lyrics.Hash
-		current = fresh
-	}
-	if llmInputHash(current) != preview.Hash {
-		s.expireLLMPreview(w, r, tx, payload.PreviewID, "work_changed", "Work metadata changed. Translate again.")
-		return
-	}
-	if time.Now().After(preview.Expires) {
-		s.expireLLMPreview(w, r, tx, payload.PreviewID, "llm_preview_expired", "Translation preview expired. Translate again.")
-		return
-	}
-	var role string
-	var enabled bool
-	if err := tx.QueryRowContext(r.Context(), "SELECT role,enabled FROM user_account WHERE id=?", actor.ID).Scan(&role, &enabled); err != nil || !enabled || missingWorkflowGraphPermission(account.PermissionsForRole(role), []string{"library:write", "metadata:sync"}) != "" {
-		writeAPIError(w, 403, "llm_permission_changed", "Translation permission changed.", false)
-		return
-	}
-	if !llmAllowed(assessLLMTranslation(policy, current, preview.Source).Class, provider) {
-		s.expireLLMPreview(w, r, tx, payload.PreviewID, "llm_policy_blocked", "Content policy blocks this translation.")
-		return
-	}
-	if len(preview.TagIDs) > 0 {
-		if err := applyLLMTagNames(r.Context(), tx, preview, actor.ID); err != nil {
-			writeAPIError(w, 409, "work_changed", "Shared tag names changed. Translate again.", false)
-			return
-		}
-	}
-	if preview.Lyrics != nil {
-		if err := saveLLMLyricsAsset(r.Context(), tx, payload.PreviewID, preview, actor.ID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	for field, value := range map[string]string{"title": preview.Result.Title, "description": preview.Result.Description} {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		if err := archiveLLMTranslation(r.Context(), tx, workID, preview.Target, field, actor.ID, "superseded"); err != nil {
-			writeError(w, err)
-			return
-		}
-		source := current.Text.Title
-		if field == "description" {
-			source = current.Text.Description
-		}
-		metadataInput := current
-		metadataInput.LyricsHash = ""
-		if _, err := tx.ExecContext(r.Context(), `INSERT INTO work_llm_translation(work_id,language,field_name,value_text,source_hash,provider_id,model,created_by_user_id,source_text,source_work_id)
- VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(work_id,language,field_name) DO UPDATE SET value_text=excluded.value_text,source_hash=excluded.source_hash,provider_id=excluded.provider_id,model=excluded.model,status='accepted',created_by_user_id=excluded.created_by_user_id,source_text=excluded.source_text,source_work_id=excluded.source_work_id,updated_at=CURRENT_TIMESTAMP`, workID, preview.Target, field, value, llmInputHash(metadataInput), preview.Provider.ID, preview.Payload.Model, actor.ID, source, current.SourceID); err != nil {
-			writeError(w, err)
-			return
-		}
-		if err := archiveLLMTranslation(r.Context(), tx, workID, preview.Target, field, actor.ID, "accepted"); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if _, err := tx.ExecContext(r.Context(), "UPDATE llm_translation_preview SET status='accepted',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='proposed'", payload.PreviewID); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, err)
-		return
-	}
-	if preview.Lyrics != nil {
-		if err := s.publishLLMLyricsAsset(r.Context(), payload.PreviewID); err != nil {
-			if errors.Is(err, errLyricsFolderBlocked) {
-				writeAPIError(w, errLyricsFolderBlocked.status, errLyricsFolderBlocked.code, errLyricsFolderBlocked.message, false)
-				return
-			}
-			slog.Warn("lyrics translation publication failed", "asset", payload.PreviewID, "work_id", workID, "error", err)
-			writeAPIError(w, 409, "llm_asset_pending", "The translation is kept; adding it to the lyrics did not finish. Add it again from Manage lyrics.", true)
-			return
-		}
-	}
-	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request) {

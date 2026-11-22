@@ -2,12 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/account"
@@ -16,7 +14,7 @@ import (
 )
 
 func llmTestRequest(f manualOverrideFixture, method, body string) *http.Request {
-	r := httptest.NewRequest(method, "/api/works/1/llm-translate", strings.NewReader(body))
+	r := httptest.NewRequest(method, "/api/works/1", strings.NewReader(body))
 	r.SetPathValue("id", strconv.FormatInt(f.workID, 10))
 	return r.WithContext(context.WithValue(r.Context(), currentUserKey, account.User{ID: f.userID, Permissions: []string{"metadata:sync", "library:write", "sources:write"}}))
 }
@@ -30,174 +28,6 @@ func llmTestProvider(t *testing.T, f manualOverrideFixture, url, boundary, maxim
 		t.Fatal(err)
 	}
 	return p
-}
-func llmTestTranslate(t *testing.T, f manualOverrideFixture, p llm.Provider) *httptest.ResponseRecorder {
-	t.Helper()
-	body, _ := json.Marshal(llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
-	w := httptest.NewRecorder()
-	f.server.translateWorkWithLLM(w, llmTestRequest(f, "POST", string(body)))
-	return w
-}
-func TestLLMPolicyDenialMakesNoUpstreamRequest(t *testing.T) {
-	var requests atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests.Add(1)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
-	}))
-	defer upstream.Close()
-	for _, tc := range []struct {
-		name, age, boundary, maximum string
-		policy                       llm.Policy
-		want                         int
-	}{
-		{"unknown", "", "private", "sensitive", llm.DefaultPolicy(), 422},
-		{"unknown substring", "not-adult-known", "private", "sensitive", llm.DefaultPolicy(), 422},
-		{"sensitive external not authorized", "adult", "external", "safe", llm.DefaultPolicy(), 422},
-		{"sensitive external authorized", "adult", "external", "sensitive", llm.DefaultPolicy(), 200},
-		{"sensitive private not authorized", "adult", "private", "safe", llm.DefaultPolicy(), 422},
-		{"sensitive private authorized", "adult", "private", "sensitive", llm.DefaultPolicy(), 200},
-		{"blocked private", "general", "private", "sensitive", llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "Example", Fields: []string{"title"}, Action: "blocked"}}}, 422},
-		{"unselected description blocked", "general", "private", "sensitive", llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "restricted phrase", Fields: []string{"description"}, Action: "blocked"}}}, 422},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newManualOverrideFixture(t, config.Config{})
-			if _, err := f.db.Exec("UPDATE work SET age_rating=?,description='restricted phrase' WHERE id=?", tc.age, f.workID); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.server.llmStore.SavePolicy(context.Background(), tc.policy); err != nil {
-				t.Fatal(err)
-			}
-			p := llmTestProvider(t, f, upstream.URL, tc.boundary, tc.maximum)
-			before := requests.Load()
-			w := llmTestTranslate(t, f, p)
-			if w.Code != tc.want {
-				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
-			}
-			expected := int64(0)
-			if tc.want == 200 {
-				expected = 1
-			}
-			if requests.Load()-before != expected {
-				t.Fatalf("upstream requests=%d", requests.Load()-before)
-			}
-		})
-	}
-}
-func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
-	}))
-	defer upstream.Close()
-	for _, change := range []string{"source", "policy", "text_mode", "connection", "model", "other_model", "maximum", "replay", "restart", "actor", "work"} {
-		t.Run(change, func(t *testing.T) {
-			f := newManualOverrideFixture(t, config.Config{})
-			_, _ = f.db.Exec("UPDATE work SET age_rating='general',description='Original description' WHERE id=?", f.workID)
-			p := llmTestProvider(t, f, upstream.URL, "external", "safe")
-			if change == "maximum" {
-				p.MaxContentClass = "sensitive"
-				var err error
-				p, err = f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			w := llmTestTranslate(t, f, p)
-			if w.Code != 200 {
-				t.Fatal(w.Body.String())
-			}
-			var result struct {
-				ID string `json:"previewId"`
-			}
-			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			switch change {
-			case "source":
-				_, _ = f.db.Exec("UPDATE work SET title='Changed source' WHERE id=?", f.workID)
-			case "policy":
-				if err := f.server.llmStore.SavePolicy(context.Background(), llm.DefaultPolicy()); err != nil {
-					t.Fatal(err)
-				}
-			case "text_mode":
-				if err := f.server.llmStore.SavePolicy(context.Background(), llm.Policy{LLMTranslationTextOnly: true}); err != nil {
-					t.Fatal(err)
-				}
-			case "connection", "model", "other_model", "maximum":
-				switch change {
-				case "connection":
-					p.BaseURL = "https://new.example.invalid"
-				case "maximum":
-					p.MaxContentClass = "safe"
-				case "model":
-					// The model the preview used is no longer offered.
-					p.EnabledModels = []string{"another-model"}
-				default:
-					// Offering another model and making it the default leaves the preview valid.
-					p.EnabledModels, p.DefaultModel = []string{"example-model", "another-model"}, "another-model"
-				}
-				if _, err := f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false); err != nil {
-					t.Fatal(err)
-				}
-			case "restart":
-				f.server = NewServer(f.db, config.Config{})
-			}
-			apply := func() *httptest.ResponseRecorder {
-				r := llmTestRequest(f, "PUT", `{"previewId":"`+result.ID+`"}`)
-				if change == "actor" {
-					r = r.WithContext(context.WithValue(r.Context(), currentUserKey, account.User{ID: 999, Permissions: []string{"library:write", "metadata:sync"}}))
-				}
-				if change == "work" {
-					r.SetPathValue("id", "999")
-				}
-				w := httptest.NewRecorder()
-				f.server.applyLLMTranslation(w, r)
-				return w
-			}
-			w = apply()
-			want := 409
-			if change == "restart" || change == "replay" || change == "other_model" {
-				want = 200
-			}
-			if change == "actor" || change == "work" {
-				want = 404
-			}
-			if w.Code != want {
-				t.Fatalf("apply %s: %d %s", change, w.Code, w.Body.String())
-			}
-			if change == "replay" {
-				if w = apply(); w.Code != 404 {
-					t.Fatal("preview was applied twice")
-				}
-			}
-			var count int
-			_ = f.db.QueryRow("SELECT COUNT(*) FROM work_llm_translation").Scan(&count)
-			if (want == 200) != (count == 1) {
-				t.Fatalf("writes=%d status=%d", count, w.Code)
-			}
-			if want == 200 {
-				input, err := loadWorkTitleInputs(context.Background(), f.db, []int64{f.workID}, false)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(input[f.workID].Variants) != 1 || input[f.workID].Variants[0].Title != "Example translation" {
-					t.Fatalf("card inputs=%+v", input)
-				}
-				detail, err := f.server.loadWorkDetail(context.Background(), f.userID, f.workID, false)
-				if err != nil {
-					t.Fatal(err)
-				}
-				found := false
-				for _, v := range detail.MetadataView.Variants {
-					if v.Key == "llm:zh-cn" && v.TitleSource == "llm" && v.Description == "Original description" {
-						found = true
-					}
-				}
-				if !found {
-					t.Fatalf("machine language missing: %+v", detail.MetadataView)
-				}
-			}
-		})
-	}
 }
 func TestLLMEndpointChangeDropsCredentialsAndModels(t *testing.T) {
 	f := newManualOverrideFixture(t, config.Config{})

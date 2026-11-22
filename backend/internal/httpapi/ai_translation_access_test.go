@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/metadatatags"
 )
 
 func TestAITranslationTagAcceptanceUsesItsTransaction(t *testing.T) {
@@ -61,6 +62,27 @@ func TestAITranslationTagAcceptanceUsesItsTransaction(t *testing.T) {
 	}
 	if state != "accepted" || name != "Example translated tag" {
 		t.Fatalf("accepted item = %s, tag = %q", state, name)
+	}
+	// The name translates the tag without changing its identity or the works
+	// it belongs to, and a provider name takes priority over it.
+	var tags, links int
+	if err := f.db.QueryRow("SELECT COUNT(*) FROM tag WHERE namespace = 'metadata'").Scan(&tags); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.QueryRow("SELECT COUNT(*) FROM work_tag WHERE tag_id = ?", tagID).Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if tags != 1 || links != 1 {
+		t.Fatalf("translation changed identity or membership: tags = %d, links = %d", tags, links)
+	}
+	if names, err := metadatatags.LocalizedNames(context.Background(), f.db, []int64{tagID}, []string{"en-us"}); err != nil || names[tagID] != "Example translated tag" {
+		t.Fatalf("names = %v %v", names, err)
+	}
+	if _, err := f.db.Exec("INSERT INTO metadata_tag_provider_name(tag_id, language, name, provider_id) VALUES(?, 'en-us', 'Example official tag', ?)", tagID, f.providerID); err != nil {
+		t.Fatal(err)
+	}
+	if names, err := metadatatags.LocalizedNames(context.Background(), f.db, []int64{tagID}, []string{"en-us"}); err != nil || names[tagID] != "Example official tag" {
+		t.Fatalf("names after a provider name = %v %v", names, err)
 	}
 }
 
