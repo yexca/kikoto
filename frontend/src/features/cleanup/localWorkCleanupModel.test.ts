@@ -4,10 +4,13 @@ import type { LocalWorkCleanupWork } from "@/lib/api";
 
 import {
   availableCleanupPage,
+  defaultLocalWorkCleanupSearch,
   defaultLocalWorkCleanupOptions,
   highRatedWorks,
   localWorkCleanupRequest,
   reconcileSelection,
+  retainLocalWorkCleanup,
+  retainedLocalWorkCleanup,
   selectionSize,
   setLocalWorkCleanupOption,
 } from "./localWorkCleanupModel";
@@ -86,5 +89,23 @@ describe("local work cleanup paging", () => {
     expect(availableCleanupPage(2, 51, 50)).toBe(2);
     expect(availableCleanupPage(2, 50, 50)).toBe(1);
     expect(availableCleanupPage(3, 0, 50)).toBe(1);
+  });
+});
+
+describe("local work cleanup search", () => {
+  it("keeps the last search only for the account that ran it", () => {
+    const search = { ...defaultLocalWorkCleanupSearch, rating: 2 };
+    retainLocalWorkCleanup({
+      scope: "user:1",
+      draft: search,
+      searched: search,
+      searchedAt: 1,
+      page: 2,
+      pages: new Map(),
+      selected: new Map(),
+      activeRunId: null,
+    });
+    expect(retainedLocalWorkCleanup("user:1")).toMatchObject({ searched: search, page: 2 });
+    expect(retainedLocalWorkCleanup("user:2")).toBeNull();
   });
 });

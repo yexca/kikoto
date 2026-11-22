@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 const localWorkCleanupSourceID = 40
@@ -147,7 +148,7 @@ func TestLocalWorkCleanupListsFamiliesByAdministratorRatingAndSize(t *testing.T)
 	// Another account's rating does not decide the selection.
 	f.rate(2, 404, 1, "finished")
 
-	result := f.list("maxRating=2")
+	result := f.list("rating=2")
 	codes := []string{}
 	for _, work := range result.Works {
 		codes = append(codes, work.PrimaryCode)
@@ -156,7 +157,7 @@ func TestLocalWorkCleanupListsFamiliesByAdministratorRatingAndSize(t *testing.T)
 		t.Fatalf("rated at most 2 = %v total %d", codes, result.Total)
 	}
 
-	result = f.list("maxRating=5&unrated=true")
+	result = f.list("rating=any")
 	if result.Total != 4 || result.Works[0].PrimaryCode != "RJ00000004" || result.Works[0].Rating != nil {
 		t.Fatalf("all works = %#v", result.Works)
 	}
@@ -167,11 +168,90 @@ func TestLocalWorkCleanupListsFamiliesByAdministratorRatingAndSize(t *testing.T)
 	}
 }
 
+func localWorkCleanupCodes(result localWorkCleanupListResponse) string {
+	codes := []string{}
+	for _, work := range result.Works {
+		codes = append(codes, work.PrimaryCode)
+	}
+	return strings.Join(codes, ",")
+}
+
+func TestLocalWorkCleanupSearchFiltersOrdersAndKeepsAtMostItsLimit(t *testing.T) {
+	f := newLocalWorkCleanupFixture(t)
+	f.addLocalWork(421, "RJ00000021", 50)
+	f.addLocalWork(422, "RJ00000022", 40)
+	f.addLocalWork(423, "RJ00000023", 30)
+	f.addLocalWork(424, "RJ00000024", 20)
+	f.addLocalWork(425, "RJ00000025", 10)
+	f.rate(1, 421, 1, "finished")
+	f.rate(1, 423, 2, "listening")
+	f.rate(1, 424, 1, "none")
+	f.rate(1, 425, 2, "want_to_listen")
+	const all = "rating=any"
+
+	for _, check := range []struct{ query, want string }{
+		{all + "&listening=settled", "RJ00000021,RJ00000022,RJ00000024"},
+		{all + "&listening=finished", "RJ00000021"},
+		{all + "&listening=none", "RJ00000022,RJ00000024"},
+		{all + "&minBytes=35", "RJ00000021,RJ00000022"},
+		// Lowest rating first, larger first within a rating, unrated last.
+		{all + "&sort=rating", "RJ00000021,RJ00000024,RJ00000023,RJ00000025,RJ00000022"},
+		{all + "&sort=rating&direction=desc", "RJ00000023,RJ00000025,RJ00000021,RJ00000024,RJ00000022"},
+		{all + "&sort=size&direction=asc", "RJ00000025,RJ00000024,RJ00000023,RJ00000022,RJ00000021"},
+		{"rating=unrated", "RJ00000022"},
+		{"rating=1", "RJ00000021,RJ00000024"},
+	} {
+		if got := localWorkCleanupCodes(f.list(check.query)); got != check.want {
+			t.Errorf("%s = %s, want %s", check.query, got, check.want)
+		}
+	}
+
+	// The search keeps its three largest works and pages through them.
+	page := f.list(all + "&limit=3&pageSize=2&page=2")
+	if got := localWorkCleanupCodes(page); got != "RJ00000023" || page.Total != 3 || page.Matched != 5 || page.Limit != 3 {
+		t.Fatalf("second page of three = %s total %d matched %d limit %d", got, page.Total, page.Matched, page.Limit)
+	}
+	if len(page.Pools) != 0 {
+		t.Fatalf("standard library pools = %#v, want none", page.Pools)
+	}
+}
+
+func TestLocalWorkCleanupSearchNarrowsToAStoragePool(t *testing.T) {
+	f := newLocalWorkCleanupFixture(t)
+	ctx := context.Background()
+	if err := f.server.saveSettingValue(ctx, settingLibraryMode, storagepool.ModePools); err != nil {
+		t.Fatal(err)
+	}
+	pools := []storagepool.Pool{{Path: "disk1", ID: "synthetic-pool-1"}, {Path: "disk2", ID: "synthetic-pool-2"}}
+	if err := f.server.saveSettingValue(ctx, settingStoragePools, pools); err != nil {
+		t.Fatal(err)
+	}
+	for _, pool := range pools {
+		if err := os.MkdirAll(filepath.Join(f.dataRoot, pool.Path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := storagepool.WriteMarker(filepath.Join(f.dataRoot, pool.Path), pool.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.exec("INSERT INTO work (id, primary_code, title) VALUES (431, 'RJ00000031', 'Example Work RJ00000031'), (432, 'RJ00000032', 'Example Work RJ00000032')")
+	f.addFolder(431, "disk1/RJ00000031", 10)
+	f.addFolder(432, "disk2/RJ00000032", 20)
+
+	result := f.list("rating=any&pool=disk1")
+	if got := localWorkCleanupCodes(result); got != "RJ00000031" {
+		t.Fatalf("works on disk1 = %s", got)
+	}
+	if len(result.Pools) != 2 || result.Pools[0].Path != "disk1" || !result.Pools[0].Online || result.Pools[1].Path != "disk2" {
+		t.Fatalf("pools = %#v", result.Pools)
+	}
+}
+
 func TestLocalWorkCleanupRequestGuards(t *testing.T) {
 	f := newLocalWorkCleanupFixture(t)
 	f.addLocalWork(411, "RJ00000011", 10)
 	f.rate(1, 411, 4, "finished")
-	works := f.confirmed("maxRating=5")
+	works := f.confirmed("rating=5")
 
 	_, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{
 		Works: works, ClearRating: true, Forget: true, ConfirmHighRated: true,
@@ -200,12 +280,12 @@ func TestLocalWorkCleanupRequestGuards(t *testing.T) {
 func TestLocalWorkCleanupRefusesAnOfflineLibrary(t *testing.T) {
 	f := newLocalWorkCleanupFixture(t)
 	f.addLocalWork(421, "RJ00000021", 10)
-	works := f.confirmed("unrated=true")
+	works := f.confirmed("rating=unrated")
 	// An unmounted data root leaves nothing at its path.
 	if err := os.RemoveAll(f.dataRoot); err != nil {
 		t.Fatal(err)
 	}
-	if listed := f.list("unrated=true"); len(listed.Works) != 1 || !listed.Works[0].Offline {
+	if listed := f.list("rating=unrated"); len(listed.Works) != 1 || !listed.Works[0].Offline {
 		t.Fatalf("unmounted data root listing = %#v, want the work marked offline", listed.Works)
 	}
 	_, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: works})
@@ -224,7 +304,7 @@ func TestLocalWorkCleanupDeletesFilesAndClearsOnlyTheAdministratorsState(t *test
 	f.rate(2, 431, 5, "relisten")
 
 	queued, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{
-		Works: f.confirmed("maxRating=2"), ClearRating: true, ClearMark: true,
+		Works: f.confirmed("rating=2"), ClearRating: true, ClearMark: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +364,7 @@ func TestLocalWorkCleanupForgetsFamiliesForEveryAccountUnlessASourceRemains(t *t
 	f.rate(2, 442, 5, "listening")
 	f.rate(2, 443, 5, "listening")
 
-	works := f.confirmed("maxRating=3")
+	works := f.confirmed("rating=3")
 	if len(works) != 2 {
 		t.Fatalf("candidates = %#v, want the family and RJ00000043", works)
 	}
@@ -330,7 +410,7 @@ func TestLocalWorkCleanupFinishesOtherWorksAndRetriesTheOneThatFailed(t *testing
 	f.addLocalWork(452, "RJ00000052", 10)
 	f.rate(1, 451, 1, "finished")
 	f.rate(1, 452, 1, "finished")
-	works := f.confirmed("maxRating=1")
+	works := f.confirmed("rating=1")
 	// A recycle bin can hold the user's files, so the library skips it
 	// without deleting it, and the larger work's folder cannot be removed.
 	blocker := filepath.Join(f.dataRoot, "RJ00000051", "#recycle")
@@ -428,7 +508,7 @@ func TestLocalWorkCleanupDeletesNoFolderWhenOneCannotBeMoved(t *testing.T) {
 	f.addLocalWork(495, "RJ00000095", 10)
 	f.addSecondFolder(4951, 495, "Extra/RJ00000095")
 	f.rate(1, 495, 1, "finished")
-	works := f.confirmed("maxRating=1")
+	works := f.confirmed("rating=1")
 	if len(works) != 1 || len(works[0].Folders) != 2 {
 		t.Fatalf("candidates = %#v, want one work with two folders", works)
 	}
@@ -511,7 +591,7 @@ func TestLocalWorkCleanupFinishesOrReturnsAFolderAnInterruptedAttemptMoved(t *te
 	f := newLocalWorkCleanupFixture(t)
 	f.addLocalWork(496, "RJ00000096", 10)
 	f.addLocalWork(497, "RJ00000097", 10)
-	queued, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("unrated=true")})
+	queued, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("rating=unrated")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +649,7 @@ func TestLocalWorkCleanupRemovesSystemSidecarsWithTheFolder(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("unrated=true")}); err != nil {
+	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("rating=unrated")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
@@ -587,7 +667,7 @@ func TestLocalWorkCleanupListsOnlyDemoWorksInDemo(t *testing.T) {
 	f.exec("UPDATE work SET is_permanently_free = 1, age_rating = 'general' WHERE id = 481")
 	f.exec("UPDATE work SET is_permanently_free = 0, age_rating = 'adult' WHERE id = 482")
 	f.server.cfg.Mode = config.ModeDemo
-	result := f.list("unrated=true")
+	result := f.list("rating=unrated")
 	if len(result.Works) != 1 || result.Works[0].PrimaryCode != "RJ00000081" {
 		t.Fatalf("Demo listing = %#v, want only the admitted work", result.Works)
 	}
@@ -596,7 +676,7 @@ func TestLocalWorkCleanupListsOnlyDemoWorksInDemo(t *testing.T) {
 func TestLocalWorkCleanupLeavesAFolderAddedAfterConfirmation(t *testing.T) {
 	f := newLocalWorkCleanupFixture(t)
 	f.addLocalWork(491, "RJ00000091", 10)
-	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("unrated=true")}); err != nil {
+	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("rating=unrated")}); err != nil {
 		t.Fatal(err)
 	}
 	// A scan finds the work in a second folder while the cleanup waits to run.
@@ -669,7 +749,7 @@ func TestLocalWorkCleanupIndexesFilesNobodyOpenedBeforeDeleting(t *testing.T) {
 	f.exec(`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
 		VALUES (462, ?, 'local', 'RJ00000062', 'available')`, localWorkCleanupSourceID)
 
-	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("unrated=true")}); err != nil {
+	if _, err := f.server.enqueueLocalWorkCleanup(context.Background(), 1, localWorkCleanupRequest{Works: f.confirmed("rating=unrated")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {

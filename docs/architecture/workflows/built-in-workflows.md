@@ -103,7 +103,7 @@ Media, cleanup, and database:
   unlinked work families and their personal state. A removed work folder takes
   the sidecars a NAS or operating system keeps beside its files (`._` files,
   `.DS_Store`, `Thumbs.db`, `@eaDir`, `__MACOSX`) with it. A run queued from
-  [Local works by rating](../../user/en/settings.md#works) cleans its works in
+  [Local works](../../user/en/settings.md#works) cleans its works in
   turn while it holds the library folders: it claims the work's confirmed
   folders, indexes them again, checks that every claimed folder holds nothing
   but the work's available indexed files, the lyrics folder's marker, and

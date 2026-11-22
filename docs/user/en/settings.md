@@ -335,13 +335,22 @@ which forgetting works also needs. Demo sees every tab read-only.
 
 ### Works
 
-- **Local works by rating** lists the works that have a local folder, one row
-  per work family and largest first, by your own rating: up to a chosen number
-  of stars, with unrated works when **Include unrated works** is on. A family
-  takes the highest rating any of its editions has. The size counts the
-  work's indexed local files: a work nobody has opened yet shows none, and a
-  size with files of unknown size ends in `+`. A work on an offline storage
-  pool cannot be selected. **Delete files** deletes every local folder of the
+- **Local works** finds the works that have a local folder, one row per work
+  family, when you press **Search**; it searches nothing on its own. One row
+  of filters narrows the search, and a filter that narrows it is highlighted:
+  your own rating (any, up to a number of stars, or unrated only), your Quick
+  mark (none, finished, or either), a smallest size, and, in a library with
+  pools, a storage pool. The search orders the works by size or by rating,
+  either way up or down, with unrated works last by rating; it starts largest
+  first, or lowest rated first once you order by rating. It keeps at most the
+  limit's number of works, 50 unless you choose up to 500, shown 20 to a
+  page; when more works match, the page says how many. A family takes the
+  highest rating any of its editions has. The size counts the work's indexed
+  local files: a work nobody has opened yet shows none, and a size with files
+  of unknown size ends in `+`. The result, its pages, and your selection stay
+  while you visit other pages until you search again, and a finished deletion
+  loads the shown page again. A work on an offline storage pool cannot be
+  selected. **Delete files** deletes every local folder of the
   selected works, with the system files such as `Thumbs.db` or `@eaDir` in
   them, and can also clear your rating and your Quick mark of them. **Forget
   works**, offered only while both are cleared, also removes the works with

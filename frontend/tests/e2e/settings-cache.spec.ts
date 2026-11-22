@@ -462,7 +462,17 @@ async function mockCacheSettings(
       return;
     }
     if (url.pathname === "/api/maintenance/local-works/cleanup" && route.request().method() === "GET") {
-      await route.fulfill({ json: { works: [], page: 1, pageSize: 50, total: 0 } satisfies LocalWorkCleanupPage });
+      await route.fulfill({
+        json: {
+          works: [],
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          matched: 0,
+          limit: 50,
+          pools: [],
+        } satisfies LocalWorkCleanupPage,
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
@@ -725,7 +735,7 @@ test("Cleanup is its own page with Works, Cache, and Database tabs", async ({ pa
   const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
   await expect(tabs.getByRole("tab")).toHaveText(["Works", "Cache", "Database"]);
   await expect(tabs.getByRole("tab", { name: "Works", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("region", { name: "Local works by rating" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Local works" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Transcode cache" })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "Cache", exact: true }).click();
@@ -737,7 +747,7 @@ test("Cleanup is its own page with Works, Cache, and Database tabs", async ({ pa
   await tabs.getByRole("tab", { name: "Database", exact: true }).click();
   await expect(page).toHaveURL(/\/cleanup\?tab=database$/);
   await expect(page.getByRole("region", { name: "Database records" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Local works by rating" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Local works" })).toHaveCount(0);
 });
 
 test("Cleanup offers only the tabs the account may use", async ({ page }) => {
@@ -1760,4 +1770,79 @@ test("a remote source's library work check runs and schedules from its row", asy
   await expect.poll(() => runs).toEqual([{ sourceId: 8, library: "local", filter: "no_remote_source", limit: 250 }]);
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("Library work check queued as run #62.", { exact: true })).toBeVisible();
+});
+
+test("@desktop cleanup works searches only when asked and keeps its pages while away", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockCacheSettings(page, () => undefined);
+  const searches: URLSearchParams[] = [];
+  await page.route("**/api/maintenance/local-works/cleanup?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    searches.push(params);
+    const pageNumber = Number(params.get("page"));
+    const works = Array.from({ length: pageNumber < 3 ? 20 : 10 }, (_, index) => {
+      const workId = (pageNumber - 1) * 20 + index + 1;
+      const code = `RJ000000${String(workId).padStart(2, "0")}`;
+      return {
+        workId,
+        primaryCode: code,
+        title: `Example Work ${code}`,
+        rating: 1,
+        listeningStatus: "none" as const,
+        sizeBytes: 1024 ** 2 * (100 - workId),
+        fileCount: 1,
+        unknownSizeFiles: 0,
+        folders: [{ id: workId, path: code, online: true }],
+        offline: false,
+        sourceAvailable: false,
+      };
+    });
+    await route.fulfill({
+      json: {
+        works,
+        total: 50,
+        matched: 80,
+        limit: 50,
+        page: pageNumber,
+        pageSize: 20,
+        pools: [],
+      } satisfies LocalWorkCleanupPage,
+    });
+  });
+  await page.goto("/cleanup?tab=works");
+
+  const section = page.getByRole("region", { name: "Local works" });
+  await expect(section.getByText("Choose the filters, then search.", { exact: true })).toBeVisible();
+  await section.getByRole("button", { name: "Sort: Size", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Rating", exact: true }).click();
+  await section.getByRole("combobox", { name: "Rating", exact: true }).click();
+  await page.getByRole("option", { name: "Unrated", exact: true }).click();
+  expect(searches).toHaveLength(0);
+
+  await section.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(section.getByText("Example Work RJ00000001", { exact: true })).toBeVisible();
+  expect(Object.fromEntries(searches[0])).toMatchObject({
+    rating: "unrated",
+    sort: "rating",
+    direction: "asc",
+    limit: "50",
+    page: "1",
+    pageSize: "20",
+  });
+  await expect(section.getByText("Showing the first 50 of 80 matching works.", { exact: true })).toBeVisible();
+
+  await section.getByRole("button", { name: "Next page" }).click();
+  await expect(section.getByText("Example Work RJ00000021", { exact: true })).toBeVisible();
+  expect(searches.map((params) => params.get("page"))).toEqual(["1", "2"]);
+
+  // Another tab and back shows the same page without searching again.
+  const tabs = page.getByRole("tablist", { name: "Cleanup", exact: true });
+  await tabs.getByRole("tab", { name: "Cache", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
+  await tabs.getByRole("tab", { name: "Works", exact: true }).click();
+  await expect(section.getByText("Example Work RJ00000021", { exact: true })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Search again", exact: true })).toBeVisible();
+  await section.getByRole("button", { name: "Previous page" }).click();
+  await expect(section.getByText("Example Work RJ00000001", { exact: true })).toBeVisible();
+  expect(searches).toHaveLength(2);
 });

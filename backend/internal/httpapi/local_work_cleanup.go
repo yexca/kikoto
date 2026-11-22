@@ -11,22 +11,47 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
-// Rated local work cleanup deletes the local files of whole work families,
-// chosen by the administrator's own star rating and ordered by size. A request
-// queues one media cleanup run that cleans the works in turn and can also
-// clear the administrator's rating and Quick mark and forget the works.
+// Local work cleanup deletes the local files of whole work families, found by
+// the administrator's own star rating and Quick mark, size, and storage pool,
+// and ordered by size or rating. A search keeps at most a
+// chosen number of works and pages through them. A request queues one media
+// cleanup run that cleans the works in turn and can also clear the
+// administrator's rating and Quick mark and forget the works.
 const (
 	// localWorkCleanupHighRating is the lowest rating a request must confirm
 	// a second time before its works' files are deleted.
 	localWorkCleanupHighRating     = 3
-	localWorkCleanupDefaultMax     = 2
-	localWorkCleanupDefaultPage    = 50
+	localWorkCleanupDefaultPage    = 20
 	maxLocalWorkCleanupPageSize    = 200
+	localWorkCleanupDefaultLimit   = 50
 	maxLocalWorkCleanupWorks       = 500
 	localWorkCleanupAuditAction    = "local_work_cleanup.queue"
 	localWorkCleanupHighRatingCode = "high_rating_unconfirmed"
+)
+
+// Listening filters a search accepts. Settled works are those not queued to
+// be heard: without a Quick mark, or finished.
+const (
+	localWorkCleanupListeningAny      = "any"
+	localWorkCleanupListeningNone     = "none"
+	localWorkCleanupListeningFinished = "finished"
+	localWorkCleanupListeningSettled  = "settled"
+)
+
+// Ratings a search accepts besides a highest star count.
+const (
+	localWorkCleanupRatingAny     = "any"
+	localWorkCleanupRatingUnrated = "unrated"
+)
+
+// Orders a search accepts, each ascending or descending: by size, or by rating
+// with unrated works last and larger works first within a rating.
+const (
+	localWorkCleanupSortSize   = "size"
+	localWorkCleanupSortRating = "rating"
 )
 
 type localWorkCleanupFolder struct {
@@ -35,6 +60,7 @@ type localWorkCleanupFolder struct {
 	Online   bool   `json:"online"`
 	workID   int64
 	sourceID int64
+	pool     string
 }
 
 type localWorkCleanupCandidate struct {
@@ -54,23 +80,77 @@ type localWorkCleanupCandidate struct {
 	familyWorkIDs   []int64
 }
 
+type localWorkCleanupPool struct {
+	Path   string `json:"path"`
+	Online bool   `json:"online"`
+}
+
+// localWorkCleanupListResponse is one page of a search. Total counts the works
+// the search keeps, at most its limit; Matched counts every matching work.
 type localWorkCleanupListResponse struct {
 	Works    []localWorkCleanupCandidate `json:"works"`
 	Total    int                         `json:"total"`
+	Matched  int                         `json:"matched"`
+	Limit    int                         `json:"limit"`
 	Page     int                         `json:"page"`
 	PageSize int                         `json:"pageSize"`
+	// Pools lists the storage pools a search can be narrowed to; it is empty
+	// for a standard library.
+	Pools []localWorkCleanupPool `json:"pools"`
 }
 
 type localWorkCleanupFilter struct {
-	MaxRating      int
-	IncludeUnrated bool
+	// MaxRating keeps the works rated at most that many stars; 0 keeps every
+	// work. UnratedOnly keeps only the unrated works.
+	MaxRating   int
+	UnratedOnly bool
+	Listening   string
+	MinBytes    int64
+	// Pool keeps the works with a folder on that storage pool, when PoolSet.
+	Pool       string
+	PoolSet    bool
+	Sort       string
+	Descending bool
+	Limit      int
 }
 
 func (filter localWorkCleanupFilter) matches(candidate localWorkCleanupCandidate) bool {
-	if candidate.Rating == nil {
-		return filter.IncludeUnrated
+	switch {
+	case filter.UnratedOnly:
+		if candidate.Rating != nil {
+			return false
+		}
+	case filter.MaxRating > 0:
+		if candidate.Rating == nil || *candidate.Rating > filter.MaxRating {
+			return false
+		}
 	}
-	return *candidate.Rating <= filter.MaxRating
+	switch filter.Listening {
+	case localWorkCleanupListeningNone, localWorkCleanupListeningFinished:
+		if candidate.ListeningStatus != filter.Listening {
+			return false
+		}
+	case localWorkCleanupListeningSettled:
+		if candidate.ListeningStatus != localWorkCleanupListeningNone && candidate.ListeningStatus != localWorkCleanupListeningFinished {
+			return false
+		}
+	}
+	if candidate.SizeBytes < filter.MinBytes {
+		return false
+	}
+	if filter.PoolSet {
+		onPool := false
+		for _, folder := range candidate.Folders {
+			if strings.EqualFold(folder.pool, filter.Pool) {
+				onPool = true
+				break
+			}
+		}
+		if !onPool {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) listLocalWorkCleanup(w http.ResponseWriter, r *http.Request) {
@@ -99,49 +179,134 @@ func (s *Server) listLocalWorkCleanup(w http.ResponseWriter, r *http.Request) {
 			matching = append(matching, candidate)
 		}
 	}
-	sortLocalWorkCleanupCandidates(matching)
-	start := min((page-1)*pageSize, len(matching))
-	end := min(start+pageSize, len(matching))
-	works := matching[start:end]
+	sortLocalWorkCleanupCandidates(matching, filter.Sort, filter.Descending)
+	kept := matching[:min(len(matching), filter.Limit)]
+	start := min((page-1)*pageSize, len(kept))
+	end := min(start+pageSize, len(kept))
+	works := kept[start:end]
 	if err := s.applyLocalWorkCleanupTitles(r.Context(), works); err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, localWorkCleanupListResponse{Works: works, Total: len(matching), Page: page, PageSize: pageSize})
+	pools, err := s.localWorkCleanupPools(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, localWorkCleanupListResponse{
+		Works: works, Total: len(kept), Matched: len(matching), Limit: filter.Limit,
+		Page: page, PageSize: pageSize, Pools: pools,
+	})
+}
+
+// localWorkCleanupPools lists the registered storage pools of a pooled
+// library, in their configured order.
+func (s *Server) localWorkCleanupPools(ctx context.Context) ([]localWorkCleanupPool, error) {
+	pools := []localWorkCleanupPool{}
+	layout, err := s.loadLibraryLayout(ctx)
+	if err != nil || !layout.poolsMode() {
+		return pools, err
+	}
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, pool := range layout.Pools {
+		pools = append(pools, localWorkCleanupPool{Path: pool.Path, Online: availability.online[strings.ToLower(pool.Path)]})
+	}
+	return pools, nil
 }
 
 func parseLocalWorkCleanupFilter(r *http.Request) (localWorkCleanupFilter, error) {
-	filter := localWorkCleanupFilter{MaxRating: localWorkCleanupDefaultMax}
-	if value := strings.TrimSpace(r.URL.Query().Get("maxRating")); value != "" {
+	query := r.URL.Query()
+	filter := localWorkCleanupFilter{
+		Listening: localWorkCleanupListeningAny, Sort: localWorkCleanupSortSize, Limit: localWorkCleanupDefaultLimit,
+	}
+	switch value := strings.TrimSpace(query.Get("rating")); value {
+	case "", localWorkCleanupRatingAny:
+	case localWorkCleanupRatingUnrated:
+		filter.UnratedOnly = true
+	default:
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed < 1 || parsed > 5 {
-			return filter, fmt.Errorf("maxRating must be a whole number from 1 to 5")
+			return filter, fmt.Errorf("rating must be any, unrated, or a whole number from 1 to 5")
 		}
 		filter.MaxRating = parsed
 	}
-	switch strings.TrimSpace(r.URL.Query().Get("unrated")) {
-	case "", "false", "0":
-	case "true", "1":
-		filter.IncludeUnrated = true
+	switch value := strings.TrimSpace(query.Get("listening")); value {
+	case "":
+	case localWorkCleanupListeningAny, localWorkCleanupListeningNone, localWorkCleanupListeningFinished, localWorkCleanupListeningSettled:
+		filter.Listening = value
 	default:
-		return filter, fmt.Errorf("unrated must be true or false")
+		return filter, fmt.Errorf("listening must be any, none, finished, or settled")
+	}
+	if value := strings.TrimSpace(query.Get("minBytes")); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed < 0 {
+			return filter, fmt.Errorf("minBytes must be a whole number of bytes")
+		}
+		filter.MinBytes = parsed
+	}
+	if query.Has("pool") {
+		filter.Pool, filter.PoolSet = strings.TrimSpace(query.Get("pool")), true
+	}
+	switch value := strings.TrimSpace(query.Get("sort")); value {
+	case "":
+	case localWorkCleanupSortSize, localWorkCleanupSortRating:
+		filter.Sort = value
+	default:
+		return filter, fmt.Errorf("sort must be size or rating")
+	}
+	// Size is largest first and rating lowest first unless asked otherwise.
+	switch value := strings.TrimSpace(query.Get("direction")); value {
+	case "":
+		filter.Descending = filter.Sort == localWorkCleanupSortSize
+	case "asc", "desc":
+		filter.Descending = value == "desc"
+	default:
+		return filter, fmt.Errorf("direction must be asc or desc")
+	}
+	if value := strings.TrimSpace(query.Get("limit")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > maxLocalWorkCleanupWorks {
+			return filter, fmt.Errorf("limit must be a whole number from 1 to %d", maxLocalWorkCleanupWorks)
+		}
+		filter.Limit = parsed
 	}
 	return filter, nil
 }
 
-// sortLocalWorkCleanupCandidates puts the largest works first. Works whose
-// files have no recorded size follow the works of the same known size.
-func sortLocalWorkCleanupCandidates(candidates []localWorkCleanupCandidate) {
+// sortLocalWorkCleanupCandidates orders the works by size, or by rating with
+// unrated works last and larger works first within a rating. Works whose files
+// have no recorded size follow the works of the same known size.
+func sortLocalWorkCleanupCandidates(candidates []localWorkCleanupCandidate, order string, descending bool) {
 	sort.SliceStable(candidates, func(i, j int) bool {
 		left, right := candidates[i], candidates[j]
+		if order == localWorkCleanupSortRating && !sameLocalWorkCleanupRating(left.Rating, right.Rating) {
+			if left.Rating == nil || right.Rating == nil {
+				return right.Rating == nil
+			}
+			return (*left.Rating > *right.Rating) == descending
+		}
 		if left.SizeBytes != right.SizeBytes {
-			return left.SizeBytes > right.SizeBytes
+			larger := left.SizeBytes > right.SizeBytes
+			if order == localWorkCleanupSortSize && !descending {
+				return !larger
+			}
+			return larger
 		}
 		if (left.UnknownSizeFiles == 0) != (right.UnknownSizeFiles == 0) {
 			return left.UnknownSizeFiles == 0
 		}
 		return left.PrimaryCode < right.PrimaryCode
 	})
+}
+
+func sameLocalWorkCleanupRating(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 // applyLocalWorkCleanupTitles shows each listed work under the title the
@@ -226,6 +391,7 @@ func (s *Server) loadLocalWorkCleanupCandidates(ctx context.Context, userID int6
 		}
 		for _, folder := range folders[member.workID] {
 			folder.Online = availability.readable(folder.Path)
+			folder.pool, _ = storagepool.Split(availability.mode, folder.Path)
 			if !folder.Online {
 				candidate.Offline = true
 			}

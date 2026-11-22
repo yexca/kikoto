@@ -60,7 +60,7 @@
   completes in the same transaction that retires the work's `remote_stream`
   rows, so registration can always be repeated. A Fetch that startup recovery
   cannot finish is logged and recorded in its run without stopping startup.
-- **Local works by rating** moves a work's folders into
+- **Local works** moves a work's folders into
   `.kikoto-staging/<run-id>/cleanup` on their own pools before deleting them,
   so a folder the system will not let go of leaves every folder of the work
   in place. A folder an interrupted run left there is deleted by its retry or

@@ -49,3 +49,16 @@
   the work has none.
 
 </details>
+
+<details>
+<summary><strong>Cleanup</strong></summary>
+
+- **Local works** on the Works tab searches only when you press **Search**,
+  and keeps its result and selection while you visit other pages. Its filters
+  sit on one row and are highlighted while they narrow the search: rating
+  (any, up to a number of stars, or unrated only), Quick mark, smallest size,
+  and storage pool. A search orders works by size or rating in either
+  direction and keeps at most a chosen number of works, 50 unless you choose
+  more, shown 20 to a page.
+
+</details>

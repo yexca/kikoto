@@ -1,7 +1,52 @@
-import type { LocalWorkCleanupRequest, LocalWorkCleanupWork } from "@/lib/api";
+import type {
+  LocalWorkCleanupPage,
+  LocalWorkCleanupRequest,
+  LocalWorkCleanupSearch,
+  LocalWorkCleanupWork,
+} from "@/lib/api";
 
 /** Works rated this many stars or more need a second confirmation before their files are deleted. */
 export const highRatingThreshold = 3;
+
+export const defaultLocalWorkCleanupSearch: LocalWorkCleanupSearch = {
+  rating: "any",
+  listening: "any",
+  minBytes: 0,
+  pool: null,
+  sort: "size",
+  direction: "desc",
+  limit: 50,
+};
+
+export function sameLocalWorkCleanupSearch(left: LocalWorkCleanupSearch, right: LocalWorkCleanupSearch) {
+  return (Object.keys(left) as Array<keyof LocalWorkCleanupSearch>).every((key) => left[key] === right[key]);
+}
+
+/**
+ * What the Works tab shows, kept in memory for one account so that leaving
+ * Cleanup and coming back shows the last search without searching again. A
+ * reload or another account starts empty.
+ */
+export type RetainedLocalWorkCleanup = {
+  scope: string;
+  draft: LocalWorkCleanupSearch;
+  searched: LocalWorkCleanupSearch | null;
+  searchedAt: number | null;
+  page: number;
+  pages: ReadonlyMap<number, LocalWorkCleanupPage>;
+  selected: ReadonlyMap<number, LocalWorkCleanupWork>;
+  activeRunId: number | null;
+};
+
+let retained: RetainedLocalWorkCleanup | null = null;
+
+export function retainedLocalWorkCleanup(scope: string): RetainedLocalWorkCleanup | null {
+  return retained?.scope === scope ? retained : null;
+}
+
+export function retainLocalWorkCleanup(state: RetainedLocalWorkCleanup) {
+  retained = state;
+}
 
 export type LocalWorkCleanupOptions = {
   clearRating: boolean;

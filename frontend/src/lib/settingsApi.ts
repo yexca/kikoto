@@ -63,11 +63,34 @@ export type LocalWorkCleanupWork = {
   sourceAvailable: boolean;
 };
 
+/** Settled works have no Quick mark or are finished: nothing queues them to be heard. */
+export type LocalWorkCleanupListening = "any" | "none" | "finished" | "settled";
+
+export type LocalWorkCleanupSort = "size" | "rating";
+
+/** One search for local works to clean up; it keeps at most `limit` works. */
+export type LocalWorkCleanupSearch = {
+  /** Any rating, only unrated works, or rated works up to that many stars. */
+  rating: "any" | "unrated" | number;
+  listening: LocalWorkCleanupListening;
+  minBytes: number;
+  /** A storage pool's path, or null for every pool. */
+  pool: string | null;
+  sort: LocalWorkCleanupSort;
+  direction: "asc" | "desc";
+  limit: number;
+};
+
+/** One page of a search: `total` counts the works it keeps, `matched` every matching work. */
 export type LocalWorkCleanupPage = {
   works: LocalWorkCleanupWork[];
   total: number;
+  matched: number;
+  limit: number;
   page: number;
   pageSize: number;
+  /** The storage pools of a pooled library; empty for a standard one. */
+  pools: Array<{ path: string; online: boolean }>;
 };
 
 export type LocalWorkCleanupRequest = {
@@ -438,16 +461,18 @@ export const settingsApi = {
   cleanupDatabase: (tasks: DatabaseCleanupTaskKey[]) =>
     postJSONBody<DatabaseCleanupResult>("/api/maintenance/database/cleanup", { tasks }),
   optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
-  listLocalWorkCleanup: (
-    filter: { maxRating: number; includeUnrated: boolean; page: number; pageSize: number },
-    signal?: AbortSignal,
-  ) => {
+  listLocalWorkCleanup: (search: LocalWorkCleanupSearch, page: number, pageSize: number, signal?: AbortSignal) => {
     const params = new URLSearchParams({
-      maxRating: String(filter.maxRating),
-      unrated: String(filter.includeUnrated),
-      page: String(filter.page),
-      pageSize: String(filter.pageSize),
+      rating: String(search.rating),
+      listening: search.listening,
+      minBytes: String(search.minBytes),
+      sort: search.sort,
+      direction: search.direction,
+      limit: String(search.limit),
+      page: String(page),
+      pageSize: String(pageSize),
     });
+    if (search.pool !== null) params.set("pool", search.pool);
     return getJSON<LocalWorkCleanupPage>(`/api/maintenance/local-works/cleanup?${params.toString()}`, signal);
   },
   cleanupLocalWorks: (request: LocalWorkCleanupRequest) =>
