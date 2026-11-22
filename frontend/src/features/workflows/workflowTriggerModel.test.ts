@@ -7,6 +7,8 @@ import {
   operationTriggerConfig,
   triggerIntervalChoices,
   triggerRunsFull,
+  triggerRunsOnItsOwn,
+  workflowTriggerCondition,
   workflowTriggerSummary,
 } from "./workflowTriggerModel";
 
@@ -88,6 +90,30 @@ describe("nextTriggerOrder", () => {
       at(6, "schedule", "2026-07-14T06:00:00Z"),
     ]);
     expect(ordered.map((item) => item.id)).toEqual([6, 5, 4, 3, 2, 1]);
+  });
+});
+
+describe("triggerRunsOnItsOwn", () => {
+  // A ranking pull's dispatcher is stored on with no interval; its lists plan its next run.
+  const dispatcher = (nextRunAt: string | null): WorkflowTrigger => ({
+    ...trigger("{}"),
+    workflowCode: "dlsite_popular_collection",
+    scheduleJson: "{}",
+    nextRunAt,
+  });
+
+  it("counts a trigger the server plans only while it has a next run", () => {
+    expect(triggerRunsOnItsOwn(dispatcher(null))).toBe(false);
+    expect(triggerRunsOnItsOwn(dispatcher("2027-01-02T15:00:00Z"))).toBe(true);
+    expect(workflowTriggerCondition(dispatcher("2027-01-02T15:00:00Z"))).toBeNull();
+  });
+
+  it("counts any other trigger while it is on, even before its next run is worked out", () => {
+    expect(triggerRunsOnItsOwn(trigger("{}"))).toBe(true);
+    expect(triggerRunsOnItsOwn({ ...trigger("{}"), enabled: false })).toBe(false);
+    expect(triggerRunsOnItsOwn({ ...trigger("{}"), triggerType: "startup", scheduleJson: '{"type":"startup"}' })).toBe(
+      true,
+    );
   });
 });
 

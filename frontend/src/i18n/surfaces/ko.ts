@@ -1364,7 +1364,11 @@ export const surfaceKorean = {
       },
       record_library_scan: {
         name: "기록 스캔",
-        description: "기록 폴더의 동영상과 사진을 찾아 길이와 크기를 읽습니다. 오디오 작품은 변경하지 않습니다.",
+        description: "기록 폴더의 폴더, 동영상, 사진, 오디오 파일을 찾습니다. 오디오 작품은 변경하지 않습니다.",
+      },
+      record_media_probe: {
+        name: "기록 미디어 정보 읽기",
+        description: "기록 동영상과 오디오 파일의 길이, 오디오 파일의 커버 아트 여부를 읽습니다.",
       },
       demo_library_scan: {
         name: "데모 라이브러리 스캔",
@@ -1487,6 +1491,8 @@ export const surfaceKorean = {
       "작품마다 소스를 한 번 조회합니다. 이 소스에서 확인한 적 없는 작품을 먼저, 그다음 가장 오래전에 확인한 작품을 확인합니다.",
     sourcePresenceLimitRange: "실행당 작품 수는 1~{{count}} 사이여야 합니다.",
     metadataSyncCreateFailed: "메타데이터 동기화를 생성하지 못했습니다.",
+    recordScanCreateFailed: "기록 스캔을 대기열에 추가하지 못했습니다.",
+    recordProbeCreateFailed: "미디어 정보 읽기를 대기열에 추가하지 못했습니다.",
     triggerUpdateFailed: "트리거를 {{action}}하지 못했습니다.",
     availabilityWatchLoadFailed: "가용성 감시를 불러오지 못했습니다.",
     readyPoolRefreshFailed: "준비됨 풀을 새로 고치지 못했습니다.",
@@ -1654,8 +1660,6 @@ export const surfaceKorean = {
       "구독 새로 고침 일정은 둘러보기 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
     rankingsManagedOnSubscriptions:
       "각 순위는 둘러보기 페이지의 순위 설정에서 정한 일정에 따라 따로 가져옵니다. 실행 기록은 여기에 남습니다.",
-    recordScanManagedOnRecords: "기록 스캔은 기록 페이지의 스캔에서 시작합니다. 실행 기록은 여기에 남습니다.",
-    openRecords: "기록 열기",
     openSubscriptions: "둘러보기 열기",
     presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
     catalogSyncQueued: "카탈로그 동기화를 실행 #{{id}}(으)로 대기열에 추가했습니다.",
@@ -1710,6 +1714,7 @@ export const surfaceKorean = {
     operations: {
       groups: {
         library: "라이브러리",
+        record: "기록",
       },
       summaries: {
         local_library_scan: "데이터 폴더에서 작품을 찾고 로컬에 있는 작품을 기록합니다.",
@@ -1901,7 +1906,6 @@ export const surfaceKorean = {
     whenServiceStarts: "애플리케이션 서비스가 시작될 때",
     whenFoldersChange: "로컬 라이브러리 폴더가 변경될 때",
     everyMinutes: "{{count}}분마다",
-    intervalSchedule: "간격 일정",
     paused: "일시 중지됨",
     nextServiceStart: "다음 서비스 시작",
     watchingFolderChanges: "폴더 변경 감시 중",
@@ -1974,6 +1978,8 @@ export const surfaceKorean = {
         local_library_scan: "스캔",
         metadata_sync: "메타데이터",
         local_media_index: "인덱스",
+        record_library_scan: "기록 스캔",
+        record_media_probe: "미디어 정보",
       },
       full: "전체",
       fullHint: {
@@ -1982,6 +1988,7 @@ export const surfaceKorean = {
         metadata_sync: "누락되거나 오래된 메타데이터뿐 아니라 모든 작품의 메타데이터를 새로 고칩니다.",
       },
       scanAlwaysFull: "매번 모든 폴더를 확인합니다",
+      followsRecordScan: "기록을 스캔할 때마다 실행",
       metadataOptions: "메타데이터 옵션",
       metadataOptionsDescription:
         "메타데이터 카드의 실행과 새 메타데이터 트리거가 사용하는 설정입니다. 이 브라우저에 저장됩니다.",
@@ -2006,8 +2013,9 @@ export const surfaceKorean = {
     runs: {
       label: "실행",
       tabs: {
-        now: "현재",
-        history: "기록",
+        operations: "작업",
+        attention: "처리 필요",
+        history: "이력",
       },
       status: "상태",
       next: "다음",

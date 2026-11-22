@@ -1,5 +1,5 @@
-import { ChevronDown, Clapperboard, Compass } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Compass } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePageHeaderBack } from "@/app/pageHeader";
@@ -24,10 +24,11 @@ import {
   operationState,
   operationsFromDefinitions,
   type Operation,
+  type OperationGroup,
 } from "@/features/workflows/operations/operationModel";
 import { useOperationRuns } from "@/features/workflows/operations/useOperationRuns";
 import { RunDetail } from "@/features/workflows/RunDetail";
-import { AttentionRuns, RunningRuns } from "@/features/workflows/runs/NowRuns";
+import { AttentionRuns, NowSection, RunningRuns } from "@/features/workflows/runs/NowRuns";
 import { WorkflowRuns } from "@/features/workflows/runs/WorkflowRuns";
 import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/triggers/NextTriggers";
 import { OperationTriggersDialog } from "@/features/workflows/triggers/OperationTriggersDialog";
@@ -53,11 +54,15 @@ const pendingRunTimeoutMs = 20_000;
 /** Whose triggers the dialog shows, and a trigger to open straight to. */
 type TriggerDialogState = { definitionId: number; editing: WorkflowTrigger | null } | null;
 
+/** The sections of Operations, in order. */
+const operationGroups: OperationGroup[] = ["library", "record"];
+
 /**
- * Workflows: the library maintenance an administrator starts by hand, as
- * three cards (Scan, Metadata, and Index), above every workflow's runs: Now
- * holds what runs, what needs attention, and what triggers run next, and
- * History the runs that ended. One run's details open beside the list.
+ * Workflows: what is running, above three tabs. Operations holds the
+ * maintenance an administrator starts by hand as cards, Library (Scan,
+ * Metadata, and Index) and Record (Record scan and Media details), with what
+ * triggers run next; Needs attention the runs that wait for a decision; and
+ * History the runs that ended. One run's details open beside the tabs.
  */
 export function WorkflowsPage({
   canRun,
@@ -73,7 +78,6 @@ export function WorkflowsPage({
   const auth = useAuth();
   const location = useWorkflowsLocation();
   const mobile = useMobileNavigationLayout();
-  const operationsHeadingId = useId();
   const [revision, setRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
@@ -114,7 +118,10 @@ export function WorkflowsPage({
     refresh();
   }, []);
 
-  const operations = useMemo(() => operationsFromDefinitions(definitions), [definitions]);
+  const operations = useMemo(
+    () => operationsFromDefinitions(definitions, { recordEnabled: auth.recordEnabled }),
+    [auth.recordEnabled, definitions],
+  );
   const codes = useMemo(() => operations.map((operation) => operation.definition.code), [operations]);
   const runs = useOperationRuns({ codes, refreshKey: revision, staticDemo: auth.demoMode });
 
@@ -184,6 +191,10 @@ export function WorkflowsPage({
   };
 
   const runOperation = (operation: Operation, full: boolean) => {
+    if (operation.kind === "record_scan")
+      return startRun(operation, () => api.queueRecordScan(), workflowCopy("recordScanCreateFailed"));
+    if (operation.kind === "record_probe")
+      return startRun(operation, () => api.queueRecordProbe(), workflowCopy("recordProbeCreateFailed"));
     if (operation.kind === "local_scan")
       return startRun(operation, () => api.runLocalScan({ followUpRun: false }), workflowCopy("localScanCreateFailed"));
     if (operation.kind === "local_media_index")
@@ -199,8 +210,11 @@ export function WorkflowsPage({
     );
   };
 
-  /** Every operation scans or syncs the library, so starting or scheduling one needs `metadata:sync`. */
+  /** Every library operation scans or syncs the library, so starting or scheduling one needs `metadata:sync`. */
   const permitted = !readOnly && canRun && canSyncMetadata;
+  /** The Record operations change what Record shows, as Scan on the Record page does. */
+  const recordPermitted = !readOnly && auth.hasPermission("library:write");
+  const runPermitted = (operation: Operation) => (operation.group === "record" ? recordPermitted : permitted);
 
   const toggleTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
@@ -245,12 +259,7 @@ export function WorkflowsPage({
     return {
       name: workflowName(code, definition?.displayName ?? code),
       editable: false,
-      path:
-        managedPage && (managedPage.page !== "records" || auth.recordEnabled)
-          ? managedPage.path
-          : code === "source_presence_check"
-            ? systemSettingsPath("library")
-            : null,
+      path: managedPage ? managedPage.path : code === "source_presence_check" ? systemSettingsPath("library") : null,
     };
   };
   const dialogOperation = triggerDialog
@@ -260,9 +269,7 @@ export function WorkflowsPage({
   const workflowOptions = definitions
     .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
     .sort((left, right) => left.name.localeCompare(right.name));
-  const pageManaged = pageManagedWorkflows[location.workflowCode];
-  // A turned-off Record has no page to send its scans' history to.
-  const managed = pageManaged?.page === "records" && !auth.recordEnabled ? undefined : pageManaged;
+  const managed = pageManagedWorkflows[location.workflowCode];
 
   const renderCard = (operation: Operation) => {
     const { definition } = operation;
@@ -274,6 +281,7 @@ export function WorkflowsPage({
     const state = operationState(status, listed ? undefined : requested);
     const locked = operationLocked(operation, state);
     const full = fullChoices[code] ?? false;
+    const allowed = runPermitted(operation);
     return (
       <OperationCard
         key={definition.id}
@@ -288,22 +296,29 @@ export function WorkflowsPage({
         moreActive={Math.max(0, (status?.activeRuns ?? 0) - 1)}
         stageCount={status?.stageCount ?? 0}
         locked={locked}
-        runAllowed={permitted}
-        runBlockedReason={permitted ? undefined : t("permissions.permissionDenied")}
+        runAllowed={allowed}
+        runBlockedReason={allowed ? undefined : t("permissions.permissionDenied")}
         full={
-          operation.kind === "local_scan"
-            ? null
-            : {
+          operation.full
+            ? {
                 checked: full,
                 hint: t(`workflowPage.cards.fullHint.${code}`),
                 onChange: (checked) => setFullChoices((current) => ({ ...current, [code]: checked })),
               }
+            : null
         }
-        triggers={{
-          label: t("workflowPage.triggers.title", { name: cardName(operation) }),
-          onOpen:
-            permitted || readOnly ? () => setTriggerDialog({ definitionId: definition.id, editing: null }) : undefined,
-        }}
+        triggers={
+          operation.schedulable
+            ? {
+                label: t("workflowPage.triggers.title", { name: cardName(operation) }),
+                onOpen:
+                  permitted || readOnly
+                    ? () => setTriggerDialog({ definitionId: definition.id, editing: null })
+                    : undefined,
+              }
+            : undefined
+        }
+        follows={operation.kind === "record_probe" ? t("workflowPage.cards.followsRecordScan") : undefined}
         options={
           operation.kind === "metadata_sync"
             ? {
@@ -336,14 +351,38 @@ export function WorkflowsPage({
       .join(" · ");
   };
 
-  const runOpen = location.runId !== null;
-  // Library folds while a run is open and opens again with the list; a choice in between holds until then.
-  const [libraryChoice, setLibraryChoice] = useState<{ runOpen: boolean; open: boolean | null }>({
-    runOpen,
-    open: null,
-  });
-  if (libraryChoice.runOpen !== runOpen) setLibraryChoice({ runOpen, open: null });
-  const libraryOpen = (libraryChoice.runOpen === runOpen ? libraryChoice.open : null) ?? !runOpen;
+  const operationsTab = (
+    // Cards sit three to a row where the tab is wide, and one to a row beside an open run.
+    <div className="@container/operations grid min-w-0 gap-6">
+      {!hasSnapshot && isLoading ? (
+        <WorkflowMetadataLoadingState />
+      ) : !hasSnapshot && loadError ? (
+        <WorkflowMetadataErrorState message={loadError} onRetry={refresh} />
+      ) : operations.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">{workflowCopy("definitionEmpty")}</p>
+      ) : (
+        operationGroups.map((group) => {
+          const cards = operations.filter((operation) => operation.group === group);
+          if (cards.length === 0) return null;
+          return (
+            <NowSection key={group} title={t(`workflowPage.operations.groups.${group}`)}>
+              <ul className="grid gap-3 pt-3 @2xl/operations:grid-cols-3">{cards.map(renderCard)}</ul>
+            </NowSection>
+          );
+        })
+      )}
+      <NextTriggers
+        triggers={triggers}
+        ownerOf={triggerOwner}
+        canManage={permitted}
+        readOnly={readOnly}
+        loading={!hasSnapshot && isLoading}
+        onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
+        onEdit={(trigger) => setTriggerDialog({ definitionId: trigger.workflowDefinitionId, editing: trigger })}
+        onOpenPath={openWorkflowPath}
+      />
+    </div>
+  );
 
   return (
     <div className={cn(contentPageClassName, "space-y-8")}>
@@ -361,69 +400,30 @@ export function WorkflowsPage({
           </Button>
         </div>
       )}
-      <section aria-labelledby={operationsHeadingId} className="min-w-0 space-y-3">
-        <div className="flex min-h-9 items-center justify-between gap-3">
-          <h2 id={operationsHeadingId} className="text-base font-semibold">
-            <button
-              type="button"
-              className="-ml-1 flex items-center gap-1.5 rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-expanded={libraryOpen}
-              aria-controls={`${operationsHeadingId}-cards`}
-              onClick={() => setLibraryChoice({ runOpen, open: !libraryOpen })}
-            >
-              {t("workflowPage.operations.groups.library")}
-              <ChevronDown
-                className={cn("h-4 w-4 text-muted-foreground transition-transform", !libraryOpen && "-rotate-90")}
-                aria-hidden
-              />
-            </button>
-          </h2>
-        </div>
-        <div id={`${operationsHeadingId}-cards`} hidden={!libraryOpen}>
-          {!libraryOpen ? null : !hasSnapshot && isLoading ? (
-            <WorkflowMetadataLoadingState />
-          ) : !hasSnapshot && loadError ? (
-            <WorkflowMetadataErrorState message={loadError} onRetry={refresh} />
-          ) : operations.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">{workflowCopy("definitionEmpty")}</p>
-          ) : (
-            <ul className="grid gap-3 md:grid-cols-3">{operations.map(renderCard)}</ul>
-          )}
-        </div>
-      </section>
       <WorkflowRuns
         tab={location.tab}
         onTabChange={location.setTab}
-        nowCount={runs.running + runs.attention}
-        now={
-          <div className="grid min-w-0 gap-6">
-            <RunningRuns
-              runs={runs.activeRuns}
-              total={runs.running}
-              selectedRunId={location.runId}
-              canSyncMetadata={canSyncMetadata}
-              onSelectRun={selectRun}
-            />
-            <AttentionRuns
-              refreshKey={revision}
-              staticDemo={auth.demoMode}
-              readOnly={readOnly}
-              canSyncMetadata={canSyncMetadata}
-              selectedRunId={location.runId}
-              onSelectRun={selectRun}
-              onChanged={() => setRevision((value) => value + 1)}
-            />
-            <NextTriggers
-              triggers={triggers}
-              ownerOf={triggerOwner}
-              canManage={permitted}
-              readOnly={readOnly}
-              loading={!hasSnapshot && isLoading}
-              onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
-              onEdit={(trigger) => setTriggerDialog({ definitionId: trigger.workflowDefinitionId, editing: trigger })}
-              onOpenPath={openWorkflowPath}
-            />
-          </div>
+        running={
+          <RunningRuns
+            runs={runs.activeRuns}
+            total={runs.running}
+            selectedRunId={location.runId}
+            canSyncMetadata={canSyncMetadata}
+            onSelectRun={selectRun}
+          />
+        }
+        operations={operationsTab}
+        attentionCount={runs.attention}
+        attention={
+          <AttentionRuns
+            refreshKey={revision}
+            staticDemo={auth.demoMode}
+            readOnly={readOnly}
+            canSyncMetadata={canSyncMetadata}
+            selectedRunId={location.runId}
+            onSelectRun={selectRun}
+            onChanged={() => setRevision((value) => value + 1)}
+          />
         }
         status={location.status}
         onStatusChange={location.setStatus}
@@ -437,8 +437,8 @@ export function WorkflowsPage({
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
               <p className="min-w-0">{workflowCopy(managed.message)}</p>
               <Button size="sm" variant="outline" onClick={() => openWorkflowPath(managed.path)}>
-                {managed.page === "records" ? <Clapperboard className="h-4 w-4" /> : <Compass className="h-4 w-4" />}
-                {workflowCopy(managed.page === "records" ? "openRecords" : "openSubscriptions")}
+                <Compass className="h-4 w-4" />
+                {workflowCopy("openSubscriptions")}
               </Button>
             </div>
           ) : undefined

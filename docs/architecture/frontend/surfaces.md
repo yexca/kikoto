@@ -77,10 +77,11 @@ reach them, and who may open them.
   run's server-supplied `canCancel` flag through the dedicated translation
   cancellation endpoint described in [Run Lists](../workflows/run-lists.md#run-lists).
 - Metadata: see [Metadata Page](#metadata-page).
-- Workflows (`/workflows`): operation cards for Scan, Metadata, and Index above the run
-  lists, with the run lists as tabs (Now and History), the workflow
-  filter and search at the end of the row, and run details beside the list from
-  1280px, also reachable through notifications. The address holds the open
+- Workflows (`/workflows`): the running runs above three tabs, Operations
+  (cards for Scan, Metadata, and Index under Library and for Record scan and
+  Media details under Record, then Next), Needs attention, and History, with
+  History's workflow filter and search at the end of the row, and run details
+  beside the tabs from 1280px, also reachable through notifications. The address holds the open
   run, tab, and filters, and the `/activity`, `/runs`, and
   `/workflows?activity=1` addresses redirect into Workflows. See
   [Run Lists](../workflows/run-lists.md#run-lists).

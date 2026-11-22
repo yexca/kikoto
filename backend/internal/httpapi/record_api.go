@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -42,7 +43,62 @@ func (s *Server) getRecordRoot(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusServiceUnavailable, "record_root_unavailable", "The record library is unavailable.", true)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"root": root})
+	activity, err := s.recordLibraryActivity(r.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "record_root_unavailable", "The record library is unavailable.", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"root": root, "activity": activity})
+}
+
+// recordRunActivity is a record workflow run as the Records page follows it.
+type recordRunActivity struct {
+	RunID           int64  `json:"runId"`
+	Status          string `json:"status"`
+	ProgressCurrent int    `json:"progressCurrent"`
+	ProgressTotal   int    `json:"progressTotal"`
+}
+
+// recordActivity is what the record workflows are doing: the latest scan, the
+// probe run while it is queued or running, and the files whose details are
+// still to be read.
+type recordActivity struct {
+	Scan         *recordRunActivity `json:"scan,omitempty"`
+	Probe        *recordRunActivity `json:"probe,omitempty"`
+	PendingFiles int                `json:"pendingFiles"`
+}
+
+func (s *Server) recordLibraryActivity(ctx context.Context) (recordActivity, error) {
+	var activity recordActivity
+	var err error
+	if activity.Scan, err = s.latestRecordRun(ctx, recordScanWorkflowCode, false); err != nil {
+		return activity, err
+	}
+	if activity.Probe, err = s.latestRecordRun(ctx, recordProbeWorkflowCode, true); err != nil {
+		return activity, err
+	}
+	activity.PendingFiles, err = s.recordStore.PendingProbes(ctx, nil)
+	return activity, err
+}
+
+// latestRecordRun reads the latest run of code with its job's progress, or,
+// when activeOnly, the latest run that is queued or running.
+func (s *Server) latestRecordRun(ctx context.Context, code string, activeOnly bool) (*recordRunActivity, error) {
+	var run recordRunActivity
+	err := s.db.QueryRowContext(ctx, `
+		SELECT run.id, run.status, COALESCE(job.progress_current, 0), COALESCE(job.progress_total, 0)
+		FROM workflow_run AS run
+		LEFT JOIN workflow_job AS job ON job.id = (SELECT MAX(id) FROM workflow_job WHERE workflow_run_id = run.id)
+		WHERE run.workflow_code = ? AND (? = 0 OR run.status IN ('queued', 'running'))
+		ORDER BY run.id DESC LIMIT 1
+	`, code, activeOnly).Scan(&run.RunID, &run.Status, &run.ProgressCurrent, &run.ProgressTotal)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
 }
 
 // decorateRecordFolder names the URLs of the artwork a scan chose for the
@@ -348,6 +404,21 @@ func (s *Server) scanRecords(w http.ResponseWriter, r *http.Request) {
 	result, err := s.enqueueRecordScan(r.Context(), user.ID)
 	if err != nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "record_scan_failed", "The record library scan could not be queued.", true)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+// probeRecords queues a media details run by hand, or answers with the run
+// already queued or running. It reads every file still pending, including the
+// files an earlier run timed out on.
+func (s *Server) probeRecords(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+		return
+	}
+	result, err := s.enqueueRecordProbe(r.Context(), workflowRunTrigger{Type: "manual", Reason: "manual"})
+	if err != nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "record_probe_failed", "Reading record media details could not be queued.", true)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)

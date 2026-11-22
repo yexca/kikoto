@@ -332,7 +332,7 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 		return probe, nil
 	}
 	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,width,height"+
-		",index,channels:stream_tags=language,title:stream_disposition=default,forced")
+		",index,channels:stream_tags=language,title:stream_disposition=default,forced,attached_pic")
 	if err != nil {
 		return playbackProbe{}, err
 	}

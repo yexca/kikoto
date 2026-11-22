@@ -5,13 +5,19 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- **Workflows** holds the library maintenance an administrator starts by
-  hand and every workflow's runs. At the top, under **Library**, three cards:
+- **Workflows** holds the maintenance an administrator starts by hand and
+  every workflow's runs. **Running** at the top lists the queued and running
+  runs of every workflow while there are any, above three tabs:
+  **Operations**, the default, **Needs attention**, and **History**.
+- **Operations** holds the cards, then **Next**. Under **Library** are
   **Scan** (scan the local library), **Metadata** (sync work metadata), and
-  **Index** (refresh local work files). Work on one target starts where that
-  target is: Fetch from a work, a catalog sync from its circle, series, or
-  voice actor, and a remote source's library work check from that source in
-  [Library](settings.md#library) settings. There is no custom workflow editor.
+  **Index** (refresh local work files); while [Record](record-library.md) is
+  on, **Record** adds **Record scan** (scan the Record folder) and **Media
+  details** (read the length and cover art of Record videos and audio files).
+  Work on one target starts where that target is: Fetch from a work, a catalog
+  sync from its circle, series, or voice actor, and a remote source's library
+  work check from that source in [Library](settings.md#library) settings.
+  There is no custom workflow editor.
 - A card shows the operation's name, its state, what starts it on its own,
   and **Run**. The state reads **Never run**, **Starting**, **Queued**,
   **Running** with its progress, or how the latest run ended and when, such as
@@ -19,9 +25,9 @@ Workflows make backend actions inspectable.
   wait for a decision. Select the state to open that run. The line below
   lists its automatic starts, such as **At startup**, **Watching folders**, or
   **Every 6 hours**, with when the next scheduled run is due, or says
-  **Automatic runs paused** when every trigger is off. Phones stack the cards.
-  **Library** folds the cards away and opens them again; it folds while a
-  run is open and opens when you return to the list.
+  **Automatic runs paused** when every trigger is off; on Media details it
+  reads **After each Record scan**. Phones stack the cards, and so does the
+  narrow list beside an open run.
 - **Run** starts the operation, and the card shows the run at once. Metadata
   and Index run incrementally: Metadata refreshes missing or outdated
   metadata of every work from DLsite, and Index indexes only local works whose
@@ -33,6 +39,11 @@ Workflows make backend actions inspectable.
   another while one runs: its card follows the running run and counts the
   others, and a new run that waits behind another says so. A run started by a
   schedule, at startup, or in another browser shows on its card the same way.
+- Record scan runs as **Scan** on the Record page does. Media details reads
+  every file still waiting, including files an earlier run gave up on after a
+  timeout, and also runs on its own after each Record scan. Neither has Full
+  or triggers, and each has one run queued or running at a time; starting
+  another returns that run.
 - **Metadata options**, the button beside the Metadata card's name, sets
   the [remote metadata fallback](settings.md#remote-metadata-fallback) (off by
   default; on, it asks up to 16 chosen sources in the order you set when
@@ -43,31 +54,32 @@ Workflows make backend actions inspectable.
   Remote B → Example Remote A**. They are saved in this browser; a source
   that is switched off or no longer provides metadata drops out of the
   fallback.
-- The calendar button at the end of a card's name row opens what makes that
-  operation run on its own, and is lit while any of it is on. It lists the
+- The calendar button at the end of a Library card's name row opens what
+  makes that operation run on its own, and is lit while any of it is on. It lists the
   operation's triggers, each with a switch and an edit button, and **Add
   trigger** adds one: **At startup** or **On a schedule** with an interval of
   1, 6, or 12 hours, 1 day, or 7 days, and Full. An operation without
   triggers opens straight to adding one. An operation runs at startup once at
   most, and Metadata runs only on a schedule.
-- Below the cards, the runs are in two lists. **Now**, the default, shows
-  three parts from top to bottom: **Running**, the queued and running runs;
-  **Needs attention**, the runs that wait for a decision; and **Next**, what
-  every trigger runs next. Running and Needs attention show only while they
-  hold a run, and **Now** counts the runs in both. Each part shows five
-  entries, and **Show all** shows the rest. **History** lists the runs that
-  ended, newest first; it narrows to failed runs or to one workflow, and the
-  search field finds runs by workflow name, work code, circle, or source.
-- **Next** lists interval schedules by their next run, then startup and folder
-  triggers, and paused triggers last, each with when it runs and whether it
-  runs in full. The operations' triggers have a switch that pauses and
-  resumes them and an edit button that changes the interval and Full or
-  deletes the trigger. Another workflow's triggers, such as a ranking pull or
+- Running and Next each show five entries, and **Show all** shows the rest.
+  **Needs attention** lists the runs that wait for a decision, 20 to a page,
+  and its tab counts them while there are any. **History** lists the runs
+  that ended, newest first; it narrows to failed runs or to one workflow, and
+  the search field finds runs by workflow name, work code, circle, or source.
+- **Next** lists the triggers that are on: interval schedules by their next
+  run, then startup and folder triggers, each with when it runs and whether
+  it runs in full. A paused trigger runs nothing, so Next leaves it out; its
+  card's trigger list, or the page where it is set up, still shows it. A
+  ranking pull shows only while one of its rankings has a pull planned, with
+  when that pull is due; the rankings' own schedules on Discover turn it on
+  and off. The
+  operations' triggers have a switch that pauses them and an edit button that
+  changes the interval and Full or deletes the trigger. Another workflow's triggers, such as a ranking pull or
   a source's library work check, lead to where they are set up.
 - Each run shows the status, run number, trigger, and elapsed time. Selecting
   one opens its details: start and finish times, duration, trigger, steps,
   candidates, run actions, and a collapsed **Diagnostic log** of run events.
-  Wide screens show the details beside the list; elsewhere they take the page,
+  Wide screens show the details beside the tabs; elsewhere they take the page,
   and **Back to runs** or the header back button returns. `/runs` and
   `/activity` links, and earlier links to runs inside Workflows, open
   Workflows with the linked run.
@@ -88,8 +100,9 @@ administrators.
 - Starting, configuring, or scheduling a workflow needs every permission its
   steps use: Track needs `remote:track`, Fetch and every Fetch-based bulk
   action need both `remote:fetch` and `metadata:sync`, scans, metadata
-  workflows, and the ranking pulls need `metadata:sync`, and the source check
-  needs `sources:write`. Contributors
+  workflows, and the ranking pulls need `metadata:sync`, the Record
+  operations need `library:write`, and the source check needs
+  `sources:write`. Contributors
   without `metadata:sync` can still see these operations, but cannot start or
   automate their Fetch paths.
 - Editing, switching off, or deleting a trigger needs the same permissions as
@@ -162,8 +175,9 @@ administrators.
   records are retained. Watcher errors, oversized event batches, root
   invalidation, and duplicate roots automatically use a full scan. Fetch
   registers its own published locations directly; manual, startup, and interval
-  scans always inspect the complete data tree. The watcher's edit button in
-  **Next** switches it between Incremental and Full. Changes during an active run
+  scans always inspect the complete data tree. The watcher's edit button, in
+  Scan's trigger list or in **Next** while it is on, switches it between
+  Incremental and Full. Changes during an active run
   produce at most one follow-up scan. Paused events are discarded; offline
   changes rely on the Startup scan.
 - **Index** (Refresh local work files) indexes the media files inside local
@@ -190,8 +204,6 @@ administrators.
   its schedule, and
   each ranking its own pull schedule. History narrowed to one of them says
   where it is configured and links there.
-- **Scan Record** runs from **Scan** on the [Record](record-library.md) page
-  and has no card. History narrowed to it says so and links to that page.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   are preset workflows that run on demand from their target:
   **Sync catalog…** in a circle's or voice actor's **More** menu, and **Sync

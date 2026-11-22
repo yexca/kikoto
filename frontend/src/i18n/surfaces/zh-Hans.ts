@@ -1316,7 +1316,11 @@ export const surfaceHans = {
       },
       record_library_scan: {
         name: "扫描记录",
-        description: "查找记录文件夹中的视频和照片，并读取时长和尺寸。不会改动音声作品。",
+        description: "查找记录文件夹中的文件夹、视频、照片和音频文件。不会改动音声作品。",
+      },
+      record_media_probe: {
+        name: "读取记录媒体信息",
+        description: "读取记录中视频和音频文件的时长，以及音频文件是否带封面。",
       },
       demo_library_scan: { name: "扫描演示媒体库", description: "发现演示文件并索引符合公开浏览条件的作品。" },
       dlsite_popular_collection: {
@@ -1397,6 +1401,8 @@ export const surfaceHans = {
     sourcePresenceLimitHint: "每个作品在来源上查询一次。优先检查该来源从未检查过的作品，其次是最久未检查的作品。",
     sourcePresenceLimitRange: "每次作品数必须在 1 到 {{count}} 之间。",
     metadataSyncCreateFailed: "无法创建元数据同步运行。",
+    recordScanCreateFailed: "无法将记录扫描加入队列。",
+    recordProbeCreateFailed: "无法将读取媒体信息加入队列。",
     triggerUpdateFailed: "无法{{action}}触发器。",
     availabilityWatchLoadFailed: "可用性监视加载失败。",
     readyPoolRefreshFailed: "就绪池刷新失败。",
@@ -1558,8 +1564,6 @@ export const surfaceHans = {
     availabilityWatchManagedOnSubscriptions: "可用性监视在发现页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
     subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在发现页面设置。运行历史保留在这里。",
     rankingsManagedOnSubscriptions: "每个排行榜按发现页面排行榜设置中的计划各自拉取。运行历史保留在这里。",
-    recordScanManagedOnRecords: "记录的扫描从记录页面的“扫描”开始。运行历史保留在这里。",
-    openRecords: "打开记录",
     openSubscriptions: "打开发现",
     presetQueueFailed: "预制工作流无法排队。",
     catalogSyncQueued: "目录同步已排入运行 #{{id}}。",
@@ -1614,6 +1618,7 @@ export const surfaceHans = {
     operations: {
       groups: {
         library: "媒体库",
+        record: "记录",
       },
       summaries: {
         local_library_scan: "查找数据目录里的作品，并记录哪些在本地。",
@@ -1810,7 +1815,6 @@ export const surfaceHans = {
     whenServiceStarts: "应用服务启动时",
     whenFoldersChange: "本地库文件夹变化时",
     everyMinutes: "每 {{count}} 分钟",
-    intervalSchedule: "间隔计划",
     paused: "已暂停",
     nextServiceStart: "下次服务启动",
     watchingFolderChanges: "正在监视文件夹变化",
@@ -1873,6 +1877,8 @@ export const surfaceHans = {
         local_library_scan: "扫描",
         metadata_sync: "元数据",
         local_media_index: "索引",
+        record_library_scan: "记录扫描",
+        record_media_probe: "媒体信息",
       },
       full: "完整",
       fullHint: {
@@ -1881,6 +1887,7 @@ export const surfaceHans = {
         metadata_sync: "刷新所有作品的元数据，而不只是缺失或过期的部分。",
       },
       scanAlwaysFull: "每次都检查所有文件夹",
+      followsRecordScan: "每次扫描记录后运行",
       metadataOptions: "元数据选项",
       metadataOptionsDescription: "元数据卡片的运行和新的元数据触发器会使用这些设置。保存在此浏览器中。",
       fallbackSummary: "远程回退：{{sources}}",
@@ -1904,7 +1911,8 @@ export const surfaceHans = {
     runs: {
       label: "运行",
       tabs: {
-        now: "现在",
+        operations: "操作",
+        attention: "需要处理",
         history: "历史记录",
       },
       status: "状态",

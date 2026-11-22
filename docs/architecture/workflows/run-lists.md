@@ -26,15 +26,20 @@ have settled out of its `total`, and the `count` the stage names, so the page
 states a language's progress as the server worked it out from the item states.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
-Two tabs choose the list. **Now**, the default, shows from top to bottom the
-Running part (the active queue the cards read), the Needs attention part
-(`view=attention`), and Next, the triggers of every workflow. Running and
-Needs attention show only while they hold a run; each part shows five entries
-and **Show all** the rest, Needs attention a page of twenty at a time, and the
-tab counts the runs of both. Next lists enabled interval triggers by their
-next run, then those still waiting for one, then Startup and folder triggers,
-and paused triggers last. The operations' triggers carry a switch that pauses
-and resumes them and an edit button that opens the trigger dialog; another
+Running (the active queue the cards read) sits above the tabs while it holds
+a run and stays there on every tab. **Operations**, the default tab, holds the
+cards and then Next, the triggers of every workflow; Running and Next each
+show five entries and **Show all** the rest. **Needs attention**
+(`?tab=attention`, `view=attention`) lists the runs waiting for a decision in
+server pages of twenty, with an empty state, and its tab counts them. Next
+lists only enabled triggers: interval triggers by their next run, then those
+still waiting for one, then Startup and folder triggers. A paused trigger is
+left out, since it runs nothing; an operation's trigger dialog still lists it
+for resuming. A ranking pull's dispatcher is always enabled and stores no
+interval, since the ranking lists plan its `next_run_at`; Next treats a
+schedule trigger without an interval as planned by the server, lists it only
+while it has a next run, and shows that time in place of a condition. The operations' triggers carry a switch that pauses them and
+an edit button that opens the trigger dialog; another
 workflow's triggers name the trigger and link to where it is configured: the
 Discover panel of a ranking pull, Availability Watch, or the subscription
 refresh, and System → Library for a source presence check. **History**
@@ -43,17 +48,17 @@ refresh, and System → Library for a source presence check. **History**
 narrows it to failed runs (`&status=failed`, `view=failed`), a workflow
 filter to one workflow (`&workflow=<code>`), including the workflows that have
 no card, and a search field matches the workflow name, the trigger reason, and
-the run's subject (`&q=`). A workflow that the Discover page configures,
-and the Record scan, which the Record page starts, state so above their runs
-and link there. Rows open full run details
-(`?run=<id>`) beside the list from 1280px and in place of it below, where the
+the run's subject (`&q=`). A workflow that the Discover page configures
+states so above its runs and links there. Rows open full run details
+(`?run=<id>`) beside the tabs from 1280px and in place of them below, where the
 mobile layout returns through the header back action; returning to the list
 keeps its filters. Opening a run is a history entry. A card's state, the header
 notification panel, and Quick actions open runs and lists here. `/runs`,
 `/activity`, and `/workflows?activity=1` redirect here with their run;
 their ended-run lists (`history`, `completed`, `logs`, `failed`) open
 History with that list's workflow (`?runsOf=`, or `?workflow=` on
-`/activity`), and their other lists open Now. Events, candidates, progress,
+`/activity`), their `attention` list opens Needs attention, and their other
+lists open Operations; an earlier `?tab=now` opens Operations. Events, candidates, progress,
 retries, and cancellation are available within the run details.
 
 The four workflows the Discover page configures (the DLsite and remote source

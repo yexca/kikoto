@@ -4,20 +4,29 @@ import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 
 export const WORKFLOWS_PATH = "/workflows";
 
-/** What goes on now (running, needing attention, next) and the runs that ended. */
-export const workflowTabs = ["now", "history"] as const;
+/**
+ * The tabs under what is running: the operations with what runs next, the
+ * runs that need attention, and the runs that ended.
+ */
+export const workflowTabs = ["operations", "attention", "history"] as const;
 export type WorkflowTab = (typeof workflowTabs)[number];
+
+/** The tab an address names; Operations without one, and for an earlier address's `now`. */
+export function workflowTabFromParam(value: string | null): WorkflowTab {
+  return value === "attention" || value === "history" ? value : "operations";
+}
 
 /** History narrowed to failed runs; empty for every ended run. */
 export type HistoryStatus = "" | "failed";
 
-/** Workflows on one of its lists; the status and workflow narrow History. */
+/** Workflows on one of its tabs; the status and workflow narrow History. */
 export function workflowsPath({
   tab,
   status,
   workflow,
 }: { tab?: WorkflowTab; status?: HistoryStatus; workflow?: string } = {}) {
   const params = new URLSearchParams();
+  if (tab === "attention") params.set("tab", "attention");
   if (tab === "history") {
     params.set("tab", "history");
     if (status) params.set("status", status);
@@ -45,7 +54,11 @@ export function legacyRunLogPath(path: string, search: string): string | null {
   const params = new URLSearchParams(search);
   if (path === WORKFLOWS_PATH ? !params.has("activity") : path !== "/activity" && path !== "/runs") return null;
   const view = params.get("view") ?? "";
-  const tab: WorkflowTab = ["failed", "history", "completed", "logs"].includes(view) ? "history" : "now";
+  const tab: WorkflowTab = ["failed", "history", "completed", "logs"].includes(view)
+    ? "history"
+    : view === "attention"
+      ? "attention"
+      : "operations";
   const run = Number(params.get("run"));
   const target = workflowsPath({
     tab,

@@ -103,7 +103,7 @@ export function OperationTriggersDialog({
             ) : (
               <ul className="divide-y rounded-lg border">
                 {nextTriggerOrder(triggers).map((trigger) => {
-                  const label = workflowTriggerCondition(trigger);
+                  const label = workflowTriggerCondition(trigger) ?? trigger.displayName;
                   const action = readOnly
                     ? workflowCopy("viewTrigger", { name: label })
                     : t("workflowPage.triggers.edit");

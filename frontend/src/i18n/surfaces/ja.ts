@@ -1368,7 +1368,11 @@ export const surfaceJapanese = {
       },
       record_library_scan: {
         name: "記録をスキャン",
-        description: "記録フォルダーの動画と写真を見つけ、長さとサイズを読み取ります。音声作品は変更しません。",
+        description: "記録フォルダーのフォルダー、動画、写真、音声ファイルを見つけます。音声作品は変更しません。",
+      },
+      record_media_probe: {
+        name: "記録のメディア情報を読み取る",
+        description: "記録の動画と音声ファイルの長さと、音声ファイルにカバーアートがあるかを読み取ります。",
       },
       demo_library_scan: {
         name: "デモライブラリをスキャン",
@@ -1495,6 +1499,8 @@ export const surfaceJapanese = {
       "作品ごとにソースを1回照会します。このソースで未確認の作品を優先し、次に確認が最も古い作品を確認します。",
     sourcePresenceLimitRange: "1回あたりの作品数は 1〜{{count}} の範囲で指定してください。",
     metadataSyncCreateFailed: "メタデータ同期実行を作成できませんでした。",
+    recordScanCreateFailed: "記録のスキャンをキューに追加できませんでした。",
+    recordProbeCreateFailed: "メディア情報の読み取りをキューに追加できませんでした。",
     triggerUpdateFailed: "トリガーを{{action}}できませんでした。",
     availabilityWatchLoadFailed: "可用性ウォッチを読み込めませんでした。",
     readyPoolRefreshFailed: "準備完了プールを更新できませんでした。",
@@ -1661,8 +1667,6 @@ export const surfaceJapanese = {
       "購読の更新スケジュールは「見つける」ページで設定します。実行履歴はここに残ります。",
     rankingsManagedOnSubscriptions:
       "各ランキングは、「見つける」ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
-    recordScanManagedOnRecords: "記録のスキャンは記録ページの「スキャン」から開始します。実行履歴はここに残ります。",
-    openRecords: "「記録」を開く",
     openSubscriptions: "「見つける」を開く",
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
     catalogSyncQueued: "カタログ同期を実行 #{{id}} としてキューに追加しました。",
@@ -1717,6 +1721,7 @@ export const surfaceJapanese = {
     operations: {
       groups: {
         library: "ライブラリ",
+        record: "記録",
       },
       summaries: {
         local_library_scan: "データフォルダー内の作品を検出し、ローカルにあるものを記録します。",
@@ -1910,7 +1915,6 @@ export const surfaceJapanese = {
     whenServiceStarts: "アプリケーションサービスの起動時",
     whenFoldersChange: "ローカルライブラリフォルダーの変更時",
     everyMinutes: "{{count}} 分ごと",
-    intervalSchedule: "間隔スケジュール",
     paused: "一時停止中",
     nextServiceStart: "次回サービス起動時",
     watchingFolderChanges: "フォルダーの変更を監視中",
@@ -1983,6 +1987,8 @@ export const surfaceJapanese = {
         local_library_scan: "スキャン",
         metadata_sync: "メタデータ",
         local_media_index: "インデックス",
+        record_library_scan: "記録のスキャン",
+        record_media_probe: "メディア情報",
       },
       full: "完全",
       fullHint: {
@@ -1991,6 +1997,7 @@ export const surfaceJapanese = {
         metadata_sync: "不足または古いメタデータだけでなく、すべての作品のメタデータを更新します。",
       },
       scanAlwaysFull: "毎回すべてのフォルダーを確認します",
+      followsRecordScan: "記録のスキャンのたびに実行",
       metadataOptions: "メタデータのオプション",
       metadataOptionsDescription:
         "メタデータカードの実行と新しいメタデータのトリガーが使う設定です。このブラウザーに保存されます。",
@@ -2015,7 +2022,8 @@ export const surfaceJapanese = {
     runs: {
       label: "実行",
       tabs: {
-        now: "現在",
+        operations: "操作",
+        attention: "要対応",
         history: "履歴",
       },
       status: "状態",

@@ -7,11 +7,11 @@ import { api, type WorkflowRun } from "@/lib/api";
 import { Pager, RunCount, RunListItem } from "./RunListParts";
 import { useRunList } from "./useRunList";
 
-/** How many entries a Now section shows before Show all. */
+/** How many entries Running and Next show before Show all. */
 export const nowSectionLimit = 5;
-const expandedPageSize = 20;
+const attentionPageSize = 20;
 
-/** One part of Now under a plain heading and a hairline, with its count beside the name it is known by. */
+/** One list of the page under a plain heading and a hairline, with its count beside the name it is known by. */
 export function NowSection({
   title,
   count,
@@ -95,9 +95,9 @@ export function RunningRuns({
 }
 
 /**
- * Runs that wait for a decision: candidates to review, metadata issues, and
- * failures nobody has looked at. A run whose remaining items allow it is
- * marked reviewed here. Nothing shows while none needs attention.
+ * Runs that wait for a decision, a page at a time: candidates to review,
+ * metadata issues, and failures nobody has looked at. A run whose remaining
+ * items allow it is marked reviewed here.
  */
 export function AttentionRuns({
   refreshKey,
@@ -118,20 +118,18 @@ export function AttentionRuns({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState<number | null>(null);
   const [actionError, setActionError] = useState(false);
   const list = useRunList({
     view: "attention",
-    page: expanded ? page : 1,
-    pageSize: expanded ? expandedPageSize : nowSectionLimit,
+    page,
+    pageSize: attentionPageSize,
     refreshKey,
     staticDemo,
     onPageOutOfRange: setPage,
   });
   const result = list.result;
-  if (!result || result.total === 0) return null;
 
   const acknowledge = async (run: WorkflowRun) => {
     if (readOnly || busy !== null) return;
@@ -147,37 +145,43 @@ export function AttentionRuns({
       setBusy(null);
     }
   };
-  const pages = Math.ceil(result.total / expandedPageSize);
+  const pages = result ? Math.ceil(result.total / attentionPageSize) : 0;
   return (
-    <NowSection title={t("workflowActivity.views.attention")} count={result.total} tone="warning">
-      {actionError && (
-        <p role="alert" className="px-3 py-2 text-sm text-error-foreground">
+    <div className="min-w-0 space-y-4">
+      {(actionError || list.error) && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"
+        >
           {t("errors.unavailable")}
+          {list.error && (
+            <Button size="sm" variant="outline" onClick={list.reload}>
+              {t("common.retry")}
+            </Button>
+          )}
+        </div>
+      )}
+      {!result && !list.error ? (
+        <p role="status" className="px-3 py-4 text-sm text-muted-foreground">
+          {t("workManagement.loading")}
         </p>
+      ) : result?.runs.length === 0 ? (
+        <p className="px-3 py-10 text-center text-sm text-muted-foreground">{t("workflowActivity.empty.attention")}</p>
+      ) : (
+        <ol className="divide-y border-b">
+          {result?.runs.map((run) => (
+            <RunListItem
+              key={run.id}
+              run={run}
+              selected={run.id === selectedRunId}
+              onSelect={onSelectRun}
+              canSyncMetadata={canSyncMetadata}
+              acknowledge={readOnly ? undefined : { busy, onAcknowledge: (item) => void acknowledge(item) }}
+            />
+          ))}
+        </ol>
       )}
-      <ol className="divide-y">
-        {result.runs.map((run) => (
-          <RunListItem
-            key={run.id}
-            run={run}
-            selected={run.id === selectedRunId}
-            onSelect={onSelectRun}
-            canSyncMetadata={canSyncMetadata}
-            acknowledge={readOnly ? undefined : { busy, onAcknowledge: (item) => void acknowledge(item) }}
-          />
-        ))}
-      </ol>
-      {expanded && pages > 1 && <Pager page={page} pages={pages} onChange={setPage} />}
-      {nowSectionLimit < result.total && (
-        <ShowAllButton
-          expanded={expanded}
-          total={result.total}
-          onToggle={(next) => {
-            setExpanded(next);
-            setPage(1);
-          }}
-        />
-      )}
-    </NowSection>
+      {result && pages > 1 && <Pager page={page} pages={pages} onChange={setPage} />}
+    </div>
   );
 }

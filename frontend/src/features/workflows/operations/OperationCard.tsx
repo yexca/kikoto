@@ -18,7 +18,8 @@ import { OperationStatus } from "./OperationStatus";
  * on its own and is lit while any of that is on. An operation that runs incrementally offers Full beside Run,
  * which applies to the next run only. An operation with options of its own
  * opens them from the button beside its name and names them while they differ
- * from the defaults.
+ * from the defaults. An operation no trigger starts has no trigger button; one
+ * that follows another run says so where the schedule would be.
  */
 export function OperationCard({
   code,
@@ -34,6 +35,7 @@ export function OperationCard({
   full,
   options,
   triggers,
+  follows,
   onRun,
   onOpenRun,
 }: {
@@ -54,8 +56,10 @@ export function OperationCard({
   full: { checked: boolean; hint: string; onChange: (checked: boolean) => void } | null;
   /** The operation's own options: the button's name, what they change from the defaults, and how to open them. */
   options?: { label: string; summary: string | null; onOpen: () => void };
-  /** The trigger button; without onOpen it only shows whether a trigger is on. */
-  triggers: { label: string; onOpen?: () => void };
+  /** The trigger button; without onOpen it only shows whether a trigger is on. Absent where no trigger can start the operation. */
+  triggers?: { label: string; onOpen?: () => void };
+  /** What the operation runs after on its own, such as each Record scan, in place of a schedule. */
+  follows?: string;
   onRun: () => void;
   onOpenRun: (run: WorkflowRun) => void;
 }) {
@@ -96,7 +100,7 @@ export function OperationCard({
               <SlidersHorizontal className="h-4 w-4" aria-hidden />
             </Button>
           )}
-          {triggers.onOpen ? (
+          {!triggers ? null : triggers.onOpen ? (
             <Button
               size="icon-sm"
               variant="ghost"
@@ -121,7 +125,11 @@ export function OperationCard({
       </div>
       <div className="min-w-0 pl-8">
         <OperationStatus state={state} moreActive={moreActive} stageCount={stageCount} onOpenRun={onOpenRun} />
-        <OperationSchedule summary={schedule} />
+        {follows ? (
+          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{follows}</p>
+        ) : (
+          <OperationSchedule summary={schedule} />
+        )}
         {options?.summary && <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{options.summary}</p>}
       </div>
       <div className="mt-auto flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">

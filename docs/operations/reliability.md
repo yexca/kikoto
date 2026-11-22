@@ -107,6 +107,9 @@ Record scans use the durable `record_library_scan` workflow and coalesce while
 one scan is queued or running. Discovery stores one row per folder and regular
 file, skips links and transaction directories, and classifies assets by the
 bounded extension set documented in the [record library](../architecture/record-library.md).
+A scan ends with its walk; the durable `record_media_probe` follow-up reads
+media details afterwards, resumes from its checkpoint after a restart, and
+yields the workflow executor to other queued jobs between files.
 
 ## Limits
 

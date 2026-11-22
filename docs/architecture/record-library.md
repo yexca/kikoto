@@ -61,32 +61,53 @@ metadata, and other files by a bounded extension allowlist. It does not follow l
 junctions and skips Kikoto transaction directories and operating-system
 metadata directories.
 
-Record scans run as the durable `record_library_scan` workflow. Only a complete
+Record scans run as the durable `record_library_scan` workflow. A scan only
+walks the root: it reads no file's contents, reports the folders and files it
+has found as its progress, and records its last-scanned time when the walk
+ends. Only a complete
 root walk reconciles missing folders and assets. An unreadable directory or a
 cancelled scan leaves rows it could not observe in their previous state.
 Discovery records file size and modification time. A file whose size,
 modification time, or kind changed returns to the pending probe state and loses
 its earlier duration and dimensions.
 
-After the walk, the same scan probes pending videos, audio files, and images
-with `ffprobe`:
-at most 2,000 per scan, two at a time, each with a 20-second timeout, one
-thread, the file protocol only, and a bounded output. A video records its
-duration, dimensions, codecs, and whether it has audio; an audio file records
-its duration, its audio codec, and whether it embeds cover art (a video stream
-marked as an attached picture), which does not make it a video; an image
-records its dimensions. A file the probe cannot read is marked failed without failing the
-scan, and it is probed again only after it changes. Files past the per-scan
-bound, files whose probe timed out, as on a disk spinning up, and every
-pending file when `ffprobe` is missing, stay pending for the next scan. Cancelling the scan stops the probe and leaves the rest pending. The
-scan records its last-scanned time only after the probe, so a client waiting
-for that time sees the new durations. The run summary reports how many files
-were probed, failed, and remain.
+What a folder listing shows of a file's contents is read by a separate durable
+workflow, `record_media_probe`. A scan that leaves available videos or audio
+files pending queues it as a follow-up, or joins the probe run already queued
+or running, and records which on its own run. The Media details card on the
+Workflows page queues it by hand the same way. The probe reads, with `ffprobe`,
+only the container header of each pending video and audio file: a video's
+duration, and the dimensions and codecs the header declares; an audio file's
+duration, its audio codec, and whether it embeds cover art (a video stream
+marked as an attached picture), which does not make it a video. Images are
+not probed: a listing shows nothing a probe reads of them. Each probe reads at
+most 1 MiB and analyzes at most one second, with a 20-second timeout, one
+thread, the file protocol only, and a bounded output; two run at a time. A
+result is kept only while the file still has the size and modification time
+the run selected it with, so a file a scan saw change stays pending for its
+new revision. A file the probe cannot read is marked failed, and it is probed
+again only after it changes. A file whose probe timed out, as on a disk
+spinning up, stays pending and the run does not try it again; every pending
+file stays pending when `ffprobe` is missing, which fails the run.
+
+The probe run selects pending files as it goes, so it also reads files a scan
+found while it ran. Between groups of files it gives the single workflow
+executor to any other queued job: it records its counts and the files that
+timed out as its checkpoint, defers itself for five seconds, and continues
+from there. Cancelling it keeps what it read. Its progress counts the files
+read against those read and still pending, and its summary reports how many
+were probed, failed, timed out, and remain.
+
+A file the run has not reached is read when it is opened. Playback info reads
+the whole file's details for its own decision and keeps them for a pending
+asset of the same revision. A video thumbnail made while the video's duration
+is unknown probes the video first, inside the thumbnail generation slots, and
+keeps the result.
 
 Thumbnails are made on first request rather than during the scan: a scan stays
-a walk and a probe, and only folders someone opens pay for `ffmpeg`. A video's
+a walk, and only folders someone opens pay for `ffmpeg`. A video's
 thumbnail is the frame a tenth of the way in (one second in when the duration
-is unknown, and the first frame when that seek finds nothing); an image's is
+is still unknown after its probe, and the first frame when that seek finds nothing); an image's is
 the image itself; an audio file's is its embedded cover art, and an audio file
 without cover art has no thumbnail. Each fits a 640-pixel box as JPEG. At most two `ffmpeg`
 processes run, concurrent requests for one revision share one run, and at most
@@ -164,7 +185,11 @@ collation, it recomputes them all before its first listing.
 
 The HTTP surface is under `/api/records`:
 
-- `GET /api/records` reports root state; `POST /api/records/root/initialize`
+- `GET /api/records` reports root state and `activity`: the latest scan run
+  (`scan`) and the probe run while it is queued or running (`probe`), each
+  with its `runId`, `status`, `progressCurrent`, and `progressTotal` (zero
+  while a scan's walk does not know its total), and `pendingFiles`, the videos
+  and audio files still to be probed. `POST /api/records/root/initialize`
   creates the marker for an administrator with `sources:write`, and takes
   `{"fresh": true}` to start a new catalog in place of one whose marker is
   missing or names another disk. `POST /api/records/root/restore-marker` restores that marker with
@@ -213,6 +238,10 @@ The HTTP surface is under `/api/records`:
   sidecar artwork after signature validation.
 - `POST /api/records/scans` queues the coalesced durable scan for
   `library:write` users while the root is online or `marker_missing`.
+- `POST /api/records/probes` queues a `manual` media probe run for
+  `library:write` users, or returns the probe run already queued or running
+  with `existing`; a new run reads every pending file, including those an
+  earlier run timed out on.
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
   video and audio progress; writing it needs `playback:use`. A write carries
   the client's `order`, when it captured the save in Unix milliseconds and

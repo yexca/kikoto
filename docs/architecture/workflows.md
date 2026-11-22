@@ -8,7 +8,7 @@ Kikoto treats long-running and reviewable operations as workflows. Each topic be
 | [Metadata Sync](workflows/metadata-sync.md) | changing which works a metadata sync covers, the first-library prompt, purchase bonus detection, or genre name learning. |
 | [Metadata Recovery](workflows/metadata-recovery.md) | changing the metadata attention list, retry and recovery behavior, or how recovered metadata is judged complete. |
 | [Workflows Page and Permissions](workflows/workflows-page.md) | changing the Workflows page cards, the catalog sync dialog, or which capability gates a workflow action. |
-| [Run Lists](workflows/run-lists.md) | changing the Now and History run lists, run details, or which runs a page shows. |
+| [Run Lists](workflows/run-lists.md) | changing Running, Needs attention, History, run details, or which runs a page shows. |
 | [Rankings](workflows/rankings.md) | changing tracked ranking lists, their schedules, or how ranking pulls are recorded and shown as history. |
 | [Shown Works Actions and Preset Workflows](workflows/shown-works-and-presets.md) | changing the Discover page actions that start workflows, or the composed preset workflow graphs. |
 | [Local Folder Trigger and File Refresh](workflows/local-folder-trigger.md) | changing the filesystem-event trigger, the startup scan, or the media index refresh of local work folders. |

@@ -5,6 +5,7 @@ import {
   DatabaseZap,
   Download,
   FileAudio,
+  Film,
   Flame,
   FolderSearch,
   Languages,
@@ -32,6 +33,7 @@ const workflowIcons: Record<string, LucideIcon> = {
   voice_catalog_sync: Mic,
   creator_subscription_refresh: BellRing,
   record_library_scan: Clapperboard,
+  record_media_probe: Film,
 };
 
 /** A neutral glyph that tells workflows apart; status color stays on the run state, never on the icon. */

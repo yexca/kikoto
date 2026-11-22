@@ -19,16 +19,18 @@ const panelId = "workflow-runs";
 export type RunWorkflowOption = { code: string; name: string };
 
 /**
- * The runs under the operations: Now (what runs, what needs attention, what
- * runs next) and History (the runs that ended), narrowed by status, workflow,
- * and search. A selected run opens beside the list on wide screens and in
- * place of it otherwise.
+ * The Workflows page below its alerts: what is running, over three tabs,
+ * Operations (the cards and what runs next), Needs attention, and History
+ * (the runs that ended, narrowed by status, workflow, and search). A selected
+ * run opens beside the tabs on wide screens and in place of them otherwise.
  */
 export function WorkflowRuns({
   tab,
   onTabChange,
-  nowCount,
-  now,
+  running,
+  operations,
+  attentionCount,
+  attention,
   status,
   onStatusChange,
   workflowCode,
@@ -48,9 +50,12 @@ export function WorkflowRuns({
 }: {
   tab: WorkflowTab;
   onTabChange: (tab: WorkflowTab) => void;
-  /** Runs that are running or need attention, beside Now's name. */
-  nowCount: number;
-  now: ReactNode;
+  /** Queued and running runs, above the tabs; nothing while none is active. */
+  running: ReactNode;
+  operations: ReactNode;
+  /** Runs that need attention, beside the tab's name. */
+  attentionCount: number;
+  attention: ReactNode;
   status: HistoryStatus;
   onStatusChange: (status: HistoryStatus) => void;
   /** The workflow History is narrowed to; empty for every workflow. */
@@ -86,6 +91,7 @@ export function WorkflowRuns({
 
   return (
     <section aria-label={t("workflowPage.runs.label")} className="min-w-0 space-y-4">
+      {listShown && running}
       {listShown && (
         <SubNavTabs
           label={t("workflowPage.runs.label")}
@@ -96,7 +102,7 @@ export function WorkflowRuns({
             label: t(`workflowPage.runs.tabs.${value}`),
             id: `workflow-runs-${value}`,
             controls: panelId,
-            suffix: value === "now" ? <RunCount value={nowCount} tone="info" /> : undefined,
+            suffix: value === "attention" ? <RunCount value={attentionCount} tone="warning" /> : undefined,
           }))}
           trailing={
             tab === "history" ? (
@@ -145,8 +151,10 @@ export function WorkflowRuns({
       >
         {listShown && (
           <div id={panelId} role="tabpanel" aria-labelledby={`workflow-runs-${tab}`} className="min-w-0">
-            {tab === "now" ? (
-              now
+            {tab === "operations" ? (
+              operations
+            ) : tab === "attention" ? (
+              attention
             ) : (
               <HistoryList
                 status={status}

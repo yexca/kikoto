@@ -32,7 +32,7 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/workflows", "?activity=1&view=completed&runsOf=metadata_sync")).toBe(
       "/workflows?tab=history&workflow=metadata_sync",
     );
-    expect(legacyLibraryRedirect("/workflows", "?activity=1&view=attention")).toBe("/workflows");
+    expect(legacyLibraryRedirect("/workflows", "?activity=1&view=attention")).toBe("/workflows?tab=attention");
   });
   it("keeps a Workflows address as it is", () => {
     expect(legacyLibraryRedirect("/workflows", "?workflow=metadata_sync&run=7")).toBeNull();

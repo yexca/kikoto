@@ -96,7 +96,7 @@ export function commandActions({
           label: text("commands.activityAttention", "Runs needing attention"),
           description: text("commands.activityAttentionDescription", "Failed runs and items waiting for review"),
           icon: <TriangleAlert className="h-4 w-4" />,
-          run: () => onOpenPath(workflowsPath()),
+          run: () => onOpenPath(workflowsPath({ tab: "attention" })),
         },
         {
           id: "activity:history",

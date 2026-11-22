@@ -1318,7 +1318,11 @@ export const surfaceHant = {
       },
       record_library_scan: {
         name: "掃描記錄",
-        description: "尋找記錄資料夾中的影片和相片，並讀取時長和尺寸。不會改動音聲作品。",
+        description: "尋找記錄資料夾中的資料夾、影片、相片和音訊檔案。不會改動音聲作品。",
+      },
+      record_media_probe: {
+        name: "讀取記錄媒體資訊",
+        description: "讀取記錄中影片和音訊檔案的時長，以及音訊檔案是否帶封面。",
       },
       demo_library_scan: { name: "掃描示範媒體庫", description: "探索示範檔案並建立符合公開瀏覽條件的作品索引。" },
       dlsite_popular_collection: {
@@ -1400,6 +1404,8 @@ export const surfaceHant = {
     sourcePresenceLimitHint: "每個作品在來源上查詢一次。優先檢查此來源從未檢查過的作品，其次是最久未檢查的作品。",
     sourcePresenceLimitRange: "每次作品數必須介於 1 到 {{count}} 之間。",
     metadataSyncCreateFailed: "無法建立中繼資料同步執行。",
+    recordScanCreateFailed: "無法將記錄掃描加入佇列。",
+    recordProbeCreateFailed: "無法將讀取媒體資訊加入佇列。",
     triggerUpdateFailed: "無法{{action}}觸發器。",
     availabilityWatchLoadFailed: "可用性監視載入失敗。",
     readyPoolRefreshFailed: "就緒池重新整理失敗。",
@@ -1562,8 +1568,6 @@ export const surfaceHant = {
       "可用性監視在發現頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
     subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在發現頁面設定。執行歷史保留在這裡。",
     rankingsManagedOnSubscriptions: "每個排行榜依發現頁面排行榜設定中的排程各自拉取。執行歷史保留在這裡。",
-    recordScanManagedOnRecords: "記錄的掃描從記錄頁面的「掃描」開始。執行歷史保留在這裡。",
-    openRecords: "開啟記錄",
     openSubscriptions: "開啟發現",
     presetQueueFailed: "預製工作流程無法排入佇列。",
     catalogSyncQueued: "目錄同步已排入執行 #{{id}}。",
@@ -1618,6 +1622,7 @@ export const surfaceHant = {
     operations: {
       groups: {
         library: "媒體庫",
+        record: "記錄",
       },
       summaries: {
         local_library_scan: "尋找資料目錄裡的作品，並記錄哪些在本機。",
@@ -1808,7 +1813,6 @@ export const surfaceHant = {
     whenServiceStarts: "應用程式服務啟動時",
     whenFoldersChange: "本機媒體庫資料夾變更時",
     everyMinutes: "每 {{count}} 分鐘",
-    intervalSchedule: "間隔排程",
     paused: "已暫停",
     nextServiceStart: "下次服務啟動",
     watchingFolderChanges: "正在監視資料夾變更",
@@ -1877,6 +1881,8 @@ export const surfaceHant = {
         local_library_scan: "掃描",
         metadata_sync: "中繼資料",
         local_media_index: "索引",
+        record_library_scan: "記錄掃描",
+        record_media_probe: "媒體資訊",
       },
       full: "完整",
       fullHint: {
@@ -1885,6 +1891,7 @@ export const surfaceHant = {
         metadata_sync: "重新整理所有作品的中繼資料，而不只是缺少或過期的部分。",
       },
       scanAlwaysFull: "每次都檢查所有資料夾",
+      followsRecordScan: "每次掃描記錄後執行",
       metadataOptions: "中繼資料選項",
       metadataOptionsDescription: "中繼資料卡片的執行與新的中繼資料觸發器會使用這些設定。儲存在此瀏覽器中。",
       fallbackSummary: "遠端備援：{{sources}}",
@@ -1908,7 +1915,8 @@ export const surfaceHant = {
     runs: {
       label: "執行",
       tabs: {
-        now: "現在",
+        operations: "操作",
+        attention: "需要處理",
         history: "歷史記錄",
       },
       status: "狀態",

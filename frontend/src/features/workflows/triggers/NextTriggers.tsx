@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { nowSectionLimit, NowSection, ShowAllButton } from "@/features/workflows/runs/NowRuns";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
-import { nextTriggerOrder } from "@/features/workflows/workflowTriggerModel";
+import { nextTriggerOrder, triggerRunsOnItsOwn } from "@/features/workflows/workflowTriggerModel";
 import type { WorkflowTrigger } from "@/lib/api";
 
 import { TriggerListItem } from "./TriggerListItem";
@@ -20,10 +20,13 @@ export type NextTriggerOwner = {
 };
 
 /**
- * What runs on its own next, for every workflow: interval schedules by their
- * next run, then startup and folder triggers, and paused triggers last. The
- * operations' triggers are switched on and off and edited here; another
- * workflow's lead to where they are configured.
+ * What runs on its own next, for every workflow: the triggers that will start
+ * their workflow, interval schedules by their next run, then startup and
+ * folder triggers. A paused trigger, and a trigger the server plans (a ranking
+ * pull's) while nothing is planned, run nothing, so they are left out; the
+ * operation's card or the page that configures them lists them. The
+ * operations' triggers are paused and edited here; another workflow's lead to
+ * where they are configured.
  */
 export function NextTriggers({
   triggers,
@@ -47,7 +50,7 @@ export function NextTriggers({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const ordered = nextTriggerOrder(triggers);
+  const ordered = nextTriggerOrder(triggers.filter(triggerRunsOnItsOwn));
   const shown = expanded ? ordered : ordered.slice(0, nowSectionLimit);
   return (
     <NowSection title={t("workflowPage.runs.next")}>

@@ -3,10 +3,20 @@ import { isActiveRunStatus, runStatusTone, type RunTone } from "@/features/workf
 import type { SystemRunKind, SystemRunOptions } from "@/features/workflows/workflowPageModel";
 import type { WorkflowDefinition, WorkflowRun, WorkflowStatus } from "@/lib/api";
 
-/** What the Workflows page offers: the library maintenance a person starts by hand. */
+/** What the Workflows page offers: the library and Record maintenance a person starts by hand. */
+
+/** The section of Operations a card sits in. */
+export type OperationGroup = "library" | "record";
+
+export type OperationKind = SystemRunKind | "record_scan" | "record_probe";
 
 type OperationSpec = {
-  kind: SystemRunKind;
+  kind: OperationKind;
+  group: OperationGroup;
+  /** The operation also runs incrementally, so its card offers Full for the next run. */
+  full?: boolean;
+  /** Triggers can start the operation on its own; any other starts by hand or after another run. */
+  schedulable?: boolean;
   /** The options an untouched run form would send, which Run on the row uses. */
   defaults: () => SystemRunOptions;
   /**
@@ -18,25 +28,52 @@ type OperationSpec = {
   exclusive?: boolean;
 };
 
-/** Built-in operations; their cards read Scan, Metadata, and Index. */
+/** Built-in operations; their cards read Scan, Metadata, and Index, then Record scan and Media details. */
 const builtInOperations: Record<string, OperationSpec> = {
   local_library_scan: {
     kind: "local_scan",
+    group: "library",
+    schedulable: true,
     exclusive: true,
     defaults: () => ({ followUpRun: false }),
   },
   local_media_index: {
     kind: "local_media_index",
+    group: "library",
+    full: true,
+    schedulable: true,
     exclusive: true,
     defaults: () => ({ localMediaIndexMode: "incremental" }),
   },
   metadata_sync: {
     kind: "metadata_sync",
+    group: "library",
+    full: true,
+    schedulable: true,
     defaults: () => ({ metadataSync: metadataSyncPayload(metadataSyncDefaultValues()) }),
+  },
+  // A Record scan queues Media details after it; each has one run active at a time.
+  record_library_scan: {
+    kind: "record_scan",
+    group: "record",
+    exclusive: true,
+    defaults: () => ({}),
+  },
+  record_media_probe: {
+    kind: "record_probe",
+    group: "record",
+    exclusive: true,
+    defaults: () => ({}),
   },
 };
 
-const operationOrder = ["local_library_scan", "metadata_sync", "local_media_index"];
+const operationOrder = [
+  "local_library_scan",
+  "metadata_sync",
+  "local_media_index",
+  "record_library_scan",
+  "record_media_probe",
+];
 
 export type Operation = OperationSpec & { definition: WorkflowDefinition };
 
@@ -45,9 +82,13 @@ export type Operation = OperationSpec & { definition: WorkflowDefinition };
  * another page (Fetch from a work, a catalog sync from its circle, series, or
  * voice actor, a source's library work check from its settings, and the
  * Discover workflows) and system workflows nobody starts by hand are not
- * operations; Workflows lists their runs all the same.
+ * operations; Workflows lists their runs all the same. The Record operations
+ * are left out while Record is off.
  */
-export function operationsFromDefinitions(definitions: WorkflowDefinition[]): Operation[] {
+export function operationsFromDefinitions(
+  definitions: WorkflowDefinition[],
+  { recordEnabled = true }: { recordEnabled?: boolean } = {},
+): Operation[] {
   const rank = (code: string) => {
     const index = operationOrder.indexOf(code);
     return index < 0 ? operationOrder.length : index;
@@ -55,7 +96,7 @@ export function operationsFromDefinitions(definitions: WorkflowDefinition[]): Op
   return definitions
     .flatMap((definition): Operation[] => {
       const builtIn = builtInOperations[definition.code];
-      return builtIn ? [{ ...builtIn, definition }] : [];
+      return builtIn && (recordEnabled || builtIn.group !== "record") ? [{ ...builtIn, definition }] : [];
     })
     .sort(
       (left, right) =>

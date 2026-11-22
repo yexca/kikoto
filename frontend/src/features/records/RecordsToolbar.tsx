@@ -67,12 +67,18 @@ function scanStatusText(
   locale: ReturnType<typeof useLocale>["resolvedLocale"],
 ) {
   switch (scan.status) {
+    case "running":
+      return scan.found > 0
+        ? t("records.scanStatus.runningFound", { count: scan.found })
+        : t("records.scanStatus.running");
+    case "probing":
+      return scan.total > 0
+        ? t("records.scanStatus.probing", { done: scan.done, total: scan.total })
+        : t("records.scanStatus.probingQueued");
     case "queueing":
     case "queued":
-    case "running":
     case "finished":
     case "failed":
-    case "unconfirmed":
       return t(`records.scanStatus.${scan.status}`);
     default: {
       const time = root.lastScannedAt ? formatDateTime(root.lastScannedAt, locale) : "";

@@ -100,6 +100,16 @@ func WithThumbnailGuard(guard ThumbnailGuard) ThumbnailOption {
 	}
 }
 
+// ThumbnailDuration reads the length of a video whose length is not yet known,
+// or reports zero.
+type ThumbnailDuration func(ctx context.Context, assetID int64) float64
+
+// WithThumbnailDuration reads a video's unknown length before its frame is
+// chosen, inside the bounded generation slots.
+func WithThumbnailDuration(read ThumbnailDuration) ThumbnailOption {
+	return func(t *Thumbnailer) { t.duration = read }
+}
+
 // Thumbnailer makes and caches JPEG thumbnails of record videos, images, and
 // the cover art embedded in audio files on first request. A video's frame is
 // taken a tenth of the way in. Generation
@@ -108,14 +118,15 @@ func WithThumbnailGuard(guard ThumbnailGuard) ThumbnailOption {
 // outside the cache directory; only a finished thumbnail is stored there,
 // under the guard, and every read marks the thumbnail as recently used.
 type Thumbnailer struct {
-	dir     string
-	workDir string
-	run     FFmpegFunc
-	guard   ThumbnailGuard
-	slots   chan struct{}
-	waiting atomic.Int32
-	mu      sync.Mutex
-	pending map[string]*thumbnailCall
+	dir      string
+	workDir  string
+	run      FFmpegFunc
+	guard    ThumbnailGuard
+	duration ThumbnailDuration
+	slots    chan struct{}
+	waiting  atomic.Int32
+	mu       sync.Mutex
+	pending  map[string]*thumbnailCall
 }
 
 type thumbnailCall struct {
@@ -236,6 +247,9 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 	defer func() { <-t.slots }()
 
 	dir, prefix, final, failed := t.paths(source)
+	if source.Kind == "video" && source.DurationSeconds <= 0 && t.duration != nil {
+		source.DurationSeconds = t.duration(ctx, source.AssetID)
+	}
 	content, err := t.render(ctx, input, source)
 	if ctx.Err() != nil {
 		return ctx.Err()

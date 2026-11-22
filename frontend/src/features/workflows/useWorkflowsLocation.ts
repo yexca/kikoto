@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { WORKFLOWS_PATH, type HistoryStatus, type WorkflowTab } from "@/features/workflows/workflowLinks";
+import {
+  WORKFLOWS_PATH,
+  workflowTabFromParam,
+  type HistoryStatus,
+  type WorkflowTab,
+} from "@/features/workflows/workflowLinks";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 
 function readLocation() {
   const params = new URLSearchParams(window.location.search);
   const run = Number(params.get("run"));
-  const tab: WorkflowTab = params.get("tab") === "history" ? "history" : "now";
+  const tab = workflowTabFromParam(params.get("tab"));
   return {
     tab,
     runId: Number.isSafeInteger(run) && run > 0 ? run : null,
@@ -45,11 +50,12 @@ export function useWorkflowsLocation() {
       else params.delete(key);
     };
     return {
-      /** Now has no filters, so leaving History drops them. */
+      /** Only History has filters, so leaving it drops them. */
       setTab: (tab: WorkflowTab) =>
         update((params) => {
-          if (tab === "history") params.set("tab", "history");
-          else for (const key of ["tab", "status", "workflow", "q"]) params.delete(key);
+          if (tab !== "history") for (const key of ["status", "workflow", "q"]) params.delete(key);
+          if (tab === "operations") params.delete("tab");
+          else params.set("tab", tab);
         }),
       setStatus: (status: HistoryStatus) => update((params) => setOrDelete(params, "status", status)),
       setWorkflow: (code: string) => update((params) => setOrDelete(params, "workflow", code)),

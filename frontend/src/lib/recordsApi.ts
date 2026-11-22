@@ -108,8 +108,27 @@ export type RecordScan = {
   existing?: boolean;
 };
 
+/** A record workflow run as the Records page follows it. */
+export type RecordRunActivity = {
+  runId: number;
+  status: string;
+  progressCurrent: number;
+  /** Zero while the total is not known yet, as during a scan's walk. */
+  progressTotal: number;
+};
+
+/** What the record workflows are doing. */
+export type RecordActivity = {
+  /** The latest scan, finished or not. */
+  scan?: RecordRunActivity;
+  /** The run reading media details, while it is queued or running. */
+  probe?: RecordRunActivity;
+  /** Videos and audio files whose length is still to be read. */
+  pendingFiles: number;
+};
+
 export const recordsApi = {
-  getRecordRoot: () => sharedGetJSON<{ root: RecordRoot }>("/api/records"),
+  getRecordRoot: () => sharedGetJSON<{ root: RecordRoot; activity?: RecordActivity }>("/api/records"),
   /** `fresh` starts a new catalog in place of one whose marker is missing, forgetting it. */
   initializeRecordRoot: (options: { fresh?: boolean } = {}) =>
     options.fresh
@@ -137,6 +156,8 @@ export const recordsApi = {
   listRecordContinue: (signal?: AbortSignal) =>
     sharedGetJSON<{ assets: RecordAsset[] }>("/api/records/continue", signal),
   queueRecordScan: () => postJSON<RecordScan>("/api/records/scans"),
+  /** Reads the media details still pending, or answers with the run already doing so. */
+  queueRecordProbe: () => postJSON<RecordScan>("/api/records/probes"),
   /**
    * How a record video or audio file plays, as library playback info answers:
    * directly, as a remux, or as a transcode. The audio profile plays only the

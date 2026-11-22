@@ -49,8 +49,8 @@ type Store struct {
 // Option configures a Store.
 type Option func(*Store)
 
-// WithProber makes every scan probe pending videos and images before it
-// records the scan as finished.
+// WithProber sets how ProbePending and ProbeIfPending read a file's details.
+// Without one, every file stays pending.
 func WithProber(probe ProbeFunc) Option { return func(s *Store) { s.probe = probe } }
 
 func NewStore(db *sqlutil.DB, root string, options ...Option) *Store {
@@ -135,8 +135,9 @@ type ScanResult struct {
 	Assets        int    `json:"assets"`
 	Unreadable    int    `json:"unreadableDirectories"`
 	MissingMarked bool   `json:"missingMarked"`
-	// Probe reports the media probe that follows the walk.
-	Probe *ProbeResult `json:"probe,omitempty"`
+	// PendingProbes counts the available videos and audio files whose length
+	// is still to be read after the scan.
+	PendingProbes int `json:"pendingProbes"`
 	// ThumbnailsRemoved counts the cached thumbnails removed after a complete
 	// scan because their assets are no longer available videos or images.
 	ThumbnailsRemoved int `json:"thumbnailsRemoved,omitempty"`
@@ -489,29 +490,34 @@ func (s *Store) rootRecord(ctx context.Context) (Root, error) {
 
 func (s *Store) Root(ctx context.Context) (Root, error) { return s.rootRecord(ctx) }
 
+// ScanProgress reports a walk in progress: the folders and files found so far.
+type ScanProgress func(folders, assets int)
+
+// Scan walks the root into the catalog and records the scan as finished. It
+// reads no file's contents: ProbePending reads the length of the files the
+// walk found new or changed.
 func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
-	result, err := s.scanCatalog(ctx)
+	return s.ScanReporting(ctx, nil)
+}
+
+// ScanReporting is Scan that reports the walk's progress to progress after
+// each folder and file it records.
+func (s *Store) ScanReporting(ctx context.Context, progress ScanProgress) (ScanResult, error) {
+	result, err := s.scanCatalog(ctx, progress)
 	if err != nil || result.State != "complete" && result.State != "partial" {
 		return result, err
 	}
-	// The probe runs before the scan is recorded as finished, so a client that
-	// waits for the last-scanned time sees durations and dimensions. It runs
-	// outside the catalog lock: it only fills in files' details.
-	if s.probe != nil {
-		probe, err := s.ProbePending(ctx, s.probe, DefaultProbeLimit, DefaultProbeConcurrency)
-		if err != nil {
-			return ScanResult{}, err
-		}
-		result.Probe = &probe
-	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
+		return ScanResult{}, err
+	}
+	if result.PendingProbes, err = s.PendingProbes(ctx, nil); err != nil {
 		return ScanResult{}, err
 	}
 	return result, nil
 }
 
 // scanCatalog walks the root into the catalog under the catalog lock.
-func (s *Store) scanCatalog(ctx context.Context) (ScanResult, error) {
+func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanResult, error) {
 	unlock, err := s.lockCatalog(ctx)
 	if err != nil {
 		return ScanResult{}, err
@@ -583,6 +589,9 @@ func (s *Store) scanCatalog(ctx context.Context) (ScanResult, error) {
 			}
 			ids[rel] = id
 			folders++
+			if progress != nil {
+				progress(folders, assets)
+			}
 			return nil
 		}
 		if !entry.Type().IsRegular() {
@@ -603,6 +612,9 @@ func (s *Store) scanCatalog(ctx context.Context) (ScanResult, error) {
 			return err
 		}
 		assets++
+		if progress != nil {
+			progress(folders, assets)
+		}
 		return nil
 	})
 	if walkErr != nil && walkErr != filepath.SkipDir {

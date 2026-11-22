@@ -82,13 +82,23 @@ folder and plays in the global audio player.
 
 Choose **Scan** at the top right of the path bar; it needs library write access.
 Hovering it shows when the root was last scanned, and while a scan runs it
-shows whether it is queued, running, or finished. The scan is queued as a durable
+shows whether it is queued, running and how many files it has found, or
+finished. The scan is queued as a durable
 workflow and coalesces with an existing scan. It indexes regular files by
 extension, skips links and Kikoto transaction directories, and keeps previous
 rows when the root is offline or a scan is partial. Only a complete walk marks
-removed folders and files as missing. The scan also reads each new or changed
-video's length and size, each new or changed audio file's length and whether
-it carries cover art, and each new or changed photo's size; a file that
+removed folders and files as missing. New files can be browsed as soon as the
+scan finishes.
+
+After the scan, **Read Record media details** runs as its own workflow and
+reads each new or changed video's length and each new or changed audio file's
+length and whether it carries cover art. The **Record** cards on
+[Workflows](workflows.md#user-surfaces) also start the scan and this
+workflow by hand. The status beside **Scan** counts
+the files read so far, and the folder shows the lengths when it ends. It
+pauses between files whenever other work is waiting, so a large library does
+not hold up other workflows. A video whose thumbnail a folder shows, and a
+file you play, is read then if the run has not reached it yet. A file that
 cannot be read keeps no length and is read again once it changes.
 
 Folder artwork uses these image names: `folder`, `poster`, or `cover` for a

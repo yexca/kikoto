@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"os"
@@ -45,6 +47,13 @@ func (s *Server) loadRecordPlaybackSource(ctx context.Context, id int64, request
 	probe, err := s.probePlaybackFile(ctx, path)
 	if err != nil {
 		return hlsPlaybackSource{}, err
+	}
+	// Playback has read the file in full, so a file the probe workflow has not
+	// reached yet keeps its length, dimensions, and codecs from this read.
+	if output, err := json.Marshal(probe); err == nil {
+		if err := s.recordStore.RecordProbe(ctx, id, info.Size(), info.ModTime().UnixNano(), output); err != nil && ctx.Err() == nil {
+			slog.Warn("record playback could not keep the media details it read", "asset_id", id, "error", err)
+		}
 	}
 	profile, encode, profileVersion, ok := hlsPlaybackProfile(asset.Kind, requestedProfile)
 	if !ok {

@@ -33,7 +33,19 @@ func (s *Server) newRecordThumbnailer(run record.FFmpegFunc) *record.Thumbnailer
 	}
 	dir := filepath.Join(s.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir)
 	return record.NewThumbnailer(dir, run, recordThumbnailConcurrency,
-		record.WithThumbnailWorkDir(s.cfg.TempDir), record.WithThumbnailGuard(s.guardRecordThumbnailWrite))
+		record.WithThumbnailWorkDir(s.cfg.TempDir), record.WithThumbnailGuard(s.guardRecordThumbnailWrite),
+		record.WithThumbnailDuration(s.recordThumbnailDuration))
+}
+
+// recordThumbnailDuration reads the length of a video the probe workflow has
+// not reached yet, and keeps it, so its thumbnail is taken a tenth of the way
+// in and its listing shows the length.
+func (s *Server) recordThumbnailDuration(ctx context.Context, assetID int64) float64 {
+	asset, err := s.recordStore.ProbeIfPending(ctx, assetID)
+	if err != nil || asset.DurationSeconds == nil {
+		return 0
+	}
+	return *asset.DurationSeconds
 }
 
 // guardRecordThumbnailWrite holds the transcode cache open and reserves bytes
@@ -119,8 +131,8 @@ func decorateRecordAsset(a *record.Asset) {
 
 // serveRecordThumbnail serves a JPEG thumbnail of a record video, image, or
 // audio file with cover art, made on first request. Thumbnails are made on demand rather than during the
-// scan, so a scan stays a quick walk and probe, and only the folders someone
-// opens pay for ffmpeg; the revision in the URL lets browsers keep them.
+// scan, so a scan stays a quick walk, and only the folders someone opens pay
+// for ffmpeg; the revision in the URL lets browsers keep them.
 func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return

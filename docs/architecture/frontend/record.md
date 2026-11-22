@@ -28,8 +28,12 @@ its trail from that listing.
 
 The single-row header places the breadcrumb on the left and the Continue
 watching picker and Scan (or Refresh without `library:write`) on the right.
-Scan follows the queued run through the root's scan generation and
-last-scanned time with bounded polling. Tiles show the server's thumbnails,
+The page follows the record workflows through the root's `activity`: while a
+scan or a media details run is queued or running, including one started
+elsewhere or before the page opened, it reads the root again, and the inline
+status shows the files a scan has found and the media details read so far.
+The open folder is listed again when a scan or a media details run ends.
+Tiles show the server's thumbnails,
 falling back to an icon for a video and to the full image for a photo, and the
 folder's artwork images stay out of the photos. Group headings appear only when
 a folder contains more than one kind of item. Saved progress arrives with the

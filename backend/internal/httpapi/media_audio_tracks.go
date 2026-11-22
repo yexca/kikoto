@@ -27,6 +27,8 @@ type playbackProbeDisposition struct {
 	Default int `json:"default"`
 	// Forced marks a subtitle stream that shows without being chosen.
 	Forced int `json:"forced"`
+	// AttachedPic marks cover art, which reads as a video stream.
+	AttachedPic int `json:"attached_pic"`
 }
 
 type playbackProbeTags struct {

@@ -69,24 +69,35 @@ function run(overrides: Partial<WorkflowRun>): WorkflowRun {
 }
 
 describe("operations", () => {
-  it("lists Scan, Metadata, and Index in that order and leaves out workflows run elsewhere", () => {
-    // Fetch runs from a work, a catalog sync from its circle, series, or voice
-    // actor, and a source's library work check from its settings.
-    const operations = operationsFromDefinitions([
-      definition(1, "availability_watch"),
-      definition(2, "source_presence_check"),
-      definition(3, "voice_catalog_sync"),
-      definition(4, "metadata_sync"),
-      definition(5, "metadata_genre_names"),
-      definition(6, "local_library_scan"),
-      definition(7, "remote_work_fetch"),
-      definition(8, "local_media_index"),
+  // Fetch runs from a work, a catalog sync from its circle, series, or voice
+  // actor, and a source's library work check from its settings.
+  const definitions = [
+    definition(1, "availability_watch"),
+    definition(2, "source_presence_check"),
+    definition(3, "voice_catalog_sync"),
+    definition(4, "record_media_probe"),
+    definition(5, "metadata_sync"),
+    definition(6, "metadata_genre_names"),
+    definition(7, "local_library_scan"),
+    definition(8, "remote_work_fetch"),
+    definition(9, "record_library_scan"),
+    definition(10, "local_media_index"),
+  ];
+
+  it("lists the library operations, then Record's, and leaves out workflows run elsewhere", () => {
+    expect(operationsFromDefinitions(definitions).map((item) => [item.definition.code, item.group])).toEqual([
+      ["local_library_scan", "library"],
+      ["metadata_sync", "library"],
+      ["local_media_index", "library"],
+      ["record_library_scan", "record"],
+      ["record_media_probe", "record"],
     ]);
-    expect(operations.map((item) => item.definition.code)).toEqual([
-      "local_library_scan",
-      "metadata_sync",
-      "local_media_index",
-    ]);
+  });
+
+  it("leaves out the Record operations while Record is off", () => {
+    expect(
+      operationsFromDefinitions(definitions, { recordEnabled: false }).map((item) => item.definition.code),
+    ).toEqual(["local_library_scan", "metadata_sync", "local_media_index"]);
   });
 });
 

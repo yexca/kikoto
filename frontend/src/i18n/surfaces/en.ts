@@ -1374,6 +1374,8 @@ export const surfaceEnglish = {
       "Each work is one lookup on the source. Works this source has never checked come first, then those checked longest ago.",
     sourcePresenceLimitRange: "Works per run must be between 1 and {{count}}.",
     metadataSyncCreateFailed: "Metadata sync run could not be created.",
+    recordScanCreateFailed: "The Record scan could not be queued.",
+    recordProbeCreateFailed: "Reading media details could not be queued.",
     triggerUpdateFailed: "Could not {{action}} trigger.",
     availabilityWatchLoadFailed: "Availability Watch could not be loaded.",
     readyPoolRefreshFailed: "Ready pool could not be refreshed.",
@@ -1540,8 +1542,6 @@ export const surfaceEnglish = {
       "The subscription refresh is scheduled on the Discover page. Its run history stays here.",
     rankingsManagedOnSubscriptions:
       "Each ranking is pulled on its own schedule, set in the Rankings settings on the Discover page. Its run history stays here.",
-    recordScanManagedOnRecords: "Record scans start from Scan on the Record page. Their run history stays here.",
-    openRecords: "Open Record",
     openSubscriptions: "Open Discover",
     presetQueueFailed: "Preset workflow could not be queued.",
     catalogSyncQueued: "Catalog sync queued as run #{{id}}.",
@@ -1596,6 +1596,7 @@ export const surfaceEnglish = {
     operations: {
       groups: {
         library: "Library",
+        record: "Record",
       },
       summaries: {
         local_library_scan: "Find works in the data folders and record which are present.",
@@ -1838,7 +1839,11 @@ export const surfaceEnglish = {
       record_library_scan: {
         name: "Scan Record",
         description:
-          "Find the videos and photos in the Record folder and read their length and size. Audio works are not changed.",
+          "Find the folders, videos, photos, and audio files in the Record folder. Audio works are not changed.",
+      },
+      record_media_probe: {
+        name: "Read Record media details",
+        description: "Read the length of Record videos and audio files, and whether audio files carry cover art.",
       },
       demo_library_scan: {
         name: "Scan Demo library",
@@ -1963,7 +1968,6 @@ export const surfaceEnglish = {
     whenServiceStarts: "When the application service starts",
     whenFoldersChange: "When local library folders change",
     everyMinutes: "Every {{count}} minute(s)",
-    intervalSchedule: "Interval schedule",
     paused: "Paused",
     nextServiceStart: "Next service start",
     watchingFolderChanges: "Watching for folder changes",
@@ -2031,6 +2035,8 @@ export const surfaceEnglish = {
         local_library_scan: "Scan",
         metadata_sync: "Metadata",
         local_media_index: "Index",
+        record_library_scan: "Record scan",
+        record_media_probe: "Media details",
       },
       full: "Full",
       fullHint: {
@@ -2039,6 +2045,7 @@ export const surfaceEnglish = {
         metadata_sync: "Refreshes the metadata of every work, not only missing or stale metadata.",
       },
       scanAlwaysFull: "Checks every folder each time",
+      followsRecordScan: "After each Record scan",
       metadataOptions: "Metadata options",
       metadataOptionsDescription: "What the Metadata card's runs and new Metadata triggers use. Saved in this browser.",
       fallbackSummary: "Remote fallback: {{sources}}",
@@ -2062,7 +2069,8 @@ export const surfaceEnglish = {
     runs: {
       label: "Runs",
       tabs: {
-        now: "Now",
+        operations: "Operations",
+        attention: "Needs attention",
         history: "History",
       },
       status: "Status",

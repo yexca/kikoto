@@ -16,34 +16,25 @@ import type { WorkflowTrigger } from "@/lib/api";
 export type OperationTriggerKind = "startup" | "schedule";
 
 /**
- * Workflows run and configured on another page, with that page and where each
- * is managed there. Workflows lists their runs and their triggers under Next.
+ * Workflows run and configured on Discover, with where each is managed there.
+ * Workflows lists their runs and their triggers under Next.
  */
-export const pageManagedWorkflows: Record<string, { message: string; path: string; page: "discover" | "records" }> = {
+export const pageManagedWorkflows: Record<string, { message: string; path: string }> = {
   availability_watch: {
     message: "availabilityWatchManagedOnSubscriptions",
     path: "/discover?view=watch&panel=watch",
-    page: "discover",
   },
   creator_subscription_refresh: {
     message: "subscriptionRefreshManagedOnSubscriptions",
     path: "/discover?panel=subscriptions",
-    page: "discover",
   },
   dlsite_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
     path: "/discover?view=rankings&panel=rankings",
-    page: "discover",
   },
   remote_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
     path: "/discover?view=rankings&panel=rankings",
-    page: "discover",
-  },
-  record_library_scan: {
-    message: "recordScanManagedOnRecords",
-    path: "/records",
-    page: "records",
   },
 };
 
@@ -83,15 +74,33 @@ export function triggerInterval(trigger: Pick<WorkflowTrigger, "scheduleJson"> |
   return typeof value === "number" && value > 0 ? value : defaultTriggerInterval;
 }
 
-/** When a trigger starts its workflow, as "At startup", "When folders change", or "Every 6 hours". */
-export function workflowTriggerCondition(trigger: WorkflowTrigger) {
+/**
+ * A schedule trigger the server plans from elsewhere, such as a ranking pull's
+ * dispatcher, which the ranking lists' own schedules plan. It is stored on
+ * with no interval, since every schedule saved through the API has one, and
+ * runs only while the server has given it a next run.
+ */
+export function serverPlannedTrigger(trigger: Pick<WorkflowTrigger, "triggerType" | "scheduleJson">) {
+  if (trigger.triggerType !== "schedule") return false;
+  const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
+  return !(typeof interval === "number" && interval > 0);
+}
+
+/** The trigger will start its workflow on its own: it is on and, when the server plans it, has a next run. */
+export function triggerRunsOnItsOwn(trigger: WorkflowTrigger) {
+  return trigger.enabled && (!serverPlannedTrigger(trigger) || Boolean(trigger.nextRunAt));
+}
+
+/**
+ * When a trigger starts its workflow, as "At startup", "When folders change",
+ * or "Every 6 hours"; null for a trigger the server plans, which says only
+ * when it runs next.
+ */
+export function workflowTriggerCondition(trigger: WorkflowTrigger): string | null {
   if (trigger.triggerType === "startup") return workflowCopy("operations.schedule.startup");
   if (trigger.triggerType === "filesystem_event") return workflowCopy("whenFoldersChange");
-  if (trigger.triggerType === "schedule") {
-    const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
-    if (typeof interval === "number" && interval > 0) return intervalLabel(interval);
-    return workflowCopy("intervalSchedule");
-  }
+  if (serverPlannedTrigger(trigger)) return null;
+  if (trigger.triggerType === "schedule") return intervalLabel(triggerInterval(trigger));
   return trigger.triggerType.replace(/_/g, " ");
 }
 

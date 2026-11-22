@@ -74,6 +74,7 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 	shownWorksWorkflowSpec(shownWorksMetadataSyncWorkflowCode),
 	shownWorksWorkflowSpec(shownWorksSourceCheckWorkflowCode),
 	recordScanWorkflowSpec(),
+	recordProbeWorkflowSpec(),
 	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",

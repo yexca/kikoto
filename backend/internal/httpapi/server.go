@@ -376,6 +376,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/records/folders/{id}/artwork/{role}", recordRoute(s.serveRecordArtwork))
 	mux.HandleFunc("DELETE /api/records/folders/{id}", recordRoute(s.deleteRecordFolder))
 	handleSlowFirstResponse("POST /api/records/scans", recordRoute(s.scanRecords))
+	mux.HandleFunc("POST /api/records/probes", recordRoute(s.probeRecords))
 	mux.HandleFunc("GET /api/records/assets/{id}/progress", recordRoute(s.getRecordProgress))
 	mux.HandleFunc("PUT /api/records/assets/{id}/progress", recordRoute(s.updateRecordProgress))
 	mux.HandleFunc("GET /api/records/continue", recordRoute(s.listRecordContinue))

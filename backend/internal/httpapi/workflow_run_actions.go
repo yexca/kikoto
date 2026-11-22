@@ -247,6 +247,14 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		}
 		newRunID, err := s.retryLocalMediaIndex(ctx, runID)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
+	case recordProbeWorkflowCode:
+		// Reading record media details changes what the library shows, as a
+		// record scan does.
+		if !userHasPermission(actor, "library:write") {
+			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+		}
+		newRunID, err := s.retryRecordProbe(ctx)
+		return workflowRetryDispatchResult{NewRunID: newRunID}, err
 	case sourcePresenceCheckWorkflowCode:
 		if !userHasPermission(actor, "sources:write") {
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission

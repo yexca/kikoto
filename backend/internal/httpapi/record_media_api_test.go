@@ -144,6 +144,7 @@ func TestRecordRoutesAreNotFoundWhileTheRecordLibraryIsOff(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/records/assets/"+video+"/stream", nil),
 		httptest.NewRequest(http.MethodPost, "/api/records/root/initialize", nil),
 		httptest.NewRequest(http.MethodPost, "/api/records/scans", nil),
+		httptest.NewRequest(http.MethodPost, "/api/records/probes", nil),
 		httptest.NewRequest(http.MethodPut, "/api/records/assets/"+video+"/progress", strings.NewReader(`{"positionSeconds":12}`)),
 	} {
 		request.AddCookie(server.cookie)
@@ -411,7 +412,7 @@ func TestRecordCompleteScanRemovesThumbnailsOfMissingAssets(t *testing.T) {
 	if err := os.Remove(filepath.Join(server.root, "trip", "Day 2.mp4")); err != nil {
 		t.Fatal(err)
 	}
-	result, err := server.server.runRecordScan(context.Background())
+	result, err := server.server.runRecordScan(context.Background(), nil)
 	if err != nil || !result.MissingMarked || result.ThumbnailsRemoved != 1 {
 		t.Fatalf("scan = %+v, %v", result, err)
 	}

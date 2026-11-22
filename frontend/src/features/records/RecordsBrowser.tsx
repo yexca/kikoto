@@ -83,7 +83,11 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     readWhole,
     reload: reloadTree,
   } = useRecordTree(location.folderId, historyState, enabled && online);
-  const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
+  const scan = useRecordScan({
+    activity: rootState.status === "ready" ? rootState.activity : null,
+    reloadRoot,
+    onFinished: reloadTree,
+  });
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
   // An audio file the Continue list asked for, played once its folder's listing arrives.
   const [pendingAudio, setPendingAudio] = useState<RecordAsset | null>(null);
@@ -285,7 +289,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   };
 
   const startScan = () => {
-    if (root) void scan.start(root);
+    void scan.start();
   };
   const refresh = () => {
     void reloadRoot();

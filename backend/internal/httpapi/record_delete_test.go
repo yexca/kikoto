@@ -104,7 +104,7 @@ func TestRecordDeleteMovesTheFileToTheRecordTrashWithItsCaches(t *testing.T) {
 	}
 
 	// A scan skips the trash, so the file does not come back.
-	if _, err := server.server.runRecordScan(context.Background()); err != nil {
+	if _, err := server.server.runRecordScan(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
 	var rows int

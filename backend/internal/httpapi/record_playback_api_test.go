@@ -91,6 +91,13 @@ func TestRecordPlaybackUsesTheLibraryPlaybackPipeline(t *testing.T) {
 	if info.Delivery != "hls" || !strings.HasPrefix(info.URL, "/api/records/assets/"+ts+"/hls/index.m3u8?v=") || info.DurationSeconds != 5744.7 {
 		t.Fatalf("ts playback = %+v", info)
 	}
+	// Playback keeps the details it read for a file the probe workflow has not reached.
+	var probeState string
+	var duration *float64
+	if err := server.server.db.QueryRow(`SELECT probe_state, duration_seconds FROM record_asset WHERE id = ?`, server.ids["Stream.ts"]).Scan(&probeState, &duration); err != nil ||
+		probeState != "ready" || duration == nil || *duration != 5744.7 {
+		t.Fatalf("details kept from playback = %s %v, %v", probeState, duration, err)
+	}
 	direct := server.recordPlaybackInfo(t, "Stream.mp4", capabilities)
 	if direct.Delivery != "direct" || !strings.HasPrefix(direct.URL, "/api/records/assets/"+strconv.FormatInt(server.ids["Stream.mp4"], 10)+"/stream") {
 		t.Fatalf("mp4 playback = %+v", direct)

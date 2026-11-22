@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import {
   api,
+  type RecordActivity,
   type RecordRoot,
   type RecordSectionName,
   type RecordSectionPage,
@@ -12,7 +13,11 @@ import {
 import { crumbFromFolder } from "./recordsModel";
 import { recordTrailFromState, type RecordCrumb } from "./recordsLocation";
 
-export type RecordRootState = { status: "loading" } | { status: "error" } | { status: "ready"; root: RecordRoot };
+export type RecordRootState =
+  { status: "loading" } | { status: "error" } | { status: "ready"; root: RecordRoot; activity: RecordActivity | null };
+
+/** The root and what its workflows are doing, as one read answers them. */
+export type RecordRootReading = { root: RecordRoot; activity: RecordActivity | null };
 
 /** A section as far as it has been read, and whether its next page is on the way or failed. */
 export type RecordSectionState<T> = RecordSectionPage<T> & { loading: boolean; failed: boolean };
@@ -31,14 +36,15 @@ type AnySection = RecordSectionState<{ id: number }>;
 
 const sectionNames: readonly RecordSectionName[] = ["folders", "videos", "photos", "audio", "files"];
 
-/** The root state, read once and again on Retry or while a scan runs. */
+/** The root state, read once and again on Retry or while a record workflow runs. */
 export function useRecordRoot(enabled: boolean) {
   const [state, setState] = useState<RecordRootState>({ status: "loading" });
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<RecordRootReading | null> => {
     try {
       const result = await api.getRecordRoot();
-      setState({ status: "ready", root: result.root });
-      return result.root;
+      const reading = { root: result.root, activity: result.activity ?? null };
+      setState({ status: "ready", ...reading });
+      return reading;
     } catch {
       setState((current) => (current.status === "ready" ? current : { status: "error" }));
       return null;
@@ -47,7 +53,16 @@ export function useRecordRoot(enabled: boolean) {
   useEffect(() => {
     if (enabled) void reload();
   }, [enabled, reload]);
-  return { state, reload, setRoot: (root: RecordRoot) => setState({ status: "ready", root }) };
+  const setRoot = useCallback(
+    (root: RecordRoot) =>
+      setState((current) => ({
+        status: "ready",
+        root,
+        activity: current.status === "ready" ? current.activity : null,
+      })),
+    [],
+  );
+  return { state, reload, setRoot };
 }
 
 /** Appends a page to a section, leaving out children an earlier page already held. */

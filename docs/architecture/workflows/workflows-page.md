@@ -4,11 +4,15 @@ The Workflows page, its operation cards, and the capabilities that gate workflow
 
 ## Workflows Page
 
-The Workflows page (`/workflows`) holds the library maintenance an
-administrator starts by hand and every workflow's runs. A frontend-owned table
-keyed by workflow code lists the operations as three cards under Library:
-Scan (`local_library_scan`), Metadata (`metadata_sync`), and Index
-(`local_media_index`). Work on one target starts where the target is shown:
+The Workflows page (`/workflows`) holds the maintenance an administrator
+starts by hand and every workflow's runs: Running, the active queue, on top
+while it holds a run, then three tabs, Operations (the default), Needs
+attention (`?tab=attention`), and History (`?tab=history`). A frontend-owned
+table keyed by workflow code lists the operations on Operations as cards in
+two sections: Library, with Scan (`local_library_scan`), Metadata
+(`metadata_sync`), and Index (`local_media_index`), and, while the Record
+library is on, Record, with Record scan (`record_library_scan`) and Media
+details (`record_media_probe`). Work on one target starts where the target is shown:
 Fetch from a work's detail, a catalog sync preset from its circle, series, or
 voice actor (see [Catalog Sync Dialog](#catalog-sync-dialog)), and a source
 presence check from its remote source (see
@@ -28,7 +32,9 @@ on its card until a later run replaces it and leads to its details. The line
 below lists its enabled triggers (at startup, watching folders, each interval
 schedule) with the soonest next scheduled run, says automatic runs are paused
 when every trigger is off, and is absent for an operation that runs only by
-hand. The cards sit three across from 768px and stack below.
+hand; Media details states instead that it runs after each Record scan. The
+cards sit three across where the tab is at least 42rem wide (a container
+query) and stack below, as they do in the list column beside an open run.
 
 Run starts the operation without further options. Metadata and Index run
 incrementally: metadata sync with scope `all`, mode `missing`, DLsite, and
@@ -54,6 +60,14 @@ queued one, and counts its other active runs; a request that queued behind
 another active run of the operation says so with a link to the new run. A
 repeat of the same metadata scope joins the active run on the backend.
 
+The Record operations need `library:write`, as the Record page's Scan does,
+and are exclusive. Record scan posts `/api/records/scans`; Media details
+posts `/api/records/probes`, which queues a `manual` probe run, or returns the
+probe run already queued or running, as the follow-up after each Record scan
+does. A new probe run reads every file still pending, including those an
+earlier run timed out on. Neither has Full, and the backend takes no
+triggers for them, so their cards have no trigger button.
+
 `GET /api/workflow-status` states each card's status from every run the
 viewer may see, so it holds however many runs are active. It takes the
 workflow codes to answer for (`code`, repeatable; every system workflow when
@@ -70,7 +84,7 @@ another browser shows on its card and, for an exclusive operation, holds its
 run control the same way. Demo reads both once. A hidden tab skips the poll
 and catches up when shown again.
 
-Each card's trigger button, at the end of its name row, opens that
+Each Library card's trigger button, at the end of its name row, opens that
 operation's triggers; the icon uses the primary color while any of them is
 enabled. The dialog lists the triggers with their switch and edit action and
 offers **Add trigger**; an operation without triggers opens straight to the
@@ -88,12 +102,10 @@ it stores, such as a metadata sync's scope, source, or fallback, so a trigger
 created through the API keeps them. The scan's fixed folder watcher edits only
 Full, which it stores as `scanMode`, and cannot be deleted.
 
-Below the cards, the run lists (see [Run Lists](run-lists.md#run-lists)) start on Now,
-whose Next part lists every trigger. The page's address keeps the list, its
-filters, and the open run. The Library heading folds the cards; they fold
-while a run is open and open again when the run closes, and a choice made in
-between holds until then. Phones show the same page; there is
-no landing view and no header back action outside a run.
+Below the cards, Operations ends with Next, every workflow's enabled triggers; the
+run lists are described in [Run Lists](run-lists.md#run-lists). The page's
+address keeps the tab, History's filters, and the open run. Phones show the
+same page; there is no landing view and no header back action outside a run.
 
 ### Catalog Sync Dialog
 
@@ -125,7 +137,8 @@ the backend.
   including one of watched works) require both `remote:fetch` and
   `metadata:sync`; scans, the local file index, metadata sync, presets, and
   the ranking pulls require `metadata:sync`, as do configuring rankings and
-  requesting a pull; the source presence check requires `sources:write`; tags
+  requesting a pull; the Record scan and Record media details require
+  `library:write`; the source presence check requires `sources:write`; tags
   require `tags:write`. Scheduled dispatch re-checks the trigger owner's
   current permissions.
 - Triggers: editing, switching off, or deleting a trigger requires the
