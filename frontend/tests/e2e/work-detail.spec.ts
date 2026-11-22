@@ -22,7 +22,12 @@ import {
   workflowRunFixture,
 } from "./fixtures/api";
 import { playbackReportResultFixture } from "./fixtures/playback-reports";
-import { closeDetailSources, openDetailSources, openWorkMetadataEditor } from "./fixtures/work-detail";
+import {
+  closeDetailSources,
+  openDetailSources,
+  openDirectoryEditions,
+  openWorkMetadataEditor,
+} from "./fixtures/work-detail";
 import { showFullWorkCards } from "./fixtures/library-view";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
@@ -387,15 +392,21 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   ).toEqual({ fits: true, whiteSpace: "normal" });
   const audioRow = page.getByTestId("directory-file-row").filter({ hasText: longTitle });
   const imageRow = page.getByTestId("directory-file-row").filter({ hasText: imageTitle });
-  await expect(audioRow.getByText("0:10", { exact: true })).toBeVisible();
+  // A phone shows the duration on the size line, leaving the name the row's width.
+  const audioDuration = audioRow.getByText("0:10", { exact: true }).locator("visible=true");
+  await expect(audioDuration).toBeVisible();
   await expect(imageRow.getByText("2.0 KB", { exact: true })).toBeVisible();
-  const [audioTitleBox, audioMetaBox] = await Promise.all([
+  const [audioTitleBox, audioMetaBox, audioDurationBox] = await Promise.all([
     fileName.boundingBox(),
-    audioRow.getByText("12 B", { exact: true }).boundingBox(),
+    // The size follows the duration's separator on the same line.
+    audioRow.getByText("12 B").boundingBox(),
+    audioDuration.boundingBox(),
   ]);
   expect(audioTitleBox).not.toBeNull();
   expect(audioMetaBox).not.toBeNull();
+  expect(audioDurationBox).not.toBeNull();
   expect(audioMetaBox!.y).toBeGreaterThan(audioTitleBox!.y);
+  expect(Math.abs(audioDurationBox!.y - audioMetaBox!.y)).toBeLessThan(4);
 
   // A phone stops a long name at two lines until the viewer asks for full names.
   const cutShort = () => fileName.evaluate((element) => element.scrollHeight > element.clientHeight + 1);
@@ -840,7 +851,7 @@ test("work detail prompts for missing metadata and refreshes after sync complete
   await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
   // A work with one metadata language and one edition shows no language or edition chip.
   await expect(page.getByRole("button", { name: "Metadata language", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Directory edition", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Directory edition/ })).toHaveCount(0);
 });
 
 test("work detail names the remote source that filled a work DLsite does not have", async ({ page }) => {
@@ -943,7 +954,7 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.getByText(work.title, { exact: true }).click();
 
   const metadataTrigger = page.getByRole("button", { name: "Metadata language", exact: true });
-  // A phone header shows the language code and keeps the full name for assistive technology.
+  // A phone title row shows the language code and keeps the full name for assistive technology.
   await expect(metadataTrigger).toHaveText("EN");
   await expect(metadataTrigger).toHaveAccessibleDescription("English");
   await metadataTrigger.click();
@@ -957,11 +968,13 @@ test("local work detail lists Origin first and expands from local to all edition
   );
   await page.keyboard.press("Escape");
 
-  const editionTrigger = page.getByRole("button", { name: "Directory edition", exact: true });
-  // The language chip beside it names the language, so a phone shows only the edition kind.
-  await expect(editionTrigger).toHaveText("Origin");
-  await expect(editionTrigger).toHaveAccessibleDescription("Origin · Japanese");
-  await editionTrigger.click();
+  // A phone names the shown edition's language beside the source in the Directory row.
+  const sourceTrigger = page.getByRole("button", {
+    name: /^Directory source: .+, Directory edition: Origin · Japanese$/,
+  });
+  await expect(sourceTrigger).toContainText("JA");
+  await sourceTrigger.click();
+  await page.getByRole("button", { name: /^Directory edition/ }).click();
   const versionMenu = page.getByRole("dialog", { name: "Directory edition", exact: true });
   await expect(versionMenu.getByRole("group", { name: "Japanese versions" })).toBeVisible();
   await expect(versionMenu.getByRole("group", { name: "English versions" })).toBeVisible();
@@ -1155,7 +1168,7 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
       await page.getByRole("button", { name: "Collapse player", exact: true }).click();
       await page.getByText(work.title, { exact: true }).click();
       await expect(page.getByText("original.mp3", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Directory edition", exact: true }).click();
+      await openDirectoryEditions(page);
       await page.getByRole("menuitemradio", { name: /RJ00000001/ }).click();
       await expect.poll(() => editionRequests).toBe(1);
       await expect(page.getByTestId("directory-skeleton")).toBeVisible();
@@ -1180,7 +1193,7 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
         });
         await expect.poll(() => refreshRequests).toBe(1);
         if (update === "cancelled directory recovery") {
-          await page.getByRole("button", { name: "Directory edition", exact: true }).click();
+          await openDirectoryEditions(page);
           await page.getByRole("menuitemradio", { name: /RJ00000000/ }).click();
           await expect(page.getByText("original.mp3", { exact: true })).toBeVisible();
         }
@@ -1208,7 +1221,9 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
   });
 }
 
-test("mobile work detail keeps tags in the hero and work-code utilities together", async ({ page }) => {
+test("mobile work detail keeps the work code in the header and leads the tag row with personal tags", async ({
+  page,
+}) => {
   const detailWork: Work = {
     ...work,
     dlsiteUrl: "https://example.invalid/work/RJ00000000",
@@ -1248,37 +1263,48 @@ test("mobile work detail keeps tags in the hero and work-code utilities together
 
   const detail = page.getByRole("main");
   await expect(detail.getByRole("button", { name: "Example Voice", exact: true })).toBeVisible();
-  // Provider tags and personal tags share one hero row, with personal tags after provider tags.
+  // The phone header carries the work code, so it sits above the title.
+  const [workCodeBox, titleBox] = await Promise.all([
+    workCodeActions.boundingBox(),
+    detail.getByRole("heading", { name: detailWork.title }).boundingBox(),
+  ]);
+  expect(workCodeBox!.y + workCodeBox!.height).toBeLessThanOrEqual(titleBox!.y);
+  // One hero tag row leads with personal tags and ends with the tag editor.
   const providerTag = detail
     .getByRole("list", { name: "Tags", exact: true })
     .getByRole("button", { name: "Example tag" });
   const personalTag = detail.getByRole("list", { name: "My tags", exact: true }).getByText("Personal tag");
+  const editTags = detail.getByRole("button", { name: "Edit tags", exact: true });
   await expect(providerTag).toBeVisible();
   await expect(personalTag).toBeVisible();
-  await expect(detail.getByRole("button", { name: "Edit tags", exact: true })).toBeVisible();
-  const [providerTagBox, personalTagBox, statsBox] = await Promise.all([
+  await expect(editTags).toBeVisible();
+  const [providerTagBox, personalTagBox, editTagsBox, statsBox] = await Promise.all([
     providerTag.boundingBox(),
     personalTag.boundingBox(),
+    editTags.boundingBox(),
     detail.getByTestId("dlsite-info").boundingBox(),
   ]);
   expect(providerTagBox).not.toBeNull();
   expect(personalTagBox).not.toBeNull();
+  expect(editTagsBox).not.toBeNull();
   expect(statsBox).not.toBeNull();
+  expect(personalTagBox!.x).toBeLessThan(providerTagBox!.x);
+  expect(editTagsBox!.x).toBeGreaterThan(providerTagBox!.x);
   expect(
-    personalTagBox!.y > providerTagBox!.y ||
-      (personalTagBox!.y === providerTagBox!.y && personalTagBox!.x > providerTagBox!.x),
-  ).toBe(true);
+    Math.abs(personalTagBox!.y + personalTagBox!.height / 2 - (editTagsBox!.y + editTagsBox!.height / 2)),
+  ).toBeLessThan(4);
   expect(statsBox!.y).toBeGreaterThan(personalTagBox!.y);
 
   await page.getByRole("button", { name: "Info", exact: true }).click();
   await expect(detail.getByTestId("active-source-info")).toBeVisible();
 });
 
-test("mobile work detail folds a long title and hides work details until the viewer shows them", async ({ page }) => {
+test("mobile work detail folds a long title, marks a work without tags, and hides work details", async ({ page }) => {
   const longTitle = Array.from({ length: 12 }, (_, index) => `Example long title part ${index + 1}`).join(" ");
   const detailWork: Work = {
     ...work,
     title: longTitle,
+    tags: [],
     voiceActors: ["Example Voice"],
     voiceCredits: [{ personId: 7, routeKey: "00000001", displayName: "Example Voice" }],
   };
@@ -1286,6 +1312,7 @@ test("mobile work detail folds a long title and hides work details until the vie
   await page.goto(`/${detailWork.primaryCode}`);
 
   const detail = page.getByRole("main");
+  await expect(detail.getByText("No tags", { exact: true })).toBeVisible();
   const title = detail.getByRole("heading", { name: longTitle });
   const expandTitle = detail.getByRole("button", { name: "Show full title" });
   await expect(expandTitle).toHaveAttribute("aria-expanded", "false");
@@ -1294,9 +1321,11 @@ test("mobile work detail folds a long title and hides work details until the vie
   await expect(detail.getByRole("button", { name: "Collapse title" })).toHaveAttribute("aria-expanded", "true");
   expect((await title.boundingBox())!.height).toBeGreaterThan(foldedHeight);
 
+  // Hiding the details keeps the title on one line beside the toggle.
   const voice = detail.getByRole("button", { name: "Example Voice", exact: true });
   await detail.getByRole("button", { name: "Hide work details" }).click();
-  await expect(title).toHaveCount(0);
+  await expect(title).toBeVisible();
+  expect((await title.boundingBox())!.height).toBeLessThan(foldedHeight);
   await expect(voice).toHaveCount(0);
   await expect(detail.getByTestId("dlsite-info")).toHaveCount(0);
   await expect(detail.getByTestId("hero-actions")).toBeVisible();
@@ -1305,7 +1334,7 @@ test("mobile work detail folds a long title and hides work details until the vie
   await page.reload();
   const showDetails = detail.getByRole("button", { name: "Show work details" });
   await expect(showDetails).toHaveAttribute("aria-expanded", "false");
-  await expect(title).toHaveCount(0);
+  await expect(voice).toHaveCount(0);
   await showDetails.click();
   await expect(title).toBeVisible();
   await expect(voice).toBeVisible();

@@ -1,8 +1,6 @@
 // Pure derivations for the persisted work detail: which source context is
 // active, what the directory shows, and the page presentation props.
 
-import type { ReactNode } from "react";
-
 import {
   type RemoteSourceAvailability,
   remoteSourceCanBrowse,
@@ -365,7 +363,7 @@ export function persistedWorkDetailPresentation({
   displayTranslations: WorkDetail["translations"];
   activeEditionCode: string;
   selectedRemoteDetail: RemoteWorkDetail | null;
-  personalTags: ReactNode;
+  personalTags: UnifiedWorkDetailPresentation["personalTags"];
   loading: boolean;
   metadataSync?: WorkMetadataSyncStatus;
   canSyncMetadata: boolean;

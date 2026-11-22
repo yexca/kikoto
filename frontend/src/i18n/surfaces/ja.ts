@@ -2132,6 +2132,7 @@ export const surfaceJapanese = {
     remoteDirectoryNotLoaded: "リモートディレクトリはまだ読み込まれていません。",
     showingFilesFrom: "{{code}} {{language}} のファイルを表示中。",
     myTags: "マイタグ",
+    noTags: "タグなし",
     myTagsUpdateFailed: "マイタグを更新できませんでした。",
     savedPlaybackResumeFailed: "保存した再生を再開できませんでした。",
     savedTrackUnavailable: "保存したトラックまたはソースは利用できません。",

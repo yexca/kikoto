@@ -2121,6 +2121,7 @@ export const surfaceKorean = {
     remoteDirectoryNotLoaded: "원격 디렉터리가 아직 로드되지 않았습니다.",
     showingFilesFrom: "{{code}} {{language}}의 파일을 표시하는 중입니다.",
     myTags: "내 태그",
+    noTags: "태그 없음",
     myTagsUpdateFailed: "내 태그를 업데이트할 수 없습니다.",
     savedPlaybackResumeFailed: "저장된 재생을 재개할 수 없습니다.",
     savedTrackUnavailable: "저장된 트랙 또는 소스를 더 이상 사용할 수 없습니다.",

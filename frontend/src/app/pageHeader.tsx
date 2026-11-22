@@ -25,17 +25,21 @@ type PageHeaderRegistry = {
 const PageHeaderRegistryContext = createContext<PageHeaderRegistry | null>(null);
 const PageHeaderBackContext = createContext<PageHeaderBack | null>(null);
 const PageActiveContext = createContext(true);
-const PageHeaderTitleSlotContext = createContext<{
+type HeaderSlotContextValue = {
   slot: HTMLElement | null;
   setSlot: (slot: HTMLElement | null) => void;
-} | null>(null);
+};
+const PageHeaderTitleSlotContext = createContext<HeaderSlotContextValue | null>(null);
+const PageHeaderDetailSlotContext = createContext<HeaderSlotContextValue | null>(null);
 
 export const PageActiveProvider = PageActiveContext.Provider;
 
 export function PageHeaderProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<readonly PageHeaderEntry[]>([]);
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null);
+  const [detailSlot, setDetailSlot] = useState<HTMLElement | null>(null);
   const titleSlotValue = useMemo(() => ({ slot: titleSlot, setSlot: setTitleSlot }), [titleSlot]);
+  const detailSlotValue = useMemo(() => ({ slot: detailSlot, setSlot: setDetailSlot }), [detailSlot]);
   const registry = useMemo<PageHeaderRegistry>(
     () => ({
       set: (entry) =>
@@ -54,7 +58,11 @@ export function PageHeaderProvider({ children }: { children: ReactNode }) {
   return (
     <PageHeaderRegistryContext.Provider value={registry}>
       <PageHeaderBackContext.Provider value={back}>
-        <PageHeaderTitleSlotContext.Provider value={titleSlotValue}>{children}</PageHeaderTitleSlotContext.Provider>
+        <PageHeaderTitleSlotContext.Provider value={titleSlotValue}>
+          <PageHeaderDetailSlotContext.Provider value={detailSlotValue}>
+            {children}
+          </PageHeaderDetailSlotContext.Provider>
+        </PageHeaderTitleSlotContext.Provider>
       </PageHeaderBackContext.Provider>
     </PageHeaderRegistryContext.Provider>
   );
@@ -76,6 +84,23 @@ export function PageHeaderTitleSlot({ className }: { className?: string }) {
  */
 export function PageHeaderTitle({ children }: { children: ReactNode }) {
   const context = useContext(PageHeaderTitleSlotContext);
+  const active = useContext(PageActiveContext);
+  if (!active || !context?.slot) return null;
+  return createPortal(children, context.slot);
+}
+
+/**
+ * Where a detail page's own phone header content, such as a work code, renders
+ * after the back button and section name. It collapses while empty.
+ */
+export function PageHeaderDetailSlot({ className }: { className?: string }) {
+  const context = useContext(PageHeaderDetailSlotContext);
+  return <div ref={context?.setSlot} className={className} />;
+}
+
+/** Renders its children in the header detail slot while the calling page is the visible one. */
+export function PageHeaderDetail({ children }: { children: ReactNode }) {
+  const context = useContext(PageHeaderDetailSlotContext);
   const active = useContext(PageActiveContext);
   if (!active || !context?.slot) return null;
   return createPortal(children, context.slot);

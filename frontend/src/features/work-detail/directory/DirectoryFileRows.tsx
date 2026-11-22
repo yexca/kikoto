@@ -129,27 +129,28 @@ function fileSizeLabel(file: TreeTrack) {
   return file.sizeBytes === null ? i18n.t("libraryDetail.unknownSize") : formatBytes(file.sizeBytes);
 }
 
-function MetaList({ items, lastItemCompactOnly = false }: { items: ReactNode[]; lastItemCompactOnly?: boolean }) {
-  const visible = items.filter(Boolean);
+/** A meta line entry; a compact-only entry moves to its own control or column on wide layouts. */
+type MetaItem = { content: ReactNode; compactOnly?: boolean };
+
+function MetaList({ items }: { items: MetaItem[] }) {
+  const visible = items.filter((item) => Boolean(item.content));
   if (visible.length === 0) return null;
   return (
     <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
-      {visible.map((item, index) => (
-        <span
-          key={index}
-          className={cn(
-            "inline-flex min-w-0 items-center gap-1.5",
-            index === visible.length - 1 && lastItemCompactOnly && "lg:hidden",
-          )}
-        >
-          {index > 0 && (
-            <span aria-hidden="true" className="text-muted-foreground/50">
-              ·
-            </span>
-          )}
-          {item}
-        </span>
-      ))}
+      {visible.map((item, index) => {
+        // On wide layouts a separator only shows after an entry that stays visible there.
+        const followsWideItem = visible.slice(0, index).some((previous) => !previous.compactOnly);
+        return (
+          <span key={index} className={cn("inline-flex min-w-0 items-center gap-1.5", item.compactOnly && "lg:hidden")}>
+            {index > 0 && (
+              <span aria-hidden="true" className={cn("text-muted-foreground/50", !followsWideItem && "lg:hidden")}>
+                ·
+              </span>
+            )}
+            {item.content}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -213,7 +214,8 @@ function TrackLeading({
 
 /**
  * One directory entry. Tracks are numbered in folder playback order with their
- * duration in a trailing column; other files show their type and size.
+ * duration in a trailing column on wide layouts and on the meta line on compact
+ * ones; other files show their type and size.
  */
 export function DirectoryFileRow({
   file,
@@ -250,25 +252,32 @@ export function DirectoryFileRow({
   const number = isTrack ? trackNumber(file, tracks) : 0;
   const duration = file.kind === "audio" || file.kind === "video" ? formatTrackDuration(file.durationSeconds) : "";
   const listening = isTrack ? trackListeningState(treeTrackProgress(file, liveCursor), file.durationSeconds) : null;
-  const meta = isTrack
+  const meta: MetaItem[] = isTrack
     ? [
-        file.kind === "video" && (
-          <span className="inline-flex items-center gap-1">
-            <Film className="h-3 w-3" aria-hidden="true" />
-            {fileKindLabel(file.kind)}
-          </span>
-        ),
-        listening && listening.kind !== "unplayed" && <ListeningStateLabel state={listening} />,
-        fileSizeLabel(file),
-        // Wide layouts show a lyrics button instead; last, so hiding it leaves no separator behind.
-        state.lyricsChoices.length > 0 && (
-          <span className="inline-flex items-center gap-1">
-            <Captions className="h-3 w-3" aria-hidden="true" />
-            {i18n.t("libraryDetail.lyrics")}
-          </span>
-        ),
+        {
+          content: file.kind === "video" && (
+            <span className="inline-flex items-center gap-1">
+              <Film className="h-3 w-3" aria-hidden="true" />
+              {fileKindLabel(file.kind)}
+            </span>
+          ),
+        },
+        // Wide layouts keep duration in a trailing column; compact ones give that width to the name.
+        { content: duration && <span className="tabular-nums">{duration}</span>, compactOnly: true },
+        { content: listening && listening.kind !== "unplayed" && <ListeningStateLabel state={listening} /> },
+        { content: fileSizeLabel(file) },
+        // Wide layouts show a lyrics button instead.
+        {
+          content: state.lyricsChoices.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Captions className="h-3 w-3" aria-hidden="true" />
+              {i18n.t("libraryDetail.lyrics")}
+            </span>
+          ),
+          compactOnly: true,
+        },
       ]
-    : [fileKindLabel(file.kind), duration, fileSizeLabel(file)];
+    : [fileKindLabel(file.kind), duration, fileSizeLabel(file)].map((content) => ({ content }));
 
   return (
     <div
@@ -310,10 +319,10 @@ export function DirectoryFileRow({
         >
           {name}
         </span>
-        <MetaList items={meta} lastItemCompactOnly={isTrack && state.lyricsChoices.length > 0} />
+        <MetaList items={meta} />
       </span>
       {isTrack && (
-        <span className="min-w-10 shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
+        <span className="hidden min-w-10 shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground lg:block">
           {duration}
         </span>
       )}

@@ -146,11 +146,13 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   the work has more than one metadata language, and the edition chip when it
   has another edition or a base work. A work with one version in one language
   shows neither.
-  On a phone the code and the chips stay on one line: a chip names a language
-  by its code (`JA`, `EN`, `SC` for Simplified Chinese, `TC` for Traditional
-  Chinese, `KO`), the metadata chip leaves out the original-language marker,
-  and an Origin directory edition reads `Origin` beside the metadata chip and
-  `Origin · JA` without it. The lists keep full language names.
+  On a phone the metadata chip starts the title, inline with its text, and the
+  directory edition joins the source in the Directory row: the row adds the
+  edition's language code after the source's name, and the first row of the
+  source menu opens the edition list. Languages show by code (`JA`, `EN`, `SC` for
+  Simplified Chinese, `TC` for Traditional Chinese, `KO`), and the metadata
+  chip leaves out the original-language marker. The lists keep full language
+  names.
   Metadata defaults to your preferred metadata language for local works; for
   remote-only works it defaults to the first of your languages the source
   describes, then to the source's fallback language. A temporary switch
@@ -208,7 +210,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   the title, circle, and series, a CV credit line, one tag row, a stat strip
   below a thin line that is only as wide as its figures (DLsite rating, your rating, age rating, sales, release
   date, and playable duration; one row on phones), any metadata notice, and
-  the Hero actions at the bottom. The
+  the Hero actions at the bottom. On wide pages the
   tag row lists provider tags first and then the user's personal tags in a
   distinct accent style, ending with the add or edit icon; long provider tag
   lists collapse behind a `+N` control. Selecting a provider tag or a personal
@@ -224,15 +226,21 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   shows only the roles the work credits and is absent when DLsite names no
   staff. Selecting a name adds a `staff:` clause to the library search the
   detail was opened from, which finds the name in any staff role.
-  On compact screens, the credit line, tag row, stat strip, and any metadata
-  notice follow the title and circle, and the Hero actions come last, on one
-  row that scrolls sideways when they do not fit, right above the Info and
-  Directory tabs. Mark and Manage show as
+  On compact screens, the app header shows the work code with the DLsite link
+  after the section name, and the Hero opens with a smaller title led by any
+  metadata-language chip, with the circle and the CV credit line close
+  below it. The
+  tag row, stat strip, and any metadata notice follow, and the Hero actions
+  come last, on one row that scrolls sideways when they do not fit, right
+  above the Info and Directory tabs. The tag row stays on one line that
+  scrolls sideways: personal tags first, then the provider tags, with the add
+  or edit icon pinned at its end, and **No tags** when the work has neither.
+  Mark and Manage show as
   icons there, and List as on wide pages. Info shows the description, the
   Credits card, and the source panel, which lists the selected source's
   actions. A phone shows at most three lines of the title; tapping a
-  shortened title shows all of it. The button at the end of the work code row
-  hides the work details and leaves the work code, any metadata notice, and
+  shortened title shows all of it. The button at the end of the title hides
+  the work details and leaves the title on one line, any metadata notice, and
   the actions. The choice is remembered on that device and holds for every
   work opened there.
 - Leads the Hero actions with one primary action. **Resume** continues the
@@ -282,11 +290,13 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   an image gallery, documents, and other files, labelling the groups when more
   than one is present. Subfolder tiles summarize what they contain and offer a
   direct play command when they hold playable files. Tracks are numbered in
-  folder playback order with the name above size and the work's
-  resume position, and precise duration in a trailing column; they show a play
-  cue on hover and mark the current track with an accent row and a live icon.
-  The resume marker follows playback saves without reloading. Local and cached
-  images show lazily loaded thumbnails; remote images load only when previewed.
+  folder playback order with the name above size and the work's resume
+  position, and precise duration in a trailing column on wide pages and on
+  the size line on compact screens, leaving the name more width; they show a
+  play cue on hover and mark the current track with an accent row and a live
+  icon. The resume marker follows playback saves without reloading. Local and
+  cached images show lazily loaded thumbnails; remote images load only when
+  previewed.
 - Folds matched same-folder lyrics sidecars out of the default directory rows
   while keeping unmatched text visible. Audio rows expose lyrics choice,
   preview, and reveal actions, and a directory control can show all folded

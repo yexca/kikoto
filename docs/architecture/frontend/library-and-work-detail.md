@@ -49,7 +49,9 @@ renders without suspending.
 
 The persisted and remote-only details are composed from the same parts: the
 Hero, the Directory, and the Source info panel, which lists the selected
-source's actions at every width. The Hero's one primary action
+source's actions at every width. The phone Hero renders its work code into
+the app header's detail slot from `app/pageHeader`, beside the back action.
+The Hero's one primary action
 (`heroPlaybackModel`) follows from the shown directory, the folder routing
 rules, and the saved playback cursor: Resume, Play for the folder the
 Directory opens on (the tracks that folder queues when played from its first

@@ -21,6 +21,7 @@ import {
 import {
   closeDetailSources,
   openDetailSources,
+  openDirectoryEditions,
   openSourceActions,
   runSourceAction,
   selectDetailSource,
@@ -1289,8 +1290,7 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Directory edition", exact: true }).click();
-  const versionMenu = page.getByRole("dialog", { name: "Directory edition", exact: true });
+  const versionMenu = await openDirectoryEditions(page);
   const versionMenuBox = await versionMenu.boundingBox();
   const viewport = page.viewportSize();
   expect(versionMenuBox).not.toBeNull();

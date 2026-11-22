@@ -501,6 +501,13 @@ Mobile:
 - System and Cleanup tabs that do not fit fold into one row of icons that
   names only the open tab; tab rows scroll sideways and a page's controls move
   below its tabs.
+- Work detail puts the work code and its DLsite link in the app header after
+  the section name, so the Hero opens on a smaller title led by any
+  metadata-language chip and ended by the details toggle, with the circle and
+  CV lines close below it. The directory edition joins the source in the Info
+  and Directory row. The tag row is one line that scrolls sideways, personal tags
+  first, with the tag editor pinned at its end and No tags when the work has
+  none.
 - Work detail closes the Hero with its actions, on one horizontally
   scrollable row right above the Info and Directory row, after the credits,
   tags, and stat strip: the primary action, sized to its label, then

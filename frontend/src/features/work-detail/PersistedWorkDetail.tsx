@@ -27,7 +27,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { FileDisplayNamesDialog } from "@/features/work-detail/dialogs/FileDisplayNamesDialog";
 import { TranslateWithAIDialog } from "@/features/work-detail/translation/TranslateWithAIDialog";
-import { UserTagRow } from "@/components/UserTagRow";
+import { UserTagRow, type UserTagRowLayout } from "@/components/UserTagRow";
 import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
@@ -93,7 +93,7 @@ import { usePersistedFileManagement } from "@/features/work-detail/usePersistedF
 
 function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[]) => Promise<void>) {
   if (!work) return undefined;
-  return (
+  return (layout?: UserTagRowLayout) => (
     <UserTagRow
       tags={work.userTags ?? []}
       scope="work"
@@ -102,6 +102,7 @@ function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[])
       listLabel={i18n.t("libraryDetail.myTags")}
       onTagOpen={(name) => openDetailTagSearch("user_tag", name)}
       className="contents"
+      {...layout}
     />
   );
 }

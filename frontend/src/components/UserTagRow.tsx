@@ -1,5 +1,5 @@
 import { Bookmark, Check, Loader2, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,16 @@ type UserTagRowProps = {
   listLabel?: string;
   /** Makes each tag a button that opens a search for that tag. */
   onTagOpen?: (name: string) => void;
+  /** Content placed after the tags, before the editor trigger. */
+  after?: ReactNode;
+  /** Shown in place of the tags while none are selected. */
+  placeholder?: ReactNode;
+  /** Classes for the editor trigger's wrapper, e.g. to pin it to the end of a scrolling row. */
+  triggerClassName?: string;
 };
+
+/** What a surrounding row may add to the tags without owning their editor state. */
+export type UserTagRowLayout = Pick<UserTagRowProps, "after" | "placeholder" | "triggerClassName">;
 
 // Last loaded vocabulary per scope, so a reopened editor lists suggestions
 // immediately while it refreshes. Tag management invalidates a changed scope.
@@ -62,6 +71,9 @@ export function UserTagRow({
   variant = "badge",
   listLabel,
   onTagOpen,
+  after,
+  placeholder,
+  triggerClassName,
 }: UserTagRowProps) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
@@ -194,7 +206,9 @@ export function UserTagRow({
           )}
         </ul>
       )}
-      <span ref={anchorRef} className="inline-flex">
+      {selected.length === 0 && placeholder}
+      {after}
+      <span ref={anchorRef} className={cn("inline-flex", triggerClassName)}>
         <Button
           type="button"
           variant={selected.length > 0 && variant !== "chip" ? "ghost" : "outline"}

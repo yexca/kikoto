@@ -14,14 +14,11 @@ import {
   type ActiveSourceInfoModel,
   detailReturnTarget,
   formatDateTime,
-  languageLabel,
-  languageShortLabel,
   openDetailTagSearch,
 } from "@/features/work-detail/workDetailHelpers";
-import { usePageHeaderBack } from "@/app/pageHeader";
+import { PageHeaderDetail, usePageHeaderBack } from "@/app/pageHeader";
 import i18n from "@/i18n";
 import {
-  Check,
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -30,10 +27,8 @@ import {
   Cloud,
   CloudOff,
   ExternalLink,
-  FolderTree,
   GitBranchPlus,
   HardDrive,
-  Languages,
   Link2,
   RefreshCw,
   Star,
@@ -48,20 +43,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwindClassNames";
 import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import {
-  groupWorkVersions,
   type WorkVersionAvailabilityScope,
   workVersionAvailableForScope,
-  workVersionKindLabel,
-  workVersionMediaState,
 } from "@/features/work-detail/workVersionModel";
-import { openWorkCodeRoute, type WorkPreview } from "@/features/work-detail/workDetailShared";
+import type { WorkPreview } from "@/features/work-detail/workDetailShared";
+import { metadataSourceGroups } from "@/features/work-detail/metadataPresentationModel";
+import type { UserTagRowLayout } from "@/components/UserTagRow";
 import {
-  metadataSourceGroups,
-  metadataLanguageChoices,
-  metadataVariantLabel as metadataVariantLabelFor,
-  resolveMetadataVariant,
-} from "@/features/work-detail/metadataPresentationModel";
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
+  type DirectoryEditionInput,
+  directoryEditionModel,
+  MetadataLanguageMenu,
+  WorkVersionMenus,
+} from "@/features/work-detail/WorkVersionMenus";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { copyText } from "@/lib/clipboard";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
@@ -119,7 +112,11 @@ export type UnifiedWorkDetailPresentation = {
   bundleMembers?: WorkDetail["bundleMembers"];
   includedInBundles?: WorkDetail["includedInBundles"];
   tags: string[];
-  personalTags?: ReactNode;
+  /**
+   * Renders the viewer's personal tag chips and editor; absent for a remote-only
+   * work. The phone layout places the provider tags between them.
+   */
+  personalTags?: (layout?: UserTagRowLayout) => ReactNode;
   loading?: boolean;
 };
 
@@ -389,14 +386,7 @@ function DetailTagLine({ tags, personalTags }: Pick<UnifiedWorkDetailPresentatio
         <ul className="contents" aria-label={i18n.t("libraryDetail.tags")}>
           {visibleTags.map((tag) => (
             <li key={tag} className="contents">
-              <button
-                type="button"
-                className="inline-flex h-[26px] max-w-48 items-center rounded-full border bg-background/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                title={tag}
-                onClick={() => openDetailTagSearch("tag", tag)}
-              >
-                <span className="truncate">{tag}</span>
-              </button>
+              <DetailTagChip tag={tag} />
             </li>
           ))}
         </ul>
@@ -412,23 +402,82 @@ function DetailTagLine({ tags, personalTags }: Pick<UnifiedWorkDetailPresentatio
           +{hiddenCount}
         </button>
       )}
-      {personalTags}
+      {personalTags?.()}
     </div>
   );
 }
 
-function detailVersionMenu({
-  code,
-  baseCode,
-  metadataLanguage,
-  metadataPresentation,
-  activeMetadataVariantKey,
-  onMetadataVariantSelect,
-  translations = [],
-  activeVersionCode,
-  onVersionSelect,
-  remoteVersions,
-}: Pick<
+/**
+ * The phone tag row: one line that scrolls sideways into the left page gutter,
+ * with the viewer's personal tags first, then every provider tag, and the
+ * personal tag editor pinned at its end.
+ */
+function MobileDetailTagLine({ tags, personalTags }: Pick<UnifiedWorkDetailPresentation, "tags" | "personalTags">) {
+  if (tags.length === 0 && !personalTags) return null;
+  const providerTags =
+    tags.length > 0 ? (
+      <ul className="contents" aria-label={i18n.t("libraryDetail.tags")}>
+        {tags.map((tag) => (
+          <li key={tag} className="contents">
+            <DetailTagChip tag={tag} />
+          </li>
+        ))}
+      </ul>
+    ) : undefined;
+  const noTags =
+    tags.length === 0 ? (
+      <span className="whitespace-nowrap text-xs text-muted-foreground">{i18n.t("libraryDetail.noTags")}</span>
+    ) : undefined;
+  return (
+    // The flow root keeps the strip's focus-ring padding out of the Hero spacing.
+    <div className="flow-root" data-testid="detail-identity-metadata">
+      <div className="scrollbar-hidden -my-1 -ml-4 overflow-x-auto overflow-y-hidden overscroll-x-contain py-1 pl-4">
+        <div className="flex w-max min-w-full items-center gap-1.5">
+          {personalTags
+            ? personalTags({
+                after: providerTags,
+                placeholder: noTags,
+                // The page background and its fade let the tags scroll under the pinned editor.
+                triggerClassName:
+                  "sticky right-0 ml-auto shrink-0 bg-background pl-1.5 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-l before:from-background before:to-transparent",
+              })
+            : providerTags}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailTagChip({ tag }: { tag: string }) {
+  return (
+    <button
+      type="button"
+      className="inline-flex h-[26px] max-w-48 items-center rounded-full border bg-background/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+      title={tag}
+      onClick={() => openDetailTagSearch("tag", tag)}
+    >
+      <span className="truncate">{tag}</span>
+    </button>
+  );
+}
+
+function detailVersionMenu(presentation: DetailVersionPresentation) {
+  const { metadataLanguage, metadataPresentation, baseCode, translations = [] } = presentation;
+  const hasVersionControls =
+    metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0;
+  if (!hasVersionControls) return null;
+  return (
+    <WorkVersionMenus
+      metadataLanguage={metadataLanguage ?? ""}
+      metadataPresentation={metadataPresentation}
+      activeMetadataVariantKey={presentation.activeMetadataVariantKey ?? ""}
+      onMetadataVariantSelect={presentation.onMetadataVariantSelect}
+      edition={detailEditionInput(presentation)}
+    />
+  );
+}
+
+type DetailVersionPresentation = Pick<
   UnifiedWorkDetailPresentation,
   | "code"
   | "baseCode"
@@ -440,28 +489,28 @@ function detailVersionMenu({
   | "activeVersionCode"
   | "onVersionSelect"
   | "remoteVersions"
->) {
-  const hasVersionControls =
-    metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0;
-  if (!hasVersionControls) return null;
+>;
+
+function detailEditionInput({
+  code,
+  baseCode,
+  translations = [],
+  activeVersionCode,
+  onVersionSelect,
+  remoteVersions,
+}: DetailVersionPresentation): DirectoryEditionInput {
   const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
   const baseTranslation = translations.find(
     (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
   );
-  return (
-    <WorkVersionMenus
-      metadataLanguage={metadataLanguage ?? ""}
-      metadataPresentation={metadataPresentation}
-      activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
-      onMetadataVariantSelect={onMetadataVariantSelect}
-      baseCode={baseCode ?? ""}
-      baseAvailable={Boolean(baseTranslation && workVersionAvailableForScope(baseTranslation, availabilityScope))}
-      translations={translations}
-      activeVersionCode={activeVersionCode ?? code}
-      onVersionSelect={onVersionSelect}
-      remoteVersions={remoteVersions}
-    />
-  );
+  return {
+    baseCode: baseCode ?? "",
+    baseAvailable: Boolean(baseTranslation && workVersionAvailableForScope(baseTranslation, availabilityScope)),
+    translations,
+    activeVersionCode: activeVersionCode ?? code,
+    onVersionSelect,
+    remoteVersions: remoteVersions ?? false,
+  };
 }
 
 function DetailCreditLine({
@@ -733,7 +782,7 @@ function MobileWorkDetailLayout({
   bundleMembers?: WorkDetail["bundleMembers"];
   includedInBundles?: WorkDetail["includedInBundles"];
   tags: string[];
-  personalTags?: ReactNode;
+  personalTags?: UnifiedWorkDetailPresentation["personalTags"];
   loading?: boolean;
   activeTab: "info" | "directory";
   onActiveTabChange: (tab: "info" | "directory") => void;
@@ -766,71 +815,57 @@ function MobileWorkDetailLayout({
         </div>
       </div>
 
-      <DetailTitleBlock
-        fallbackCode={fallbackCode}
-        code={code}
-        dlsiteUrl={dlsiteUrl}
-        title={title}
-        circle={circle}
-        circleExternalId={circleExternalId}
-        series={series}
-        seriesTitleId={seriesTitleId}
-        seriesCircleExternalId={seriesCircleExternalId}
-        loading={loading}
-        entityResolver={entityResolver}
-        compact
-        infoCollapsed={infoCollapsed}
-        codeRowEnd={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto h-7 w-7 shrink-0 text-muted-foreground"
-            aria-expanded={!infoCollapsed}
-            aria-label={i18n.t(infoCollapsed ? "libraryDetail.expandWorkInfo" : "libraryDetail.collapseWorkInfo")}
-            title={i18n.t(infoCollapsed ? "libraryDetail.expandWorkInfo" : "libraryDetail.collapseWorkInfo")}
-            onClick={toggleInfoCollapsed}
-          >
-            {infoCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
-          </Button>
-        }
-        versionMenu={detailVersionMenu({
-          code,
-          baseCode,
-          metadataLanguage,
-          metadataPresentation,
-          activeMetadataVariantKey,
-          onMetadataVariantSelect,
-          translations,
-          activeVersionCode,
-          onVersionSelect,
-          remoteVersions,
-        })}
-      />
+      <div className="space-y-3">
+        <MobileDetailIdentity
+          fallbackCode={fallbackCode}
+          code={code}
+          dlsiteUrl={dlsiteUrl}
+          title={title}
+          circle={circle}
+          circleExternalId={circleExternalId}
+          series={series}
+          seriesTitleId={seriesTitleId}
+          seriesCircleExternalId={seriesCircleExternalId}
+          voiceActors={voiceActors}
+          voiceCredits={voiceCredits}
+          loading={loading}
+          entityResolver={entityResolver}
+          infoCollapsed={infoCollapsed}
+          onToggleInfoCollapsed={toggleInfoCollapsed}
+          metadataMenu={
+            <MetadataLanguageMenu
+              metadataLanguage={metadataLanguage ?? ""}
+              metadataPresentation={metadataPresentation}
+              activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
+              onMetadataVariantSelect={onMetadataVariantSelect}
+              compact
+            />
+          }
+        />
 
-      {!infoCollapsed && (
-        <>
-          <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+        {!infoCollapsed && (
+          <>
+            <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
 
-          <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
+            <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
 
-          <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
+            <MobileDetailTagLine tags={tags} personalTags={personalTags} />
 
-          <DetailTagLine tags={tags} personalTags={personalTags} />
-
-          <DetailStatStrip
-            ratingLabel={ratingLabel}
-            rating={rating}
-            userRating={userRating}
-            ratingCount={ratingCount}
-            sales={sales}
-            customWork={customWork}
-            releaseDate={releaseDate}
-            ageRating={ageRating}
-            sourceInfo={sourceInfo}
-            compact
-          />
-        </>
-      )}
+            <DetailStatStrip
+              ratingLabel={ratingLabel}
+              rating={rating}
+              userRating={userRating}
+              ratingCount={ratingCount}
+              sales={sales}
+              customWork={customWork}
+              releaseDate={releaseDate}
+              ageRating={ageRating}
+              sourceInfo={sourceInfo}
+              compact
+            />
+          </>
+        )}
+      </div>
 
       <MetadataSyncNotice
         sync={metadataSync}
@@ -860,6 +895,9 @@ function MobileWorkDetailLayout({
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
         source={{ label: sourceInfo.tabLabel, status: sourceInfo.status, statusLabel: sourceInfo.statusLabel }}
+        edition={directoryEditionModel(
+          detailEditionInput({ code, baseCode, translations, activeVersionCode, onVersionSelect, remoteVersions }),
+        )}
         info={
           <div className="space-y-4">
             <WorkDescription description={description} />
@@ -921,9 +959,6 @@ function DetailTitleBlock({
   loading,
   entityResolver,
   versionMenu,
-  compact = false,
-  infoCollapsed = false,
-  codeRowEnd,
 }: {
   fallbackCode: string;
   code: string;
@@ -937,15 +972,124 @@ function DetailTitleBlock({
   loading?: boolean;
   entityResolver: DetailEntityResolver;
   versionMenu?: ReactNode;
-  /** The phone layout limits a long title to a few lines until the viewer expands it. */
-  compact?: boolean;
-  /** Leaves only the work code row, for a viewer who hid the work details. */
-  infoCollapsed?: boolean;
-  /** A control at the trailing end of the work code row. */
-  codeRowEnd?: ReactNode;
 }) {
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <WorkCodeActions workCode={code || fallbackCode} dlsiteUrl={dlsiteUrl} />
+          {versionMenu}
+        </div>
+        <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
+        {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
+      </div>
+      <DetailCircleLine
+        circle={circle}
+        circleExternalId={circleExternalId}
+        series={series}
+        seriesTitleId={seriesTitleId}
+        seriesCircleExternalId={seriesCircleExternalId}
+        entityResolver={entityResolver}
+      />
+    </div>
+  );
+}
+
+/**
+ * The phone layout's identity block: the work code and DLsite link sit in the
+ * app header and the directory edition in the Directory row, so the block opens
+ * on a smaller title that starts with any metadata-language chip and is
+ * followed by the work details toggle, and keeps the circle and voice actor
+ * lines close under it.
+ */
+function MobileDetailIdentity({
+  fallbackCode,
+  code,
+  dlsiteUrl,
+  title,
+  circle,
+  circleExternalId,
+  series,
+  seriesTitleId,
+  seriesCircleExternalId,
+  voiceActors,
+  voiceCredits,
+  loading,
+  entityResolver,
+  metadataMenu,
+  infoCollapsed,
+  onToggleInfoCollapsed,
+}: {
+  fallbackCode: string;
+  code: string;
+  dlsiteUrl: string;
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  loading?: boolean;
+  entityResolver: DetailEntityResolver;
+  /**
+   * The metadata-language chip, which renders nothing without another language.
+   * It flows as the title's first word, so the title keeps the full width.
+   */
+  metadataMenu?: ReactNode;
+  /** Leaves only the title on one line, for a viewer who hid the work details. */
+  infoCollapsed: boolean;
+  onToggleInfoCollapsed: () => void;
+}) {
+  const toggleLabel = i18n.t(infoCollapsed ? "libraryDetail.expandWorkInfo" : "libraryDetail.collapseWorkInfo");
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <PageHeaderDetail>
+        <WorkCodeActions workCode={code || fallbackCode} dlsiteUrl={dlsiteUrl} />
+      </PageHeaderDetail>
+      <div className="flex min-w-0 items-start gap-1">
+        {infoCollapsed ? (
+          <h2 className="min-w-0 flex-1 truncate text-lg font-semibold leading-snug" aria-label={title} title={title}>
+            {metadataMenu}
+            {title}
+          </h2>
+        ) : (
+          <CollapsibleDetailTitle title={title} leading={metadataMenu} />
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-mr-1 -mt-0.5 h-7 w-7 shrink-0 text-muted-foreground"
+          aria-expanded={!infoCollapsed}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={onToggleInfoCollapsed}
+        >
+          {infoCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
+        </Button>
+      </div>
+      {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
+      {!infoCollapsed && (
+        <>
+          <DetailCircleLine
+            circle={circle}
+            circleExternalId={circleExternalId}
+            series={series}
+            seriesTitleId={seriesTitleId}
+            seriesCircleExternalId={seriesCircleExternalId}
+            entityResolver={entityResolver}
+          />
+          <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The work code, which copies itself, and its DLsite link. */
+function WorkCodeActions({ workCode, dlsiteUrl }: { workCode: string; dlsiteUrl: string }) {
   const toast = useToast();
-  const workCode = code || fallbackCode;
   const copyWorkCode = async () => {
     try {
       await copyText(workCode);
@@ -954,94 +1098,97 @@ function DetailTitleBlock({
       toast.error(i18n.t("libraryDetail.copyWorkCodeFailed"));
     }
   };
-
   return (
-    <div className={infoCollapsed ? undefined : "space-y-2"}>
-      <div className="space-y-1.5">
-        {/* A narrow header keeps the code and its language chips on one line; a chip truncates instead of wrapping. */}
-        <div className="flex min-w-0 items-center gap-1.5 md:flex-wrap">
-          <div
-            className="flex shrink-0 items-center gap-1.5"
-            role="group"
-            aria-label={i18n.t("libraryDetail.workCodeActions")}
+    <div
+      className="flex shrink-0 items-center gap-1.5"
+      role="group"
+      aria-label={i18n.t("libraryDetail.workCodeActions")}
+    >
+      {workCode ? (
+        <button
+          type="button"
+          className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
+          aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: workCode })}
+          title={i18n.t("libraryDetail.work")}
+          onClick={() => void copyWorkCode()}
+        >
+          {workCode}
+        </button>
+      ) : (
+        <span className={badgeVariants({ variant: "secondary", className: "w-fit" })}>
+          {i18n.t("libraryDetail.remoteOnly")}
+        </span>
+      )}
+      {dlsiteUrl && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-[22px] w-[22px] shrink-0 p-0"
+          asChild
+          title={i18n.t("workCard.openDLsite")}
+        >
+          <a
+            href={dlsiteUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: workCode })}
           >
-            {workCode ? (
-              <button
-                type="button"
-                className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
-                aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: workCode })}
-                title={i18n.t("libraryDetail.work")}
-                onClick={() => void copyWorkCode()}
-              >
-                {workCode}
-              </button>
-            ) : (
-              <span className={badgeVariants({ variant: "secondary", className: "w-fit" })}>
-                {i18n.t("libraryDetail.remoteOnly")}
-              </span>
-            )}
-            {dlsiteUrl && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-[22px] w-[22px] shrink-0 p-0"
-                asChild
-                title={i18n.t("workCard.openDLsite")}
-              >
-                <a
-                  href={dlsiteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: workCode })}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-            )}
-          </div>
-          {versionMenu}
-          {codeRowEnd}
-        </div>
-        {infoCollapsed ? null : compact ? (
-          <CollapsibleDetailTitle title={title} />
-        ) : (
-          <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
-        )}
-        {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
-      </div>
-      <div className={cn("flex flex-wrap items-center gap-2 text-sm text-muted-foreground", infoCollapsed && "hidden")}>
-        {circle ? (
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function DetailCircleLine({
+  circle,
+  circleExternalId,
+  series,
+  seriesTitleId,
+  seriesCircleExternalId,
+  entityResolver,
+}: {
+  circle: string;
+  circleExternalId: string;
+  series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
+  entityResolver: DetailEntityResolver;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      {circle ? (
+        <button
+          className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary"
+          onClick={() =>
+            circleExternalId ? openCircleRoute(circleExternalId) : entityResolver.resolveEntity("circle", circle)
+          }
+        >
+          <CircleUserRound className="h-4 w-4 shrink-0" />
+          <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
+        </button>
+      ) : (
+        <span className="inline-flex max-w-full items-center gap-1 truncate">
+          <CircleUserRound className="h-4 w-4 shrink-0" />
+          <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
+        </span>
+      )}
+      {series && (
+        <span className="inline-flex max-w-full items-center gap-1 truncate">
+          <span className="text-border">/</span>
           <button
-            className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary"
+            className="truncate hover:text-primary"
             onClick={() =>
-              circleExternalId ? openCircleRoute(circleExternalId) : entityResolver.resolveEntity("circle", circle)
+              seriesTitleId && seriesCircleExternalId
+                ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId)
+                : entityResolver.resolveEntity("series", series)
             }
           >
-            <CircleUserRound className="h-4 w-4 shrink-0" />
-            <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
+            {series}
           </button>
-        ) : (
-          <span className="inline-flex max-w-full items-center gap-1 truncate">
-            <CircleUserRound className="h-4 w-4 shrink-0" />
-            <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
-          </span>
-        )}
-        {series && (
-          <span className="inline-flex max-w-full items-center gap-1 truncate">
-            <span className="text-border">/</span>
-            <button
-              className="truncate hover:text-primary"
-              onClick={() =>
-                seriesTitleId && seriesCircleExternalId
-                  ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId)
-                  : entityResolver.resolveEntity("series", series)
-              }
-            >
-              {series}
-            </button>
-          </span>
-        )}
-      </div>
+        </span>
+      )}
     </div>
   );
 }
@@ -1074,9 +1221,10 @@ function useDetailInfoCollapsed() {
 /**
  * A long title shows three lines; tapping it reveals the rest. A title that
  * fits shows no toggle. The heading keeps the full text for assistive
- * technology either way.
+ * technology either way. A `leading` control flows inline before the text,
+ * above the expand control, and stays out of the heading's name.
  */
-function CollapsibleDetailTitle({ title }: { title: string }) {
+function CollapsibleDetailTitle({ title, leading }: { title: string; leading?: ReactNode }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -1099,8 +1247,10 @@ function CollapsibleDetailTitle({ title }: { title: string }) {
     <div className="relative flex min-w-0 items-end gap-1">
       <h2
         ref={headingRef}
-        className={cn("min-w-0 flex-1 break-words text-xl font-semibold leading-snug", !expanded && "line-clamp-3")}
+        className={cn("min-w-0 flex-1 break-words text-lg font-semibold leading-snug", !expanded && "line-clamp-3")}
+        aria-label={title}
       >
+        {leading}
         {title}
       </h2>
       {toggleable && (
@@ -1289,380 +1439,6 @@ function useMediaQueryMatch(query: string) {
   }, [query]);
 
   return matches;
-}
-
-function WorkVersionMenus({
-  metadataLanguage,
-  metadataPresentation,
-  activeMetadataVariantKey,
-  onMetadataVariantSelect,
-  baseCode,
-  baseAvailable,
-  translations,
-  activeVersionCode,
-  onVersionSelect,
-  remoteVersions = false,
-}: {
-  metadataLanguage: string;
-  metadataPresentation?: WorkMetadataPresentation;
-  activeMetadataVariantKey: string;
-  onMetadataVariantSelect?: (key: string) => void;
-  baseCode: string;
-  baseAvailable: boolean;
-  translations: WorkDetail["translations"];
-  activeVersionCode: string;
-  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  remoteVersions?: boolean;
-}) {
-  return (
-    <>
-      <MetadataLanguageMenu
-        metadataLanguage={metadataLanguage}
-        metadataPresentation={metadataPresentation}
-        activeMetadataVariantKey={activeMetadataVariantKey}
-        onMetadataVariantSelect={onMetadataVariantSelect}
-      />
-      {(baseCode || translations.length > 0) && (
-        <DirectoryEditionMenu
-          languageChipShown={metadataLanguageChoices(metadataPresentation, activeMetadataVariantKey).length > 1}
-          baseCode={baseCode}
-          baseAvailable={baseAvailable}
-          translations={translations}
-          activeVersionCode={activeVersionCode}
-          onVersionSelect={onVersionSelect}
-          remoteVersions={remoteVersions}
-        />
-      )}
-    </>
-  );
-}
-
-const versionChipClassName =
-  "inline-flex h-[22px] min-w-0 max-w-full items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground";
-
-/**
- * A header chip naming the current language or edition. A narrow header shows
- * `shortLabel`, such as a language code, while assistive technology and the
- * open menu keep the full name.
- */
-function VersionChipMenu({
-  icon,
-  label,
-  shortLabel,
-  menuLabel,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  shortLabel?: string;
-  menuLabel: string;
-  children: (close: () => void) => ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const labelId = useId();
-  const visibleLabel = shortLabel || label;
-  return (
-    <div ref={anchorRef} className="min-w-0 max-w-full">
-      <button
-        type="button"
-        className={`${versionChipClassName} bg-background/60 font-medium transition-colors hover:border-primary hover:text-primary aria-expanded:border-primary aria-expanded:text-primary`}
-        aria-label={menuLabel}
-        aria-describedby={labelId}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title={menuLabel}
-        onClick={() => setOpen((current) => !current)}
-      >
-        {icon}
-        <span className="truncate">{visibleLabel}</span>
-        <ChevronDown className="h-3 w-3 shrink-0" />
-      </button>
-      <span id={labelId} hidden>
-        {label}
-      </span>
-      <AnchoredPopover
-        open={open}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="start"
-        className="w-[min(21rem,calc(100vw-1.5rem))] p-0 text-sm"
-      >
-        <div role="dialog" aria-label={menuLabel} className="app-scroll max-h-[min(28rem,70vh)] overflow-y-auto p-2">
-          <h4 className="flex items-center gap-2 px-2 pb-1.5 pt-0.5 text-xs font-medium text-muted-foreground">
-            {icon}
-            {menuLabel}
-          </h4>
-          {children(() => setOpen(false))}
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function MetadataLanguageMenu({
-  metadataLanguage,
-  metadataPresentation,
-  activeMetadataVariantKey,
-  onMetadataVariantSelect,
-}: {
-  metadataLanguage: string;
-  metadataPresentation?: WorkMetadataPresentation;
-  activeMetadataVariantKey: string;
-  onMetadataVariantSelect?: (key: string) => void;
-}) {
-  const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
-  const choices = metadataLanguageChoices(metadataPresentation, activeMetadataVariantKey);
-  const activeChoice = choices.find((choice) => choice.variant.key === activeMetadataVariant?.key);
-  const compact = useCompactDetailLayout();
-  const chipLabel = (short: boolean) =>
-    activeChoice
-      ? metadataVariantLabel(activeChoice.variant, short)
-      : metadataLanguage
-        ? (short ? languageShortLabel : languageLabel)(metadataLanguage)
-        : "";
-  const label = chipLabel(false);
-  // A work with one metadata language has nothing to choose, so the chip takes no room.
-  if (!label || choices.length < 2) return null;
-  return (
-    <VersionChipMenu
-      icon={<Languages className="h-3 w-3 shrink-0" />}
-      label={label}
-      shortLabel={compact ? chipLabel(true) : undefined}
-      menuLabel={i18n.t("libraryDetail.metadataLanguage")}
-    >
-      {(close) => (
-        <div role="menu" aria-label={i18n.t("libraryDetail.metadataLanguage")}>
-          {choices.map((choice) => {
-            const active = choice === activeChoice;
-            return (
-              <button
-                key={choice.key}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
-                  active ? "bg-primary/10 font-medium text-primary" : "hover:bg-accent hover:text-accent-foreground"
-                }`}
-                onClick={() => {
-                  if (!active) onMetadataVariantSelect?.(choice.variant.key);
-                  close();
-                }}
-              >
-                <span className="truncate">{metadataVariantLabel(choice.variant)}</span>
-                {active && <Check className="h-4 w-4 shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </VersionChipMenu>
-  );
-}
-
-function DirectoryEditionMenu({
-  languageChipShown,
-  baseCode,
-  baseAvailable,
-  translations,
-  activeVersionCode,
-  onVersionSelect,
-  remoteVersions,
-}: {
-  /** The metadata language chip beside this one names a language. */
-  languageChipShown: boolean;
-  baseCode: string;
-  baseAvailable: boolean;
-  translations: WorkDetail["translations"];
-  activeVersionCode: string;
-  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  remoteVersions: boolean;
-}) {
-  const [showAllEditions, setShowAllEditions] = useState(false);
-  const compact = useCompactDetailLayout();
-  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
-  const collapsedGroups = groupWorkVersions(translations, {
-    activeCode: activeVersionCode,
-    remoteVersions,
-    includeMetadataOnly: false,
-    availabilityScope,
-  });
-  const expandedGroups = groupWorkVersions(translations, {
-    activeCode: activeVersionCode,
-    remoteVersions,
-    includeMetadataOnly: true,
-    availabilityScope,
-  });
-  const collapsedCodes = new Set(
-    collapsedGroups.flatMap((group) => group.versions.map((version) => version.primaryCode.toUpperCase())),
-  );
-  const hiddenEditionCount = translations.filter(
-    (version) => !collapsedCodes.has(version.primaryCode.toUpperCase()),
-  ).length;
-  const groups = showAllEditions ? expandedGroups : collapsedGroups;
-  const activeCode = activeVersionCode.trim().toUpperCase();
-  const activeGroup = expandedGroups.find((group) =>
-    group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode),
-  );
-  const activeVersion = activeGroup?.versions.find(
-    (version) => version.primaryCode.trim().toUpperCase() === activeCode,
-  );
-  // A work with no other edition, listed or merely known, and no base work has nothing to choose.
-  const hasOtherEdition =
-    expandedGroups.some((group) =>
-      group.versions.some((version) => version.primaryCode.trim().toUpperCase() !== activeCode),
-    ) ||
-    (baseCode !== "" && baseCode.trim().toUpperCase() !== activeCode);
-  const activeLanguage = activeGroup?.language ? languageLabel(activeGroup.language) : "";
-  const label =
-    activeVersion?.translationKind === "origin" && activeLanguage
-      ? `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
-      : activeLanguage || activeVersionCode;
-  // A narrow header names a translation by its language code. The origin shows
-  // only "Origin" beside a language chip, and adds the code when that chip is absent.
-  const shortLabel = !compact
-    ? undefined
-    : activeVersion?.translationKind === "origin" && activeGroup?.language
-      ? languageChipShown
-        ? workVersionKindLabel(activeVersion)
-        : `${workVersionKindLabel(activeVersion)} · ${languageShortLabel(activeGroup.language)}`
-      : activeGroup?.language
-        ? languageShortLabel(activeGroup.language)
-        : activeVersionCode;
-
-  const selectVersion = (translation: WorkDetail["translations"][number], close: () => void) => {
-    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-    if (active || !workVersionAvailableForScope(translation, availabilityScope)) return;
-    close();
-    if (onVersionSelect) {
-      onVersionSelect(translation);
-    } else {
-      openWorkCodeRoute(translation.primaryCode);
-    }
-  };
-
-  if (!hasOtherEdition) return null;
-  return (
-    <VersionChipMenu
-      icon={<FolderTree className="h-3 w-3 shrink-0" />}
-      label={label}
-      shortLabel={shortLabel}
-      menuLabel={i18n.t("libraryDetail.directoryEdition")}
-    >
-      {(close) => (
-        <div className="space-y-1">
-          {baseCode && (
-            <div className="px-2 text-xs">
-              {baseAvailable ? (
-                <button
-                  type="button"
-                  className="font-semibold text-primary hover:underline"
-                  onClick={() => {
-                    close();
-                    openWorkCodeRoute(baseCode);
-                  }}
-                >
-                  {i18n.t("libraryDetail.baseCode", { code: baseCode })}
-                </button>
-              ) : (
-                <span className="font-semibold text-muted-foreground">
-                  {i18n.t("libraryDetail.baseCode", { code: baseCode })}
-                </span>
-              )}
-            </div>
-          )}
-          {groups.map((group) => {
-            const language = group.language ? languageLabel(group.language) : i18n.t("libraryDetail.unknownLanguage");
-            return (
-              <div
-                key={group.key}
-                role="group"
-                aria-label={i18n.t("libraryDetail.languageVersions", { language })}
-                className="pt-1"
-              >
-                <div className="px-2 pb-0.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {language}
-                </div>
-                <div role="menu" aria-label={i18n.t("libraryDetail.languageCodes", { language })}>
-                  {group.versions.map((translation) => {
-                    const available = workVersionAvailableForScope(translation, availabilityScope);
-                    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-                    const stateLabel = workVersionStateLabel(translation, availabilityScope);
-                    return (
-                      <button
-                        key={translation.primaryCode}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={active}
-                        aria-label={`${translation.primaryCode} ${workVersionKindLabel(translation)} ${stateLabel}`}
-                        disabled={!active && !available}
-                        className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
-                          active
-                            ? "bg-primary/10 text-primary"
-                            : available
-                              ? "hover:bg-accent hover:text-accent-foreground"
-                              : "text-muted-foreground opacity-70"
-                        }`}
-                        onClick={() => selectVersion(translation, close)}
-                      >
-                        <span className="min-w-0 truncate">
-                          <span className="font-semibold tabular-nums">{translation.primaryCode}</span>
-                          <span className="ml-2 text-xs opacity-80">{workVersionKindLabel(translation)}</span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1.5 text-xs opacity-80">
-                          {stateLabel}
-                          {active && <Check className="h-4 w-4" />}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-          {hiddenEditionCount > 0 && (
-            <button
-              type="button"
-              className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-primary hover:bg-accent"
-              aria-expanded={showAllEditions}
-              onClick={() => setShowAllEditions((shown) => !shown)}
-            >
-              {showAllEditions
-                ? i18n.t("libraryDetail.hideAllEditions")
-                : i18n.t("libraryDetail.showAllEditions", { count: hiddenEditionCount })}
-            </button>
-          )}
-        </div>
-      )}
-    </VersionChipMenu>
-  );
-}
-
-function metadataVariantLabel(variant: WorkMetadataPresentation["variants"][number], short = false) {
-  return metadataVariantLabelFor(variant, {
-    original: i18n.t("libraryDetail.original"),
-    language: short ? languageShortLabel : languageLabel,
-    omitOriginal: short,
-  });
-}
-
-function workVersionStateLabel(version: WorkDetail["translations"][number], scope: WorkVersionAvailabilityScope) {
-  const mediaState = workVersionMediaState(version);
-  if (scope === "local" && !version.localAvailable) {
-    return mediaState === "indexed_available"
-      ? i18n.t("libraryDetail.remoteOnly")
-      : i18n.t("detailActions.unavailable");
-  }
-  switch (mediaState) {
-    case "indexed_available":
-      return scope === "local" ? i18n.t("libraryDetail.ready") : i18n.t("content.available");
-    case "present_unindexed":
-      return i18n.t("libraryDetail.indexOnOpen");
-    case "metadata_only":
-      return i18n.t("libraryDetail.metadataOnly");
-    default:
-      return i18n.t("detailActions.unavailable");
-  }
 }
 
 function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {

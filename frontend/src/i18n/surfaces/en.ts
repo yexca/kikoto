@@ -2177,6 +2177,7 @@ export const surfaceEnglish = {
     remoteDirectoryNotLoaded: "Remote directory is not loaded yet.",
     showingFilesFrom: "Showing files from {{code}} {{language}}.",
     myTags: "My tags",
+    noTags: "No tags",
     myTagsUpdateFailed: "My tags could not be updated.",
     savedPlaybackResumeFailed: "Saved playback could not be resumed.",
     savedTrackUnavailable: "The saved track or source is no longer available.",

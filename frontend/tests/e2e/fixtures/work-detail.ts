@@ -38,6 +38,20 @@ export async function selectDetailSource(page: Page, title: string) {
   await sources.locator(`button[title="${title}"]`).click();
 }
 
+/**
+ * Opens the directory edition list: a compact detail's source menu opens it
+ * from its first row, and a wider detail's edition chip opens it directly.
+ */
+export async function openDirectoryEditions(page: Page) {
+  if (isCompactWorkDetail(page)) {
+    await page.getByRole("button", { name: /^Directory source: / }).click();
+    await page.getByRole("button", { name: /^Directory edition/ }).click();
+  } else {
+    await page.getByRole("button", { name: "Directory edition", exact: true }).click();
+  }
+  return page.getByRole("dialog", { name: "Directory edition", exact: true });
+}
+
 export async function openWorkMetadataEditor(page: Page) {
   await page.getByTestId("hero-actions").getByRole("button", { name: "Edit metadata", exact: true }).click();
 }

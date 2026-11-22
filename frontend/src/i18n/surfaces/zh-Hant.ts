@@ -2020,6 +2020,7 @@ export const surfaceHant = {
     remoteDirectoryNotLoaded: "遠端目錄尚未載入。",
     showingFilesFrom: "正在顯示 {{code}} {{language}} 的檔案。",
     myTags: "我的標籤",
+    noTags: "暫無標籤",
     myTagsUpdateFailed: "無法更新我的標籤。",
     savedPlaybackResumeFailed: "無法恢復已儲存的播放。",
     savedTrackUnavailable: "已儲存的音軌或來源已無法使用。",

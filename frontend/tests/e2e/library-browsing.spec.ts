@@ -64,9 +64,25 @@ test("new detail navigation starts at the top, preserves user scroll while media
   await target.click();
   await expect(page).toHaveURL(/\/RJ00000017/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
-  await page.evaluate(() => window.scrollTo(0, 300));
+  // Scroll as far as the loading detail allows. The page keeps that position while media
+  // loads, short of the end of a page that shrinks once the loaded directory replaces the skeleton.
+  const userScroll = await page.evaluate(() => {
+    window.scrollTo(0, 300);
+    return window.scrollY;
+  });
+  expect(userScroll).toBeGreaterThan(20);
   await page.waitForTimeout(650);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (scrolled) =>
+          window.scrollY -
+          Math.min(scrolled, document.documentElement.scrollHeight - document.documentElement.clientHeight),
+        userScroll,
+      ),
+    )
+    .toBeGreaterThanOrEqual(-5);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(20);
 
   const firstListFrame = page.evaluate(
     () =>

@@ -41,7 +41,13 @@ import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
-import { PageActiveProvider, PageHeaderProvider, PageHeaderTitleSlot, usePageHeaderBackState } from "@/app/pageHeader";
+import {
+  PageActiveProvider,
+  PageHeaderDetailSlot,
+  PageHeaderProvider,
+  PageHeaderTitleSlot,
+  usePageHeaderBackState,
+} from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
@@ -839,7 +845,8 @@ function AppHeaderTitle({ title, showMobileTitle }: { title: string; showMobileT
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="flex min-w-0 items-baseline gap-3">
-          <h1 className="shrink-0 text-base font-semibold lg:text-2xl">{title}</h1>
+          {/* A phone keeps the detail slot's content whole and truncates the section name first. */}
+          <h1 className="min-w-0 truncate text-base font-semibold lg:shrink-0 lg:text-2xl">{title}</h1>
           {back.title && (
             <p className="hidden min-w-0 truncate text-sm text-muted-foreground lg:block" title={back.title}>
               <span aria-hidden="true" className="mr-3 text-border">
@@ -849,6 +856,7 @@ function AppHeaderTitle({ title, showMobileTitle }: { title: string; showMobileT
             </p>
           )}
         </div>
+        <PageHeaderDetailSlot className="ml-1.5 flex shrink-0 items-center gap-1.5 empty:hidden lg:hidden" />
       </div>
     );
   }

@@ -2016,6 +2016,7 @@ export const surfaceHans = {
     remoteDirectoryNotLoaded: "远程目录尚未加载。",
     showingFilesFrom: "正在显示 {{code}} {{language}} 的文件。",
     myTags: "我的标签",
+    noTags: "暂无标签",
     myTagsUpdateFailed: "无法更新我的标签。",
     savedPlaybackResumeFailed: "无法恢复已保存的播放。",
     savedTrackUnavailable: "已保存的音轨或来源已不可用。",
