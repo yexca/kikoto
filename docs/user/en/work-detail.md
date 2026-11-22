@@ -209,7 +209,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   cover it shows the work code with the DLsite link and any language chips,
   the title, circle, and series, a CV credit line, one tag row, a stat strip
   below a thin line that is only as wide as its figures (DLsite rating, your rating, age rating, sales, release
-  date, and playable duration; one row on phones), any metadata notice, and
+  date, and playable duration; on phones one row with no line), any metadata notice, and
   the Hero actions at the bottom. On wide pages the
   tag row lists provider tags first and then the user's personal tags in a
   distinct accent style, ending with the add or edit icon; long provider tag

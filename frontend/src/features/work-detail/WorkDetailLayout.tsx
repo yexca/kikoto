@@ -654,15 +654,15 @@ function DetailStatStrip({
       (!customWork || (stat.key !== "rating" && stat.key !== "sales")) &&
       (stat.key !== "userRating" || userRating !== undefined),
   );
-  // A hairline above the figures separates them from the tags; they draw no box of their own.
-  // The strip, and so its hairline, is only as wide as its figures; a phone scrolls it sideways
-  // once they outgrow the row.
+  // The figures draw no box of their own. Wider layouts set them off from the tags with a hairline
+  // only as wide as the figures; a phone drops it, sits the row close under the tags, and scrolls
+  // it sideways once the figures outgrow the row.
   return (
     <dl
       data-testid="dlsite-info"
       className={
         compact
-          ? "flex w-fit max-w-full gap-x-2 overflow-x-auto overflow-y-hidden border-t border-border/70 pt-3 min-[360px]:gap-x-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ? "-mt-1 flex w-fit max-w-full gap-x-2 overflow-x-auto overflow-y-hidden min-[360px]:gap-x-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "flex w-fit max-w-full flex-wrap gap-x-7 gap-y-2 self-start border-t border-border/70 pt-3"
       }
     >
@@ -670,7 +670,7 @@ function DetailStatStrip({
         <div key={stat.key} className="min-w-0 shrink-0">
           <dt className="whitespace-nowrap text-2xs font-medium text-muted-foreground">{stat.label}</dt>
           <dd
-            className={`mt-0.5 whitespace-nowrap font-semibold tabular-nums text-sm ${stat.valueClassName || "text-foreground"}`}
+            className={`${compact ? "" : "mt-0.5 "}whitespace-nowrap font-semibold tabular-nums text-sm ${stat.valueClassName || "text-foreground"}`}
           >
             {stat.value}
             {stat.detail && (

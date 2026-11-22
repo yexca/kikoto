@@ -50,7 +50,8 @@
   details keeps the title on one line. The directory edition joins the source
   in the Directory row. The tag row is one line that scrolls sideways, with
   personal tags first, the tag editor pinned at its end, and **No tags** when
-  the work has none.
+  the work has none. The ratings and other figures follow close below it,
+  without a line above them.
 
 </details>
 

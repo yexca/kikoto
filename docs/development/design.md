@@ -507,7 +507,7 @@ Mobile:
   CV lines close below it. The directory edition joins the source in the Info
   and Directory row. The tag row is one line that scrolls sideways, personal tags
   first, with the tag editor pinned at its end and No tags when the work has
-  none.
+  none. The stat strip follows close below it, without the desktop hairline.
 - Work detail closes the Hero with its actions, on one horizontally
   scrollable row right above the Info and Directory row, after the credits,
   tags, and stat strip: the primary action, sized to its label, then
