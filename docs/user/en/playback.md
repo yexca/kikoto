@@ -192,6 +192,10 @@ Playback is handled by a global browser audio player.
   screen lyrics, playback mode, sleep timer, and queue; playback speed and
   compatibility scope share the More menu beside the title. The Compact bar
   adds a Next control.
+- The button in the top-right corner of the full view clears the whole queue,
+  which also closes the player. It and **Clear** in the queue view both ask for
+  a second press. Pressing anywhere else, pressing Escape, or waiting four
+  seconds cancels it.
 - While a track plays, the next track that end-of-track advancement would
   select is preloaded once the current track is within 45 seconds of its end
   or already fully buffered. Only that one track is warmed, through the same

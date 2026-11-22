@@ -2415,6 +2415,8 @@ export const surfaceHans = {
     noLyrics: "此音轨没有匹配的歌词。",
     queued: "已排队 {{count}} 项",
     clearQueue: "清空",
+    clearQueueTitle: "清空队列",
+    confirmClearQueue: "确认清空？",
     lyrics: "歌词",
     optionsFor: "{{title}} 的选项",
     queueOptionsFor: "{{title}} 的队列选项",

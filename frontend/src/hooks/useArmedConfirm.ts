@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-/** How long a first remove click waits for its confirmation. */
+/** How long a first click waits for its confirmation. */
 const armedTimeoutMs = 4000;
 
 /**
  * Two-step confirmation for one item at a time: the first click arms the
- * item's remove action, a second click on it confirms. Arming expires, and
- * Escape or arming another item disarms it.
+ * item's action, such as a remove, and a second click on it confirms. Arming
+ * expires, and Escape or arming another item disarms it.
  */
 export function useArmedConfirm<Key>() {
   const [armed, setArmed] = useState<Key | null>(null);

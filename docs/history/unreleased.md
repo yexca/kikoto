@@ -75,3 +75,13 @@
   rule reads **Auto-matched**.
 
 </details>
+
+<details>
+<summary><strong>Player</strong></summary>
+
+- The full player has a button in its top-right corner that clears the whole
+  queue and closes the player. It and **Clear** in the queue view both ask for
+  a second press; pressing anywhere else, pressing Escape, or waiting four
+  seconds cancels it.
+
+</details>

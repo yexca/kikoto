@@ -993,6 +993,37 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(0);
 });
 
+test("@desktop clearing the queue takes a second press and then removes the player", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayerQueue(page, [
+    queuedTrackFixture(0, "Test track.wav"),
+    queuedTrackFixture(1, "Second queued track.wav"),
+  ]);
+  await page.goto("/");
+
+  const player = page.getByRole("region", { name: "Now playing" });
+  const clear = player.getByRole("button", { name: "Clear queue", exact: true });
+  const confirm = player.getByRole("button", { name: "Clear queue?", exact: true });
+  await clear.click();
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+
+  await clear.click();
+  await player.getByText("Test track.wav", { exact: true }).first().click();
+  await expect(confirm).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Playback queue" }).click();
+  const queue = page.getByRole("list", { name: "Playback queue" });
+  await player.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(queue.getByRole("listitem")).toHaveCount(2);
+  await confirm.click();
+
+  await expect(player).toHaveCount(0);
+  await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.queue).toEqual([]);
+});
+
 test("the next queued track is preloaded while the current track plays", async ({ page }) => {
   await mockApplication(page);
   await seedPlayerQueue(page, [

@@ -2527,6 +2527,8 @@ export const surfaceEnglish = {
     noLyrics: "No lyrics matched for this track.",
     queued: "{{count}} queued",
     clearQueue: "Clear",
+    clearQueueTitle: "Clear queue",
+    confirmClearQueue: "Clear queue?",
     lyrics: "Lyrics",
     optionsFor: "Options for {{title}}",
     queueOptionsFor: "Queue options for {{title}}",

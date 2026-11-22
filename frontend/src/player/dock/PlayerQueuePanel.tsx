@@ -4,11 +4,13 @@ import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { OverflowMarquee } from "@/components/ui/overflow-marquee";
+import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { cn } from "@/lib/tailwindClassNames";
 import type { PlayerTrack } from "@/player/playerTypes";
 import { playerTrackArtist } from "@/player/playerTrackArtist";
 import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 
+import { ClearQueueButton } from "./ClearQueueButton";
 import { CoverImage, NowPlayingBars } from "./playerControls";
 import { queueDragShift, resolveQueueDrag, type QueueRowLayout } from "./queueDrag";
 
@@ -53,6 +55,7 @@ export function PlayerQueuePanel({
   const dragRef = useRef<QueueDragSession | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const clearConfirm = useArmedConfirm<"clear">();
   const callbacksRef = useRef({ onSelect, onMove, onMoveTo, onRemove });
   callbacksRef.current = { onSelect, onMove, onMoveTo, onRemove };
 
@@ -250,13 +253,13 @@ export function PlayerQueuePanel({
             {t("player.queued", { count: queue.length })} · {Math.min(queue.length, currentIndex + 1)} / {queue.length}
           </div>
         </div>
-        <button
-          type="button"
-          className="touch-target relative h-8 shrink-0 rounded-full px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 active:bg-primary/15"
-          onClick={onClear}
-        >
-          {t("player.clearQueue")}
-        </button>
+        <ClearQueueButton
+          appearance="text"
+          armed={clearConfirm.armed !== null}
+          onArm={() => clearConfirm.arm("clear")}
+          onDisarm={clearConfirm.disarm}
+          onClear={onClear}
+        />
       </div>
       <div
         ref={scrollerRef}

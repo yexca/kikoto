@@ -2536,6 +2536,8 @@ export const surfaceJapanese = {
     noLyrics: "このトラックに一致する歌詞はありません。",
     queued: "{{count}} 件をキューに追加",
     clearQueue: "クリア",
+    clearQueueTitle: "キューをクリア",
+    confirmClearQueue: "キューをクリア？",
     lyrics: "歌詞",
     optionsFor: "{{title}}のオプション",
     queueOptionsFor: "{{title}}のキューオプション",
