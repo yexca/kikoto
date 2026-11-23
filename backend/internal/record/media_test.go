@@ -207,17 +207,26 @@ func TestProbeOfAChangedFileIsNotKept(t *testing.T) {
 	}
 }
 
+// A cancel keeps the probes of its group that had finished, leaves the file
+// it interrupted and the files after it pending, and reports what remains.
 func TestProbeStopsOnCancelAndLeavesAssetsPending(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	store, db, _ := scannedStore(t, map[string]string{"a.mp4": "a", "b.mp4": "b"}, WithProber(func(ctx context.Context, _ string) ([]byte, error) {
+	store, db, _ := scannedStore(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c"}, WithProber(func(ctx context.Context, path string) ([]byte, error) {
+		if filepath.Base(path) == "a.mp4" {
+			return []byte(videoProbeJSON), nil
+		}
 		cancel()
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}))
-	if _, err := store.ProbePending(ctx, ProbeOptions{Concurrency: 1}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled probe err = %v", err)
+	result, err := store.ProbePending(ctx, ProbeOptions{Concurrency: 2})
+	if !errors.Is(err, context.Canceled) || result.Probed != 1 || result.Remaining != 2 {
+		t.Fatalf("cancelled probe = %+v, %v", result, err)
 	}
-	for _, name := range []string{"a.mp4", "b.mp4"} {
+	if state, duration, _ := probeState(t, db, "a.mp4"); state != "ready" || duration == nil {
+		t.Fatalf("a probe finished before the cancel was not kept: %s %v", state, duration)
+	}
+	for _, name := range []string{"b.mp4", "c.mp4"} {
 		if state, _, _ := probeState(t, db, name); state != "pending" {
 			t.Fatalf("%s after cancel = %s", name, state)
 		}

@@ -62,7 +62,9 @@ const operationGroups: OperationGroup[] = ["library", "record"];
  * maintenance an administrator starts by hand as cards, Library (Scan,
  * Metadata, and Index) and Record (Record scan and Media details), with what
  * triggers run next; Needs attention the runs that wait for a decision; and
- * History the runs that ended. One run's details open beside the tabs.
+ * History the runs that ended. A run of Needs attention or History opens
+ * beside its list on wide screens; a run opened from anywhere else takes the
+ * page until Back.
  */
 export function WorkflowsPage({
   canRun,
@@ -148,14 +150,18 @@ export function WorkflowsPage({
   const openRun = watched.run?.id === location.runId ? watched.run : null;
   usePageHeaderBack({
     label: t("workflowActivity.backToHistory"),
-    onBack: location.backToList,
+    onBack: location.closeRun,
     enabled: mobile && location.runId !== null,
   });
   const refreshRun = async () => {
     await watched.refresh(true);
     setRevision((value) => value + 1);
   };
+  /** A run opened from what is running, a card, or a notice takes the page; Back returns here. */
   const selectRun = (run: Pick<WorkflowRun, "id">) => location.openRun(run.id);
+  /** A row of Needs attention or History opens beside its list, and selecting the open row again closes it. */
+  const selectListRun = (run: Pick<WorkflowRun, "id">) =>
+    location.runInList && run.id === location.runId ? location.closeRun() : location.openListRun(run.id);
 
   /**
    * Marks the operation as starting at once, then waits for the run list to
@@ -352,7 +358,7 @@ export function WorkflowsPage({
   };
 
   const operationsTab = (
-    // Cards sit three to a row where the tab is wide, and one to a row beside an open run.
+    // Cards sit three to a row where the tab is wide, and one to a row on a phone.
     <div className="@container/operations grid min-w-0 gap-6">
       {!hasSnapshot && isLoading ? (
         <WorkflowMetadataLoadingState />
@@ -421,7 +427,7 @@ export function WorkflowsPage({
             readOnly={readOnly}
             canSyncMetadata={canSyncMetadata}
             selectedRunId={location.runId}
-            onSelectRun={selectRun}
+            onSelectRun={selectListRun}
             onChanged={() => setRevision((value) => value + 1)}
           />
         }
@@ -444,13 +450,14 @@ export function WorkflowsPage({
           ) : undefined
         }
         selectedRunId={location.runId}
-        onSelectRun={selectRun}
-        onBack={location.backToList}
+        runInList={location.runInList}
+        onSelectRun={selectListRun}
+        onCloseRun={location.closeRun}
         refreshKey={revision}
         staticDemo={auth.demoMode}
         canSyncMetadata={canSyncMetadata}
         mobile={mobile}
-        detail={
+        detail={(closeControl) =>
           location.runId ? (
             <>
               {watched.error && (
@@ -471,9 +478,10 @@ export function WorkflowsPage({
                 onRunAction={refreshRun}
                 canSyncMetadata={canSyncMetadata}
                 readOnly={readOnly}
+                closeControl={closeControl}
               />
             </>
-          ) : undefined
+          ) : null
         }
       />
       {metadataOptionsOpen && (

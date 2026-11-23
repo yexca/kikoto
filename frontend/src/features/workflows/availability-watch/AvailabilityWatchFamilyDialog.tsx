@@ -9,6 +9,7 @@ import { formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/ru
 import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { Modal } from "@/features/workflows/WorkflowPanelParts";
+import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { assetURL, type AvailabilityWatchTarget } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
 
@@ -20,7 +21,6 @@ import {
   watchTargetGroup,
   watchTargetRun,
 } from "./availabilityWatchModel";
-import { useArmedConfirm } from "./useArmedConfirm";
 import type { WatchTargetActions } from "./useWatchTargetActions";
 
 function stateBadgeVariant(target: AvailabilityWatchTarget): BadgeProps["variant"] {

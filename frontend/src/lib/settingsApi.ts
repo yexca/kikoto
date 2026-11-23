@@ -52,6 +52,8 @@ export type LocalWorkCleanupWork = {
   workId: number;
   primaryCode: string;
   title: string;
+  /** The cached or manual cover; empty when the work has none. */
+  coverUrl: string;
   rating: number | null;
   listeningStatus: "none" | "want_to_listen" | "listening" | "finished" | "relisten" | "paused";
   sizeBytes: number;

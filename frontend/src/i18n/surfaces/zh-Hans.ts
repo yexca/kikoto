@@ -402,6 +402,7 @@ export const surfaceHans = {
   },
   workflowActivity: {
     backToHistory: "返回运行记录",
+    closeRun: "关闭运行详情",
     allWorkflows: "所有工作流",
     workflowFilter: "工作流",
     search: "搜索运行记录",
@@ -2415,6 +2416,8 @@ export const surfaceHans = {
     noLyrics: "此音轨没有匹配的歌词。",
     queued: "已排队 {{count}} 项",
     clearQueue: "清空",
+    clearQueueTitle: "清空队列",
+    confirmClearQueue: "确认清空？",
     lyrics: "歌词",
     optionsFor: "{{title}} 的选项",
     queueOptionsFor: "{{title}} 的队列选项",

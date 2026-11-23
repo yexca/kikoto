@@ -26,8 +26,7 @@ Workflows make backend actions inspectable.
   lists its automatic starts, such as **At startup**, **Watching folders**, or
   **Every 6 hours**, with when the next scheduled run is due, or says
   **Automatic runs paused** when every trigger is off; on Media details it
-  reads **After each Record scan**. Phones stack the cards, and so does the
-  narrow list beside an open run.
+  reads **After each Record scan**. Phones stack the cards.
 - **Run** starts the operation, and the card shows the run at once. Metadata
   and Index run incrementally: Metadata refreshes missing or outdated
   metadata of every work from DLsite, and Index indexes only local works whose
@@ -79,8 +78,13 @@ Workflows make backend actions inspectable.
 - Each run shows the status, run number, trigger, and elapsed time. Selecting
   one opens its details: start and finish times, duration, trigger, steps,
   candidates, run actions, and a collapsed **Diagnostic log** of run events.
-  Wide screens show the details beside the tabs; elsewhere they take the page,
-  and **Back to runs** or the header back button returns. `/runs` and
+  On a wide screen, a run chosen in **Needs attention** or **History** opens
+  beside that list and stays in view while the list scrolls; **Close run**,
+  Escape, or selecting the run again closes it, and another tab or filter
+  closes it too. A run opened from **Running**, a card, a notification, or
+  another page, and every run on a narrower screen, takes the page, and
+  **Back to runs** or the header back button returns to the list it was
+  opened from. `/runs` and
   `/activity` links, and earlier links to runs inside Workflows, open
   Workflows with the linked run.
 - Workflows lists every run, including those of features with their own

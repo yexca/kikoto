@@ -414,6 +414,7 @@ export const surfaceJapanese = {
   },
   workflowActivity: {
     backToHistory: "実行履歴に戻る",
+    closeRun: "実行を閉じる",
     allWorkflows: "すべてのワークフロー",
     workflowFilter: "ワークフロー",
     search: "実行を検索",
@@ -2536,6 +2537,8 @@ export const surfaceJapanese = {
     noLyrics: "このトラックに一致する歌詞はありません。",
     queued: "{{count}} 件をキューに追加",
     clearQueue: "クリア",
+    clearQueueTitle: "キューをクリア",
+    confirmClearQueue: "キューをクリア？",
     lyrics: "歌詞",
     optionsFor: "{{title}}のオプション",
     queueOptionsFor: "{{title}}のキューオプション",

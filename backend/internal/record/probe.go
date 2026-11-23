@@ -239,7 +239,7 @@ type probeOutcome struct {
 // whose probe timed out stays pending and the pass does not try it again.
 // Between each group the pass calls options.Between, which may stop it; a
 // cancelled context stops it too. Either way finished files keep their result
-// and the rest stay pending.
+// and the rest stay pending; a cancelled pass also reports how many remain.
 func (s *Store) ProbePending(ctx context.Context, options ProbeOptions) (ProbeResult, error) {
 	result := ProbeResult{TimedOutIDs: append([]int64(nil), options.Skip...)}
 	if s.probe == nil {
@@ -269,6 +269,21 @@ func (s *Store) ProbePending(ctx context.Context, options ProbeOptions) (ProbeRe
 		}
 		wait.Wait()
 		if err := ctx.Err(); err != nil {
+			// A probe that ended before the stop keeps its result; any other
+			// outcome may come from the stop itself, so its file stays pending.
+			settle := context.WithoutCancel(ctx)
+			for _, outcome := range outcomes {
+				if outcome.err != nil {
+					continue
+				}
+				if saveErr := s.saveProbe(settle, outcome.candidate, outcome.info); saveErr != nil {
+					return result, saveErr
+				}
+				result.Probed++
+			}
+			if countErr := s.countPendingProbes(settle, &result); countErr != nil {
+				return result, countErr
+			}
 			return result, err
 		}
 		for _, outcome := range outcomes {

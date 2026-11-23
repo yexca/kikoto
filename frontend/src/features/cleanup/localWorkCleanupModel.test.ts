@@ -20,6 +20,7 @@ function work(workId: number, rating: number | null): LocalWorkCleanupWork {
     workId,
     primaryCode: `RJ0000000${workId}`,
     title: `Example Work ${workId}`,
+    coverUrl: "",
     rating,
     listeningStatus: "none",
     sizeBytes: 10,

@@ -23,6 +23,7 @@ import { useTranslation } from "react-i18next";
 
 import { openPlayingRecordFolder, openPlayingWorkDetail } from "@/app/playingWorkNavigation";
 import { useAuth } from "@/auth/AuthProvider";
+import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
@@ -36,6 +37,7 @@ import { playerTrackArtist } from "@/player/playerTrackArtist";
 import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 import { orderedTrackLocations } from "@/player/trackLocations";
 
+import { ClearQueueButton } from "./ClearQueueButton";
 import { formatRemaining, formatTime } from "./playerFormat";
 import { CoverImage, GlyphButton, PlayPauseGlyph, SeekBar, SeekIcon } from "./playerControls";
 import { LyricsLoadingSkeleton, LyricsPanel } from "./PlayerLyricsPanel";
@@ -73,6 +75,7 @@ export function FullPlayer({
   const [isSourceOpen, setIsSourceOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
+  const clearConfirm = useArmedConfirm<"clear">();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const sourceButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -118,6 +121,7 @@ export function FullPlayer({
         action();
         event.preventDefault();
       };
+      if (clearConfirm.armed) return close(clearConfirm.disarm);
       if (isSleepOpen) return close(() => setIsSleepOpen(false));
       if (isCustomSleepOpen) return close(() => setIsCustomSleepOpen(false));
       if (isSourceOpen) return close(() => setIsSourceOpen(false));
@@ -127,7 +131,17 @@ export function FullPlayer({
     };
     window.addEventListener(NATIVE_BACK_EVENT, handleBack);
     return () => window.removeEventListener(NATIVE_BACK_EVENT, handleBack);
-  }, [isCustomSleepOpen, isMobile, isMoreOpen, isSleepOpen, isSourceOpen, onDockModeChange, sidePanel]);
+  }, [
+    clearConfirm.armed,
+    clearConfirm.disarm,
+    isCustomSleepOpen,
+    isMobile,
+    isMoreOpen,
+    isSleepOpen,
+    isSourceOpen,
+    onDockModeChange,
+    sidePanel,
+  ]);
 
   const toggleSidePanel = (value: PlayerSidePanel) => {
     if (value === "lyrics" && !activeLyricsLocationId) return;
@@ -320,6 +334,15 @@ export function FullPlayer({
           <span className="pointer-events-none absolute left-6 text-[11px] font-medium tabular-nums text-muted-foreground lg:left-7">
             {player.currentIndex + 1} / {player.queue.length}
           </span>
+          <ClearQueueButton
+            appearance="icon"
+            // The icon's padding meets the content edge at rest; the armed pill aligns to it directly.
+            className={cn("absolute", clearConfirm.armed ? "right-6 lg:right-7" : "right-4 lg:right-5")}
+            armed={clearConfirm.armed !== null}
+            onArm={() => clearConfirm.arm("clear")}
+            onDisarm={clearConfirm.disarm}
+            onClear={player.clearQueue}
+          />
         </div>
 
         <div className="player-primary flex min-h-0 flex-1 flex-col">

@@ -459,6 +459,7 @@ export const surfaceEnglish = {
   },
   workflowActivity: {
     backToHistory: "Back to runs",
+    closeRun: "Close run",
     allWorkflows: "All workflows",
     workflowFilter: "Workflow",
     search: "Search runs",
@@ -2527,6 +2528,8 @@ export const surfaceEnglish = {
     noLyrics: "No lyrics matched for this track.",
     queued: "{{count}} queued",
     clearQueue: "Clear",
+    clearQueueTitle: "Clear queue",
+    confirmClearQueue: "Clear queue?",
     lyrics: "Lyrics",
     optionsFor: "Options for {{title}}",
     queueOptionsFor: "Queue options for {{title}}",

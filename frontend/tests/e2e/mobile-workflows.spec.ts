@@ -2590,11 +2590,78 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(panel.getByRole("heading", { name: "Sync work metadata · RG00000000", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/workflows\?tab=history&workflow=metadata_sync&run=72$/);
     await page.screenshot({ path: testInfo.outputPath("workflow-run-panel.png") });
-    // The mobile layout returns from a run through the page header.
-    await page.getByRole("button", { name: "Back to runs", exact: true }).click();
-    await expect(page).not.toHaveURL(/run=72/);
+    // The mobile layout returns from a run through the page header; a run beside History closes in place.
+    await page.getByRole("button", { name: viewport === "mobile" ? "Back to runs" : "Close run", exact: true }).click();
+    await expect(page).toHaveURL(/\/workflows\?tab=history&workflow=metadata_sync$/);
     await filter.selectOption("");
     await expect(page).toHaveURL(/\/workflows\?tab=history$/);
     await expect.poll(() => scopes).toContain("");
   });
 }
+
+test("@desktop a run of a list opens beside it, and a run opened from elsewhere takes the page until Back", async ({
+  page,
+}) => {
+  const running: WorkflowRun = {
+    ...sampleRun,
+    id: 63,
+    workflowCode: "local_library_scan",
+    status: "running",
+    finishedAt: "",
+  };
+  await mockWorkflows(
+    page,
+    workflowRunsPageFixture([sampleRun, running], {
+      viewTotals: { running: 1, review: 0, failed: 0, completed: 1 },
+    }),
+  );
+  await page.route("**/api/workflow-runs/63**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      json: path.endsWith("/events") || path.endsWith("/candidates") ? [] : workflowRunDetailFixture(running),
+    });
+  });
+  await page.goto("/workflows?tab=history");
+  const activity = page.getByRole("region", { name: "Runs", exact: true });
+  const panel = activity.getByRole("tabpanel");
+  const row = panel.getByRole("button", { name: /#51/ });
+  const detail = activity.getByRole("heading", { name: "Pull DLsite rankings", exact: true });
+
+  // A History row opens beside the list, and selecting it again closes it.
+  await row.click();
+  await expect(page).toHaveURL(/\/workflows\?tab=history&run=51$/);
+  await expect(detail).toBeVisible();
+  await expect(row).toHaveAttribute("aria-current", "true");
+  await row.click();
+  await expect(page).toHaveURL(/\/workflows\?tab=history$/);
+  await expect(detail).toHaveCount(0);
+
+  // Escape and Close each close it and return focus to its row.
+  await row.click();
+  await expect(detail).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toHaveCount(0);
+  await expect(row).toBeFocused();
+  await row.click();
+  await activity.getByRole("button", { name: "Close run", exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await expect(row).toBeFocused();
+
+  // Another tab shows other runs, so the open run closes with the list it belonged to.
+  await row.click();
+  await expect(detail).toBeVisible();
+  await activity.getByRole("tab", { name: "Operations", exact: true }).click();
+  await expect(page).toHaveURL(/\/workflows$/);
+  await expect(detail).toHaveCount(0);
+  await expect(operation(page, "Scan")).toBeVisible();
+
+  // A running run opens on its own, and Back returns to the list it was opened from.
+  await activity.getByRole("tab", { name: "History", exact: true }).click();
+  await activity.getByRole("region", { name: "Running", exact: true }).getByRole("button", { name: /#63/ }).click();
+  await expect(page).toHaveURL(/\/workflows\?run=63$/);
+  await expect(activity.getByRole("heading", { name: "Scan local library" })).toBeVisible();
+  await expect(activity.getByRole("tab")).toHaveCount(0);
+  await activity.getByRole("button", { name: "Back to runs", exact: true }).click();
+  await expect(page).toHaveURL(/\/workflows\?tab=history$/);
+  await expect(activity.getByRole("tab", { name: "History", selected: true })).toBeVisible();
+});

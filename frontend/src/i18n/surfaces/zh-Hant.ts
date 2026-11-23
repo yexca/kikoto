@@ -401,6 +401,7 @@ export const surfaceHant = {
   },
   workflowActivity: {
     backToHistory: "返回執行記錄",
+    closeRun: "關閉執行詳情",
     allWorkflows: "所有工作流程",
     workflowFilter: "工作流程",
     search: "搜尋執行記錄",
@@ -2419,6 +2420,8 @@ export const surfaceHant = {
     noLyrics: "此音軌沒有符合的歌詞。",
     queued: "已排入 {{count}} 項",
     clearQueue: "清除",
+    clearQueueTitle: "清除佇列",
+    confirmClearQueue: "確認清除？",
     lyrics: "歌詞",
     optionsFor: "{{title}} 的選項",
     queueOptionsFor: "{{title}} 的佇列選項",

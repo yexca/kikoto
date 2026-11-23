@@ -31,6 +31,10 @@
   files an earlier run gave up on after a timeout.
 - Links and Quick actions that open the runs needing attention open the
   Needs attention tab.
+- A run opens beside its list only from Needs attention or History, stays in
+  view while the list scrolls, and closes with **Close run**, Escape, its row,
+  or another tab or filter. A run opened from Running, a card, or a link takes
+  the page, and Back returns to the list it was opened from.
 
 </details>
 
@@ -46,7 +50,8 @@
   details keeps the title on one line. The directory edition joins the source
   in the Directory row. The tag row is one line that scrolls sideways, with
   personal tags first, the tag editor pinned at its end, and **No tags** when
-  the work has none.
+  the work has none. The ratings and other figures follow close below it,
+  without a line above them.
 
 </details>
 
@@ -73,5 +78,15 @@
   highlight alone.
 - **Add to list** is narrower, and a smart list that holds the work by its
   rule reads **Auto-matched**.
+
+</details>
+
+<details>
+<summary><strong>Player</strong></summary>
+
+- The full player has a button in its top-right corner that clears the whole
+  queue and closes the player. It and **Clear** in the queue view both ask for
+  a second press; pressing anywhere else, pressing Escape, or waiting four
+  seconds cancels it.
 
 </details>

@@ -206,10 +206,15 @@ func TestLocalWorkCleanupSearchFiltersOrdersAndKeepsAtMostItsLimit(t *testing.T)
 		}
 	}
 
-	// The search keeps its three largest works and pages through them.
+	// The search keeps its three largest works and pages through them, each
+	// with its cached cover.
+	writeCachedTestCover(t, f.server.cfg.CacheRoot, "RJ00000023")
 	page := f.list(all + "&limit=3&pageSize=2&page=2")
 	if got := localWorkCleanupCodes(page); got != "RJ00000023" || page.Total != 3 || page.Matched != 5 || page.Limit != 3 {
 		t.Fatalf("second page of three = %s total %d matched %d limit %d", got, page.Total, page.Matched, page.Limit)
+	}
+	if cover := page.Works[0].CoverURL; !strings.HasPrefix(cover, "/api/assets/covers/") {
+		t.Fatalf("cover of RJ00000023 = %q, want its cached cover", cover)
 	}
 	if len(page.Pools) != 0 {
 		t.Fatalf("standard library pools = %#v, want none", page.Pools)

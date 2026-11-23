@@ -84,8 +84,21 @@ func (s *Server) enqueueRecordProbe(ctx context.Context, trigger workflowRunTrig
 		return recordProbeQueuedResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	result, err := enqueueRecordProbeTx(ctx, tx, trigger)
+	if err != nil {
+		return recordProbeQueuedResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return recordProbeQueuedResult{}, err
+	}
+	return result, nil
+}
+
+// enqueueRecordProbeTx is enqueueRecordProbe inside tx, which the caller
+// commits, so a finished scan and the probe after it become visible together.
+func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTrigger) (recordProbeQueuedResult, error) {
 	existing := recordProbeQueuedResult{Existing: true}
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT run.id, run.status, COALESCE((
 			SELECT job.id FROM workflow_job AS job WHERE job.workflow_run_id = run.id ORDER BY job.id DESC LIMIT 1
 		), 0)
@@ -94,7 +107,7 @@ func (s *Server) enqueueRecordProbe(ctx context.Context, trigger workflowRunTrig
 		ORDER BY run.id DESC LIMIT 1
 	`, recordProbeWorkflowCode).Scan(&existing.RunID, &existing.Status, &existing.JobID)
 	if err == nil {
-		return existing, tx.Commit()
+		return existing, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return recordProbeQueuedResult{}, err
@@ -128,9 +141,6 @@ func (s *Server) enqueueRecordProbe(ctx context.Context, trigger workflowRunTrig
 		Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 2,
 	})
 	if err != nil {
-		return recordProbeQueuedResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return recordProbeQueuedResult{}, err
 	}
 	return recordProbeQueuedResult{RunID: runID, JobID: jobID, Status: "queued"}, nil
@@ -187,8 +197,13 @@ func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecor
 		return s.deferWorkflowJob(ctx, job, recordProbeYieldDelay, "Record media details yield to other queued work")
 	case err != nil && ctx.Err() != nil:
 		// A stop or cancel keeps what the pass finished, so a resumed job
-		// continues from it.
-		_ = s.updateWorkflowJobCheckpoint(settleCtx, job.ID, "stopped", current, current.done(), current.done()+result.Remaining)
+		// continues from it. The files left are counted as the running pass
+		// counts them, without those it timed out on.
+		left, countErr := s.recordStore.PendingProbes(settleCtx, current.TimedOutIDs)
+		if countErr != nil {
+			left = result.Remaining
+		}
+		_ = s.updateWorkflowJobCheckpoint(settleCtx, job.ID, "stopped", current, current.done(), current.done()+left)
 		return err
 	case err != nil:
 		_ = s.failClaimedWorkflowJob(settleCtx, job, "record media probe failed")

@@ -49,11 +49,18 @@ narrows it to failed runs (`&status=failed`, `view=failed`), a workflow
 filter to one workflow (`&workflow=<code>`), including the workflows that have
 no card, and a search field matches the workflow name, the trigger reason, and
 the run's subject (`&q=`). A workflow that the Discover page configures
-states so above its runs and links there. Rows open full run details
-(`?run=<id>`) beside the tabs from 1280px and in place of them below, where the
-mobile layout returns through the header back action; returning to the list
-keeps its filters. Opening a run is a history entry. A card's state, the header
-notification panel, and Quick actions open runs and lists here. `/runs`,
+states so above its runs and links there. A row of Needs attention or History
+opens full run details (`?tab=<tab>&run=<id>`) beside its list from 1280px:
+the details stay in view and scroll on their own, and Close, Escape, or
+selecting the row again closes them and returns focus to the row. Choosing
+another row replaces the open run, and another tab or History filter closes
+it. Any other run takes the place of the running list and the tabs
+(`?run=<id>`): a run opened from Running, a card's state, a notice, or a link
+from another page, and every open run below 1280px, where the mobile layout
+returns through the header back action. Opening a run is a history entry, so
+Back returns to the list and filters it was opened from; a linked run returns
+to the tab its address names. The header notification panel and Quick actions
+open runs and lists here. `/runs`,
 `/activity`, and `/workflows?activity=1` redirect here with their run;
 their ended-run lists (`history`, `completed`, `logs`, `failed`) open
 History with that list's workflow (`?runsOf=`, or `?workflow=` on

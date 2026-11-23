@@ -413,6 +413,7 @@ export const surfaceKorean = {
   },
   workflowActivity: {
     backToHistory: "실행 기록으로 돌아가기",
+    closeRun: "실행 닫기",
     allWorkflows: "모든 워크플로",
     workflowFilter: "워크플로",
     search: "실행 검색",
@@ -2526,6 +2527,8 @@ export const surfaceKorean = {
     noLyrics: "이 트랙에 일치하는 가사가 없습니다.",
     queued: "{{count}}개 대기",
     clearQueue: "지우기",
+    clearQueueTitle: "대기열 지우기",
+    confirmClearQueue: "대기열을 지울까요?",
     lyrics: "가사",
     optionsFor: "{{title}} 옵션",
     queueOptionsFor: "{{title}} 대기열 옵션",
