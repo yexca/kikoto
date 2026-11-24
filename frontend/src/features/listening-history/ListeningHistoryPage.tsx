@@ -48,6 +48,7 @@ import {
   listeningCalendarWeeks,
   listeningDurationParts,
   listeningStreaks,
+  periodStart,
   reportDayCount,
   rhythmDays,
   sharePercent,
@@ -80,6 +81,13 @@ const BREAKDOWN_RANKS: readonly ListeningBreakdownRank[] = ["preference", "time"
 
 // The calendar year choice that stands for the past year.
 const PAST_YEAR = "past";
+
+// How a report names the first period it counts from, by its granularity.
+const reportStartFormat: Record<ListeningStatistics["granularity"], Intl.DateTimeFormatOptions> = {
+  day: { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" },
+  month: { year: "numeric", month: "short", timeZone: "UTC" },
+  year: { year: "numeric", timeZone: "UTC" },
+};
 
 function useDurationFormatter() {
   const { t } = useTranslation();
@@ -251,6 +259,18 @@ export function ListeningHistoryPage({
   const leaderSeconds = rankedWorks[0]?.listenedSeconds ?? 0;
   const rangeDays = stats ? reportDayCount(stats.series, stats.today) : 0;
   const activeDayPercent = stats && rangeDays > 0 ? sharePercent(stats.activeDays, rangeDays) : null;
+  // A month-long range counts its days; a longer one names the day its count starts from.
+  const activeDayDetail =
+    activeDayPercent === null || !stats
+      ? null
+      : stats.range === "30d" || !stats.series[0]
+        ? t("personal.history.activeDayShare", { percent: activeDayPercent, count: rangeDays })
+        : t("personal.history.activeDayShareSince", {
+            percent: activeDayPercent,
+            date: dateTimeFormat(resolvedLocale, reportStartFormat[stats.granularity]).format(
+              periodStart(stats.series[0].period),
+            ),
+          });
   const perActiveDay = stats && stats.activeDays > 0 ? stats.listenedSeconds / stats.activeDays : 0;
   const perPlay = stats && stats.listenCount > 0 ? stats.listenedSeconds / stats.listenCount : 0;
   const recordDetail = (listenCount: number, lastPlayedAt: string) => {
@@ -400,11 +420,7 @@ export function ListeningHistoryPage({
               icon={<CalendarDays />}
               label={t("personal.history.activeDays")}
               value={stats ? formatNumber(stats.activeDays, resolvedLocale) : null}
-              detail={
-                activeDayPercent === null
-                  ? null
-                  : t("personal.history.activeDayShare", { percent: activeDayPercent, count: rangeDays })
-              }
+              detail={activeDayDetail}
               meter={activeDayPercent ?? undefined}
             />
           </dl>
@@ -419,7 +435,7 @@ export function ListeningHistoryPage({
             </div>
           )}
           {stats && (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
               <section
                 aria-labelledby="listening-top-works-heading"
                 className="theme-card-surface min-w-0 rounded-xl border bg-card p-4"
@@ -498,11 +514,9 @@ export function ListeningHistoryPage({
       </section>
 
       <section aria-labelledby="listening-profile-heading" className="space-y-3">
-        <div className="min-w-0 px-1">
-          <h2 id="listening-profile-heading" className="text-base font-semibold">
-            {t("personal.history.profile.heading")}
-          </h2>
-        </div>
+        <ReportSectionHeading id="listening-profile-heading" range={range}>
+          {t("personal.history.profile.heading")}
+        </ReportSectionHeading>
         {profile.status === "error" && (
           <InlineRetry
             message={t("personal.history.profile.failed")}
@@ -523,11 +537,9 @@ export function ListeningHistoryPage({
 
       <section aria-labelledby="listening-breakdown-heading" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0 px-1">
-            <h2 id="listening-breakdown-heading" className="text-base font-semibold">
-              {t("personal.history.breakdown.heading")}
-            </h2>
-          </div>
+          <ReportSectionHeading id="listening-breakdown-heading" range={range}>
+            {t("personal.history.breakdown.heading")}
+          </ReportSectionHeading>
           <div className={segmentedListClassName()} role="group" aria-label={t("personal.history.breakdown.rankLabel")}>
             {BREAKDOWN_RANKS.map((option) => (
               <button
@@ -745,6 +757,30 @@ export function ListeningHistoryPage({
           </DialogFooter>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+/**
+ * The heading of a section further down that the report's range switcher also
+ * drives, naming that range so the switcher's reach stays visible.
+ */
+function ReportSectionHeading({
+  id,
+  range,
+  children,
+}: {
+  id: string;
+  range: ListeningNamedRange;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-w-0 items-baseline gap-2 px-1">
+      <h2 id={id} className="text-base font-semibold">
+        {children}
+      </h2>
+      <span className="text-xs text-muted-foreground">{t(`personal.history.ranges.${range}`)}</span>
     </div>
   );
 }

@@ -5,6 +5,7 @@ export const personalHans = {
       hoursMinutes: "{{hours}} 小时 {{minutes}} 分钟",
       minutes: "{{minutes}} 分钟",
       seconds: "{{seconds}} 秒",
+      underSecond: "不到 1 秒",
     },
     tags: {
       scope: "标签类型",
@@ -64,11 +65,6 @@ export const personalHans = {
       periodReadout_one: "{{period}} · {{duration}} · 播放 {{count}} 次",
       periodReadout_other: "{{period}} · {{duration}} · 播放 {{count}} 次",
       averageLine: "平均 {{duration}}",
-      average: {
-        day: "收听日平均",
-        month: "收听月平均",
-        year: "收听年平均",
-      },
       busiest: {
         day: "收听最多的一天",
         month: "收听最多的一个月",
@@ -95,6 +91,7 @@ export const personalHans = {
       leaderShare: "第一名占 {{percent}}%",
       activeDayShare_one: "{{count}} 天中的 {{percent}}%",
       activeDayShare_other: "{{count}} 天中的 {{percent}}%",
+      activeDayShareSince: "{{date}}以来天数的 {{percent}}%",
       shareOfTime: "占时长 {{percent}}%",
       showAllTopWorks: "显示前 {{count}} 部",
       showFewerTopWorks: "收起",
@@ -126,7 +123,8 @@ export const personalHans = {
         tagShares: "{{name}}：占收听时长 {{time}}%，占资料库 {{library}}%",
         fewWorks: "作品太少，暂时无法与资料库比较。",
         compare: "你 {{mine}} · 资料库 {{library}}",
-        compareRating: "你 {{mine}} · 大众 {{library}}",
+        compareRating_one: "你 {{mine}} · 大众 {{library}} · {{count}} 个评分",
+        compareRating_other: "你 {{mine}} · 大众 {{library}} · {{count}} 个评分",
         traits: {
           duration: {
             label: "作品时长",

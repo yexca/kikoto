@@ -143,7 +143,7 @@ func TestListeningProfilePlacesListeningAgainstTheLibrary(t *testing.T) {
 	for _, statement := range []string{
 		`INSERT INTO tag (id,namespace,normalized_name,display_name) VALUES (1,'metadata','example-a','Example Tag A'),(2,'metadata','example-b','Example Tag B')`,
 		`INSERT INTO work_tag (work_id,tag_id,source) VALUES (4,1,'dlsite_snapshot'),(5,1,'dlsite_snapshot'),(1,2,'dlsite_snapshot'),(2,2,'dlsite_snapshot'),(3,2,'dlsite_snapshot'),(4,2,'dlsite_snapshot'),(5,2,'dlsite_snapshot')`,
-		`INSERT INTO user_listening_day (user_id,work_id,day,listened_seconds,listen_count) VALUES (1,3,'2026-03-01',600,1),(1,4,'2026-03-01',2400,1),(1,5,'2026-03-02',3000,1),(2,1,'2026-03-01',60,1),(2,2,'2026-03-01',60,1)`,
+		`INSERT INTO user_listening_day (user_id,work_id,day,listened_seconds,listen_count) VALUES (1,3,'2026-03-01',600,1),(1,4,'2026-03-01',2400,1),(1,5,'2026-03-02',3000,1),(2,1,'2026-03-01',60,1),(2,4,'2026-03-01',60,1)`,
 		`INSERT INTO user_work_state (user_id,work_id,listening_status,rating) VALUES (1,3,'listening',3),(1,4,'finished',3),(1,5,'relisten',3),(1,1,'finished',NULL),(1,2,'want_to_listen',NULL)`,
 	} {
 		execFixture(t, s.DB, statement)
@@ -172,7 +172,7 @@ func TestListeningProfilePlacesListeningAgainstTheLibrary(t *testing.T) {
 		t.Fatalf("marks and rating = %+v, %+v", profile.Marks, profile.Rating)
 	}
 
-	// Two works are too few to place.
+	// Two works are too few to place, even where one carries a tag the library rarely does.
 	profile, err = s.ProfileFor(ctx, 2, RangeLast30Days, now)
 	if err != nil || profile.WorkCount != 2 || profile.Duration != nil || profile.Rating != nil || profile.Marks.Works != 0 || len(profile.Tags) != 0 {
 		t.Fatalf("small profile = %+v, %v", profile, err)

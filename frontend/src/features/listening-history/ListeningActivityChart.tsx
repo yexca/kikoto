@@ -17,8 +17,9 @@ const periodLabelOptions: Record<ListeningGranularity, Intl.DateTimeFormatOption
 /**
  * One series of listening time per day, month, or year: single-hue bars on a
  * recessive baseline with the busiest-period scale and the average of listened
- * periods as reference lines, a readout for the pointed period, and period
- * insights. The same values stay available to assistive technology as a table.
+ * periods as reference lines, and a readout naming the busiest period until a
+ * period is pointed at. The same values stay available to assistive
+ * technology as a table.
  */
 export function ListeningActivityChart({
   series,
@@ -46,13 +47,23 @@ export function ListeningActivityChart({
       <figcaption className="flex min-h-5 flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t(`personal.history.chartTitle.${granularity}`)}</span>
         <span aria-live="polite" className="tabular-nums">
-          {active
-            ? t("personal.history.periodReadout", {
-                period: periodLabel(active.period),
-                duration: formatDuration(active.listenedSeconds),
-                count: active.listenCount,
-              })
-            : null}
+          {active ? (
+            t("personal.history.periodReadout", {
+              period: periodLabel(active.period),
+              duration: formatDuration(active.listenedSeconds),
+              count: active.listenCount,
+            })
+          ) : insights.peak ? (
+            <>
+              {t(`personal.history.busiest.${granularity}`)}{" "}
+              <span className="font-medium text-foreground">
+                {t("personal.history.busiestValue", {
+                  period: periodLabel(insights.peak.period),
+                  duration: formatDuration(insights.peak.listenedSeconds),
+                })}
+              </span>
+            </>
+          ) : null}
         </span>
       </figcaption>
       <div className="space-y-1 pt-4">
@@ -112,23 +123,6 @@ export function ListeningActivityChart({
           </div>
         )}
       </div>
-      <dl className="grid grid-cols-2 gap-2">
-        <PeriodInsight
-          label={t(`personal.history.average.${granularity}`)}
-          value={insights.activePeriods > 0 ? formatDuration(insights.averageSeconds) : "–"}
-        />
-        <PeriodInsight
-          label={t(`personal.history.busiest.${granularity}`)}
-          value={
-            insights.peak
-              ? t("personal.history.busiestValue", {
-                  period: periodLabel(insights.peak.period),
-                  duration: formatDuration(insights.peak.listenedSeconds),
-                })
-              : "–"
-          }
-        />
-      </dl>
       {/* A table ignores the clipped height, so the wrapper keeps it from adding scroll space. */}
       <div className="sr-only">
         <table>
@@ -155,14 +149,5 @@ export function ListeningActivityChart({
         </table>
       </div>
     </figure>
-  );
-}
-
-function PeriodInsight({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-lg bg-muted/50 px-3 py-2">
-      <dt className="truncate text-2xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm font-medium tabular-nums">{value}</dd>
-    </div>
   );
 }

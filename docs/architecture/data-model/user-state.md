@@ -107,7 +107,8 @@ share of the range's listening time with its share of the Library's canonical
 works.
 
 The taste profile reads the same range. Its tags are the leading entries of
-the tag preference order. A work attribute (`duration_seconds`,
+the tag preference order, and are empty while the range has fewer than three
+listened works or the Library fewer than three works. A work attribute (`duration_seconds`,
 `release_date`, `sales_count`) places the listening among the Library's
 canonical works: each listened work takes its percentile among the Library's
 works that carry the attribute, and the profile reports their mean weighted by

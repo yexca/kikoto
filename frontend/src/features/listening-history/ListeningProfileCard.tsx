@@ -5,6 +5,7 @@ import { useLocale } from "@/i18n/LocaleProvider";
 import type { ListeningProfile, ListeningProfileTrait } from "@/lib/listeningApi";
 
 import {
+  PROFILE_WORK_MINIMUM,
   listeningProfileStatements,
   radarPoints,
   sharePercent,
@@ -64,7 +65,9 @@ export function ListeningProfileCard({
           <p className="text-sm">{profile.tags.map((tag) => tag.name).join(" · ")}</p>
         ) : (
           <p className="py-6 text-center text-xs text-muted-foreground">
-            {t("personal.history.breakdown.emptyPreference")}
+            {profile.workCount < PROFILE_WORK_MINIMUM
+              ? t("personal.history.profile.fewWorks")
+              : t("personal.history.breakdown.emptyPreference")}
           </p>
         )}
       </div>
@@ -101,6 +104,8 @@ export function ListeningProfileCard({
                 detail={t(`personal.history.profile.${kind === "rating" ? "compareRating" : "compare"}`, {
                   mine: traitValue(kind, trait.value),
                   library: traitValue(kind, trait.libraryValue),
+                  // Only the rating comparison names how many works it reads.
+                  ...(kind === "rating" ? { count: trait.workCount } : {}),
                 })}
               />
             ))}

@@ -5,6 +5,7 @@ export const personalHant = {
       hoursMinutes: "{{hours}} 小時 {{minutes}} 分鐘",
       minutes: "{{minutes}} 分鐘",
       seconds: "{{seconds}} 秒",
+      underSecond: "不到 1 秒",
     },
     tags: {
       scope: "標籤類型",
@@ -64,11 +65,6 @@ export const personalHant = {
       periodReadout_one: "{{period}} · {{duration}} · 播放 {{count}} 次",
       periodReadout_other: "{{period}} · {{duration}} · 播放 {{count}} 次",
       averageLine: "平均 {{duration}}",
-      average: {
-        day: "收聽日平均",
-        month: "收聽月平均",
-        year: "收聽年平均",
-      },
       busiest: {
         day: "收聽最多的一天",
         month: "收聽最多的一個月",
@@ -95,6 +91,7 @@ export const personalHant = {
       leaderShare: "第一名佔 {{percent}}%",
       activeDayShare_one: "{{count}} 天中的 {{percent}}%",
       activeDayShare_other: "{{count}} 天中的 {{percent}}%",
+      activeDayShareSince: "{{date}}以來天數的 {{percent}}%",
       shareOfTime: "佔時長 {{percent}}%",
       showAllTopWorks: "顯示前 {{count}} 部",
       showFewerTopWorks: "收合",
@@ -126,7 +123,8 @@ export const personalHant = {
         tagShares: "{{name}}：占收聽時長 {{time}}%，占資料庫 {{library}}%",
         fewWorks: "作品太少，暫時無法與資料庫比較。",
         compare: "你 {{mine}} · 資料庫 {{library}}",
-        compareRating: "你 {{mine}} · 大眾 {{library}}",
+        compareRating_one: "你 {{mine}} · 大眾 {{library}} · {{count}} 個評分",
+        compareRating_other: "你 {{mine}} · 大眾 {{library}} · {{count}} 個評分",
         traits: {
           duration: {
             label: "作品時長",

@@ -22,8 +22,8 @@ with `{date}` creates one tag per day.
 ## Insights
 
 The **listening calendar** at the top of **Insights** shows a year as one cell
-per day in week columns, shaded by listening time, with its listening days,
-listening time, and streaks. The year menu at its top right chooses **Past
+per day in week columns, shaded by listening time; the past year also shows
+the current and longest streaks. The year menu at its top right chooses **Past
 year**, the initial choice, or one calendar year with dated listening.
 Point at or tap a day for its total.
 
@@ -41,7 +41,8 @@ time. For the chosen range the listening report shows:
   the time per play, the top work's share of the time, and the share of days in
   the range with listening.
 - A chart by day, month, or year (a calendar year by month; all time switches
-  to years after three years) with the average and busiest period.
+  to years after three years) with a line at the average of the periods with
+  listening and the busiest period named above it.
 - The five most listened works, expandable to ten, each with its time and its
   share of the range's listening.
 - Rhythm: the average listening per day from Monday to Friday and per weekend
@@ -49,13 +50,15 @@ time. For the chosen range the listening report shows:
   calendar's days for this, so an all-time report describes the past year.
   **By hour of day** adds the listening per hour, midnight first, with the
   busiest hour. It counts only listening recorded with its hour.
-- **Taste profile**: what you listen to, compared with the Library. The radar
-  draws up to eight tags by how far each one's share of your listening time
-  exceeds its share of the Library's works. A marker places your works among
-  the Library's by release year, sales, and work length when enough of them
-  carry that figure: the middle of the track is the Library, and works you
-  listened to longer weigh more. **Your ratings** compares every rating you
-  gave with the public rating of the same works. A few sentences above the
+- **Taste profile**: what you listen to, compared with the Library. Once the
+  range has at least three works you listened to, the radar draws up to eight
+  tags by how far each one's share of your listening time exceeds its share of
+  the Library's works. A marker places your works among the Library's by
+  release year, sales, and work length when enough of them carry that figure:
+  the middle of the track is the Library, and works you listened to longer
+  weigh more. **Your ratings** compares every rating you gave with the public
+  rating of the same works once you rated at least three, and names how many
+  ratings it reads. A few sentences above the
   markers say what stands out, with how many of the works you marked as
   started are finished or marked to relisten.
 - **Tags, voices, and circles**: the leading five of each, expandable to ten,

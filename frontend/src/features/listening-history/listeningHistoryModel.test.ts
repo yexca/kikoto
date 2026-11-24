@@ -34,6 +34,8 @@ describe("listening history presentation", () => {
       values: { hours: 3, minutes: 5 },
     });
     expect(listeningDurationParts(Number.NaN)).toEqual({ key: "seconds", values: { seconds: 0 } });
+    // A weekday's average can fall below a second without being no listening.
+    expect(listeningDurationParts(0.2)).toEqual({ key: "underSecond", values: {} });
   });
 
   it("reads day, month, and year periods as UTC starts", () => {
@@ -67,6 +69,11 @@ describe("listening history presentation", () => {
       averageSeconds: 0,
       peak: null,
     });
+    // An unrounded mean formats like the time per active day it repeats.
+    expect(
+      listeningPeriodInsights(series.slice(2).map((entry, index) => ({ ...entry, listenedSeconds: index + 3 })))
+        .averageSeconds,
+    ).toBe(3.5);
   });
 
   it("counts the longest run and the current run, which may end before an unlistened latest period", () => {

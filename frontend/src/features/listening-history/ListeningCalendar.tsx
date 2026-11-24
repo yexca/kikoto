@@ -26,8 +26,8 @@ const MONTH_LABEL_WEEKS = 3;
 /**
  * A year of listening as a calendar, the past year or one calendar year: one
  * cell per UTC day in week columns, shaded by listening time, with a readout
- * for the pointed day and the year's active days and streaks. A narrow container scrolls the weeks
- * and opens on the latest one.
+ * for the pointed day and, for the past year, the current and longest streaks.
+ * A narrow container scrolls the weeks and opens on the latest one.
  */
 export function ListeningCalendar({
   calendar,
@@ -98,7 +98,8 @@ export function ListeningCalendar({
       <p className="sr-only">
         {t("personal.history.calendar.summary", { count: activeDays, duration: formatDuration(totalSeconds) })}
       </p>
-      <div ref={scroller} className="overflow-x-auto pb-1" aria-hidden="true">
+      {/* Only a narrow container scrolls the weeks, by swipe or wheel, so no scrollbar runs under them. */}
+      <div ref={scroller} className="scrollbar-hidden overflow-x-auto pb-1" aria-hidden="true">
         <div
           className="grid min-w-[40rem] gap-[3px]"
           style={{ gridTemplateColumns: `auto repeat(${weeks.length}, minmax(0, 1fr))` }}
@@ -147,24 +148,20 @@ export function ListeningCalendar({
         </div>
       </div>
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <dl className="flex flex-wrap gap-x-6 gap-y-2">
-          <CalendarFigure
-            label={t("personal.history.activeDays")}
-            value={t("personal.history.periodCount.day", { count: activeDays })}
-          />
-          <CalendarFigure label={t("personal.history.totalTime")} value={formatDuration(totalSeconds)} />
-          {!year && (
+        {/* The report and a year's highlights carry the totals and a year's longest streak. */}
+        {!year && (
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
             <CalendarFigure
               label={t("personal.history.currentStreak")}
               value={t("personal.history.periodCount.day", { count: streaks.current })}
             />
-          )}
-          <CalendarFigure
-            label={t("personal.history.longestStreak")}
-            value={t("personal.history.periodCount.day", { count: streaks.longest })}
-          />
-        </dl>
-        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground" aria-hidden="true">
+            <CalendarFigure
+              label={t("personal.history.longestStreak")}
+              value={t("personal.history.periodCount.day", { count: streaks.longest })}
+            />
+          </dl>
+        )}
+        <div className="ml-auto flex items-center gap-1.5 text-2xs text-muted-foreground" aria-hidden="true">
           <span>{t("personal.history.calendar.less")}</span>
           {levelClassNames.map((className) => (
             <span key={className} className={cn("h-3 w-3 rounded-[3px]", className)} />

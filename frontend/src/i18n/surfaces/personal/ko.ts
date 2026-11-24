@@ -5,6 +5,7 @@ export const personalKorean = {
       hoursMinutes: "{{hours}}시간 {{minutes}}분",
       minutes: "{{minutes}}분",
       seconds: "{{seconds}}초",
+      underSecond: "1초 미만",
     },
     tags: {
       scope: "태그 종류",
@@ -65,11 +66,6 @@ export const personalKorean = {
       periodReadout_one: "{{period}} · {{duration}} · {{count}}회 재생",
       periodReadout_other: "{{period}} · {{duration}} · {{count}}회 재생",
       averageLine: "평균 {{duration}}",
-      average: {
-        day: "청취한 날 평균",
-        month: "청취한 달 평균",
-        year: "청취한 해 평균",
-      },
       busiest: {
         day: "가장 많이 들은 날",
         month: "가장 많이 들은 달",
@@ -96,6 +92,7 @@ export const personalKorean = {
       leaderShare: "1위가 {{percent}}%",
       activeDayShare_one: "{{count}}일 중 {{percent}}%",
       activeDayShare_other: "{{count}}일 중 {{percent}}%",
+      activeDayShareSince: "{{date}} 이후 일수의 {{percent}}%",
       shareOfTime: "시간의 {{percent}}%",
       showAllTopWorks: "상위 {{count}}개 보기",
       showFewerTopWorks: "간단히 보기",
@@ -128,7 +125,8 @@ export const personalKorean = {
         tagShares: "{{name}}: 청취 시간의 {{time}}%, 라이브러리의 {{library}}%",
         fewWorks: "작품이 너무 적어 라이브러리와 비교할 수 없습니다.",
         compare: "나 {{mine}} · 라이브러리 {{library}}",
-        compareRating: "나 {{mine}} · 대중 {{library}}",
+        compareRating_one: "나 {{mine}} · 대중 {{library}} · 평가 {{count}}개",
+        compareRating_other: "나 {{mine}} · 대중 {{library}} · 평가 {{count}}개",
         traits: {
           duration: {
             label: "작품 길이",

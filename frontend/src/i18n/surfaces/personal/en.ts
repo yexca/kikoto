@@ -5,6 +5,7 @@ export const personalEnglish = {
       hoursMinutes: "{{hours}} h {{minutes}} min",
       minutes: "{{minutes}} min",
       seconds: "{{seconds}} s",
+      underSecond: "<1 s",
     },
     tags: {
       scope: "Tag type",
@@ -65,11 +66,6 @@ export const personalEnglish = {
       periodReadout_one: "{{period}} · {{duration}} · {{count}} play",
       periodReadout_other: "{{period}} · {{duration}} · {{count}} plays",
       averageLine: "Avg {{duration}}",
-      average: {
-        day: "Average per listening day",
-        month: "Average per listening month",
-        year: "Average per listening year",
-      },
       busiest: {
         day: "Busiest day",
         month: "Busiest month",
@@ -96,6 +92,7 @@ export const personalEnglish = {
       leaderShare: "Top work {{percent}}% of time",
       activeDayShare_one: "{{percent}}% of {{count}} day",
       activeDayShare_other: "{{percent}}% of {{count}} days",
+      activeDayShareSince: "{{percent}}% of days since {{date}}",
       shareOfTime: "{{percent}}% of time",
       showAllTopWorks: "Show top {{count}}",
       showFewerTopWorks: "Show fewer",
@@ -106,8 +103,8 @@ export const personalEnglish = {
         day_one: "{{count}} day",
         day_other: "{{count}} days",
       },
-      workdayAverage: "Monday to Friday, per day",
-      weekendAverage: "Weekend, per day",
+      workdayAverage: "Workdays, per day",
+      weekendAverage: "Weekends, per day",
       rhythmPastYear: "Based on the past year.",
       notes:
         "Only time while audio is actually playing is counted; pauses, buffering, and seeking are not. Imported totals without dates count only in All time.",
@@ -128,7 +125,8 @@ export const personalEnglish = {
         tagShares: "{{name}}: {{time}}% of listening time, {{library}}% of the Library",
         fewWorks: "Too few works to compare with the Library.",
         compare: "You {{mine}} · Library {{library}}",
-        compareRating: "You {{mine}} · Public {{library}}",
+        compareRating_one: "You {{mine}} · Public {{library}} · {{count}} rating",
+        compareRating_other: "You {{mine}} · Public {{library}} · {{count}} ratings",
         traits: {
           duration: {
             label: "Work length",

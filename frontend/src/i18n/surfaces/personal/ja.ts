@@ -5,6 +5,7 @@ export const personalJapanese = {
       hoursMinutes: "{{hours}} 時間 {{minutes}} 分",
       minutes: "{{minutes}} 分",
       seconds: "{{seconds}} 秒",
+      underSecond: "1 秒未満",
     },
     tags: {
       scope: "タグの種類",
@@ -65,11 +66,6 @@ export const personalJapanese = {
       periodReadout_one: "{{period}} · {{duration}} · {{count}} 回再生",
       periodReadout_other: "{{period}} · {{duration}} · {{count}} 回再生",
       averageLine: "平均 {{duration}}",
-      average: {
-        day: "聴取日あたりの平均",
-        month: "聴取月あたりの平均",
-        year: "聴取年あたりの平均",
-      },
       busiest: {
         day: "最も聴いた日",
         month: "最も聴いた月",
@@ -96,6 +92,7 @@ export const personalJapanese = {
       leaderShare: "1 位が {{percent}}%",
       activeDayShare_one: "{{count}} 日中 {{percent}}%",
       activeDayShare_other: "{{count}} 日中 {{percent}}%",
+      activeDayShareSince: "{{date}} 以降の {{percent}}%",
       shareOfTime: "時間の {{percent}}%",
       showAllTopWorks: "上位 {{count}} 件を表示",
       showFewerTopWorks: "表示を減らす",
@@ -128,7 +125,8 @@ export const personalJapanese = {
         tagShares: "{{name}}：聴取時間の {{time}}%、ライブラリの {{library}}%",
         fewWorks: "作品が少ないため、ライブラリと比較できません。",
         compare: "あなた {{mine}} · ライブラリ {{library}}",
-        compareRating: "あなた {{mine}} · 一般 {{library}}",
+        compareRating_one: "あなた {{mine}} · 一般 {{library}} · 評価 {{count}} 件",
+        compareRating_other: "あなた {{mine}} · 一般 {{library}} · 評価 {{count}} 件",
         traits: {
           duration: {
             label: "作品の長さ",

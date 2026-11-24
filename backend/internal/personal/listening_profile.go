@@ -10,8 +10,8 @@ import (
 // profileTagLimit is the number of preferred tags a profile draws.
 const profileTagLimit = 8
 
-// profileTraitMinimum is the fewest works a trait is read from, on either
-// side of its comparison.
+// profileTraitMinimum is the fewest works a trait or the preferred tags are
+// read from, on either side of the comparison.
 const profileTraitMinimum = 3
 
 // ProfileTrait places the account's listening on one work attribute against
@@ -43,7 +43,7 @@ type Profile struct {
 	WorkCount        int             `json:"workCount"`
 	LibraryWorkCount int             `json:"libraryWorkCount"`
 	// Tags are the tags whose share of listening time most exceeds their share
-	// of the library's works.
+	// of the library's works; empty while too few works were listened to.
 	Tags []BreakdownEntry `json:"tags"`
 	// Duration is in seconds, Release in calendar years, and Popularity in
 	// sales. Each is the listening-time-weighted mean of the listened works,
@@ -158,7 +158,7 @@ func (s Store) ProfileFor(ctx context.Context, user int64, period StatisticsRang
 		*trait.target = percentileTrait(weighted, values)
 	}
 
-	if result.ListenedSeconds > 0 && result.LibraryWorkCount > 0 {
+	if result.ListenedSeconds > 0 && result.WorkCount >= profileTraitMinimum && result.LibraryWorkCount >= profileTraitMinimum {
 		dimension := breakdownDimensions[0]
 		entries, err := s.breakdownEntries(ctx, listened+`, entity AS (`+dimension.listened+`)
  SELECT entity_id,MAX(name),MAX(external_id),SUM(listened_seconds),SUM(listen_count),COUNT(*) FROM entity GROUP BY entity_id`, args)
