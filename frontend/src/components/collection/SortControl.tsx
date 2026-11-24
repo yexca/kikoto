@@ -108,7 +108,7 @@ export function SortControl<Value extends string>({
         onOpenChange={setOpen}
         align={align}
         bottomCollisionPadding={phone ? 168 : undefined}
-        className="w-max min-w-40 max-w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="w-max min-w-28 max-w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div role="menu" aria-label={t("library.sort")}>
           {options.map((option) => {

@@ -88,8 +88,10 @@
 - Menus that list choices or actions are as wide as their longest item.
 - A menu or popover opens along the left edge of its button and moves to the
   right edge when it would run off the screen.
-- Sort and the library's Quick mark filter show the chosen item by its
-  highlight alone.
+- Sort, the collection filter, and the library's Quick mark filter show the
+  chosen item by its highlight alone, and the sort and filter menus are
+  narrower.
+- **View** on a circle or voice actor page is an icon button.
 - **Add to list** is narrower, and a smart list that holds the work by its
   rule reads **Auto-matched**.
 

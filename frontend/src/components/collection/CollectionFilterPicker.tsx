@@ -58,10 +58,10 @@ export function CollectionFilterPicker<Value extends string>({
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
-        className="w-max min-w-40 max-w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="w-max min-w-28 max-w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div role="menu" aria-label={label}>
-          <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
+          <div className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-foreground">
             <Filter className="h-4 w-4" />
             <span>{t("collection.filter")}</span>
           </div>
@@ -71,7 +71,7 @@ export function CollectionFilterPicker<Value extends string>({
               type="button"
               role="menuitemradio"
               aria-checked={value === option.value}
-              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              className={`flex min-h-10 w-full items-center rounded-md px-2.5 text-left transition-colors hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary" : "text-foreground"}`}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);

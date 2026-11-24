@@ -65,15 +65,14 @@ export function CreatorWorkViewMenu({
       <Button
         type="button"
         variant="toolbar"
-        size="sm"
-        className="h-8 gap-1.5 px-2.5 text-xs"
+        size="icon-sm"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={label}
+        title={label}
         onClick={() => setOpen((current) => !current)}
       >
         <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-        {title}
         {selection?.active && (
           <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
         )}
