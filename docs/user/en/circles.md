@@ -81,13 +81,13 @@ Circles represent makers, circles, and related party catalog state.
   **View** holds the **Cards** choice of **Full**, **Simple**, **Compact**,
   and **Mini** shared with the Library, the columns, the page size, and
   **Select works**; a newly chosen card mode starts from its
-  [preset](library.md#current-behavior). A caption before the sort button
-  states how many works match and, from tablet width, the page; more pages add
-  the shared pagination below the grid. The series overview lists series and
-  offers no order.
-- On a phone the Works/Series switch takes its own row, followed by the work
-  count with **Search**, the sort button, the filter, and **View**, which
-  opens as a sheet. **Search** opens the search field above that row.
+  [preset](library.md#current-behavior). The **Works** tab states the work
+  count; from tablet width a caption before the sort button names the page
+  when the works span more than one, and more pages add the shared pagination
+  below the grid. The series overview lists series and offers no order.
+- On a phone the Works/Series switch takes its own row, followed by
+  **Search**, the sort button, the filter, and **View**, which opens as a
+  sheet. **Search** opens the search field above that row.
 - Treats the mobile detail back control as Up to the last server-and-user-scoped
   Circles list location, including when the detail was opened from Library.
   Wide layouts keep the source-aware history return label and destination.

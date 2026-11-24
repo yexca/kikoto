@@ -60,6 +60,15 @@
 </details>
 
 <details>
+<summary><strong>Circles</strong></summary>
+
+- A circle's works toolbar leaves the work count to the **Works** tab; its
+  caption shows only the page, from tablet width, when the works span more
+  than one.
+
+</details>
+
+<details>
 <summary><strong>Cleanup</strong></summary>
 
 - **Local works** on the Works tab searches only when you press **Search**,

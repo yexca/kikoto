@@ -716,11 +716,8 @@ export function CircleDetailPage({
           defaultFilter="all"
           filterOptions={circleAvailabilityOptions(t)}
           onFilterChange={changeAvailabilityFilter}
-          caption={
-            showsWorks ? (
-              <CreatorWorkCaption page={currentWorkPage} total={circle.worksMeta.total} totalPages={totalWorkPages} />
-            ) : undefined
-          }
+          // The Works tab states the count, so the caption keeps only the page.
+          caption={showsWorks ? <CreatorWorkCaption page={currentWorkPage} totalPages={totalWorkPages} /> : undefined}
           view={
             <CreatorWorkViewMenu
               display={{
