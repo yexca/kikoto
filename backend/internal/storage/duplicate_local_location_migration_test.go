@@ -55,7 +55,8 @@ func TestMigrationMergesDuplicateLocalLocations(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Migrate(db, sourceDir); err != nil {
+	// Migration 103 drops user_media_progress, so the merge is checked at 098.
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 98)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +165,8 @@ func TestMigrationMergingDuplicatesKeepsATranslationOnItsAudioTrack(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	if err := Migrate(db, sourceDir); err != nil {
+	// Migration 103 drops llm_lyrics_asset, so the merge is checked at 098.
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 98)); err != nil {
 		t.Fatal(err)
 	}
 	var sourceLocation, audioItem int64

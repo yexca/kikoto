@@ -504,7 +504,6 @@ func TestMediaCleanupFilesOnlyPreservesWorkState(t *testing.T) {
 		INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (1, 301, 'finished', 1);
 		INSERT INTO favorite_list (id, user_id, name, kind) VALUES (301, 1, 'Keep list', 'user');
 		INSERT INTO favorite_list_item (list_id, work_id) VALUES (301, 301);
-		INSERT INTO user_media_progress (user_id, media_item_id, position_seconds, completed) VALUES (1, 311, 12.5, 0);
 		INSERT INTO user_work_playback_cursor (user_id, work_id, media_item_id, file_source_id, location_id, location_type, position_seconds, completed)
 		VALUES (1, 301, 311, 31, 311, 'local', 12.5, 0);
 	`); err != nil {
@@ -525,7 +524,6 @@ func TestMediaCleanupFilesOnlyPreservesWorkState(t *testing.T) {
 	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM metadata_snapshot WHERE work_id = 301", 1)
 	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM user_work_state WHERE work_id = 301", 1)
 	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM favorite_list_item WHERE list_id = 301 AND work_id = 301", 1)
-	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM user_media_progress WHERE media_item_id = 311", 1)
 	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM user_work_playback_cursor WHERE work_id = 301", 1)
 	var availability string
 	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = 311").Scan(&availability); err != nil {
@@ -580,7 +578,6 @@ func TestMediaCleanupForgetWorkDeletesLogicalFamilyAndUserState(t *testing.T) {
 			(1, 302, 'finished', 1), (1, 303, 'want_to_listen', 0);
 		INSERT INTO favorite_list (id, user_id, name, kind) VALUES (302, 1, 'Family list', 'user');
 		INSERT INTO favorite_list_item (list_id, work_id) VALUES (302, 303);
-		INSERT INTO user_media_progress (user_id, media_item_id, position_seconds, completed) VALUES (1, 312, 19.5, 0);
 		INSERT INTO user_work_playback_cursor (user_id, work_id, media_item_id, file_source_id, location_id, location_type, position_seconds, completed)
 		VALUES (1, 302, 312, 32, 312, 'local', 19.5, 0);
 	`); err != nil {
@@ -607,7 +604,6 @@ func TestMediaCleanupForgetWorkDeletesLogicalFamilyAndUserState(t *testing.T) {
 		"SELECT COUNT(*) FROM media_item WHERE id IN (312, 313)",
 		"SELECT COUNT(*) FROM metadata_snapshot WHERE external_id IN ('RJ00000011', 'RJ00000012')",
 		"SELECT COUNT(*) FROM user_work_state WHERE work_id IN (302, 303)",
-		"SELECT COUNT(*) FROM user_media_progress WHERE media_item_id = 312",
 		"SELECT COUNT(*) FROM user_work_playback_cursor WHERE work_id = 302",
 		"SELECT COUNT(*) FROM favorite_list_item WHERE list_id = 302 AND work_id = 303",
 	} {

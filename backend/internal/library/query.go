@@ -143,7 +143,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
 	rows, err := s.db.QueryContext(ctx, listPageSelectSQLWithSearchRank(
-		where, options.Sort, options.Direction, options.RandomSeed, config, false, 0, searchRank, titleSort,
+		where, options.Sort, options.Direction, options.RandomSeed, config, false, searchRank, titleSort,
 	), queryArgs...)
 	if err != nil {
 		return RawPage{}, err
@@ -173,18 +173,6 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		}
 	}
 	return page, nil
-}
-
-func (s *Store) listPageRecommendationContext(ctx context.Context, options ListOptions, include bool) (RecommendationConfig, int64, error) {
-	config := DefaultRecommendationConfig()
-	if !include {
-		return config, 0, nil
-	}
-	if options.UserID <= 0 {
-		return s.LoadRecommendationConfig(ctx), anonymousRecommendationGenerationID, nil
-	}
-	snapshot, err := s.snapshotForRecommendation(ctx, options.UserID, options.RecommendationSessionID)
-	return snapshot.Config, snapshot.GenerationID, err
 }
 
 // ListMatching materializes the common Library projection for a predicate
@@ -282,7 +270,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		if len(options.TitleLanguages) > 0 {
 			titleSort = TitleSortExpression(options.TitleLanguages)
 		}
-		return listSelectSQLWithTitleSort(where, sortKey, direction, options.RandomSeed, DefaultRecommendationConfig(), false, 0, titleSort), nil
+		return listSelectSQLWithTitleSort(where, sortKey, direction, options.RandomSeed, DefaultRecommendationConfig(), false, titleSort), nil
 	default:
 		options.Sort = "activity"
 		return matchingListSelectSQL(where, options)
@@ -921,22 +909,8 @@ func familyNumericClause(column string, operator string, value float64) string {
 	))`, column, column, operator, value, column, column, operator, value)
 }
 
-const anonymousRecommendationGenerationID int64 = -1
-
 func listSelectSQL(where string, sortKey string, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool) string {
-	return listSelectSQLWithRecommendationGeneration(where, sortKey, direction, randomSeed, config, includeRecommendation, 0)
-}
-
-func listSelectSQLWithRecommendationGeneration(
-	where string,
-	sortKey string,
-	direction string,
-	randomSeed int64,
-	config RecommendationConfig,
-	includeRecommendation bool,
-	recommendationGenerationID int64,
-) string {
-	return listSelectSQLWithTitleSort(where, sortKey, direction, randomSeed, config, includeRecommendation, recommendationGenerationID, "")
+	return listSelectSQLWithTitleSort(where, sortKey, direction, randomSeed, config, includeRecommendation, "")
 }
 
 func listSelectSQLWithTitleSort(
@@ -946,28 +920,20 @@ func listSelectSQLWithTitleSort(
 	randomSeed int64,
 	config RecommendationConfig,
 	includeRecommendation bool,
-	recommendationGenerationID int64,
 	titleSort string,
 ) string {
 	normalizedSort, _ := normalizeSort(sortKey, direction)
 	orderBy := listOrderBy(sortKey, direction, randomSeed, config, titleSort)
 	if normalizedSort == "recommend" {
-		recommendationLane := "COALESCE(user_work_state.listening_status, 'none')"
-		if recommendationGenerationID > 0 {
-			recommendationLane = "COALESCE(recommendation_snapshot.listening_status, 'none')"
-		}
-		baseSelect := listBaseSelectSQLWithConfigAndExtraAndGeneration(
+		baseSelect := listBaseSelectSQLWithConfigAndExtra(
 			where,
 			true,
 			config,
-			", "+recommendationLane+" AS recommendation_lane, "+recommendationDiversityProjection(recommendationGenerationID)+" AS recommendation_diversity_penalty",
-			recommendationGenerationID,
+			", COALESCE(user_work_state.listening_status, 'none') AS recommendation_lane",
 		)
 		return recommendationListSelectSQL(baseSelect, direction, randomSeed, config)
 	}
-	return listBaseSelectSQLWithConfigAndExtraAndGeneration(
-		where, includeRecommendation, config, "", recommendationGenerationID,
-	) + " ORDER BY " + orderBy
+	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, config, "") + " ORDER BY " + orderBy
 }
 
 func listBaseSelectSQLWithExtra(where string, includeRecommendation bool, extraSelect string) string {
@@ -979,22 +945,11 @@ func listBaseSelectSQLWithConfig(where string, includeRecommendation bool, confi
 }
 
 func listBaseSelectSQLWithConfigAndExtra(where string, includeRecommendation bool, config RecommendationConfig, extraSelect string) string {
-	return listBaseSelectSQLWithConfigAndExtraAndGeneration(where, includeRecommendation, config, extraSelect, 0)
-}
-
-func listBaseSelectSQLWithConfigAndExtraAndGeneration(
-	where string,
-	includeRecommendation bool,
-	config RecommendationConfig,
-	extraSelect string,
-	recommendationGenerationID int64,
-) string {
-	recommendationSortColumn, recommendationSnapshotJoin := listRecommendationProjection(includeRecommendation, config, recommendationGenerationID)
 	return `SELECT ` + listSummaryColumnsSQL + `,
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + extraSelect + `
+		COALESCE(user_work_state.favorite, 0) AS favorite` + listRecommendationScoreColumn(includeRecommendation, config) + extraSelect + `
 	FROM work
-	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + recommendationSnapshotJoin + `
+	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 	WHERE ` + where
 }
 
@@ -1010,22 +965,14 @@ var listSummaryColumnsSQL = listWorkColumnsSQL + `,
 		` + LatestSnapshotCardColumnsSQL("work.id", true) + `,
 		(SELECT display_name || '|' || external_id FROM work_primary_circle WHERE work_id = work.id) AS party_link`
 
-func listRecommendationProjection(includeRecommendation bool, config RecommendationConfig, recommendationGenerationID int64) (string, string) {
-	recommendationSortColumn := ", 0 AS recommend_score"
-	recommendationSnapshotJoin := ""
-	if includeRecommendation {
-		switch {
-		case recommendationGenerationID > 0:
-			recommendationSortColumn = fmt.Sprintf(", COALESCE(recommendation_snapshot.score, %d) AS recommend_score", config.AffinityBase)
-			recommendationSnapshotJoin = fmt.Sprintf(`
-	LEFT JOIN recommendation_snapshot ON recommendation_snapshot.work_id = work.id AND recommendation_snapshot.generation_id = %d`, recommendationGenerationID)
-		default:
-			// Affinity comes only from a generation's frozen profile; without one
-			// every work keeps the neutral baseline.
-			recommendationSortColumn = fmt.Sprintf(", %d AS recommend_score", config.AffinityBase)
-		}
+// listRecommendationScoreColumn projects recommend_score. Affinity comes only
+// from a generation's frozen profile, which the recommendation page scores
+// itself, so a SQL projection gives every work the neutral baseline.
+func listRecommendationScoreColumn(includeRecommendation bool, config RecommendationConfig) string {
+	if !includeRecommendation {
+		return ", 0 AS recommend_score"
 	}
-	return recommendationSortColumn, recommendationSnapshotJoin
+	return fmt.Sprintf(", %d AS recommend_score", config.AffinityBase)
 }
 
 // LocalPresencePredicateSQL keeps a work whose family has an available local

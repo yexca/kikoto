@@ -13,7 +13,7 @@ import (
 )
 
 // An LLM translation run queued before Translate with AI replaced it ends
-// without a request or a preview, and Activity cannot retry it.
+// without a request, and Activity cannot retry it.
 func TestLLMTranslationRunQueuedBeforeTranslateWithAIStopsWithoutARequest(t *testing.T) {
 	var requests atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +25,7 @@ func TestLLMTranslationRunQueuedBeforeTranslateWithAIStopsWithoutARequest(t *tes
 	if _, err := f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID); err != nil {
 		t.Fatal(err)
 	}
-	p := llmTestProvider(t, f, upstream.URL, "external", "safe")
+	llmTestProvider(t, f, upstream.URL, "external", "safe")
 	ctx := context.Background()
 	tx, err := f.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -40,8 +40,8 @@ func TestLLMTranslationRunQueuedBeforeTranslateWithAIStopsWithoutARequest(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err := tx.ExecContext(ctx, `INSERT INTO llm_translation_task(workflow_run_id,user_id,work_id,dedup_key,input_hash,policy_hash,config_hash,request_json) VALUES(?,?,?,'example-key','','','',?)`,
-		runID, f.userID, f.workID, mustJSON(llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}}))
+	task, err := tx.ExecContext(ctx, `INSERT INTO llm_translation_task(workflow_run_id,user_id,work_id,dedup_key,input_hash,policy_hash,config_hash) VALUES(?,?,?,'example-key','','','')`,
+		runID, f.userID, f.workID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,13 +62,12 @@ func TestLLMTranslationRunQueuedBeforeTranslateWithAIStopsWithoutARequest(t *tes
 		t.Fatal("the LLM translation job succeeded")
 	}
 	var state, code, runStatus string
-	var previews int
-	if err := f.db.QueryRow(`SELECT task.state, task.failure_code, run.status, (SELECT COUNT(*) FROM llm_translation_preview)
-		FROM llm_translation_task AS task INNER JOIN workflow_run AS run ON run.id = task.workflow_run_id WHERE task.id = ?`, taskID).Scan(&state, &code, &runStatus, &previews); err != nil {
+	if err := f.db.QueryRow(`SELECT task.state, task.failure_code, run.status
+		FROM llm_translation_task AS task INNER JOIN workflow_run AS run ON run.id = task.workflow_run_id WHERE task.id = ?`, taskID).Scan(&state, &code, &runStatus); err != nil {
 		t.Fatal(err)
 	}
-	if requests.Load() != 0 || state != "invalid" || code != llmTranslationReplaced || runStatus != "failed" || previews != 0 {
-		t.Fatalf("requests=%d task=%s/%s run=%s previews=%d", requests.Load(), state, code, runStatus, previews)
+	if requests.Load() != 0 || state != "invalid" || code != llmTranslationReplaced || runStatus != "failed" {
+		t.Fatalf("requests=%d task=%s/%s run=%s", requests.Load(), state, code, runStatus)
 	}
 	actor := translationActor(t, f.server, f.userID)
 	if _, err := f.server.retryLLMTranslationRun(ctx, actor, runID); !errors.Is(err, errWorkflowRetryNoRecoverableJob) {

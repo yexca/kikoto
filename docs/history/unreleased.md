@@ -90,3 +90,14 @@
   seconds cancels it.
 
 </details>
+
+<details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Upgrading removes database tables, columns, and duplicate indexes that
+  nothing reads: the previews, lyrics, and tag-name candidates of the
+  per-work LLM translation that Translate with AI replaced, and the
+  per-track progress that Resume replaced. Translate with AI history, Resume
+  positions, and listening history stay.
+
+</details>

@@ -50,7 +50,7 @@ func TestLibraryPagePerformance(t *testing.T) {
 				where, args := listWhere(scope, "", "", 1, false)
 				countSQL := `SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id=work.id AND user_work_state.user_id=? WHERE ` + where
 				countArgs := append([]any{int64(1)}, args...)
-				pageSQL := listPageSelectSQL(where, "recent", "desc", 1, DefaultRecommendationConfig(), false, 0)
+				pageSQL := listPageSelectSQL(where, "recent", "desc", 1, DefaultRecommendationConfig(), false)
 				pageArgs := append(append([]any{}, countArgs...), 24, 0)
 				end := strings.Index(pageSQL, ")\n\t\tSELECT ")
 				if end < 0 {

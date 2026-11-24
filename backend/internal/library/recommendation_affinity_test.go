@@ -179,12 +179,12 @@ func TestRecommendationOrderingSQLMatchesExplanationAndExploresWeakerEvidence(t 
 	store, _ := seedPaginationLibrary(t, 1, 0, 0)
 	config := DefaultRecommendationConfig()
 	for _, seed := range []int64{1, 43, 9127, -99} {
-		low := RecommendationOrderingFor(1, 35, seed, config, 4)
-		high := RecommendationOrderingFor(1, 80, seed, config, 4)
+		low := RecommendationOrderingFor(1, 35, seed, config)
+		high := RecommendationOrderingFor(1, 80, seed, config)
 		if low.ExplorationBoost <= high.ExplorationBoost {
 			t.Fatal("exploration does not favor weaker evidence")
 		}
-		orderSQL := recommendationExplorationOrderBy("id", "DESC", seed, config.JitterAmplitude, config.ExplorationAmplitude, "4")
+		orderSQL := recommendationExplorationOrderBy("id", "DESC", seed, config.JitterAmplitude, config.ExplorationAmplitude)
 		var actual float64
 		// Extract the ordering expression before its direction and tie breakers.
 		expression := orderSQL[:len(orderSQL)-len(" DESC, "+seededHashExpression("id", seed)+" ASC, id ASC")]
@@ -212,20 +212,6 @@ func BenchmarkRemoteRecommendationBatch(b *testing.B) {
 	if _, err := store.PrepareRecommendationSession(ctx, userID, "benchmark"); err != nil {
 		b.Fatal(err)
 	}
-	b.Run("generation_400", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			tx, err := store.db.BeginTx(ctx, nil)
-			if err != nil {
-				b.Fatal(err)
-			}
-			_, err = buildRecommendationGeneration(ctx, tx, userID, DefaultRecommendationConfig(), 1, 1)
-			_ = tx.Rollback()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
 	for _, count := range []int{24, 100} {
 		b.Run(fmt.Sprintf("works_%d", count), func(b *testing.B) {
 			candidates := make([]RecommendationCandidate, count)

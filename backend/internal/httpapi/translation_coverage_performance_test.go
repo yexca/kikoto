@@ -101,8 +101,8 @@ func seedTranslationCoverageScale(t *testing.T, db *sqlutil.DB, works int) {
 		SELECT item.id, 'zh-cn', (item.work_id - 1) * 12 + 11 FROM media_item AS item
 		WHERE item.kind = 'audio' AND item.work_id % 5 = 0`)
 	exec("INSERT INTO workflow_run (id,workflow_code,display_name,status,trigger_type) VALUES (1,'llm_translation','Example Translation','completed','manual')")
-	exec(series+`INSERT INTO llm_translation_task (workflow_run_id,user_id,work_id,dedup_key,input_hash,policy_hash,config_hash,request_json,state)
-		SELECT 1, 1, 1 + (n.i * 37) % ?, 'synthetic-'||n.i, 'hash', 'hash', 'hash', '{"targetLanguage":"zh-cn"}',
+	exec(series+`INSERT INTO llm_translation_task (workflow_run_id,user_id,work_id,dedup_key,input_hash,policy_hash,config_hash,state)
+		SELECT 1, 1, 1 + (n.i * 37) % ?, 'synthetic-'||n.i, 'hash', 'hash', 'hash',
 			CASE WHEN n.i % 50 = 0 THEN 'pending' ELSE 'ready' END FROM n`, works*2, works)
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)

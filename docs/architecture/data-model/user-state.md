@@ -162,9 +162,7 @@ lists out, and an import skips a backup list whose name a smart list holds.
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media
 item and records the last file source/location context; location deletion clears
-those foreign keys without turning a raw path into the progress owner. The
-per-track `user_media_progress` table is retained in the schema, but no runtime
-code reads or writes it.
+those foreign keys without turning a raw path into the progress owner.
 
 The cursor's `report_order` and `report_id` provide a total checkpoint order
 independent of position. A repeated or older checkpoint is acknowledged without

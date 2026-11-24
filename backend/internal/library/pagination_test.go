@@ -42,7 +42,7 @@ func TestListPagePreservesOrderedProjection(t *testing.T) {
 						args := []any{}
 						args = append(args, options.UserID)
 						args = append(args, filterArgs...)
-						rows, err := store.db.QueryContext(ctx, listSelectSQLWithRecommendationGeneration(where, sortKey, direction, 43, DefaultRecommendationConfig(), false, 0), args...)
+						rows, err := store.db.QueryContext(ctx, listSelectSQL(where, sortKey, direction, 43, DefaultRecommendationConfig(), false), args...)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -96,8 +96,8 @@ func BenchmarkLibraryRecommendationPage(b *testing.B) {
 	args = append([]any{userID}, args...)
 	args = append(args, options.PageSize, 0)
 	queries := map[string]string{
-		"full_projection_before_paging": listSelectSQLWithRecommendationGeneration(where, options.Sort, options.Direction, options.RandomSeed, snapshot.Config, true, snapshot.GenerationID) + " LIMIT ? OFFSET ?",
-		"page_before_projection":        listPageSelectSQL(where, options.Sort, options.Direction, options.RandomSeed, snapshot.Config, true, snapshot.GenerationID),
+		"full_projection_before_paging": listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed, snapshot.Config, true) + " LIMIT ? OFFSET ?",
+		"page_before_projection":        listPageSelectSQL(where, options.Sort, options.Direction, options.RandomSeed, snapshot.Config, true),
 	}
 	for _, name := range []string{"full_projection_before_paging", "page_before_projection"} {
 		b.Run(name, func(b *testing.B) {
@@ -337,7 +337,7 @@ func TestListPageReadsOrderedIndexes(t *testing.T) {
 		{"release", "asc", "idx_work_release_date_nulls_last"},
 	} {
 		where, args := listWhere("", "", "", userID, false)
-		query := listPageSelectSQL(where, testCase.sortKey, testCase.direction, 1, DefaultRecommendationConfig(), false, 0)
+		query := listPageSelectSQL(where, testCase.sortKey, testCase.direction, 1, DefaultRecommendationConfig(), false)
 		queryArgs := append([]any{userID}, args...)
 		rows, err := store.db.Query("EXPLAIN QUERY PLAN "+query, append(queryArgs, 24, 0)...)
 		if err != nil {

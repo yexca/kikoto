@@ -515,7 +515,7 @@ func recommendationListSelectSQL(baseSelect string, direction string, randomSeed
 
 func recommendationOrderedSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig, projection string) string {
 	_, direction = normalizeSort("recommend", direction)
-	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude, "recommendation_diversity_penalty")
+	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude)
 	position := recommendationLanePositionExpression(config, "recommendation_lane", "recommendation_lane_rank")
 	suppressed := recommendationLaneSuppressedExpression(config, "recommendation_lane")
 	return `WITH recommendation_candidates AS (` + baseSelect + `),
@@ -539,7 +539,9 @@ func recommendationOrderedSelectSQL(baseSelect string, direction string, randomS
 // giving each candidate a deterministic, seed-specific discovery boost. A new
 // seed therefore surfaces different plausible works without breaking stable
 // pagination for the current browse session.
-func recommendationExplorationOrderBy(idExpression string, direction string, randomSeed int64, jitterAmplitude int, explorationAmplitude int, diversityExpression ...string) string {
+// The SQL ordering carries no diversity penalty; only the recall page, which
+// orders in Go, applies one.
+func recommendationExplorationOrderBy(idExpression string, direction string, randomSeed int64, jitterAmplitude int, explorationAmplitude int) string {
 	hash := seededHashExpression(idExpression, randomSeed)
 	exploration := "0"
 	if explorationAmplitude > 0 {
@@ -549,11 +551,7 @@ func recommendationExplorationOrderBy(idExpression string, direction string, ran
 	if jitterAmplitude > 0 {
 		jitter = fmt.Sprintf("(((%s / 2147483647.0) * 2.0 - 1.0) * %d)", seededHashExpression(idExpression, randomSeed+104729), jitterAmplitude)
 	}
-	penalty := "0"
-	if len(diversityExpression) > 0 {
-		penalty = diversityExpression[0]
-	}
-	return fmt.Sprintf("(recommend_score + %s + %s - %s) %s, %s ASC, %s ASC", exploration, jitter, penalty, direction, hash, idExpression)
+	return fmt.Sprintf("(recommend_score + %s + %s) %s, %s ASC, %s ASC", exploration, jitter, direction, hash, idExpression)
 }
 
 func boolInt(value bool) int {

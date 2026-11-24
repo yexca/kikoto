@@ -107,10 +107,3 @@ type RecommendationAffinity struct {
 	Voices  float64 `json:"voices"`
 	Circles float64 `json:"circles"`
 }
-
-func recommendationDiversityProjection(generationID int64) string {
-	if generationID > 0 {
-		return "COALESCE(recommendation_snapshot.diversity_penalty, 0)"
-	}
-	return "0"
-}

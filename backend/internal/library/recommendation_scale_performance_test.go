@@ -337,28 +337,20 @@ func scaleLogStorage(t testing.TB, db *sqlutil.DB, path, phase string) {
 		t.Fatal(err)
 	}
 	t.Logf("storage/%s profile_json_bytes=%d largest_profile_bytes=%d", phase, profileBytes, profileMax)
-	if scaleHasTable(db, "recommendation_query_context") {
-		var scored, prefix, contexts int
-		if err := db.QueryRow("SELECT COALESCE(MAX(candidate_count),0) FROM recommendation_query_context").Scan(&scored); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.QueryRow("SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM recommendation_query_candidate GROUP BY context_id)").Scan(&prefix); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.QueryRow("SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM recommendation_query_context GROUP BY generation_id)").Scan(&contexts); err != nil {
-			t.Fatal(err)
-		}
-		if scored > 2000 || prefix > 500 || contexts > 8 {
-			t.Fatalf("unbounded context: %d/%d/%d", scored, prefix, contexts)
-		}
-		t.Logf("bounds/%s max_scored=%d max_prefix=%d max_contexts=%d ordinary_page_scored=100", phase, scored, prefix, contexts)
-	} else {
-		var scored int
-		if err := db.QueryRow("SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM recommendation_snapshot GROUP BY generation_id)").Scan(&scored); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("bounds/%s generation_scored=%d", phase, scored)
+	var scored, prefix, contexts int
+	if err := db.QueryRow("SELECT COALESCE(MAX(candidate_count),0) FROM recommendation_query_context").Scan(&scored); err != nil {
+		t.Fatal(err)
 	}
+	if err := db.QueryRow("SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM recommendation_query_candidate GROUP BY context_id)").Scan(&prefix); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM recommendation_query_context GROUP BY generation_id)").Scan(&contexts); err != nil {
+		t.Fatal(err)
+	}
+	if scored > 2000 || prefix > 500 || contexts > 8 {
+		t.Fatalf("unbounded context: %d/%d/%d", scored, prefix, contexts)
+	}
+	t.Logf("bounds/%s max_scored=%d max_prefix=%d max_contexts=%d ordinary_page_scored=100", phase, scored, prefix, contexts)
 	if _, err := db.Exec("PRAGMA wal_checkpoint(PASSIVE)"); err != nil {
 		t.Fatal(err)
 	}
@@ -420,11 +412,7 @@ func scaleLogCandidateQuality(t testing.TB, db *sqlutil.DB, snapshot Recommendat
 		return
 	}
 	threshold := ordered[min(99, len(ordered)-1)]
-	query := "SELECT work_id FROM recommendation_snapshot WHERE generation_id=? ORDER BY score DESC,work_id LIMIT 500"
-	if scaleHasTable(db, "recommendation_query_candidate") {
-		query = "SELECT candidate.work_id FROM recommendation_query_candidate candidate JOIN recommendation_query_context context ON context.id=candidate.context_id WHERE context.generation_id=?"
-	}
-	rows, err = db.Query(query, snapshot.GenerationID)
+	rows, err = db.Query("SELECT candidate.work_id FROM recommendation_query_candidate candidate JOIN recommendation_query_context context ON context.id=candidate.context_id WHERE context.generation_id=?", snapshot.GenerationID)
 	if err != nil {
 		t.Fatal(err)
 	}
