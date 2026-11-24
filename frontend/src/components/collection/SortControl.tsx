@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide, RefreshCw } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -75,7 +75,6 @@ export function SortControl<Value extends string>({
           title={t("library.sortLabel", { label })}
           onClick={() => setOpen((current) => !current)}
         >
-          <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="truncate">{label}</span>
         </button>
         {reshuffle ? (

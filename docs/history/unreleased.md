@@ -91,6 +91,8 @@
 - Sort, the collection filter, and the library's Quick mark filter show the
   chosen item by its highlight alone, and the sort and filter menus are
   narrower.
+- The sort button shows the order's name without an icon before it, so the
+  direction button beside it is the only arrow.
 - **View** on a circle or voice actor page is an icon button.
 - **Add to list** is narrower, and a smart list that holds the work by its
   rule reads **Auto-matched**.
