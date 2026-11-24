@@ -28,7 +28,7 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid local scan request"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid local scan request", false)
 		return
 	}
 	result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "manual", 0, request.FollowUpRun)

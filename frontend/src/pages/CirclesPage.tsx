@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CreatorCard } from "@/components/creator/CreatorCard";
 import { api, type CircleSummary } from "@/lib/api";
 import { creatorCoverUrl } from "@/lib/creatorApi";
+import { safeDecodePathSegment } from "@/lib/routeSegment";
 import { currentInternalLocation, normalizeInternalLocation } from "@/lib/browserHistory";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
@@ -171,13 +172,5 @@ function isCircleWorkspaceLocation(location: string) {
     return circleRouteFromPath(new URL(normalized, "https://kikoto.invalid").pathname) !== null;
   } catch {
     return false;
-  }
-}
-
-function safeDecodePathSegment(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
   }
 }

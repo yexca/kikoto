@@ -120,7 +120,7 @@ func (s *Server) cleanupOrphanCache(w http.ResponseWriter, r *http.Request) {
 	}
 	var request cacheCleanupRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
@@ -135,7 +135,7 @@ func (s *Server) cleanupOrphanCache(w http.ResponseWriter, r *http.Request) {
 	case "works":
 		result, err = s.enqueueWorkCacheCleanup(r.Context(), request.WorkIDs)
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be orphans or works"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "mode must be orphans or works", false)
 		return
 	}
 	if err != nil {
@@ -485,7 +485,7 @@ func (s *Server) enqueueWorkCacheCleanup(ctx context.Context, workIDs []int64) (
 func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJobRecord) error {
 	payload, checkpoint, err := decodeCacheOrphanCleanupExecution(job)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	statusCtx := context.WithoutCancel(ctx)
@@ -551,7 +551,7 @@ func (s *Server) processCacheCleanupFiles(
 		}
 		deleted, bytes, err := s.deleteOrphanCacheFile(ctx, relPath)
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return progress, true, err
 		}
 		if deleted {
@@ -586,7 +586,7 @@ func (s *Server) processCacheCleanupDirectories(
 			return true, err
 		}
 		if err := s.removeEmptyManagedCacheDirectory(relPath); err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return true, err
 		}
 		progress++
@@ -609,7 +609,7 @@ func (s *Server) recordCacheCleanupCheckpoint(
 	checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
 	completed[key] = true
 	if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", *checkpoint, progress, total); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	return nil

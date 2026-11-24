@@ -1,5 +1,5 @@
 import { Inbox, Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TranslationReviewList, type TranslationReviewMode } from "@/components/translation/TranslationReviewList";
@@ -18,10 +18,11 @@ import {
 import { ActivityRunLink, TranslationRunList } from "@/features/translation/TranslationRunList";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { api, type TranslationCenterCounts, type TranslationItem, type TranslationRun } from "@/lib/api";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
+import { openWorkflowRun, workflowRunPath } from "@/lib/workflowLinks";
 
 const pollMs = 4000;
 
@@ -82,26 +83,28 @@ export function TranslationPage({
 
   // Only the latest load applies, so a slower answer for a view left behind
   // never replaces the current view's list.
-  const loadRequest = useRef(0);
-  const load = useCallback(async () => {
-    const request = ++loadRequest.current;
-    try {
-      const mode = itemViews[view];
-      const [active, queued, list] = await Promise.all([
-        api.listTranslationRuns("active"),
-        view === "running" ? api.listTranslationRuns("queued") : Promise.resolve(null),
-        mode ? api.listTranslationItems(mode) : Promise.resolve(null),
-      ]);
-      if (request !== loadRequest.current) return;
-      setCounts(active.counts);
-      setAutoAccept(active.autoAccept);
-      if (queued) setRuns({ active: active.runs, queued: queued.runs });
-      if (list) setItems(list.items);
-      setLoadError(false);
-    } catch {
-      if (request === loadRequest.current) setLoadError(true);
-    }
-  }, [view]);
+  const latestLoad = useLatestLoad();
+  const load = useCallback(() => {
+    const mode = itemViews[view];
+    return latestLoad.run(
+      () =>
+        Promise.all([
+          api.listTranslationRuns("active"),
+          view === "running" ? api.listTranslationRuns("queued") : Promise.resolve(null),
+          mode ? api.listTranslationItems(mode) : Promise.resolve(null),
+        ]),
+      {
+        onSuccess: ([active, queued, list]) => {
+          setCounts(active.counts);
+          setAutoAccept(active.autoAccept);
+          if (queued) setRuns({ active: active.runs, queued: queued.runs });
+          if (list) setItems(list.items);
+          setLoadError(false);
+        },
+        onError: () => setLoadError(true),
+      },
+    );
+  }, [latestLoad, view]);
 
   useEffect(() => {
     setItems(null);
@@ -152,7 +155,7 @@ export function TranslationPage({
         <ActivityRunLink
           href={workflowRunPath(runId)}
           label={t("translationCenter.activity")}
-          onOpen={() => openWorkflowPath(workflowRunPath(runId))}
+          onOpen={() => openWorkflowRun(runId)}
         />
       )
     : undefined;

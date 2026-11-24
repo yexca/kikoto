@@ -133,11 +133,11 @@ func (s *Server) updateRankingRetention(w http.ResponseWriter, r *http.Request) 
 	}
 	var retention rankingRetention
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&retention); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := retention.validate(); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)

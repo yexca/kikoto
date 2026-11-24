@@ -10,13 +10,13 @@ const storageBaseKey = "kikoto:demo-metadata-languages";
 let demoUserId: number | null = null;
 let current: string[] | null = null;
 
-function storageKey(userId: number) {
+function demoMetadataLanguagesStorageKey(userId: number) {
   return currentScopedStorageKey(storageBaseKey, userId);
 }
 
 function readStored(userId: number): string[] | null {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(storageKey(userId)) ?? "null");
+    const parsed: unknown = JSON.parse(localStorage.getItem(demoMetadataLanguagesStorageKey(userId)) ?? "null");
     if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((value) => typeof value === "string")) {
       return parsed;
     }
@@ -42,8 +42,8 @@ export function writeDemoMetadataLanguages(languages: readonly string[] | null) 
   if (demoUserId === null) return;
   current = languages && languages.length > 0 ? [...languages] : null;
   try {
-    if (current) localStorage.setItem(storageKey(demoUserId), JSON.stringify(current));
-    else localStorage.removeItem(storageKey(demoUserId));
+    if (current) localStorage.setItem(demoMetadataLanguagesStorageKey(demoUserId), JSON.stringify(current));
+    else localStorage.removeItem(demoMetadataLanguagesStorageKey(demoUserId));
   } catch {
     // The in-memory choice still applies to this tab.
   }

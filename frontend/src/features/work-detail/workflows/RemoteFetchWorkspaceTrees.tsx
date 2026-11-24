@@ -13,12 +13,8 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  formatBytes,
-  remoteSelectablePaths,
-  type TreeNode,
-  type TreeTrack,
-} from "@/features/work-detail/media/mediaTreeModel";
+import { fileIcon } from "@/features/work-detail/dialogs/mediaFilePresentation";
+import { formatBytes, remoteSelectablePaths, type TreeNode } from "@/features/work-detail/media/mediaTreeModel";
 import { type RemoteFetchFileDecision, type RemoteFetchResolution, type RemoteWorkSavePlan } from "@/lib/api";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
@@ -630,10 +626,6 @@ export function languageLabel(value: string, translate?: (key: string) => string
     default:
       return normalizedValue;
   }
-}
-
-function fileIcon(file: TreeTrack) {
-  return kindIcon(file.kind, "h-4 w-4");
 }
 
 function kindIcon(kind: string, sizeClass: string) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api, type LibrarySource } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import { sourceVisibilityIcon, type SourceVisibilityRow } from "@/components/source-visibility/SourceVisibilityPicker";
 import {
@@ -48,23 +49,22 @@ export function useLibrarySourceVisibility({
     const key = `${storageScope}\n${refreshKey}`;
     if (!active || probedKey.current === key) return;
     probedKey.current = key;
-    const controller = new AbortController();
     let settled = false;
-    api
-      .listWorksPage(1, 1, "", "tracked", "all", "recent", "desc", 1, false, controller.signal)
-      .then((page) => setHasTrackedWorks(page.total > 0))
-      .catch(() => {
-        if (controller.signal.aborted) return;
+    const cancel = startLoad(
+      (signal) => api.listWorksPage(1, 1, "", "tracked", "all", "recent", "desc", 1, false, signal),
+      {
+        onSuccess: (page) => setHasTrackedWorks(page.total > 0),
         // Keep Tracked reachable when its presence cannot be determined.
-        setHasTrackedWorks((current) => current ?? true);
-      })
-      .finally(() => {
-        settled = true;
-      });
+        onError: () => setHasTrackedWorks((current) => current ?? true),
+        onSettled: () => {
+          settled = true;
+        },
+      },
+    );
     return () => {
       if (settled) return;
       // An interrupted probe is retried the next time this key is active.
-      controller.abort();
+      cancel();
       probedKey.current = "";
     };
   }, [active, refreshKey, storageScope]);

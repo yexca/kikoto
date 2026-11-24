@@ -18,6 +18,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
 import { currentInternalLocation } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 export type CreatorListRequest<Filter extends string> = {
@@ -160,12 +161,10 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
       completeResultsScroll();
       return;
     }
-    const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
-    loadItems({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
+    return startLoad((signal) => loadItems({ page, pageSize, query: requestQuery, filter, signal }), {
+      onSuccess: (result) => {
         loadedRequestKey.current = requestKey;
         setItems(result.items);
         setTotal(result.total);
@@ -173,16 +172,13 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
         setMessage(result.total === 0 && !requestQuery.trim() && filter === "all" ? emptyMessage() : "");
         if (result.page !== page) setPage(result.page);
         completeResultsScroll();
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
+      },
+      onError: (error) => {
         cancelResultsScroll();
         notifyLoadFailure(error);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
+      },
+      onSettled: () => setIsLoading(false),
+    });
   }, [
     active,
     cancelResultsScroll,

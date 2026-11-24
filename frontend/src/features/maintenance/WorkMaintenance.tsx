@@ -23,6 +23,7 @@ import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collect
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import { api, assetURL, type MaintenanceWork, type MaintenanceWorkPage, type Work } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { librarySourceProvidesMetadata } from "@/lib/remoteSourceCapabilities";
 import { cn } from "@/lib/tailwindClassNames";
 import { currentPageSelection, pageAfterUnlinkedDelete, setCurrentPageSelected } from "./unlinkedWorksModel";
@@ -150,12 +151,9 @@ export function WorkMaintenance({
   }, [page, pageSize, query, reason, runId]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
-      setLoading(true);
-      try {
-        const next = await api.listMaintenanceWorks(page, pageSize, query, reason, runId, controller.signal);
-        if (controller.signal.aborted) return;
+    setLoading(true);
+    return startLoad((signal) => api.listMaintenanceWorks(page, pageSize, query, reason, runId, signal), {
+      onSuccess: (next) => {
         if (next.works.length === 0 && page > 1 && next.total <= (page - 1) * pageSize) {
           setPage(Math.max(1, Math.ceil(next.total / pageSize)));
           return;
@@ -167,14 +165,10 @@ export function WorkMaintenance({
           next.works.filter((work) => canManageSources || canRetryMetadata(work)).map((work) => work.id),
         );
         setSelectedWorkIds((current) => new Set([...current].filter((id) => present.has(id))));
-      } catch {
-        if (!controller.signal.aborted) setLoadError(t("errors.unavailable"));
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    void load();
-    return () => controller.abort();
+      },
+      onError: () => setLoadError(t("errors.unavailable")),
+      onSettled: () => setLoading(false),
+    });
   }, [page, pageSize, query, reason, runId, refreshKey, preferenceRevision, listRevision, canManageSources, t]);
 
   const pageWorkIds = useMemo(

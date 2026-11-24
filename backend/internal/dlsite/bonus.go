@@ -79,7 +79,7 @@ func PurchaseBonusHintFor(product Product) (PurchaseBonusHint, bool) {
 	if free == nil || !*free {
 		return PurchaseBonusHint{}, false
 	}
-	code := strings.ToUpper(strings.TrimSpace(firstNonEmpty(product.WorkNo, product.ProductID)))
+	code := strings.ToUpper(strings.TrimSpace(firstNonBlank(product.WorkNo, product.ProductID)))
 	makerID := strings.ToUpper(strings.TrimSpace(product.MakerID))
 	if code == "" || !makerIDPattern.MatchString(makerID) {
 		return PurchaseBonusHint{}, false
@@ -119,9 +119,9 @@ func IsPurchaseBonusTitle(title string) bool {
 func PurchaseBonusCandidateFromProduct(product Product) PurchaseBonusCandidate {
 	free := product.IsPermanentlyFree()
 	return PurchaseBonusCandidate{
-		Code:        strings.ToUpper(strings.TrimSpace(firstNonEmpty(product.WorkNo, product.ProductID))),
+		Code:        strings.ToUpper(strings.TrimSpace(firstNonBlank(product.WorkNo, product.ProductID))),
 		MakerID:     strings.ToUpper(strings.TrimSpace(product.MakerID)),
-		Title:       firstNonEmpty(product.WorkName, product.ProductName),
+		Title:       firstNonBlank(product.WorkName, product.ProductName),
 		TitleKana:   product.WorkNameKana,
 		ReleaseDate: product.RegistDate,
 		Free:        free != nil && *free,
@@ -241,7 +241,8 @@ func isSubsequence(needle string, haystack string) bool {
 	return false
 }
 
-func firstNonEmpty(values ...string) string {
+// firstNonBlank returns the first value that is not blank, exactly as written.
+func firstNonBlank(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value

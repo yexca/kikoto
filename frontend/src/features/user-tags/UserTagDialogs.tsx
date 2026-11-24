@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { UserTagScope } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { mergeTargetCandidates, USER_TAG_PAGE_SIZE, validateTagRename } from "./userTagManagementModel";
@@ -115,15 +116,14 @@ export function MergeUserTagDialog({
   }, [query]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setFailed(false);
-    userTagsApi
-      .list({ scope, query: debouncedQuery, page: 1, pageSize: USER_TAG_PAGE_SIZE }, controller.signal)
-      .then((result) => setCandidates(mergeTargetCandidates(result.tags, source)))
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) => userTagsApi.list({ scope, query: debouncedQuery, page: 1, pageSize: USER_TAG_PAGE_SIZE }, signal),
+      {
+        onSuccess: (result) => setCandidates(mergeTargetCandidates(result.tags, source)),
+        onError: () => setFailed(true),
+      },
+    );
   }, [debouncedQuery, reloadToken, scope, source]);
 
   return (

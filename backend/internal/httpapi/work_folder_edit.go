@@ -152,12 +152,12 @@ func (err workFolderEditConflictError) Error() string {
 func (s *Server) parseWorkFolderEditRequest(w http.ResponseWriter, r *http.Request) (int64, workFolderEditRequest, bool) {
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return 0, workFolderEditRequest{}, false
 	}
 	var payload workFolderEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return 0, workFolderEditRequest{}, false
 	}
 	return workID, payload, true
@@ -256,7 +256,7 @@ func (s *Server) checkWorkFolderEditSources(w http.ResponseWriter, r *http.Reque
 func (s *Server) workFolderEditSourcesWork(w http.ResponseWriter, r *http.Request) (int64, string, bool) {
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return 0, "", false
 	}
 	var code string
@@ -306,7 +306,7 @@ func (s *Server) applyWorkFolderEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	payload.RequestID = strings.TrimSpace(payload.RequestID)
 	if payload.RequestID != "" && !validRemoteFetchRequestID(payload.RequestID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid folder edit request id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid folder edit request id", false)
 		return
 	}
 	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
@@ -322,7 +322,7 @@ func (s *Server) applyWorkFolderEdit(w http.ResponseWriter, r *http.Request) {
 func writeWorkFolderEditError(w http.ResponseWriter, err error) {
 	var conflict workFolderEditConflictError
 	if errors.As(err, &conflict) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "folder_edit_conflict", "summary": conflict.Summary})
+		writeAPIErrorDetails(w, http.StatusConflict, "folder_edit_conflict", err.Error(), false, map[string]any{"summary": conflict.Summary})
 		return
 	}
 	var mergeChanged workFolderEditMergeChangedError
@@ -336,7 +336,8 @@ func writeWorkFolderEditError(w http.ResponseWriter, err error) {
 			writeAPIError(w, lyricsErr.status, lyricsErr.code, lyricsErr.message, false)
 			return
 		}
-		writeJSON(w, lyricsErr.status, map[string]string{"error": lyricsErr.message})
+		code, retryable := defaultErrorClassification(lyricsErr.status)
+		writeAPIError(w, lyricsErr.status, code, lyricsErr.message, retryable)
 		return
 	}
 	var symlinkErr symlinkMediaLocationError
@@ -916,7 +917,11 @@ func (s *Server) workFolderEditRequestResult(ctx context.Context, requestID stri
 	if storedWorkID != workID {
 		return workFolderEditResult{}, false, invalidRequestError("folder edit request id was already used for another work")
 	}
-	_ = json.Unmarshal([]byte(summaryJSON), &result.Plan)
+	// A repeated request answers with the plan its run recorded, never an
+	// empty one.
+	if err := json.Unmarshal([]byte(summaryJSON), &result.Plan); err != nil {
+		return workFolderEditResult{}, false, fmt.Errorf("decode folder edit run %d plan: %w", result.RunID, err)
+	}
 	result.WorkID = workID
 	result.RequestID = requestID
 	return result, true, nil

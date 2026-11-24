@@ -22,13 +22,13 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		Codes    []string `json:"codes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json", false)
 		return
 	}
 	payload.Action = strings.TrimSpace(payload.Action)
 	payload.Action = normalizeRemoteBulkAction(payload.Action)
 	if payload.Action == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be track, fetch, or track_fetch"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "action must be track, fetch, or track_fetch", false)
 		return
 	}
 	if _, ok := s.requirePermissions(w, r, remoteBulkActionPermissions(payload.Action)...); !ok {
@@ -48,7 +48,7 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		codes = append(codes, code)
 	}
 	if payload.SourceID <= 0 || len(codes) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "sourceId and codes are required", false)
 		return
 	}
 	result, err := s.enqueueRemoteBulkWorkflow(r.Context(), actor.ID, payload.SourceID, payload.Action, codes)
@@ -133,16 +133,16 @@ func (s *Server) enqueueRemoteBulkWorkflowWith(ctx context.Context, payload remo
 func (s *Server) executeRemoteBulkActionJob(ctx context.Context, job workflowJobRecord) error {
 	var payload remoteBulkActionJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	owner, err := s.accountStore.LoadByID(ctx, payload.UserID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Remote bulk requester is unavailable")
+		s.failJobOrLog(ctx, job, "Remote bulk requester is unavailable")
 		return err
 	}
 	if missing := missingWorkflowGraphPermission(owner.Permissions, append([]string{"workflows:run"}, remoteBulkActionPermissions(payload.Action)...)); missing != "" {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Remote bulk permission is no longer available")
+		s.failJobOrLog(ctx, job, "Remote bulk permission is no longer available")
 		return fmt.Errorf("remote bulk action requires permission %s", missing)
 	}
 	result := remoteBulkWorkflowResult{RunID: job.RunID, SourceID: payload.SourceID, Action: payload.Action, Codes: payload.Codes, Status: "succeeded", Failures: []string{}}

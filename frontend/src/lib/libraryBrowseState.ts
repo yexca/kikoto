@@ -1,5 +1,6 @@
 import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/api";
 import { isWorkCodePath } from "@/lib/workCode";
+import { WORKFLOWS_PATH } from "@/lib/workflowLinks";
 import {
   isWorkCollectionColumnCount,
   type WorkCollectionColumnSetting,
@@ -237,7 +238,7 @@ const otherPageTopLevelPaths = new Set([
   "/users",
   "/voices",
   "/work-management",
-  "/workflows",
+  WORKFLOWS_PATH,
 ]);
 
 /** Whether a path is one of the Library's lists: a local scope or a library source. */

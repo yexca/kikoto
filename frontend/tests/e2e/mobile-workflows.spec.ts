@@ -1610,6 +1610,12 @@ test("run retry shows progress while pending and reports a failure", async ({ pa
   await expect(retry).toBeEnabled();
 });
 
+// A clock advance fires the page's timers at once, but the requests they start still cross the network to the
+// route handlers. A later request resolves only after the earlier ones reached their handlers, which count them.
+async function settleIssuedRequests(page: Page) {
+  await page.evaluate(() => fetch("/api/runtime-settings").then((response) => response.text()));
+}
+
 test("a hidden tab pauses operation status polling and refreshes when shown again", async ({ page }) => {
   await mockWorkflows(page);
   const running: WorkflowRun = {
@@ -1643,6 +1649,7 @@ test("a hidden tab pauses operation status polling and refreshes when shown agai
       document.dispatchEvent(new Event("visibilitychange"));
     }, hidden);
 
+  await page.clock.install();
   await page.goto("/workflows");
   // A run started somewhere else shows on its operation, which cannot start again meanwhile.
   await expect(operation(page, "Scan").getByRole("button", { name: "Running", exact: true })).toBeDisabled();
@@ -1651,7 +1658,9 @@ test("a hidden tab pauses operation status polling and refreshes when shown agai
 
   await setHidden(true);
   const hiddenCount = queueRequests;
-  await page.waitForTimeout(4_500);
+  // Several polling periods pass on the page clock while the tab stays hidden.
+  await page.clock.runFor(30_000);
+  await settleIssuedRequests(page);
   expect(queueRequests).toBe(hiddenCount);
 
   await setHidden(false);
@@ -1711,6 +1720,7 @@ test("demo running activity stays untimed while real running work keeps its elap
     });
   });
 
+  await page.clock.install();
   await page.goto("/workflows");
   const activity = page.getByRole("region", { name: "Runs", exact: true });
   const demoItem = activity.getByRole("listitem").filter({ hasText: "#64" });
@@ -1721,7 +1731,9 @@ test("demo running activity stays untimed while real running work keeps its elap
   await demoItem.getByRole("button").click();
   await expect(activity.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
   const initialRequests = runningListRequests;
-  await page.waitForTimeout(5_500);
+  // Several polling periods pass on the page clock without another request.
+  await page.clock.runFor(30_000);
+  await settleIssuedRequests(page);
   expect(runningListRequests).toBe(initialRequests);
   expect(eventStreams).toBe(0);
 });

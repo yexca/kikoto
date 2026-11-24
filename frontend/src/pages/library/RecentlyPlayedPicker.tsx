@@ -6,6 +6,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { api, assetURL, type Work } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { progressPercent, recentProgressLabel } from "./recentPlayback";
@@ -87,16 +88,14 @@ function RecentlyPlayedWorks({ onOpen }: { onOpen: (work: Work) => void }) {
   const [works, setWorks] = useState<Work[] | null>(null);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listRecentlyPlayedWorks(RECENTLY_PLAYED_LIMIT, controller.signal)
-      .then((result) => setWorks(result.works))
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
-  }, []);
+  useEffect(
+    () =>
+      startLoad((signal) => api.listRecentlyPlayedWorks(RECENTLY_PLAYED_LIMIT, signal), {
+        onSuccess: (result) => setWorks(result.works),
+        onError: () => setFailed(true),
+      }),
+    [],
+  );
 
   if (failed && !works) {
     return <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t("library.recentlyPlayedFailed")}</p>;

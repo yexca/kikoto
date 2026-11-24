@@ -79,6 +79,15 @@ func (s *Server) failLibraryMigration(ctx context.Context, err error) {
 	s.layoutMigrationActive.Store(true)
 }
 
+// failUnstartedLibraryMigration records a migration that a stopping server
+// could not start. If the write is lost the migration stays running, and the
+// next start resumes it.
+func (s *Server) failUnstartedLibraryMigration(message string) {
+	if _, err := s.db.ExecContext(context.Background(), `UPDATE library_layout_migration SET status = 'failed', error_message = ? WHERE id = 1`, message); err != nil {
+		slog.Error("record unstarted library migration", "error", err)
+	}
+}
+
 func (s *Server) executeLibraryMigration(ctx context.Context, plan layoutMigrationPlan) {
 	if err := s.runLibraryMigration(ctx, plan); err != nil {
 		s.failLibraryMigration(ctx, err)

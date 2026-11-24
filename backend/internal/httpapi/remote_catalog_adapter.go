@@ -40,12 +40,12 @@ func (s *Server) syncCircleRemoteSourceCatalogs(ctx context.Context, partyID int
 				return totalSynced, failed, ctx.Err()
 			}
 			slog.Warn("circle source check failed", "party_id", partyID, "source_id", source.ID, "error", err)
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 			failed++
 			continue
 		}
 		if synced > 0 {
-			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+			s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 		}
 		totalSynced += synced
 	}
@@ -336,13 +336,13 @@ func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sourc
 		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, sourceRequestCrawl)
 		if err != nil {
 			if errors.Is(err, errRemoteWorkNotFound) {
-				_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+				s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 			} else {
-				_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+				s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 			}
 			continue
 		}
-		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 		if normalizedRemoteWorkCode(remoteWork) != "" || remoteWork.ID > 0 {
 			return true
 		}

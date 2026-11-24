@@ -275,7 +275,7 @@ func (s *Server) updateLibraryLayout(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload libraryLayoutUpdate
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := s.applyLibraryLayoutUpdate(r.Context(), payload); err != nil {
@@ -482,7 +482,7 @@ func (s *Server) reconnectLibraryPool(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload libraryPoolReconnect
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	layout, err := s.loadLibraryLayout(r.Context())
@@ -533,7 +533,7 @@ func (s *Server) completeLibraryOnboarding(w http.ResponseWriter, r *http.Reques
 	}
 	var payload libraryOnboardingCompletion
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	layout, err := s.loadLibraryLayout(r.Context())

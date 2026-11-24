@@ -537,7 +537,7 @@ func ensureMigrationMetadata(db *sqlutil.DB) error {
 	`); err != nil {
 		return fmt.Errorf("create migration history: %w", err)
 	}
-	columns, err := tableColumns(db, migrationTable)
+	columns, err := tableColumnNames(db, migrationTable)
 	if err != nil {
 		return err
 	}
@@ -556,7 +556,7 @@ func ensureMigrationMetadata(db *sqlutil.DB) error {
 		if _, err := db.Exec("ALTER TABLE schema_migration ADD COLUMN " + column.name + " " + column.definition); err != nil {
 			// Another process may have added the column after the initial
 			// inspection. Re-read before treating the duplicate as a failure.
-			latest, inspectErr := tableColumns(db, migrationTable)
+			latest, inspectErr := tableColumnNames(db, migrationTable)
 			if inspectErr == nil && latest[column.name] {
 				columns = latest
 				continue
@@ -582,7 +582,7 @@ func ensureMigrationMetadata(db *sqlutil.DB) error {
 	return nil
 }
 
-func tableColumns(db *sqlutil.DB, table string) (map[string]bool, error) {
+func tableColumnNames(db *sqlutil.DB, table string) (map[string]bool, error) {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return nil, fmt.Errorf("inspect %s columns: %w", table, err)

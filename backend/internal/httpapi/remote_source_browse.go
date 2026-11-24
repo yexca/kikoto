@@ -100,20 +100,20 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	source, err := s.loadRemoteSourceForUse(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "source not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if !isKikoeruSourceType(source.SourceType) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not a supported kikoeru source"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "source is not a supported kikoeru source", false)
 		return
 	}
 	diagnosticURL := remoteSourceDiagnosticURL(r.Context(), source.Endpoint)
@@ -178,11 +178,11 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 	}
 	remotePage, err := client.ListWorksSortedSeeded(ctx, request.Page, request.PageSize, request.Plan.PushdownQuery, request.UpstreamOrder, request.Direction, request.Seed)
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 		s.writeRemoteWorksUnavailable(w, source, request.Page, request.PageSize, request.Sort, request.Direction, diagnosticURL, err)
 		return nil
 	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages, request.Plan.FocusCodes)
 	if err != nil {
 		return err
@@ -222,11 +222,11 @@ func remoteFoldedPageTotal(page kikoeru.WorksPage, pageNumber, pageSize, cards i
 
 func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context.Context, userID int64, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest, works []remoteWorkSummary, total int, sortApplied bool, err error) error {
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 		s.writeRemoteWorksUnavailable(w, source, request.Page, request.PageSize, request.Sort, request.Direction, diagnosticURL, err)
 		return nil
 	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 	if works, err = s.attachRemoteWorkLibraryState(ctx, userID, works); err != nil {
 		return err
 	}

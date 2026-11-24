@@ -7,6 +7,7 @@ import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type RecordAsset, type RecordProgress, type VideoPlaybackInfo } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import { usePlayer } from "@/player/PlayerProvider";
 import { VideoPlayerHeader } from "@/player/video/VideoPlayerHeader";
@@ -98,41 +99,37 @@ export function RecordMediaPlayer({
     else setPhase({ kind: "prompt", position });
   });
   useEffect(() => {
-    const controller = new AbortController();
-    if (initialProgress) decide(initialProgress);
-    else
-      void api
-        .getRecordProgress(asset.id, controller.signal)
-        .then((progress) => {
-          if (!controller.signal.aborted) decide(progress);
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) decide(undefined);
-        });
-    return () => controller.abort();
+    if (initialProgress) {
+      decide(initialProgress);
+      return;
+    }
+    return startLoad((signal) => api.getRecordProgress(asset.id, signal), {
+      onSuccess: (progress) => decide(progress),
+      onError: () => decide(undefined),
+    });
   }, [decide, initialProgress, asset.id]);
 
   // Ask how the video plays while the start position is being chosen.
   useEffect(() => {
-    const controller = new AbortController();
-    void prepareVideoPlayback(
-      async () =>
-        api.getRecordPlayback(
-          asset.id,
-          { capabilities: await videoPlaybackCapabilities(), forceTranscode },
-          controller.signal,
+    return startLoad(
+      (signal) =>
+        prepareVideoPlayback(
+          async () =>
+            api.getRecordPlayback(
+              asset.id,
+              { capabilities: await videoPlaybackCapabilities(), forceTranscode },
+              signal,
+            ),
+          signal,
         ),
-      controller.signal,
-    )
-      .then((value) => {
-        if (!controller.signal.aborted) setSource({ forceTranscode, playback: value });
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        const status = reason && typeof reason === "object" && "status" in reason ? reason.status : null;
-        setError({ busy: status === 503 || status === 429 });
-      });
-    return () => controller.abort();
+      {
+        onSuccess: (value) => setSource({ forceTranscode, playback: value }),
+        onError: (reason) => {
+          const status = reason && typeof reason === "object" && "status" in reason ? reason.status : null;
+          setError({ busy: status === 503 || status === 429 });
+        },
+      },
+    );
   }, [asset.id, forceTranscode, retryToken]);
 
   // A video takes over from the global audio player when it starts, and

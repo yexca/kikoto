@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -233,7 +232,7 @@ func (s *Server) writeRankingShownWorksAction(w http.ResponseWriter, r *http.Req
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	var request struct {
@@ -243,11 +242,11 @@ func (s *Server) writeRankingShownWorksAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if request.SnapshotID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "snapshotId is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "snapshotId is required", false)
 		return
 	}
 	if _, err := s.loadVisibleRankingList(r.Context(), actor, id); errors.Is(err, errRankingListNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", err.Error(), false)
 		return
 	} else if err != nil {
 		writeError(w, err)
@@ -303,17 +302,13 @@ func (s *Server) writeReleaseFeedShownWorksAction(w http.ResponseWriter, r *http
 func decodeShownWorksRequest(w http.ResponseWriter, r *http.Request, request any) bool {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return false
-	}
-	return true
+	return decodeOptionalJSON(w, decoder, request)
 }
 
 func (s *Server) writeShownWorksActionResult(w http.ResponseWriter, result shownWorksActionResult, err error) {
 	switch {
 	case errors.Is(err, errRankingPageSnapshotNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", err.Error(), false)
 	case errors.Is(err, errShownWorksNoRemoteSource):
 		writeAPIError(w, http.StatusConflict, "no_remote_source", err.Error(), false)
 	case err != nil:
@@ -462,12 +457,12 @@ func (s *Server) executeShownWorksMetadataSyncJob(ctx context.Context, job workf
 func (s *Server) runShownWorksMetadataSync(ctx context.Context, job workflowJobRecord, syncer dlsiteFamilyMetadataSyncer) error {
 	var payload shownWorksPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	checkpoint := shownWorksMetadataCheckpoint{Failed: []string{}}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	for checkpoint.Next < len(payload.Codes) {
@@ -519,12 +514,12 @@ func (s *Server) runShownWorksMetadataSync(ctx context.Context, job workflowJobR
 func (s *Server) executeShownWorksSourceCheckJob(ctx context.Context, job workflowJobRecord) error {
 	var payload shownWorksPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	checkpoint := shownWorksSourceCheckpoint{Sources: []shownWorksSource{}, Results: []shownWorksSourceAnswer{}}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	healthy, err := s.healthyRemoteSourceIDsForAvailability(ctx, 0)
@@ -532,13 +527,13 @@ func (s *Server) executeShownWorksSourceCheckJob(ctx context.Context, job workfl
 		return ctxErr
 	}
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if !checkpoint.Started {
 		sources, err := s.loadRemoteSourcesForAvailability(ctx)
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		}
 		for _, source := range sources {
@@ -572,7 +567,7 @@ func (s *Server) executeShownWorksSourceCheckJob(ctx context.Context, job workfl
 			return ctxErr
 		}
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		}
 		answer := shownWorksSourceAnswer{Code: code, Available: []int64{}, Missing: []int64{}}

@@ -25,13 +25,13 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	var exists int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM work WHERE id = ?", workID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -45,11 +45,11 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 		UserRating json.RawMessage `json:"userRating"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if payload.Favorite != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use favorite lists to change list membership"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "use favorite lists to change list membership", false)
 		return
 	}
 	// The family's canonical work holds the state, also when the request
@@ -74,7 +74,7 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 	if len(payload.UserRating) > 0 {
 		next, ok := parseUserRating(payload.UserRating)
 		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "userRating must be a whole number from 1 to 5 or null"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "userRating must be a whole number from 1 to 5 or null", false)
 			return
 		}
 		rating = next
@@ -87,7 +87,7 @@ func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
 		status = "none"
 	}
 	if !validListeningStatus(status) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid listening status"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid listening status", false)
 		return
 	}
 	if _, err := s.db.ExecContext(r.Context(), `

@@ -222,7 +222,7 @@ func (s *Server) settleJobCancelledWhileWaitingForLibrary(ctx context.Context, j
 		s.Go(func(ctx context.Context) { s.settleCancelledWorkFolderEdit(ctx, job.RunID) })
 		return
 	}
-	_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
+	logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
 }
 
 // changesLibraryFolders reports whether a job changes or scans library folders

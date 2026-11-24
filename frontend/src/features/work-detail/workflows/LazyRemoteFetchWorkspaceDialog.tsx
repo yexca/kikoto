@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { RemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useStableCallback } from "@/hooks/useStableCallback";
+import { startLoad } from "@/lib/effectScope";
 
 type RemoteFetchWorkspaceDialogComponent = ComponentType<{ workspace: RemoteFetchWorkspace }>;
 
@@ -47,18 +48,10 @@ export function LazyRemoteFetchWorkspaceDialog({ workspace }: { workspace: Remot
 
   useEffect(() => {
     if (!open || Dialog) return;
-    let cancelled = false;
-    preloadRemoteFetchWorkspaceDialog().then(
-      (component) => {
-        if (!cancelled) setDialog(() => component);
-      },
-      (error: unknown) => {
-        if (!cancelled) closeAfterLoadFailure(error);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
+    return startLoad(() => preloadRemoteFetchWorkspaceDialog(), {
+      onSuccess: (component) => setDialog(() => component),
+      onError: closeAfterLoadFailure,
+    });
   }, [Dialog, closeAfterLoadFailure, open]);
 
   if (!open || !Dialog) return null;

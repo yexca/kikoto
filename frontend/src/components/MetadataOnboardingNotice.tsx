@@ -7,6 +7,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { api, type MetadataOnboarding } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { createEffectScope } from "@/lib/effectScope";
 
 export function MetadataOnboardingNotice({ active }: { active: boolean }) {
   const auth = useAuth();
@@ -25,28 +26,29 @@ function MetadataNotice({ canViewActivity }: { canViewActivity: boolean }) {
   const generation = useRef(0);
 
   useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
-      const version = generation.current;
-      let keepPolling = true;
-      try {
-        if (!document.hidden && !mutation.current) {
-          const result = await api.getMetadataOnboarding(controller.signal);
-          if (!controller.signal.aborted && version === generation.current) setView(result);
-          if (result.status === "hidden" && version === generation.current) keepPolling = false;
-        }
-      } catch {
-        // This optional prompt must never replace known Library content.
-      } finally {
-        if (!controller.signal.aborted && keepPolling) timer = setTimeout(() => void refresh(), 5000);
-      }
-    };
-    void refresh();
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
+    const scope = createEffectScope();
+    const refresh = (delayMs?: number) =>
+      scope.load(
+        async (signal) => {
+          const version = generation.current;
+          const result = document.hidden || mutation.current ? null : await api.getMetadataOnboarding(signal);
+          return { version, result };
+        },
+        {
+          onSuccess: ({ version, result }) => {
+            if (result && version === generation.current) {
+              setView(result);
+              if (result.status === "hidden") return;
+            }
+            refresh(5000);
+          },
+          // This optional prompt must never replace known Library content.
+          onError: () => refresh(5000),
+        },
+        { delayMs },
+      );
+    refresh();
+    return scope.cancel;
   }, []);
 
   async function act(action: "start" | "dismiss") {

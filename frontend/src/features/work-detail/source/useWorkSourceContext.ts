@@ -9,6 +9,8 @@ import {
   type SourceAvailabilityResponse,
   type WorkDetail,
 } from "@/lib/api";
+import { createEffectScope, startLoad } from "@/lib/effectScope";
+import { combineAbortSignals } from "@/lib/inflightRequests";
 import {
   buildSourceTabs,
   buildTrackedPresenceOptions,
@@ -256,18 +258,10 @@ export function useWorkSourceContext({
     setRemoteSources(seedRemoteSources(sources, seedCode));
     setSourceCheckedAt("");
     if (!availabilityCode || sources.length === 0) return;
-    let cancelled = false;
-    api
-      .getSourceAvailability(availabilityCode)
-      .then((result) => {
-        if (!cancelled) applyAvailability(result);
-      })
-      .catch(() => {
-        if (!cancelled) setRemoteSources(seedRemoteSources(sources, availabilityCode));
-      });
-    return () => {
-      cancelled = true;
-    };
+    return startLoad(() => api.getSourceAvailability(availabilityCode), {
+      onSuccess: applyAvailability,
+      onError: () => setRemoteSources(seedRemoteSources(sources, availabilityCode)),
+    });
   }, [applyAvailability, availabilityCode, seedCode, sources]);
 
   // The load below marks the selected source as loading, so it reads the
@@ -290,22 +284,21 @@ export function useWorkSourceContext({
       selectedRemoteSource.error
     )
       return;
-    const controller = new AbortController();
+    const scope = createEffectScope();
+    // Choosing an edition also loads this source, so only the latest request reports.
     const requestID = ++remoteRequestSequence.current;
-    let timedOut = false;
-    const timeout = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 20_000);
+    // A load that times out still reports, unlike one the effect cancelled.
+    const deadline = AbortSignal.timeout(20_000);
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) =>
       items.map((item) =>
         item.source.id === sourceID ? { ...item, loading: true, error: "", treeLoading: false, treeError: "" } : item,
       ),
     );
-    void (async () => {
+    const load = async (signal: AbortSignal) => {
+      const request = combineAbortSignals(signal, deadline);
       try {
-        const metadata = await api.getRemoteSourceWorkMetadata(sourceID, selectedRemoteWorkCode, controller.signal);
+        const metadata = await api.getRemoteSourceWorkMetadata(sourceID, selectedRemoteWorkCode, request.signal);
         const detail: RemoteWorkDetail = { ...metadata, tracks: [] };
         setRemoteSources((items) =>
           items.map((item) =>
@@ -332,7 +325,7 @@ export function useWorkSourceContext({
         const tree = await api.getRemoteSourceWorkTracks(
           sourceID,
           metadata.remoteCode || selectedRemoteWorkCode,
-          controller.signal,
+          request.signal,
         );
         setRemoteSources((items) =>
           items.map((item) =>
@@ -346,47 +339,53 @@ export function useWorkSourceContext({
               : item,
           ),
         );
-      } catch (error) {
-        if (requestID !== remoteRequestSequence.current) return;
-        if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
-        setRemoteSources((items) =>
-          items.map((item) =>
-            item.source.id === sourceID
-              ? {
-                  ...item,
-                  loading: false,
-                  error: item.detail
-                    ? ""
-                    : timedOut
-                      ? "Remote source timed out. Retry to try again."
-                      : error instanceof Error
-                        ? error.message
-                        : "Remote detail failed.",
-                  treeLoading: false,
-                  treeError: item.detail
-                    ? timedOut
-                      ? "Remote directory timed out. Retry to try again."
-                      : error instanceof Error
-                        ? error.message
-                        : "Remote directory failed."
-                    : "",
-                }
-              : item,
-          ),
-        );
       } finally {
-        window.clearTimeout(timeout);
+        request.dispose();
+      }
+    };
+    void scope
+      .load(load, {
+        onError: (error) => {
+          if (requestID !== remoteRequestSequence.current) return;
+          const timedOut = deadline.aborted;
+          if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
+          setRemoteSources((items) =>
+            items.map((item) =>
+              item.source.id === sourceID
+                ? {
+                    ...item,
+                    loading: false,
+                    error: item.detail
+                      ? ""
+                      : timedOut
+                        ? "Remote source timed out. Retry to try again."
+                        : error instanceof Error
+                          ? error.message
+                          : "Remote detail failed.",
+                    treeLoading: false,
+                    treeError: item.detail
+                      ? timedOut
+                        ? "Remote directory timed out. Retry to try again."
+                        : error instanceof Error
+                          ? error.message
+                          : "Remote directory failed."
+                      : "",
+                  }
+                : item,
+            ),
+          );
+        },
+      })
+      // The loading marks clear even after the effect cancels its load, which
+      // can return early once the metadata arrives, unless a newer request owns them.
+      .then(() => {
         if (requestID === remoteRequestSequence.current) {
           setRemoteSources((items) =>
             items.map((item) => (item.source.id === sourceID ? { ...item, loading: false, treeLoading: false } : item)),
           );
         }
-      }
-    })();
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
+      });
+    return scope.cancel;
   }, [
     initialRemoteCode,
     initialSourceIntent,

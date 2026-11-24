@@ -51,7 +51,7 @@ func (s *Server) getRemoteTrackRunStatus(w http.ResponseWriter, r *http.Request)
 	}
 	runID, err := parseInt64PathValue(r, "id")
 	if err != nil || runID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid track run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid track run id", false)
 		return
 	}
 	var result remoteTrackRunStatus
@@ -65,7 +65,7 @@ func (s *Server) getRemoteTrackRunStatus(w http.ResponseWriter, r *http.Request)
 		WHERE run.id = ? AND run.workflow_code = 'remote_source_sync'
 	`, actor.ID, runID).Scan(&result.RunID, &result.Status, &result.SummaryJSON)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "track run not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "track run not found", false)
 		return
 	}
 	if err != nil {
@@ -186,7 +186,7 @@ func (s *Server) dismissNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid notification id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid notification id", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), `
@@ -200,7 +200,7 @@ func (s *Server) dismissNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "notification not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "notification not found", false)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})

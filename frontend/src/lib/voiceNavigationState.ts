@@ -16,7 +16,7 @@ export function isVoiceListLocation(location: string) {
 
 export function readLastVoiceListLocation(storageScope: string) {
   try {
-    const value = window.sessionStorage.getItem(storageKey(storageScope));
+    const value = window.sessionStorage.getItem(voiceNavigationStorageKey(storageScope));
     return value && isVoiceListLocation(value) ? normalizeInternalLocation(value) : null;
   } catch {
     return null;
@@ -27,13 +27,13 @@ export function writeLastVoiceListLocation(storageScope: string, location: strin
   const normalized = normalizeInternalLocation(location);
   if (!normalized || !isVoiceListLocation(normalized)) return;
   try {
-    window.sessionStorage.setItem(storageKey(storageScope), normalized);
+    window.sessionStorage.setItem(voiceNavigationStorageKey(storageScope), normalized);
   } catch {
     // Navigation remains usable when session storage is unavailable.
   }
 }
 
-function storageKey(storageScope: string) {
+function voiceNavigationStorageKey(storageScope: string) {
   return `${lastVoiceListLocationPrefix}${storageScope}`;
 }
 

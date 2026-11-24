@@ -158,17 +158,18 @@ export const workFolderEditApi = {
   /** Asks every remote source about each family edition, then lists the sources with the answers. */
   checkWorkFolderEditSources: (workId: number, signal?: AbortSignal) =>
     postJSONBody<WorkFolderEditSources>(`/api/works/${workId}/folder-edit/sources/check`, {}, signal),
-  planWorkFolderEdit: (workId: number, request: WorkFolderEditRequest) =>
-    postJSONBody<WorkFolderEditPlan>(`/api/works/${workId}/folder-edit/plan`, request),
+  planWorkFolderEdit: (workId: number, request: WorkFolderEditRequest, signal?: AbortSignal) =>
+    postJSONBody<WorkFolderEditPlan>(`/api/works/${workId}/folder-edit/plan`, request, signal),
   /** Compares the merged folders' files with the folder as the edit leaves it. */
   checkWorkFolderEditMerge: (workId: number, request: WorkFolderEditRequest, signal?: AbortSignal) =>
     postJSONBody<WorkFolderEditMergeCheck>(`/api/works/${workId}/folder-edit/merge-check`, request, signal),
   applyWorkFolderEdit: (workId: number, request: WorkFolderEditRequest) =>
     postJSONBody<WorkFolderEditResult>(`/api/works/${workId}/folder-edit`, request),
-  planComposedFetch: (sourceId: number, remoteCode: string, request: ComposedFetchRequest) =>
+  planComposedFetch: (sourceId: number, remoteCode: string, request: ComposedFetchRequest, signal?: AbortSignal) =>
     postJSONBody<ComposedFetchPlan>(
       `/api/remote-sources/${sourceId}/works/${encodeURIComponent(remoteCode)}/fetch-plan`,
       request,
+      signal,
     ),
   applyComposedFetch: (sourceId: number, remoteCode: string, request: ComposedFetchRequest) =>
     postJSONBody<RemoteWorkSaveResult>(

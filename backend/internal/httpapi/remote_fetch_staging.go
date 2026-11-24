@@ -37,6 +37,11 @@ type remoteFetchManifestRecord struct {
 	ErrorMessage   string
 }
 
+// workflowJob identifies the Fetch's job for logging a failed state write.
+func (manifest remoteFetchManifestRecord) workflowJob() workflowJobRecord {
+	return workflowJobRecord{ID: manifest.WorkflowJobID, RunID: manifest.WorkflowRunID}
+}
+
 func createRemoteFetchManifest(ctx context.Context, tx *sql.Tx, runID int64, jobID int64, requestID string, workID int64, remoteSourceID int64, localSourceID int64, plan remoteWorkSavePlan) (int64, error) {
 	// Staging and backup live on the target's pool so publication and
 	// rollback are same-filesystem renames.
@@ -209,7 +214,7 @@ func (s *Server) remoteFetchPublishPaths(manifest remoteFetchManifestRecord) (re
 
 func (s *Server) markUnchangedRemoteFetchPublished(ctx context.Context, manifest remoteFetchManifestRecord) error {
 	for _, nodeID := range []string{"stage", "verify", "promote"} {
-		_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, nodeID, "succeeded", map[string]any{"unchanged": true})
+		logWorkflowWriteError(ctx, "finish Fetch phase "+nodeID, manifest.workflowJob(), s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, nodeID, "succeeded", map[string]any{"unchanged": true}))
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE remote_fetch_manifest
@@ -220,7 +225,7 @@ func (s *Server) markUnchangedRemoteFetchPublished(ctx context.Context, manifest
 }
 
 func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan, paths remoteFetchPublishPaths) error {
-	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "stage", "running", nil)
+	logWorkflowProgressWriteError(ctx, "start Fetch phase stage", manifest.workflowJob(), s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "stage", "running", nil))
 	if manifest.State == "planned" {
 		if err := s.initializeRemoteFetchStaging(ctx, manifest, paths); err != nil {
 			return err
@@ -336,7 +341,7 @@ func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetc
 	if err := walkFetchDirectory(root, scoped.stageRoot, nil); err != nil {
 		return err
 	}
-	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "verify", "running", nil)
+	logWorkflowProgressWriteError(ctx, "start Fetch phase verify", manifest.workflowJob(), s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "verify", "running", nil))
 	staged := distinctFetchFiles{}
 	for _, item := range plan.Items {
 		if item.Action == "skip" || item.Action == "exclude" {
@@ -430,7 +435,7 @@ func (s *Server) publishRemoteFetchFiles(ctx context.Context, manifest remoteFet
 	ctx = context.WithoutCancel(ctx)
 	stateCtx, cancel := context.WithTimeout(ctx, remoteFetchPublishTimeout)
 	defer cancel()
-	_ = s.updateRemoteFetchPhaseNode(stateCtx, manifest.WorkflowRunID, "promote", "running", nil)
+	logWorkflowProgressWriteError(stateCtx, "start Fetch phase promote", manifest.workflowJob(), s.updateRemoteFetchPhaseNode(stateCtx, manifest.WorkflowRunID, "promote", "running", nil))
 	if err := s.updateRemoteFetchManifestState(stateCtx, manifest.ID, "publishing", ""); err != nil {
 		return err
 	}

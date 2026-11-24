@@ -207,7 +207,7 @@ export function LyricsAssignmentRow({
           <LyricsPreview
             label={effectiveLyrics.path}
             loadKey={`local:${effectiveLyrics.locationId}`}
-            load={() => loadLocalLyricsText(effectiveLyrics.locationId)}
+            load={(signal) => loadLocalLyricsText(effectiveLyrics.locationId, signal)}
             durationSeconds={entry.durationSeconds}
           />
         </div>
@@ -297,7 +297,7 @@ export function LyricsAssignmentPanel({
             variant="panel"
             label={effectiveLyrics.path}
             loadKey={`local:${effectiveLyrics.locationId}`}
-            load={() => loadLocalLyricsText(effectiveLyrics.locationId)}
+            load={(signal) => loadLocalLyricsText(effectiveLyrics.locationId, signal)}
             durationSeconds={entry.durationSeconds}
           />
         ) : (

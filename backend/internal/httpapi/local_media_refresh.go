@@ -30,13 +30,13 @@ func (s *Server) refreshWorkLocalFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	request := localMediaRefreshRequest{}
 	if r.Body != nil && r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 			return
 		}
 	}
@@ -62,7 +62,7 @@ func (s *Server) refreshWorkLocalFiles(w http.ResponseWriter, r *http.Request) {
 	`, workID, request.FileSourceID, request.FileSourceID).Scan(&targetWorkID, &fileSourceID, &relPath)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no local folder is linked to this work"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "no local folder is linked to this work", false)
 			return
 		}
 		writeError(w, err)
@@ -116,7 +116,7 @@ func (s *Server) refreshWorkLocalFolder(w http.ResponseWriter, r *http.Request, 
 			AND (? = 0 OR folder.file_source_id = ?)
 	`, request.FolderID, workID, request.FileSourceID, request.FileSourceID).Scan(&fileSourceID, &root)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such local folder of this work"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "no such local folder of this work", false)
 		return
 	}
 	if err != nil {
@@ -124,7 +124,7 @@ func (s *Server) refreshWorkLocalFolder(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if root = normalizeFolderRootPath(root); root == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such local folder of this work"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "no such local folder of this work", false)
 		return
 	}
 	if err := s.ensureLibraryPathOnline(r.Context(), root); err != nil {

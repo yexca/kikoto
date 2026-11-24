@@ -1,6 +1,12 @@
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { NAVIGATION_EVENT } from "./browserHistory";
 
-/** Addresses of the Workflows page: its run lists, one run, and the links other pages use to open them. */
+/**
+ * Addresses of the Workflows page: its run lists, one run, and the links other
+ * pages use to open them. This module is the only place that spells one; it
+ * lives in `lib` so shared code and every feature can open a run without
+ * importing a feature. `oxlint-workflow-links.mjs` rejects an address written
+ * anywhere else.
+ */
 
 export const WORKFLOWS_PATH = "/workflows";
 
@@ -39,9 +45,15 @@ export function workflowRunPath(runId: number) {
   return `${WORKFLOWS_PATH}?run=${runId}`;
 }
 
+/** Pushes an address of Workflows and tells the app shell the location changed. */
 export function openWorkflowPath(path: string) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
+}
+
+/** Opens one run on its own page, the action behind every "open the run" toast and link. */
+export function openWorkflowRun(runId: number) {
+  openWorkflowPath(workflowRunPath(runId));
 }
 
 /**

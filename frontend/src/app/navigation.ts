@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { WORKFLOWS_PATH } from "../lib/workflowLinks";
 import { CLEANUP_PATH, SYSTEM_SETTINGS_PATH } from "../pages/settingsPaths";
 
 type NavItem = {
@@ -167,7 +168,7 @@ export const navItems = [
     id: "workflows",
     label: "Workflows",
     labelKey: "nav.workflows",
-    path: "/workflows",
+    path: WORKFLOWS_PATH,
     icon: Workflow,
     audience: "admin",
     permission: "workflows:run",

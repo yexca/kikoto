@@ -89,6 +89,8 @@ func (s *Server) loadSourcePresenceCheck(ctx context.Context, sourceID int64) (f
 			Checked   int `json:"checked_works"`
 			Available int `json:"available_works"`
 		}
+		// Tolerant: the counts only label the last run, and an unreadable
+		// summary must not hide the source's check settings.
 		_ = json.Unmarshal([]byte(summaryJSON), &summary)
 		run.CheckedWorks, run.AvailableWorks = summary.Checked, summary.Available
 		check.LastRun = &run

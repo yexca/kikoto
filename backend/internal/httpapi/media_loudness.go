@@ -80,12 +80,12 @@ func mediaLoudnessFromColumns(integrated, peak sql.NullFloat64, kind sql.NullStr
 func (s *Server) getMediaLoudness(w http.ResponseWriter, r *http.Request) {
 	locationID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	target, _, err := s.loadMediaStreamTarget(r.Context(), locationID)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media location not found", false)
 		return
 	}
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *Server) getMediaLoudness(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := safeResolvedPath(s.cfg.DataRoot, target.RelativePath)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media path", false)
 		return
 	}
 	loudness, err := s.mediaLoudness(r.Context(), locationID, path)

@@ -17,6 +17,8 @@ import {
   type SourceAvailabilityResponse,
   type WorkDetail,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
+import { combineAbortSignals } from "@/lib/inflightRequests";
 
 function initialRemoteAvailability(
   sources: LibrarySource[],
@@ -96,12 +98,11 @@ export function useRemoteOnlyWorkDetailData({
     );
 
   useEffect(() => {
-    let cancelled = false;
     setAvailabilityLoading(true);
-    api
-      .getSourceAvailability(code)
-      .then(async (result) => {
-        if (cancelled) return;
+    return startLoad(
+      async (signal) => {
+        const result = await api.getSourceAvailability(code);
+        signal.throwIfAborted();
         setRemoteAvailability((current) =>
           current.map((item) => {
             const summary = result.sources.find((candidate) => candidate.sourceId === item.source.id);
@@ -114,19 +115,13 @@ export function useRemoteOnlyWorkDetailData({
           return;
         }
         try {
-          const nextWork = await api.getWork(summary.workId);
-          if (!cancelled) setTrackedWork(nextWork);
+          setTrackedWork(await api.getWork(summary.workId, signal));
         } catch {
           // Availability still controls Track state when materialized detail cannot be loaded.
         }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setAvailabilityLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      { onSettled: () => setAvailabilityLoading(false) },
+    );
   }, [code, remoteRetryToken, source.id]);
 
   useEffect(() => {
@@ -146,64 +141,60 @@ export function useRemoteOnlyWorkDetailData({
     setMessage("");
     setTreeError("");
     setTreeLoading(true);
-    const controller = new AbortController();
-    let timedOut = false;
-    const timeout = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 20_000);
-    void loadRemoteOnlyDetail({
-      sourceID: source.id,
-      code,
-      signal: controller.signal,
-      didTimeOut: () => timedOut,
-      onMetadata: (next) => {
-        setDetail((current) => ({ ...next, tracks: current?.tracks ?? [] }));
-        setIdentityDetail(next);
-        setRemoteAvailability((items) =>
-          items.map((item) =>
-            item.source.id === source.id
-              ? {
-                  ...item,
-                  summary: {
-                    ...item.summary,
-                    status: "available",
-                    remoteId: next.remoteId,
-                    primaryCode: next.primaryCode,
-                    title: next.title,
-                    coverUrl: next.coverUrl,
-                    workId: next.workId,
-                    hasRemote: true,
-                  },
-                }
-              : item,
-          ),
-        );
+    // A load that times out still reports, unlike one the effect cancelled.
+    const deadline = AbortSignal.timeout(20_000);
+    return startLoad(
+      (signal) => {
+        const request = combineAbortSignals(signal, deadline);
+        return loadRemoteOnlyDetail({
+          sourceID: source.id,
+          code,
+          signal: request.signal,
+          didTimeOut: () => deadline.aborted,
+          onMetadata: (next) => {
+            setDetail((current) => ({ ...next, tracks: current?.tracks ?? [] }));
+            setIdentityDetail(next);
+            setRemoteAvailability((items) =>
+              items.map((item) =>
+                item.source.id === source.id
+                  ? {
+                      ...item,
+                      summary: {
+                        ...item.summary,
+                        status: "available",
+                        remoteId: next.remoteId,
+                        primaryCode: next.primaryCode,
+                        title: next.title,
+                        coverUrl: next.coverUrl,
+                        workId: next.workId,
+                        hasRemote: true,
+                      },
+                    }
+                  : item,
+              ),
+            );
+          },
+          onTracks: (tracks) => {
+            setDetail((current) => (current ? { ...current, tracks } : current));
+            setTreeError("");
+          },
+          onTreeError: setTreeError,
+        }).finally(request.dispose);
       },
-      onTracks: (tracks) => {
-        setDetail((current) => (current ? { ...current, tracks } : current));
-        setTreeError("");
+      {
+        onSuccess: (outcome) => {
+          if (outcome.kind === "not_found") {
+            setNotFound(true);
+            return;
+          }
+          if (outcome.kind === "failed") {
+            setMessage(outcome.message);
+            toast.notify({ kind: "error", message: outcome.message });
+          }
+        },
+        onSettled: () => setTreeLoading(false),
       },
-      onTreeError: setTreeError,
-    })
-      .then((outcome) => {
-        if (outcome.kind === "not_found") {
-          setNotFound(true);
-          return;
-        }
-        if (outcome.kind === "failed") {
-          setMessage(outcome.message);
-          toast.notify({ kind: "error", message: outcome.message });
-        }
-      })
-      .finally(() => {
-        window.clearTimeout(timeout);
-        if (!controller.signal.aborted || timedOut) setTreeLoading(false);
-      });
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
+    );
   }, [source.id, code, remoteRetryToken, toast]);
 
   useEffect(() => {

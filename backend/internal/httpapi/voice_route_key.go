@@ -137,7 +137,7 @@ func (s *Server) getVoiceRoute(w http.ResponseWriter, r *http.Request) {
 	route, err := s.resolveVoiceRouteKey(r.Context(), r.PathValue("routeKey"))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)

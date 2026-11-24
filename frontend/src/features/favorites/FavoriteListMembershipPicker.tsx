@@ -5,6 +5,7 @@ import { FavoriteListPicker, type FavoriteListPickerOption } from "@/components/
 import { FavoriteListPickerSurface } from "@/components/favorite-list/FavoriteListPickerSurface";
 import { Button } from "@/components/ui/button";
 import { api, type FavoriteList } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import {
   membershipChanges,
@@ -58,27 +59,20 @@ export function FavoriteListMembershipPicker({
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
     setInitialStates(null);
     setCreated([]);
     setErrorKey("");
     // workKey captures the selection; the array identity changes on every render.
     const selectedWorkIDs = workKey ? workKey.split(",").map(Number) : [];
-    api
-      .summarizeFavoriteListMembership(selectedWorkIDs)
-      .then((summary) => {
-        if (cancelled) return;
+    return startLoad(() => api.summarizeFavoriteListMembership(selectedWorkIDs), {
+      onSuccess: (summary) => {
         const loaded = membershipStatesFromSummary(summary);
         setInitialStates(loaded);
         setStates(new Map(loaded));
         setCounts({ total: summary.total, byList: new Map(summary.lists.map((list) => [list.listId, list.count])) });
-      })
-      .catch(() => {
-        if (!cancelled) setErrorKey("favorites.listLoadFailed");
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      onError: () => setErrorKey("favorites.listLoadFailed"),
+    });
   }, [open, workKey]);
 
   const lists = useMemo(() => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { api, type AvailabilityWatch, type LibrarySource } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -32,11 +33,9 @@ export function useAvailabilityWatch(active: boolean) {
 
   useEffect(() => {
     if (!active || loaded) return;
-    let cancelled = false;
     setLoading(true);
-    Promise.all([api.getAvailabilityWatch(), api.listLibrarySources()])
-      .then(([next, nextSources]) => {
-        if (cancelled) return;
+    return startLoad((signal) => Promise.all([api.getAvailabilityWatch(), api.listLibrarySources(signal)]), {
+      onSuccess: ([next, nextSources]) => {
         fresh.current = true;
         setWatch(next);
         setSources(
@@ -46,17 +45,11 @@ export function useAvailabilityWatch(active: boolean) {
           ),
         );
         setLoadError("");
-      })
-      .catch((error) => {
-        if (!cancelled)
-          setLoadError(error instanceof Error ? error.message : workflowCopy("availabilityWatchLoadFailed"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      onError: (error) =>
+        setLoadError(error instanceof Error ? error.message : workflowCopy("availabilityWatchLoadFailed")),
+      onSettled: () => setLoading(false),
+    });
   }, [active, loaded, loadKey]);
 
   // A later activation reads the watch again, since cards elsewhere on the

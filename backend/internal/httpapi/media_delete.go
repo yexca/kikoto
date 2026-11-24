@@ -19,7 +19,7 @@ func (s *Server) deleteMediaCacheLocation(w http.ResponseWriter, r *http.Request
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	result, err := s.enqueueMediaLocationCleanup(r.Context(), []mediaCleanupTargetRequest{{Kind: "cache", LocationID: id}})
@@ -36,7 +36,7 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	result, err := s.enqueueMediaLocationCleanup(r.Context(), []mediaCleanupTargetRequest{{Kind: "local", LocationID: id}})
@@ -172,7 +172,7 @@ func (err symlinkMediaLocationError) Error() string {
 func (s *Server) executeMediaCacheCleanupJob(ctx context.Context, job workflowJobRecord) error {
 	var payload mediaCacheCleanupJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	_, deleted, err := s.clearCacheLocation(ctx, payload.CacheLocationID, payload.CachePath)
@@ -318,7 +318,7 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 			// The request ended first; the deletion returns to the queue.
 			return queued, nil
 		}
-		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
+		logWorkflowWriteError(jobCtx, "finish local media delete", workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: deleteNodeID}, s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error()))
 		return mediaLocalDeleteResult{}, err
 	}
 	if _, err := s.db.ExecContext(jobCtx, `
@@ -331,7 +331,7 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 		if ctx.Err() != nil {
 			return queued, nil
 		}
-		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
+		logWorkflowWriteError(jobCtx, "finish local media delete", workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: deleteNodeID}, s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error()))
 		return mediaLocalDeleteResult{}, err
 	}
 	if err := s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "succeeded", target.LocationID, target.RelPath, deleted, ""); err != nil {
@@ -355,7 +355,7 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJobRecord) error {
 	var payload localMediaDeleteJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	currentPath, err := s.checkQueuedLocalMediaFile(ctx, queuedLocalMediaFile{

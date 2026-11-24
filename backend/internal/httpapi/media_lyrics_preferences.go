@@ -21,7 +21,7 @@ func (s *Server) setMediaLyricsPreference(w http.ResponseWriter, r *http.Request
 	}
 	audioID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid audio media item id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid audio media item id", false)
 		return
 	}
 	var payload struct {
@@ -31,11 +31,11 @@ func (s *Server) setMediaLyricsPreference(w http.ResponseWriter, r *http.Request
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil ||
 		(payload.LyricsMediaItemID == nil && payload.LyricsOffsetMs == nil) ||
 		(payload.LyricsMediaItemID != nil && *payload.LyricsMediaItemID <= 0) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lyricsMediaItemId or lyricsOffsetMs is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "lyricsMediaItemId or lyricsOffsetMs is required", false)
 		return
 	}
 	if payload.LyricsOffsetMs != nil && (*payload.LyricsOffsetMs < -lyricsOffsetLimitMs || *payload.LyricsOffsetMs > lyricsOffsetLimitMs) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lyricsOffsetMs must be between -30000 and 30000"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "lyricsOffsetMs must be between -30000 and 30000", false)
 		return
 	}
 	var audioWorkID int64
@@ -45,7 +45,7 @@ func (s *Server) setMediaLyricsPreference(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if audioKind != "audio" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lyrics preference must link audio and text media from the same work"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "lyrics preference must link audio and text media from the same work", false)
 		return
 	}
 	if payload.LyricsMediaItemID != nil && !s.validLyricsPreferenceTarget(w, r, audioWorkID, *payload.LyricsMediaItemID) {
@@ -140,7 +140,7 @@ func (s *Server) validLyricsPreferenceTarget(w http.ResponseWriter, r *http.Requ
 		return false
 	}
 	if !isLyricsMediaKind(lyricsKind, lyricsPath) || audioWorkID != lyricsWorkID {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lyrics preference must link audio and text media from the same work"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "lyrics preference must link audio and text media from the same work", false)
 		return false
 	}
 	return true
@@ -153,7 +153,7 @@ func (s *Server) clearMediaLyricsPreference(w http.ResponseWriter, r *http.Reque
 	}
 	audioID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid audio media item id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid audio media item id", false)
 		return
 	}
 	// The offset stays: it describes the timing of this audio, not the choice
@@ -178,7 +178,7 @@ func isLyricsMediaKind(kind string, path string) bool {
 
 func writeMediaPreferenceLookupError(w http.ResponseWriter, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media item not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
 		return
 	}
 	writeError(w, err)

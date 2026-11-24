@@ -164,6 +164,8 @@ func queuedFullLocalScanTx(ctx context.Context, tx *sql.Tx) (localScanResult, bo
 		return localScanResult{}, false, err
 	}
 	var payload localScanJobPayload
+	// Tolerant: the flag only labels the run a request joins;
+	// joinQueuedLocalScanTx records the request's own follow-up on it.
 	_ = json.Unmarshal([]byte(inputJSON), &payload)
 	result.FollowUpRun = payload.FollowUpRun
 	result.NewWorkCodes, result.Failures = []string{}, []string{}
@@ -182,20 +184,20 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 }
 
 func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRecord, payload localScanJobPayload) error {
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{"root": payload.Root, "scan_mode": localScanModeFull}, 0, 0)
+	s.checkpointJobOrLog(ctx, job, "discovering", map[string]any{"root": payload.Root, "scan_mode": localScanModeFull}, 0, 0)
 	scope, err := s.localScanScope(ctx, payload.Root, payload.ScanDepth)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if len(scope.online) == 0 {
 		// Nothing can be observed, so nothing may be marked missing.
-		_ = s.failClaimedWorkflowJob(ctx, job, errLibraryUnavailable.Error())
+		s.failJobOrLog(ctx, job, errLibraryUnavailable.Error())
 		return errLibraryUnavailable
 	}
 	workFolders, scanSummary, err := localfs.DiscoverFolders(payload.Root, localfs.Options{ScanDepth: scope.walkDepth(), SubRoots: scope.subRoots()})
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	scope = scope.withUnreadableFolders(scanSummary.UnreadableFolders)
@@ -203,17 +205,17 @@ func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRec
 	scanSummary.DetectedWorks = len(workFolders)
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	result, runSummary, err := s.persistLocalScanResults(ctx, job, payload, scope, workFolders, scanSummary, nodeIDs)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{"detected_works": result.DetectedWorks}, result.ScannedFiles, result.ScannedFiles)
+	s.checkpointJobOrLog(ctx, job, "finishing", map[string]any{"detected_works": result.DetectedWorks}, result.ScannedFiles, result.ScannedFiles)
 	if err := s.finishQueuedLocalScanJob(ctx, job, nodeIDs["sync"], result, runSummary); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	s.refreshQueryPlannerStatistics(ctx)
@@ -226,7 +228,7 @@ func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRec
 func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRecord) (localScanJobPayload, error) {
 	var payload localScanJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return payload, err
 	}
 	if payload.ScanDepth <= 0 {
@@ -582,12 +584,12 @@ func (s *Server) queueLocalScanMetadataFollowUp(ctx context.Context, sourceRunID
 	result, coalesced, err := s.enqueueDLsiteMetadataSyncFollowUp(ctx, sourceRunID)
 	if err != nil {
 		slog.Error("queue local scan metadata follow-up", "source_run_id", sourceRunID, "error", err)
-		_ = s.recordWorkflowRunEvent(ctx, sourceRunID, "warning", "local_library_scan.follow_up_failed", "Metadata sync follow-up could not be queued.", map[string]any{
+		s.recordRunEventOrLog(ctx, sourceRunID, "warning", "local_library_scan.follow_up_failed", "Metadata sync follow-up could not be queued.", map[string]any{
 			"follow_up_requested": true,
 		})
 		return
 	}
-	_ = s.recordWorkflowRunEvent(ctx, sourceRunID, "info", "local_library_scan.follow_up_queued", "Metadata sync follow-up queued.", map[string]any{
+	s.recordRunEventOrLog(ctx, sourceRunID, "info", "local_library_scan.follow_up_queued", "Metadata sync follow-up queued.", map[string]any{
 		"metadata_run_id": result.RunID,
 		"coalesced":       coalesced,
 	})
@@ -741,24 +743,24 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJobRecord) error {
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?`, nodeIDs["sync"]); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"provider": "dlsite"}, 0, 0)
+	s.checkpointJobOrLog(ctx, job, "syncing", map[string]any{"provider": "dlsite"}, 0, 0)
 	var input metadataSyncRunInput
 	if strings.TrimSpace(job.PayloadJSON) != "" {
 		if err := json.Unmarshal([]byte(job.PayloadJSON), &input); err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "metadata sync input is invalid")
+			s.failJobOrLog(ctx, job, "metadata sync input is invalid")
 			return err
 		}
 	}
 	options, err := s.revalidateMetadataSyncOptions(ctx, input.metadataSyncOptions)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	var result metasync.DLsiteSyncResult
@@ -801,7 +803,7 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 		result.Failures = append(result.Failures, runErr.Error())
 	}
 	if err := s.finishQueuedDLsiteMetadataSyncJob(ctx, job, nodeIDs, result); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	s.refreshQueryPlannerStatistics(ctx)

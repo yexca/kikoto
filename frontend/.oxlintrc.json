@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react"],
+  "jsPlugins": ["./oxlint-plugin-kikoto.mjs", "./oxlint-workflow-links.mjs"],
   "categories": {
     "correctness": "off"
   },
@@ -9,7 +10,16 @@
     "browser": true
   },
   "ignorePatterns": ["dist", "node_modules"],
+  "overrides": [
+    {
+      "files": ["src/lib/workflowLinks.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+      "rules": {
+        "kikoto-workflow-links/no-handwritten-address": "off"
+      }
+    }
+  ],
   "rules": {
+    "kikoto-workflow-links/no-handwritten-address": "error",
     "for-direction": "error",
     "no-array-constructor": "error",
     "no-async-promise-executor": "error",
@@ -60,6 +70,9 @@
     "valid-typeof": "error",
     "react/exhaustive-deps": "error",
     "react/rules-of-hooks": "error",
+    "kikoto/no-hook-deps-suppression": "error",
+    "kikoto/no-effect-cancel-flag": "error",
+    "kikoto/no-effect-abort-controller": "error",
     "typescript/ban-ts-comment": "error",
     "typescript/no-duplicate-enum-values": "error",
     "typescript/no-empty-object-type": "error",

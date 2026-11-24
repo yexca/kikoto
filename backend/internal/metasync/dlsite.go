@@ -255,7 +255,7 @@ func (s *DLsiteSyncer) SyncScopeWithoutWorkflow(ctx context.Context, scope DLsit
 	result := DLsiteSyncResult{
 		Status:           "succeeded",
 		TargetWorks:      len(targets),
-		SkippedWorks:     maxInt(0, totalWorks-len(targets)),
+		SkippedWorks:     max(0, totalWorks-len(targets)),
 		ReviewCandidates: []DLsiteReviewCandidate{},
 		Failures:         []string{},
 	}
@@ -456,7 +456,8 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 	return runID, jobID, nil
 }
 
-func firstNonEmptyText(values ...string) string {
+// firstNonBlank returns the first value that is not blank, exactly as written.
+func firstNonBlank(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value
@@ -485,11 +486,4 @@ func normalizeLanguages(values []string) []string {
 		result = append(result, "")
 	}
 	return result
-}
-
-func maxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

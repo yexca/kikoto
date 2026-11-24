@@ -246,9 +246,9 @@ func buildRecommendationBreakdown(config RecommendationConfig, signals Recommend
 	if signals.Affinity != nil {
 		affinity = *signals.Affinity
 	}
-	tags := minInt(config.TagCap, int(math.Round(affinity.Tags*float64(config.TagWeight))))
-	voices := minInt(config.VoiceCap, int(math.Round(affinity.Voices*float64(config.VoiceWeight))))
-	circles := minInt(config.CircleCap, int(math.Round(affinity.Circles*float64(config.CircleWeight))))
+	tags := min(config.TagCap, int(math.Round(affinity.Tags*float64(config.TagWeight))))
+	voices := min(config.VoiceCap, int(math.Round(affinity.Voices*float64(config.VoiceWeight))))
+	circles := min(config.CircleCap, int(math.Round(affinity.Circles*float64(config.CircleWeight))))
 	favorite := 0
 	if signals.Favorite {
 		favorite = config.FavoriteBonus
@@ -257,12 +257,12 @@ func buildRecommendationBreakdown(config RecommendationConfig, signals Recommend
 	if signals.NegativeAffinity != nil {
 		disliked = *signals.NegativeAffinity
 	}
-	negativeTags := minInt(config.NegativeTagCap, int(math.Round(disliked.Tags*float64(config.NegativeTagWeight))))
-	negativeVoices := minInt(config.NegativeVoiceCap, int(math.Round(disliked.Voices*float64(config.NegativeVoiceWeight))))
-	negativeCircles := minInt(config.NegativeCircleCap, int(math.Round(disliked.Circles*float64(config.NegativeCircleWeight))))
-	negative := minInt(config.NegativeTotalCap, negativeTags+negativeVoices+negativeCircles)
+	negativeTags := min(config.NegativeTagCap, int(math.Round(disliked.Tags*float64(config.NegativeTagWeight))))
+	negativeVoices := min(config.NegativeVoiceCap, int(math.Round(disliked.Voices*float64(config.NegativeVoiceWeight))))
+	negativeCircles := min(config.NegativeCircleCap, int(math.Round(disliked.Circles*float64(config.NegativeCircleWeight))))
+	negative := min(config.NegativeTotalCap, negativeTags+negativeVoices+negativeCircles)
 	raw := config.AffinityBase + tags + voices + circles + favorite - negative
-	score := minInt(100, maxInt(0, raw))
+	score := min(100, max(0, raw))
 	return RecommendationBreakdown{
 		AlgorithmVersion: RecommendationAlgorithmVersion,
 		Lane:             recommendationLane(signals.ListeningStatus),
@@ -386,16 +386,16 @@ func recommendationMixTotal(config RecommendationConfig) int {
 }
 
 func recommendationMixLanes(config RecommendationConfig, total int) []recommendationMixLane {
-	relistenEarliest := maxInt(5, total/4+1)
-	finishedEarliest := maxInt(relistenEarliest+2, total/2-1)
-	shelvedEarliest := maxInt(finishedEarliest+2, (total*3)/4)
+	relistenEarliest := max(5, total/4+1)
+	finishedEarliest := max(relistenEarliest+2, total/2-1)
+	shelvedEarliest := max(finishedEarliest+2, (total*3)/4)
 	return []recommendationMixLane{
 		{status: "listening", slots: config.ListeningSlots, earliest: 1, priority: 0},
 		{status: "want_to_listen", slots: config.WantSlots, earliest: 1, priority: 1},
 		{status: "none", slots: config.UnmarkedSlots, earliest: 1, priority: 2},
-		{status: "relisten", slots: config.RelistenSlots, earliest: minInt(total, relistenEarliest), priority: 3},
-		{status: "finished", slots: config.FinishedSlots, earliest: minInt(total, finishedEarliest), priority: 4},
-		{status: "paused", slots: config.ShelvedSlots, earliest: minInt(total, shelvedEarliest), priority: 5},
+		{status: "relisten", slots: config.RelistenSlots, earliest: min(total, relistenEarliest), priority: 3},
+		{status: "finished", slots: config.FinishedSlots, earliest: min(total, finishedEarliest), priority: 4},
+		{status: "paused", slots: config.ShelvedSlots, earliest: min(total, shelvedEarliest), priority: 5},
 	}
 }
 
@@ -554,20 +554,6 @@ func recommendationExplorationOrderBy(idExpression string, direction string, ran
 		penalty = diversityExpression[0]
 	}
 	return fmt.Sprintf("(recommend_score + %s + %s - %s) %s, %s ASC, %s ASC", exploration, jitter, penalty, direction, hash, idExpression)
-}
-
-func minInt(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
-}
-
-func maxInt(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 func boolInt(value bool) int {

@@ -71,7 +71,7 @@ test("new detail navigation starts at the top, preserves user scroll while media
     return window.scrollY;
   });
   expect(userScroll).toBeGreaterThan(20);
-  await page.waitForTimeout(650);
+  await expect(page.getByTestId("directory-skeleton")).toBeHidden();
   await expect
     .poll(() =>
       page.evaluate(
@@ -409,7 +409,7 @@ test("@desktop a simple card rests on its cover, title, and credits and opens it
 
   // An open menu holds the details while the pointer is on the menu, away from the card.
   await quickMark.click();
-  const markMenu = page.locator(".fixed.z-50").filter({ hasText: "Relisten" });
+  const markMenu = page.getByRole("dialog", { name: "Mark: Unmarked" });
   await markMenu.getByRole("button", { name: "Finished", exact: true }).hover();
   await expect(quickMark).toBeVisible();
   // Pressing elsewhere closes the menu, and with the pointer off the card the details go with it.
@@ -948,8 +948,8 @@ test("anonymous quick marks open the sign-in flow from mobile controls", async (
 
   await page.getByRole("button", { name: "Mark: Unmarked" }).click();
   // The toolbar's Mark filter options share these names; the card's menu is the floating layer.
-  const markMenu = page.locator(".fixed.z-50").filter({ hasText: "Relisten" });
-  await expect(markMenu.getByRole("button", { name: "Unmarked", exact: true })).toHaveClass(/bg-primary\/10/);
+  const markMenu = page.getByRole("dialog", { name: "Mark: Unmarked" });
+  await expect(markMenu.getByRole("button", { name: "Unmarked", exact: true })).toHaveAttribute("aria-pressed", "true");
   await markMenu.getByRole("button", { name: "Want", exact: true }).click();
   await expect(page.getByText("Sign in is required.", { exact: true })).toBeVisible();
   await page.locator('[aria-live="polite"]').getByRole("button", { name: "Sign in", exact: true }).click();

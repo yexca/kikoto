@@ -13,6 +13,7 @@ import {
   type WorkMetadataPreview,
   type WorkMetadataPreviewValues,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { librarySourceProvidesMetadata } from "@/lib/remoteSourceCapabilities";
 
 export type MetadataPreviewSelection = "current" | "fetched" | "manual" | "merged";
@@ -62,27 +63,18 @@ export function MetadataPreviewDialog({
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
     setLoading(true);
     setPreview(null);
     setExpected(null);
     setSelections(Object.fromEntries(comparableFields.map((field) => [field, "current"])));
-    void api
-      .previewWorkMetadata(work.id, selectedSourceId)
-      .then((result) => {
-        if (cancelled) return;
+    return startLoad(() => api.previewWorkMetadata(work.id, selectedSourceId), {
+      onSuccess: (result) => {
         setPreview(result);
         setExpected(copyValues(result.current));
-      })
-      .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, t("metadataEditor.previewFailed")));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      onError: (error) => toast.notify(toastFromError(error, t("metadataEditor.previewFailed"))),
+      onSettled: () => setLoading(false),
+    });
   }, [open, work.id, selectedSourceId, toast, t]);
 
   if (!open) return null;

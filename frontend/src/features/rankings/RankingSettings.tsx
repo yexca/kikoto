@@ -16,6 +16,7 @@ import {
   type RankingOverview,
   type RankingWorkflowState,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { EarlierYearsRow, RankingDeleteDialog, RankingSettingRowView } from "./RankingSettingRow";
@@ -69,12 +70,10 @@ export function RankingSettings({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listLibrarySources(controller.signal)
-      .then(setSources)
-      .catch(() => setSources([]));
-    return () => controller.abort();
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: setSources,
+      onError: () => setSources([]),
+    });
   }, []);
 
   // Pull times read relative to now, so they follow the clock.

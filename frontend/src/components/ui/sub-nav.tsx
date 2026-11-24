@@ -80,8 +80,11 @@ function selectWithKeys<T extends string>(
   list?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[target]?.focus({ preventScroll: true });
 }
 
-/** Keeps the selected tab in view when the row scrolls; only the row moves, never the page. */
-function useSelectedTabInView(listRef: RefObject<HTMLDivElement | null>, selected: string | null, deps: unknown[]) {
+/**
+ * Keeps the selected tab in view when the row scrolls; only the row moves,
+ * never the page. Folding or unfolding the row moves the tab, so it checks again.
+ */
+function useSelectedTabInView(listRef: RefObject<HTMLDivElement | null>, selected: string | null, folded: boolean) {
   useEffect(() => {
     const list = listRef.current;
     const tab = list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -91,8 +94,7 @@ function useSelectedTabInView(listRef: RefObject<HTMLDivElement | null>, selecte
     // Round away from the edge so a fractional layout still reveals the whole tab.
     if (box.left < row.left) list.scrollLeft -= Math.ceil(row.left - box.left);
     else if (box.right > row.right) list.scrollLeft += Math.ceil(box.right - row.right);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, ...deps]);
+  }, [folded, listRef, selected]);
 }
 
 // The selected tab's label is heavier than the measured one, so leave it room.
@@ -164,7 +166,7 @@ export function SubNavTabs<T extends string>({
   const foldable = items.length > 1 && items.every((item) => item.icon);
   const listRef = useRef<HTMLDivElement>(null);
   const folded = useFoldedTabs(foldable, listRef, items.map((item) => item.label).join("\n"));
-  useSelectedTabInView(listRef, selected, [folded]);
+  useSelectedTabInView(listRef, selected, folded);
   const { descriptions, idOf } = useDescriptions(items);
   return (
     // The page's own controls share the row from the sm breakpoint; a phone gives the tabs the whole width and

@@ -17,6 +17,7 @@ import type {
 } from "../../../lib/api";
 import { buildRemoteTree, flattenTreeFiles } from "../media/mediaTreeModel";
 import { isLocalOffline } from "../../../lib/localAvailability";
+import { normalizeRelativePath } from "../workFilePath";
 import { emptyFolderEditLayout, inLyricsFolder, pathIdentity, type FolderEditLayout } from "./folderEditLayout";
 
 /** The resource that is the edited folder itself. */
@@ -136,10 +137,6 @@ export type FolderEditResultEntry = {
   item: FolderEditResultItem | null;
 };
 
-function normalizePath(path: string) {
-  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-}
-
 function localResourceId(folderId: number) {
   return `local:${folderId}`;
 }
@@ -156,7 +153,7 @@ function remoteResourceId(sourceId: number, editionCode: string) {
  */
 export function folderEditResources(sources: WorkFolderEditSources, target: FolderEditTarget): FolderEditResource[] {
   const base = { folderId: 0, workId: 0, rootPath: "", sourceId: 0, sourceName: "" };
-  const targetRoot = normalizePath(target.rootPath).toLowerCase();
+  const targetRoot = normalizeRelativePath(target.rootPath).toLowerCase();
   const targetEdition = sources.editions.find((edition) => edition.workId === target.workId);
   const resources: FolderEditResource[] = [
     {
@@ -168,13 +165,13 @@ export function folderEditResources(sources: WorkFolderEditSources, target: Fold
       origin: targetEdition?.origin ?? false,
       folderId: target.folderId,
       workId: target.workId,
-      rootPath: normalizePath(target.rootPath),
+      rootPath: normalizeRelativePath(target.rootPath),
     },
   ];
   for (const edition of sources.editions) {
     for (const root of edition.localRoots ?? []) {
       if (root.state !== "active" || root.id === target.folderId) continue;
-      if (targetRoot && normalizePath(root.rootPath).toLowerCase() === targetRoot) continue;
+      if (targetRoot && normalizeRelativePath(root.rootPath).toLowerCase() === targetRoot) continue;
       resources.push({
         ...base,
         id: localResourceId(root.id),
@@ -184,7 +181,7 @@ export function folderEditResources(sources: WorkFolderEditSources, target: Fold
         origin: edition.origin,
         folderId: root.id,
         workId: edition.workId,
-        rootPath: normalizePath(root.rootPath),
+        rootPath: normalizeRelativePath(root.rootPath),
         offline: isLocalOffline(root.availability),
       });
     }
@@ -277,9 +274,9 @@ export function buildFolderEditTree<T extends { path: string }>(
     }
     return cursor;
   };
-  for (const folder of folders) place(normalizePath(folder).split("/").filter(Boolean));
+  for (const folder of folders) place(normalizeRelativePath(folder).split("/").filter(Boolean));
   for (const file of files) {
-    const parts = normalizePath(file.path).split("/").filter(Boolean);
+    const parts = normalizeRelativePath(file.path).split("/").filter(Boolean);
     place(parts.slice(0, -1)).files.push(file);
   }
   return root;
@@ -475,11 +472,11 @@ export function folderEditResult(
     else leaving.push(entry);
   }
   const added: FolderEditResultEntry[] = [];
-  const prefix = plan ? `${normalizePath(plan.saveRoot)}/` : "";
+  const prefix = plan ? `${normalizeRelativePath(plan.saveRoot)}/` : "";
   const planned = new Set<string>();
   for (const item of plan?.items ?? []) {
     planned.add(item.itemKey);
-    const target = normalizePath(item.targetPath);
+    const target = normalizeRelativePath(item.targetPath);
     const path = layout.placements[item.itemKey] ?? (target.startsWith(prefix) ? target.slice(prefix.length) : target);
     const state = resultStateForItem(item);
     const existing = entries.get(pathIdentity(path));
@@ -633,13 +630,13 @@ export function createDemoFolderEditPlan(
   request: WorkFolderEditRequest,
   pending: readonly FolderEditPendingAddition[],
 ): WorkFolderEditPlan {
-  const root = normalizePath(target.rootPath);
+  const root = normalizeRelativePath(target.rootPath);
   const files = new Map(pending.map((addition) => [addition.key, addition]));
   const items = request.additions.map((addition): WorkFolderEditItem => {
     const itemKey = folderEditItemKey(addition);
     const file = files.get(itemKey);
     const local = addition.kind === "local";
-    const relative = normalizePath(addition.targetPath ?? addition.path);
+    const relative = normalizeRelativePath(addition.targetPath ?? addition.path);
     const targetPath = root ? `${root}/${relative}` : relative;
     return {
       itemKey,
@@ -857,9 +854,9 @@ export function fetchComposeResult(
   /** The keys the request still holds; a stale preview shows nothing else. */
   keys?: ReadonlySet<string>,
 ): FolderEditResultEntry[] {
-  const prefix = plan ? `${normalizePath(plan.saveRoot)}/` : "";
+  const prefix = plan ? `${normalizeRelativePath(plan.saveRoot)}/` : "";
   const below = (target: string) => {
-    const path = normalizePath(target);
+    const path = normalizeRelativePath(target);
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
   };
   const entry = (

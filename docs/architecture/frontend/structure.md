@@ -58,9 +58,13 @@ instead of owning its internals.
 
 Workflow surfaces that other pages compose, such as the catalog sync dialog,
 a remote source's library work check, and the Availability Watch
-configuration, live in `features/workflows`. Other pages build the address of
-Workflows or a run through `features/workflows/workflowLinks` rather than
-spelling it themselves.
+configuration, live in `features/workflows`. The addresses of Workflows live in
+`lib/workflowLinks`, which shared code and every feature can import: they build
+the address of Workflows or a run with `workflowsPath` and `workflowRunPath`
+and open a run with `openWorkflowRun` rather than spelling an address or
+writing it to browser history themselves. The `kikoto-workflow-links` Oxlint
+rule, defined in `frontend/oxlint-workflow-links.mjs`, rejects an address
+written anywhere else.
 
 ## Build and Caching
 

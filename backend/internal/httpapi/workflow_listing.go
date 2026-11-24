@@ -66,7 +66,7 @@ func (s *Server) listWorkflowStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(codes) > maxWorkflowStatusCodes {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many workflow codes"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "too many workflow codes", false)
 		return
 	}
 	statuses, err := s.workflowStore.ListDefinitionStatuses(r.Context(), workflow.StatusOptions{

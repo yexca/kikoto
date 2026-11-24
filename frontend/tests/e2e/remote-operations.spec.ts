@@ -67,7 +67,7 @@ test("remote source reuses the library grid, source sorting, localized tags, and
   await expect(page.getByRole("button", { name: /^Mark filter/ })).toHaveCount(0);
 
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
-  await expect(page.locator("section[class*='grid-template-columns']").first()).toBeVisible();
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
 
   await page.getByTitle("Next page").last().click();
   await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();

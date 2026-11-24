@@ -34,11 +34,6 @@ export type ActiveSourceInfoModel = {
   metadataDurationSeconds: number | null;
 };
 
-export function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
 export function trackedPresenceForRemoteSource(work: WorkDetail | null, sourceID: number, remoteCode: string) {
   const candidates = (work?.sourcePresence ?? []).filter(
     (item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId === sourceID,

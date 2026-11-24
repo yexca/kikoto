@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { formatNumber, numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type RecommendationTelemetrySummary } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 const scoreBuckets = ["0-19", "20-39", "40-59", "60-79", "80-100"];
 const DEFAULT_WINDOW_DAYS = 30;
@@ -22,20 +23,12 @@ export function RecommendationActivity({ userId }: { userId: number }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let active = true;
     setTelemetry(null);
     setFailed(false);
-    api
-      .getRecommendationTelemetry()
-      .then((value) => {
-        if (active) setTelemetry(value);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      });
-    return () => {
-      active = false;
-    };
+    return startLoad(() => api.getRecommendationTelemetry(), {
+      onSuccess: setTelemetry,
+      onError: () => setFailed(true),
+    });
   }, [userId]);
 
   const windowDays = telemetry?.windowDays ?? DEFAULT_WINDOW_DAYS;

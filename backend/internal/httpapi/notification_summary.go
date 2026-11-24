@@ -38,14 +38,14 @@ type notificationSummary struct {
 func (s *Server) notificationSummary(w http.ResponseWriter, r *http.Request) {
 	actor, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	// A demo reads every list, as the lists themselves do.
 	allowed := func(permission string) bool { return s.cfg.IsDemo() || userHasPermission(actor, permission) }
 	canNotify, canListRuns := allowed("library:read"), allowed("workflows:run")
 	if !canNotify && !canListRuns {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 		return
 	}
 	var summary notificationSummary

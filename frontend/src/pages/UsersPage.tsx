@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, Lock, Plus, Save, Search, Trash2, UserCog } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input, NativeSelect, otherCredentialFieldProps } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -73,7 +74,7 @@ export function UsersPage({
   const [loadError, setLoadError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [togglingUserId, setTogglingUserId] = useState<number | null>(null);
-  const requestSeq = useRef(0);
+  const usersLoad = useLatestLoad();
 
   const detailUser = useMemo(() => users.find((user) => user.id === detailUserId) ?? null, [detailUserId, users]);
   const filteredUsers = useMemo(() => {
@@ -89,33 +90,29 @@ export function UsersPage({
   const initialLoading = isLoading && !hasLoaded;
   const permissionContext = { currentUserId, isSuperAdmin, readOnly };
 
-  const refresh = useStableCallback(async () => {
-    const seq = ++requestSeq.current;
+  const refresh = useStableCallback(() => {
     setIsLoading(true);
     setLoadError("");
-    try {
-      const nextUsers = await api.listUsers();
-      if (seq !== requestSeq.current) return;
-      setUsers(nextUsers);
-      setHasLoaded(true);
-      setDetailUserId((current) =>
-        current !== null && !nextUsers.some((user) => user.id === current) ? null : current,
-      );
-    } catch (err) {
-      if (seq !== requestSeq.current) return;
-      setLoadError(t("admin.loadFailed"));
-      toast.notify(toastFromError(err, t("admin.loadError")));
-    } finally {
-      if (seq === requestSeq.current) setIsLoading(false);
-    }
+    return usersLoad.run(() => api.listUsers(), {
+      onSuccess: (nextUsers) => {
+        setUsers(nextUsers);
+        setHasLoaded(true);
+        setDetailUserId((current) =>
+          current !== null && !nextUsers.some((user) => user.id === current) ? null : current,
+        );
+      },
+      onError: (err) => {
+        setLoadError(t("admin.loadFailed"));
+        toast.notify(toastFromError(err, t("admin.loadError")));
+      },
+      onSettled: () => setIsLoading(false),
+    });
   });
 
   useEffect(() => {
     void refresh();
-    return () => {
-      requestSeq.current += 1;
-    };
-  }, [refresh]);
+    return usersLoad.cancel;
+  }, [refresh, usersLoad]);
 
   const replaceUser = (updated: ManagedUser) =>
     setUsers((items) => items.map((item) => (item.id === updated.id ? updated : item)));

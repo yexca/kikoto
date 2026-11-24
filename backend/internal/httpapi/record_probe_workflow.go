@@ -149,21 +149,21 @@ func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTr
 func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecord) error {
 	var checkpoint recordProbeCheckpoint
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	remaining, err := s.recordStore.PendingProbes(ctx, checkpoint.TimedOutIDs)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if err := s.startRecordProbeNode(ctx, job, nodeIDs, checkpoint, remaining); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 
@@ -181,7 +181,7 @@ func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecor
 				if left, err := s.recordStore.PendingProbes(ctx, current.TimedOutIDs); err == nil {
 					remaining = left
 				}
-				_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "probing", current, current.done(), current.done()+remaining)
+				s.checkpointJobOrLog(ctx, job, "probing", current, current.done(), current.done()+remaining)
 			}
 			return nil
 		},
@@ -203,10 +203,10 @@ func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecor
 		if countErr != nil {
 			left = result.Remaining
 		}
-		_ = s.updateWorkflowJobCheckpoint(settleCtx, job.ID, "stopped", current, current.done(), current.done()+left)
+		s.checkpointJobOrLog(settleCtx, job, "stopped", current, current.done(), current.done()+left)
 		return err
 	case err != nil:
-		_ = s.failClaimedWorkflowJob(settleCtx, job, "record media probe failed")
+		s.failJobOrLog(settleCtx, job, "record media probe failed")
 		return err
 	}
 	return s.finishRecordProbeJob(settleCtx, job, nodeIDs[recordProbeProbeNodeID], current, result)

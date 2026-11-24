@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type LibraryMigrationStatus } from "@/lib/api";
 import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
+import { createEffectScope } from "@/lib/effectScope";
 
 /** The maintenance check stays outside the app shell so failed media requests
  * cannot replace the progress view. The backend remains the access boundary. */
@@ -28,28 +29,22 @@ export function LibraryMigrationGate({ children }: { children: ReactNode }) {
       window.addEventListener(SITE_MAINTENANCE_EVENT, enterMaintenance);
       return () => window.removeEventListener(SITE_MAINTENANCE_EVENT, enterMaintenance);
     }
-    let alive = true;
-    const refresh = async () => {
-      try {
-        const result = await api.getPublicLibraryMigration();
-        if (!alive) return;
-        setMaintenance(result.maintenance);
-        if (result.maintenance && admin) {
-          try {
-            const detail = await api.getLibraryMigration();
-            if (alive) setStatus(detail);
-          } catch {
-            // Keep the last known phase while the server is busy.
-          }
-        }
-      } catch {
-        if (alive && maintenance === null) setMaintenance(false);
-      }
-    };
-    void refresh();
-    const timer = maintenance ? window.setInterval(() => void refresh(), 2000) : undefined;
+    const scope = createEffectScope();
+    const refresh = () =>
+      scope.load(() => api.getPublicLibraryMigration(), {
+        onSuccess: (result) => {
+          setMaintenance(result.maintenance);
+          // A failed detail read keeps the last known phase while the server is busy.
+          if (result.maintenance && admin) scope.load(() => api.getLibraryMigration(), { onSuccess: setStatus });
+        },
+        onError: () => {
+          if (maintenance === null) setMaintenance(false);
+        },
+      });
+    refresh();
+    const timer = maintenance ? window.setInterval(refresh, 2000) : undefined;
     return () => {
-      alive = false;
+      scope.cancel();
       window.clearInterval(timer);
     };
   }, [admin, maintenance]);

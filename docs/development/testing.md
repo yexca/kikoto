@@ -90,6 +90,7 @@ cd backend
 go run ../scripts/check-go-format.go . ../scripts
 go test ./...
 go vet ./...
+go run ../scripts/check-api-errors.go internal/httpapi
 go test -race ./...
 ```
 
@@ -102,10 +103,18 @@ make backend-lint
 
 `backend-format` checks backend and validation-script Go files with the standard
 `gofmt` rules while normalizing CRLF input for cross-platform consistency.
-`backend-lint` runs the pinned `scripts/golangci-lint.yml` policy against changes
+`backend-lint` first runs `scripts/check-go-dropped-errors.go` over the whole
+backend, which rejects a dropped workflow state write, database write, or JSON
+decode error ([Backend Guidelines](backend-guidelines.md#principles)). It then
+runs the pinned `scripts/golangci-lint.yml` policy against changes
 after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
 parent in CI), so existing lint debt does not block new work. Use
 `make backend-lint-full` for a complete audit of the current backend.
+`make backend-vet` runs `go vet` and `scripts/check-api-errors.go`, which fails
+when an `internal/httpapi` handler answers an error through `writeJSON`, by an
+error status or an `{"error": ...}` map, instead of `writeAPIError` or
+`writeAPIErrorDetails`, which write the
+[error shape](../architecture/backend/http-responses.md#http-responses).
 
 The Makefile exports `GOTOOLCHAIN` set to the `toolchain` line of
 `backend/go.mod`, or its `go` line when there is none, so a local run uses the
@@ -117,7 +126,9 @@ another one. `make backend-test-container` uses the Go of `GO_IMAGE`.
 
 `make ci-backend` runs the full test suite with coverage and then with the race
 detector, alongside formatting, lint, module verification, vulnerability checks,
-and vet. It omits a third plain test run because coverage already executes the
+vet, and `make backend-sql-ratchet`, which fails when `internal/httpapi` runs
+more SQL directly than its recorded baseline or less without lowering it
+([Layering](../../backend/AGENTS.md#layering)). It omits a third plain test run because coverage already executes the
 full suite. CI runs `ci-backend-static`, `ci-backend-coverage`, and the race
 suite as independent matrix jobs that `ci-backend` composes locally.
 `make backend-test` remains available for fast local feedback.
@@ -232,7 +243,9 @@ npm run build
 npm run test:e2e
 ```
 
-Vitest unit tests stay beside their source under `frontend/src`.
+`npm run lint` runs Oxlint, including the project rules in
+`frontend/oxlint-*.mjs`, and the Node tests that pin those rules. Vitest unit
+tests stay beside their source under `frontend/src`.
 Playwright browser regression tests live under `frontend/tests/e2e`. They run the
 Vite application and intercept the API boundary, so they verify browser behavior
 and client request contracts without claiming to exercise a live backend. The
@@ -467,6 +480,15 @@ semantic locator and user-observable completion condition exist. A CSS/class
 or layout assertion protects a documented viewport, touch-target, or
 loading-stability contract and includes or points to it, never incidental pixel
 coordinates or internal spans.
+
+A wait ends on observable state, through `expect` or `expect.poll`. Behavior
+driven by a timer, including an assertion that nothing happens over a period,
+installs `page.clock` before navigation and advances it with
+`page.clock.runFor`, so the spec spends no real time. `make frontend-lint` runs
+`scripts/check-e2e-locators.mjs`, which rejects `waitForTimeout` and any
+`locator()` selector that matches by CSS class, whether a Tailwind utility or an
+authored component class, in `frontend/tests`. A region without an accessible
+name takes a `data-` marker.
 
 Mock the narrowest external boundary needed for determinism: network, clock,
 filesystem, process, or browser API. Do not mock the subject under test or

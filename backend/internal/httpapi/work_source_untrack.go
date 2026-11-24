@@ -27,12 +27,12 @@ func (s *Server) untrackWorkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil || workID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	sourceID, err := parseInt64PathValue(r, "sourceId")
 	if err != nil || sourceID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	result, err := s.runWorkSourceUntrack(r.Context(), workID, sourceID)

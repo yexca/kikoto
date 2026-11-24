@@ -9,6 +9,7 @@ import { NativeSelect } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { announceUserTagsChanged } from "@/lib/userTagEvents";
 
@@ -141,24 +142,18 @@ function ImportDialog({ enabled, demoMode, onClose }: { enabled: boolean; demoMo
   useEffect(() => {
     if (!state.reading || !fileRef.current) return;
     const revision = state.revision;
-    let cancelled = false;
-    fileRef.current
-      .text()
-      .then((text) => {
-        if (cancelled) return;
+    const file = fileRef.current;
+    return startLoad(() => file.text(), {
+      onSuccess: (text) => {
         const parsed = parseUserDataFileText(text);
         dispatch(
           parsed.ok
             ? { type: "fileParsed", revision, value: parsed.value }
             : { type: "fileRejected", revision, error: "invalid_json" },
         );
-      })
-      .catch(() => {
-        if (!cancelled) dispatch({ type: "fileRejected", revision, error: "unreadable" });
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      onError: () => dispatch({ type: "fileRejected", revision, error: "unreadable" }),
+    });
   }, [state.reading, state.revision]);
 
   useEffect(() => {
@@ -172,15 +167,11 @@ function ImportDialog({ enabled, demoMode, onClose }: { enabled: boolean; demoMo
     if (previewRevision === null) return;
     const request = importRequest(stateRef.current);
     if (!request) return;
-    const controller = new AbortController();
-    userDataApi
-      .previewImport(request, controller.signal)
-      .then((result) => dispatch({ type: "previewSucceeded", revision: previewRevision, result }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        dispatch({ type: "previewFailed", revision: previewRevision, error: classifyUserDataRequestError(error) });
-      });
-    return () => controller.abort();
+    return startLoad((signal) => userDataApi.previewImport(request, signal), {
+      onSuccess: (result) => dispatch({ type: "previewSucceeded", revision: previewRevision, result }),
+      onError: (error) =>
+        dispatch({ type: "previewFailed", revision: previewRevision, error: classifyUserDataRequestError(error) }),
+    });
   }, [previewRevision]);
 
   const runImport = async () => {

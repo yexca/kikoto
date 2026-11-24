@@ -7,6 +7,7 @@ import { NativeSelect } from "@/components/ui/input";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type VideoAudioTrack, type VideoPlaybackInfo } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { playbackURL, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import { usePlayer } from "@/player/PlayerProvider";
 import { VideoPlayerHeader } from "@/player/video/VideoPlayerHeader";
@@ -133,7 +134,6 @@ export function WorkVideoPlayer({
 
   // Ask how the video plays while the start position is being chosen.
   useEffect(() => {
-    const controller = new AbortController();
     if (!canTranscode || locationId <= 0) {
       setPlayback({
         delivery: "direct",
@@ -141,35 +141,37 @@ export function WorkVideoPlayer({
         durationSeconds: durationSeconds ?? 0,
         seekable: true,
       });
-      return () => controller.abort();
+      return;
     }
     setPlayback(null);
-    void prepareVideoPlayback(
-      async () =>
-        api.getVideoPlaybackInfo(
-          locationId,
-          await videoPlaybackCapabilities(),
-          forceTranscode,
-          controller.signal,
-          audioStream,
+    return startLoad(
+      (signal) =>
+        prepareVideoPlayback(
+          async () =>
+            api.getVideoPlaybackInfo(
+              locationId,
+              await videoPlaybackCapabilities(),
+              forceTranscode,
+              signal,
+              audioStream,
+            ),
+          signal,
         ),
-      controller.signal,
-    )
-      .then((value) => {
-        if (controller.signal.aborted) return;
-        setAudioTracks(videoAudioTrackChoices(value));
-        setPlayback(value);
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        if (audioStream !== null && rejectsVideoAudioStream(reason)) {
-          forgetChosenVideoAudioStream(principalID, locationId);
-          setAudioStream(null);
-          return;
-        }
-        setError(videoPlaybackFailureKey(reason));
-      });
-    return () => controller.abort();
+      {
+        onSuccess: (value) => {
+          setAudioTracks(videoAudioTrackChoices(value));
+          setPlayback(value);
+        },
+        onError: (reason) => {
+          if (audioStream !== null && rejectsVideoAudioStream(reason)) {
+            forgetChosenVideoAudioStream(principalID, locationId);
+            setAudioStream(null);
+            return;
+          }
+          setError(videoPlaybackFailureKey(reason));
+        },
+      },
+    );
   }, [audioStream, canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, principalID, retryToken]);
 
   // The video takes over from the global audio player, and pauses when that player starts again.

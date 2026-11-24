@@ -150,7 +150,11 @@ func (s *Store) ProcessRecommendationCatalog(ctx context.Context, limit int) (in
 		if err := projectRecommendationWork(batchCtx, tx, id, building.Int64); err != nil {
 			_ = tx.Rollback()
 			if ctx.Err() == nil {
-				_, _ = s.db.ExecContext(ctx, "UPDATE recommendation_catalog_dirty SET retry_count = retry_count + 1, retry_after = unixepoch() + MIN(300, 30 * (1 << MIN(4, retry_count))) WHERE work_id = ?", id)
+				// The batch failure is logged by its caller; a lost backoff would
+				// retry the work at once, so its error goes with it.
+				if _, retryErr := s.db.ExecContext(ctx, "UPDATE recommendation_catalog_dirty SET retry_count = retry_count + 1, retry_after = unixepoch() + MIN(300, 30 * (1 << MIN(4, retry_count))) WHERE work_id = ?", id); retryErr != nil {
+					err = errors.Join(err, fmt.Errorf("delay recommendation retry for work %d: %w", id, retryErr))
+				}
 			}
 			return 0, err
 		}
@@ -177,7 +181,9 @@ func (s *Store) ProcessRecommendationCatalog(ctx context.Context, limit int) (in
 		if err := projectRecommendationNames(batchCtx, tx, f, building.Int64); err != nil {
 			_ = tx.Rollback()
 			if ctx.Err() == nil {
-				_, _ = s.db.ExecContext(ctx, "UPDATE recommendation_name_dirty SET retry_count = retry_count + 1, retry_after = unixepoch() + MIN(300, 30 * (1 << MIN(4, retry_count))) WHERE kind = ? AND entity_id = ?", f.Kind, f.ID)
+				if _, retryErr := s.db.ExecContext(ctx, "UPDATE recommendation_name_dirty SET retry_count = retry_count + 1, retry_after = unixepoch() + MIN(300, 30 * (1 << MIN(4, retry_count))) WHERE kind = ? AND entity_id = ?", f.Kind, f.ID); retryErr != nil {
+					err = errors.Join(err, fmt.Errorf("delay recommendation retry for %s %d: %w", f.Kind, f.ID, retryErr))
+				}
 			}
 			return 0, err
 		}

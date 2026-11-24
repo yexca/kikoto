@@ -15,7 +15,7 @@ import (
 func (s *Server) requireMetadataEntryRead(w http.ResponseWriter, r *http.Request) bool {
 	user, ok := userFromContext(r.Context())
 	if !ok || user.ID <= 0 {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return false
 	}
 	if s.cfg.IsDemo() {
@@ -27,7 +27,7 @@ func (s *Server) requireMetadataEntryRead(w http.ResponseWriter, r *http.Request
 			return true
 		}
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+	writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 	return false
 }
 

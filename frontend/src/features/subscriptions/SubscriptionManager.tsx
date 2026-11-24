@@ -19,6 +19,7 @@ import {
   type CreatorSubscriptionSchedule,
   type CreatorSubscriptionView,
 } from "@/lib/api";
+import { createEffectScope, startLoad } from "@/lib/effectScope";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
 import {
@@ -73,22 +74,18 @@ export function SubscriptionManager({
     [t],
   );
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
+  useEffect(() => startLoad((signal) => load(signal)), [load]);
 
   // The schedule's own run state, which Refresh now waits on, is read again while a refresh is active.
   const refreshActive = Boolean(view?.schedule.latestRun && isActiveRunStatus(view.schedule.latestRun.status));
   useEffect(() => {
     if (!refreshActive) return;
-    const controller = new AbortController();
+    const scope = createEffectScope();
     const timer = window.setInterval(() => {
-      if (!document.hidden) void load(controller.signal);
+      if (!document.hidden) scope.load((signal) => load(signal));
     }, 5000);
     return () => {
-      controller.abort();
+      scope.cancel();
       window.clearInterval(timer);
     };
   }, [load, refreshActive]);

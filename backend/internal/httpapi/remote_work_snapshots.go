@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/filesource"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -40,44 +42,36 @@ type remoteSourceForUse struct {
 }
 
 func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSourceForUse, error) {
-	var source remoteSourceForUse
-	var configJSON, allowedHostPatternsJSON string
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json,
-			COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''),
-			COALESCE(endpoint.work_url_template, ''), COALESCE(endpoint.restrict_outbound_hosts, 0),
-			COALESCE(endpoint.allowed_host_patterns_json, '[]')
-		FROM file_source AS source
-		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.id = ?
-	`, id).Scan(
-		&source.ID,
-		&source.Code,
-		&source.DisplayName,
-		&source.SourceType,
-		&source.Enabled,
-		&configJSON,
-		&source.Endpoint.APIURL,
-		&source.Endpoint.BaseURL,
-		&source.Endpoint.FallbackURL,
-		&source.Endpoint.WorkURLTemplate,
-		&source.Endpoint.RestrictOutboundHosts,
-		&allowedHostPatternsJSON,
-	); err != nil {
+	record, err := filesource.Get(ctx, s.db, id)
+	if err != nil {
 		return remoteSourceForUse{}, err
 	}
-	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		source.Endpoint.APIURL = source.Endpoint.BaseURL
+	return remoteSourceForUseFrom(record)
+}
+
+// remoteSourceForUseFrom refuses a source whose stored settings cannot be
+// decoded, so no request, Fetch, or check runs on defaults the administrator
+// never chose. The protected log names the source and the setting; the
+// refusal tells the caller to save the source again.
+func remoteSourceForUseFrom(record filesource.Record) (remoteSourceForUse, error) {
+	usable, err := record.ForUse()
+	if err != nil {
+		slog.Warn("remote source is not used: its stored settings cannot be decoded", "source_id", record.ID, "error", err)
+		return remoteSourceForUse{}, &requestError{
+			status: http.StatusConflict, code: "source_not_usable",
+			message: "remote source settings cannot be read; save the source again",
+			cause:   err,
+		}
 	}
-	if strings.TrimSpace(configJSON) != "" {
-		_ = json.Unmarshal([]byte(configJSON), &source.Config)
-	}
-	normalizeFileSourceConfig(&source.Config, source.SourceType)
-	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
-	if source.Endpoint.AllowedHostPatterns == nil {
-		source.Endpoint.AllowedHostPatterns = []string{}
-	}
-	return source, nil
+	return remoteSourceForUse{
+		ID:          usable.ID,
+		Code:        usable.Code,
+		DisplayName: usable.DisplayName,
+		SourceType:  usable.SourceType,
+		Enabled:     usable.Enabled,
+		Config:      usable.Config,
+		Endpoint:    usable.Endpoint,
+	}, nil
 }
 
 func remoteWorkCodeFromPath(r *http.Request) string {
@@ -94,7 +88,7 @@ func (s *Server) loadInstanceRemoteWorkTracks(ctx context.Context, sourceID int6
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
-	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	s.setSourceHealthOrLog(ctx, sourceID, "healthy")
 	return source, remoteWork, tracks, nil
 }
 
@@ -113,11 +107,11 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 	remoteWork, _, err := s.resolveRemoteEdition(ctx, source, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+			s.setSourceHealthOrLog(ctx, sourceID, "unavailable")
 		}
 		return remoteSourceForUse{}, kikoeru.Work{}, err
 	}
-	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	s.setSourceHealthOrLog(ctx, sourceID, "healthy")
 	return source, remoteWork, nil
 }
 
@@ -126,7 +120,7 @@ func (s *Server) loadRemoteTracks(ctx context.Context, source remoteSourceForUse
 	if err != nil {
 		err = remoteWorkLookupError(err)
 		if !errors.Is(err, errRemoteWorkNotFound) {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 		}
 		return nil, err
 	}
@@ -298,9 +292,9 @@ var errRemoteSourceChanged = errors.New("remote source configuration changed; re
 // obsolete request cannot change the health of the newly configured source.
 func (s *Server) recordRemoteCacheHealth(ctx context.Context, sourceID int64, requestErr error) {
 	if requestErr == nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+		s.setSourceHealthOrLog(ctx, sourceID, "healthy")
 	} else if !errors.Is(requestErr, sql.ErrNoRows) {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		s.setSourceHealthOrLog(ctx, sourceID, "unavailable")
 	}
 }
 

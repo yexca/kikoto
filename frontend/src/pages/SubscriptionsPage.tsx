@@ -59,7 +59,6 @@ import {
 import { useAvailabilityWatch } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { useWatchTargetActions } from "@/features/workflows/availability-watch/useWatchTargetActions";
 import { WatchTargetFooterButtons } from "@/features/workflows/availability-watch/WatchActionButtons";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { useShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
@@ -67,6 +66,7 @@ import { api } from "@/lib/api";
 import { NAVIGATION_EVENT, requestHistoryScrollRestoration } from "@/lib/browserHistory";
 import type { RankingOrder } from "@/lib/rankingApi";
 import { cn } from "@/lib/tailwindClassNames";
+import { openWorkflowPath, openWorkflowRun } from "@/lib/workflowLinks";
 
 const feedDaysStorageKey = "kikoto:release-feed-days";
 
@@ -184,7 +184,7 @@ export function SubscriptionsPage({
   const [revealAvailable, setRevealAvailable] = useState(0);
   const [feedReload, setFeedReload] = useState(0);
   const [watchPreselect, setWatchPreselect] = useState<{ key: number; codes: string[] } | null>(null);
-  const openRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
+  const openRun = openWorkflowRun;
   const watchActions = useWatchTargetActions({
     onChanged: (next) => {
       if (next) watchState.setWatch(next);

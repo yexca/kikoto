@@ -29,14 +29,14 @@ func (s *Server) setWorkMetadataLink(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	var payload struct {
 		SourceCode string `json:"sourceCode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json body", false)
 		return
 	}
 	if s.refuseCustomWork(w, r, workID) {
@@ -44,20 +44,20 @@ func (s *Server) setWorkMetadataLink(w http.ResponseWriter, r *http.Request) {
 	}
 	sourceCode := normalizeDLsiteCode(payload.SourceCode)
 	if sourceCode == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work code", false)
 		return
 	}
 	var primaryCode string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&primaryCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(primaryCode), sourceCode) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a work cannot use its own code as a metadata link"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "a work cannot use its own code as a metadata link", false)
 		return
 	}
 	if _, err := s.db.ExecContext(r.Context(), `
@@ -96,11 +96,11 @@ func (s *Server) deleteWorkMetadataLink(w http.ResponseWriter, r *http.Request) 
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.workIDExists(r.Context(), workID) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	// Stored metadata stays until the next synchronization of the work's own

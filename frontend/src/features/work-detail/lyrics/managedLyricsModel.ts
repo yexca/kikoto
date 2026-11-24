@@ -1,4 +1,5 @@
 import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
+import { normalizeRelativePath } from "@/features/work-detail/workFilePath";
 import type { MediaItem } from "@/lib/api";
 import { lyricsFolderLanguage, lyricsRootFolderName } from "@/lib/lyricsLanguage";
 
@@ -9,15 +10,15 @@ import { lyricsFolderLanguage, lyricsRootFolderName } from "@/lib/lyricsLanguage
  * created the lyrics folder before it changes one of these files.
  */
 export function managedLyricsLanguage(relativePath: string): string | null {
-  const parts = normalizePath(relativePath).split("/");
+  const parts = normalizeRelativePath(relativePath).split("/");
   if (parts.length < 3 || parts[0] !== lyricsRootFolderName || !isLyricsFilePath(relativePath)) return null;
   return lyricsFolderLanguage(parts[1]);
 }
 
 /** A library path's part below a folder root, or null when it lies outside the folder. */
 export function pathBelowFolder(rootPath: string, libraryPath: string): string | null {
-  const root = normalizePath(rootPath);
-  const path = normalizePath(libraryPath);
+  const root = normalizeRelativePath(rootPath);
+  const path = normalizeRelativePath(libraryPath);
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
 }
 
@@ -30,8 +31,4 @@ export function lyricsFileTrackCounts(items: MediaItem[]): Map<number, number> {
     for (const lyricsID of used) counts.set(lyricsID, (counts.get(lyricsID) ?? 0) + 1);
   }
   return counts;
-}
-
-function normalizePath(path: string) {
-  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }

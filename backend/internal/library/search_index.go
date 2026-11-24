@@ -301,7 +301,7 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 		}
 		documents[id] = &searchDocument{code: []string{code}, title: []string{title}, staff: map[string][]string{}}
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return nil, err
 	}
 	fields := []struct {
@@ -412,7 +412,7 @@ func appendStaffSearchValues(ctx context.Context, tx *sql.Tx, placeholders strin
 			document.staff[role] = append(document.staff[role], name)
 		}
 	}
-	return closeRows(rows)
+	return sqlutil.CloseRows(rows)
 }
 
 func appendSearchValues(ctx context.Context, tx *sql.Tx, query string, args []any, documents map[int64]*searchDocument, field func(*searchDocument) *[]string) error {
@@ -432,7 +432,7 @@ func appendSearchValues(ctx context.Context, tx *sql.Tx, query string, args []an
 			*values = append(*values, value)
 		}
 	}
-	return closeRows(rows)
+	return sqlutil.CloseRows(rows)
 }
 
 // Manual overrides store JSON values such as a title string, a circle object,
@@ -476,7 +476,7 @@ func appendOverrideSearchValues(ctx context.Context, tx *sql.Tx, placeholders st
 		}
 		*target = appendJSONStrings(*target, value)
 	}
-	return closeRows(rows)
+	return sqlutil.CloseRows(rows)
 }
 
 func appendJSONStrings(values []string, value any) []string {
@@ -523,15 +523,7 @@ func queryInt64s(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]
 		}
 		values = append(values, value)
 	}
-	return values, closeRows(rows)
-}
-
-func closeRows(rows *sql.Rows) error {
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return err
-	}
-	return rows.Close()
+	return values, sqlutil.CloseRows(rows)
 }
 
 func int64Placeholders(ids []int64) (string, []any) {

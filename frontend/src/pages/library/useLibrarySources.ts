@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type LibrarySource } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { localBrowseRoute } from "@/pages/library/libraryRoutes";
 
 /**
@@ -24,30 +25,20 @@ export function useLibrarySources({
 
   useEffect(() => {
     if (!active || authLoading || sourceRoutesReady) return;
-    const controller = new AbortController();
-    let cancelled = false;
     if (!localBrowseRoute(window.location.pathname)) setBrowseHydrated(false);
     setSourceRoutesReady(false);
-    api
-      .listLibrarySources(controller.signal)
-      .then((items) => {
-        if (cancelled) return;
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: (items) => {
         setSources(items);
         setSourceRoutesReady(true);
         onLoaded(items);
-      })
-      .catch(() => {
-        if (cancelled) return;
+      },
+      onError: () => {
         setSources([]);
         setSourceRoutesReady(false);
-      })
-      .finally(() => {
-        if (!cancelled) setBrowseHydrated(true);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+      },
+      onSettled: () => setBrowseHydrated(true),
+    });
   }, [active, authLoading, onLoaded, sourceRoutesReady]);
 
   return { sources, sourceRoutesReady, browseHydrated };

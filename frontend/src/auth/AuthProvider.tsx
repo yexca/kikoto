@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { ApiSessionChangedError, apiSessionVersion } from "@/lib/apiSession";
 import { setDemoMetadataLanguageUser } from "@/lib/demoMetadataLanguages";
+import { createEffectScope } from "@/lib/effectScope";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -62,19 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const userId = auth?.authenticated ? auth.user.id : null;
   const [recommendationThreshold, setRecommendationThreshold] = useState({ userId, value: 50 });
   useEffect(() => {
-    let cancelled = false;
-    const refreshPreferences = () => {
-      void api
-        .getRuntimeSettings()
-        .then((settings) => {
-          if (!cancelled) setRecommendationThreshold({ userId, value: settings.recommendationThreshold ?? 50 });
-        })
-        .catch(() => undefined);
-    };
+    const scope = createEffectScope();
+    const refreshPreferences = () =>
+      scope.load((signal) => api.getRuntimeSettings(signal), {
+        onSuccess: (settings) => setRecommendationThreshold({ userId, value: settings.recommendationThreshold ?? 50 }),
+      });
     refreshPreferences();
     window.addEventListener(USER_PREFERENCES_CHANGED, refreshPreferences);
     return () => {
-      cancelled = true;
+      scope.cancel();
       window.removeEventListener(USER_PREFERENCES_CHANGED, refreshPreferences);
     };
   }, [userId]);

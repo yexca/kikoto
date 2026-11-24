@@ -19,17 +19,17 @@ type knownLocalWorkRoot struct {
 }
 
 func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflowJobRecord, payload localScanJobPayload) error {
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{
+	s.checkpointJobOrLog(ctx, job, "discovering", map[string]any{
 		"root": payload.Root, "scan_mode": localScanModeIncremental, "changed_path_count": len(payload.ChangedPaths),
 	}, 0, 0)
 
 	scope, err := s.localScanScope(ctx, payload.Root, payload.ScanDepth)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if len(scope.online) == 0 {
-		_ = s.failClaimedWorkflowJob(ctx, job, errLibraryUnavailable.Error())
+		s.failJobOrLog(ctx, job, errLibraryUnavailable.Error())
 		return errLibraryUnavailable
 	}
 	// Changes outside the online pools, such as an unregistered folder or an
@@ -50,7 +50,7 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 	scanSummary.DetectedWorks = len(workFolders)
 	knownRoots, err := s.loadKnownLocalWorkRoots(ctx)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	knownRoots = scope.filterKnownRoots(knownRoots)
@@ -78,14 +78,14 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	result, runSummary, _, err := s.persistIncrementalLocalScanResults(
 		ctx, job, payload, scope, workFolders, scanSummary, knownRoots, nodeIDs,
 	)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	scope.applyOfflineResult(&result)
@@ -96,11 +96,11 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 	if len(scope.unreadable) > 0 {
 		runSummary["unreadable_folders"] = scope.unreadable
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{
+	s.checkpointJobOrLog(ctx, job, "finishing", map[string]any{
 		"detected_works": result.DetectedWorks, "scan_mode": localScanModeIncremental,
 	}, result.ScannedFiles, result.ScannedFiles)
 	if err := s.finishQueuedLocalScanJob(ctx, job, nodeIDs["sync"], result, runSummary); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if scanSummary.ScannedFiles > 0 {

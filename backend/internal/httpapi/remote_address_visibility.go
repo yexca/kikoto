@@ -22,6 +22,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
+	"github.com/yexca/kikoto/backend/internal/filesource"
 )
 
 // hideRemoteSourceAddressesSetting hides every remote source address from
@@ -148,12 +149,12 @@ const remoteImageProxyTimeout = 30 * time.Second
 func (s *Server) serveRemoteSourceImage(w http.ResponseWriter, r *http.Request) {
 	sourceID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	rawURL, ok := s.remoteImageTokens.open(sourceID, r.PathValue("token"))
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote image not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote image not found", false)
 		return
 	}
 	source, err := s.loadRemotePlaybackSource(r.Context(), sourceID)
@@ -333,14 +334,10 @@ func (s *Server) remoteAddressRedactorFor(ctx context.Context) *remoteAddressRed
 		return nil
 	}
 	redactor := &remoteAddressRedactor{}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT COALESCE(api_url, ''), COALESCE(base_url, ''), COALESCE(fallback_url, ''), COALESCE(allowed_host_patterns_json, '[]')
-		FROM file_source_endpoint
-	`)
+	sources, err := filesource.List(ctx, s.db, filesource.AllSources)
 	if err != nil {
 		return redactor
 	}
-	defer func() { _ = rows.Close() }()
 	seen := map[string]bool{}
 	addHost := func(host string) {
 		host = strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]*."))
@@ -350,12 +347,11 @@ func (s *Server) remoteAddressRedactorFor(ctx context.Context) *remoteAddressRed
 		seen[host] = true
 		redactor.hosts = append(redactor.hosts, host)
 	}
-	for rows.Next() {
-		var apiURL, baseURL, fallbackURL, patternsJSON string
-		if err := rows.Scan(&apiURL, &baseURL, &fallbackURL, &patternsJSON); err != nil {
-			return redactor
-		}
-		for _, raw := range []string{apiURL, baseURL, fallbackURL} {
+	// A source whose stored settings cannot be decoded still has every host
+	// that did decode redacted.
+	for _, source := range sources {
+		endpoint := source.Endpoint
+		for _, raw := range []string{endpoint.APIURL, endpoint.BaseURL, endpoint.FallbackURL} {
 			parsed, err := url.Parse(strings.TrimSpace(raw))
 			if err != nil || parsed.Host == "" {
 				continue
@@ -367,9 +363,7 @@ func (s *Server) remoteAddressRedactorFor(ctx context.Context) *remoteAddressRed
 				addHost(parsed.Hostname())
 			}
 		}
-		var patterns []string
-		_ = json.Unmarshal([]byte(patternsJSON), &patterns)
-		for _, pattern := range patterns {
+		for _, pattern := range endpoint.AllowedHostPatterns {
 			addHost(pattern)
 		}
 	}

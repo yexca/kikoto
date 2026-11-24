@@ -100,14 +100,14 @@ func writeTimedText(w http.ResponseWriter, text, format string) {
 // nothing and reads no file, so any signed-in viewer may ask, Demo included.
 func (s *Server) parseLyricsText(w http.ResponseWriter, r *http.Request) {
 	if _, ok := userFromContext(r.Context()); !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	var payload struct {
 		Text string `json:"text"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2*maxTextPreviewBytes)).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if len(payload.Text) > maxTextPreviewBytes {

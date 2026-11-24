@@ -108,11 +108,11 @@ func (s *Server) createWorkMetadataPreview(w http.ResponseWriter, r *http.Reques
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.workIDExists(r.Context(), workID) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	if s.refuseCustomWork(w, r, workID) {
@@ -144,7 +144,7 @@ func (s *Server) createWorkMetadataPreview(w http.ResponseWriter, r *http.Reques
 	current, err := s.loadWorkDetail(r.Context(), userID, workID, false)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -263,11 +263,11 @@ func (s *Server) applyWorkMetadataPreview(w http.ResponseWriter, r *http.Request
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.workIDExists(r.Context(), workID) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	var payload workMetadataPreviewApplyRequest
@@ -539,6 +539,8 @@ func previewValuesFromDLsiteProduct(product dlsite.Product) workMetadataPreviewV
 		Series     string `json:"series"`
 	}
 	if len(product.ProductRaw) > 0 {
+		// Tolerant: the provider's raw product is untrusted, and a series
+		// field of another shape only leaves the preview without a series.
 		_ = json.Unmarshal(product.ProductRaw, &seriesFields)
 	}
 	series = strings.TrimSpace(firstNonEmpty(seriesFields.SeriesName, seriesFields.Series))

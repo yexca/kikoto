@@ -19,13 +19,13 @@ import (
 func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	target, cached, err := s.loadMediaStreamTarget(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "media location not found", false)
 			return
 		}
 		writeError(w, err)
@@ -36,7 +36,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		remoteURL := firstNonEmpty(target.StreamURL, target.DownloadURL)
 		if (target.Availability != "available" && target.Availability != "remote") ||
 			target.FileSourceID <= 0 || strings.TrimSpace(remoteURL) == "" {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media location is not available"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "remote media location is not available", false)
 			return
 		}
 		source, sourceErr := s.loadRemotePlaybackSource(r.Context(), target.FileSourceID)
@@ -51,7 +51,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location is not available"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media location is not available", false)
 		return
 	}
 	if err := s.ensureMediaLocationReadable(r.Context(), target.LocationType, target.RelativePath); err != nil {
@@ -65,7 +65,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := safeResolvedPath(root, target.RelativePath)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media path", false)
 		return
 	}
 	if !s.cfg.IsDemo() && target.LocationType == "cache" && !cached {
@@ -169,7 +169,7 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isTextPreviewFile(target.Kind, target.RelativePath) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media location is not a text file"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "media location is not a text file", false)
 		return
 	}
 	raw, contentType, err := s.readMediaLocationText(r, target)

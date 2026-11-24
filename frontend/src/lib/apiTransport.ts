@@ -26,14 +26,31 @@ export function assetURL(path: string) {
   return nativeAssetURL(apiURL(path), API_BASE());
 }
 
-/** Reads a plain-text resource, such as a lyrics file the server generated. */
-export async function getText(path: string, signal?: AbortSignal) {
+/** A text resource longer than the caller's `maxLength`. */
+export class TextTooLargeError extends Error {
+  constructor() {
+    super("The text is too large to read.");
+    this.name = "TextTooLargeError";
+  }
+}
+
+/**
+ * Reads a plain-text resource, such as a lyrics file the server generated.
+ * With `maxLength`, a body declared or read longer than that many bytes or
+ * characters rejects with `TextTooLargeError`.
+ */
+export async function getText(path: string, signal?: AbortSignal, { maxLength }: { maxLength?: number } = {}) {
   const version = apiSessionVersion();
   let response: Response | undefined;
   try {
     response = await fetchAPI(path, { headers: { Accept: "text/plain,text/*" }, signal });
     if (!response.ok) throw await responseError(response, `GET ${path} failed with ${response.status}`);
-    return await response.text();
+    if (maxLength !== undefined && Number(response.headers.get("content-length") ?? 0) > maxLength) {
+      throw new TextTooLargeError();
+    }
+    const text = await response.text();
+    if (maxLength !== undefined && text.length > maxLength) throw new TextTooLargeError();
+    return text;
   } finally {
     try {
       assertApiSession(version);

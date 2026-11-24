@@ -31,7 +31,7 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
   randomSeed: 1,
 };
 
-const storageKey = "kikoto:favorites-browse:v3";
+const favoritesBrowseStorageKey = "kikoto:favorites-browse:v3";
 
 const statuses: FavoriteStatusFilter[] = [
   "all",
@@ -124,7 +124,7 @@ export function favoritesBrowseStateFromValue(
 
 export function readFavoritesBrowseState(principalID: ClientPrincipalID) {
   try {
-    const raw = window.sessionStorage.getItem(currentScopedStorageKey(storageKey, principalID));
+    const raw = window.sessionStorage.getItem(currentScopedStorageKey(favoritesBrowseStorageKey, principalID));
     return raw ? favoritesBrowseStateFromValue(JSON.parse(raw)) : null;
   } catch {
     return null;
@@ -133,7 +133,10 @@ export function readFavoritesBrowseState(principalID: ClientPrincipalID) {
 
 export function writeFavoritesBrowseState(principalID: ClientPrincipalID, state: FavoritesBrowseState) {
   try {
-    window.sessionStorage.setItem(currentScopedStorageKey(storageKey, principalID), JSON.stringify(state));
+    window.sessionStorage.setItem(
+      currentScopedStorageKey(favoritesBrowseStorageKey, principalID),
+      JSON.stringify(state),
+    );
   } catch {
     // Favorites remains usable when session storage is unavailable.
   }

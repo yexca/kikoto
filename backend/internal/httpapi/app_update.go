@@ -49,7 +49,7 @@ func (s *Server) getAppUpdate(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.fetchAppUpdate(context.WithoutCancel(r.Context()))
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "Update check unavailable", "code": "app_update_unavailable", "retryable": true})
+		writeAPIError(w, http.StatusServiceUnavailable, "app_update_unavailable", "Update check unavailable", true)
 		return
 	}
 	s.updateCheck = &updateCheckCache{checkedAt: time.Now(), result: result}

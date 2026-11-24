@@ -25,6 +25,7 @@ import { dateTimeFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type ReleaseFeedFamily, type ReleaseFeedPage, type Work } from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
+import { startLoad } from "@/lib/effectScope";
 import { shownWorkSourcePresence, type ShownWorksSourceCheck } from "@/lib/shownWorksSourceCheck";
 
 import {
@@ -173,9 +174,7 @@ export function ReleaseFeed({
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    return startLoad((signal) => load(signal));
     // A new reloadKey reads the feed again.
   }, [load, reloadKey]);
 

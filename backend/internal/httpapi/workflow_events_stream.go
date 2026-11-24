@@ -28,7 +28,7 @@ func (s *Server) streamWorkflowRunEvents(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow run id", false)
 		return
 	}
 	if !s.requireWorkflowRunAccess(w, r, actor, id) {
@@ -36,12 +36,12 @@ func (s *Server) streamWorkflowRunEvents(w http.ResponseWriter, r *http.Request)
 	}
 	afterID, err := workflowEventCursor(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow event cursor"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow event cursor", false)
 		return
 	}
 	if _, err := s.workflowStore.LoadRun(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "workflow run not found", false)
 			return
 		}
 		writeError(w, err)

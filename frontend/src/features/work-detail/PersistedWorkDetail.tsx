@@ -15,7 +15,7 @@ import type { WorkPreview } from "@/features/work-detail/workDetailShared";
 import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
 import { treeStats } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
-import { openActivityRun, openDetailTagSearch, workHasNoSource } from "@/features/work-detail/workDetailHelpers";
+import { openDetailTagSearch, workHasNoSource } from "@/features/work-detail/workDetailHelpers";
 import { heroPlayback as heroPlaybackFor } from "@/features/work-detail/heroPlaybackModel";
 import {
   detailHeroModel,
@@ -40,6 +40,7 @@ import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
 import { isLocalOffline } from "@/lib/localAvailability";
 import { isCustomWorkCode } from "@/lib/workCode";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useSourceTrackingActions } from "@/features/work-detail/source/useSourceTrackingActions";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
@@ -704,7 +705,7 @@ export function PersistedWorkDetailController({
       onRetry={retryDirectory}
       onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
       onOpenCleanupRun={() => {
-        if (mediaCleanup.activeRunId) openActivityRun(mediaCleanup.activeRunId);
+        if (mediaCleanup.activeRunId) openWorkflowRun(mediaCleanup.activeRunId);
       }}
       onPlayLocal={playback.playTracks}
       onPlayRemote={playback.playRemoteTracks}

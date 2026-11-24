@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/filesource"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -49,7 +50,7 @@ type sourceAvailabilityCheckRequest struct {
 func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return
 	}
 	if !s.requireDemoWorkCode(w, r, code) {
@@ -85,14 +86,16 @@ func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.R
 	}
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return
 	}
 	if !s.requireDemoWorkCode(w, r, code) || refuseCustomWorkCode(w, code) {
 		return
 	}
 	var payload sourceAvailabilityCheckRequest
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	if !decodeOptionalJSONBody(w, r, &payload) {
+		return
+	}
 	response, err := s.checkWorkSourceAvailabilityForSources(r.Context(), code, payload.SourceID, "manual", "work_detail_source_check")
 	if err != nil {
 		writeError(w, err)
@@ -157,7 +160,7 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 		if errors.Is(err, errRemoteWorkNotFound) {
 			result.Status = "not_found"
 			result.Error = "work was not found"
-			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+			s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 			return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
 		}
 		// Anything else, such as a lookup answered 404 whose listing fallback
@@ -165,10 +168,10 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 		result.Status = "error"
 		result.Error = "remote source request failed"
 		slog.Warn("remote source availability check failed", "source_id", source.ID, "work_code", code, "error", err)
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 		return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
 	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 	workCode := normalizedRemoteWorkCode(remoteWork)
 	if workCode == "" {
 		workCode = code
@@ -208,17 +211,17 @@ func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, only
 			continue
 		}
 		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 			continue
 		}
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err := s.checkRemoteSourceHealthWithClass(checkCtx, source, sourceRequestCrawl)
 		cancel()
 		if err != nil {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 			continue
 		}
-		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		s.setSourceHealthOrLog(ctx, source.ID, "healthy")
 		healthy[source.ID] = true
 	}
 	return healthy, nil
@@ -353,55 +356,23 @@ func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sour
 	return nil
 }
 
+// loadRemoteSourcesForAvailability lists the remote sources by priority. A
+// source whose stored settings cannot be decoded is left out, as no request
+// may run on it; remoteSourceForUseFrom logs it.
 func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remoteSourceForUse, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json,
-			COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''),
-			COALESCE(endpoint.work_url_template, ''), COALESCE(endpoint.restrict_outbound_hosts, 0),
-			COALESCE(endpoint.allowed_host_patterns_json, '[]')
-		FROM file_source AS source
-		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
-		ORDER BY source.priority ASC, source.id ASC
-	`)
+	records, err := filesource.List(ctx, s.db, filesource.RemoteSources)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-	sources := []remoteSourceForUse{}
-	for rows.Next() {
-		var source remoteSourceForUse
-		var configJSON, allowedHostPatternsJSON string
-		if err := rows.Scan(
-			&source.ID,
-			&source.Code,
-			&source.DisplayName,
-			&source.SourceType,
-			&source.Enabled,
-			&configJSON,
-			&source.Endpoint.APIURL,
-			&source.Endpoint.BaseURL,
-			&source.Endpoint.FallbackURL,
-			&source.Endpoint.WorkURLTemplate,
-			&source.Endpoint.RestrictOutboundHosts,
-			&allowedHostPatternsJSON,
-		); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-			source.Endpoint.APIURL = source.Endpoint.BaseURL
-		}
-		if strings.TrimSpace(configJSON) != "" {
-			_ = json.Unmarshal([]byte(configJSON), &source.Config)
-		}
-		normalizeFileSourceConfig(&source.Config, source.SourceType)
-		_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
-		if source.Endpoint.AllowedHostPatterns == nil {
-			source.Endpoint.AllowedHostPatterns = []string{}
+	sources := make([]remoteSourceForUse, 0, len(records))
+	for _, record := range records {
+		source, err := remoteSourceForUseFrom(record)
+		if err != nil {
+			continue
 		}
 		sources = append(sources, source)
 	}
-	return sources, rows.Err()
+	return sources, nil
 }
 
 func (s *Server) checkRemoteWorkAvailabilityWithClass(ctx context.Context, source remoteSourceForUse, code string, class sourceRequestClass) (kikoeru.Work, error) {

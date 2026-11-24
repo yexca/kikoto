@@ -34,7 +34,9 @@ import {
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { formatByteSize } from "./cacheCleanupModel";
 import {
@@ -112,11 +114,9 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
       setLoading(false);
       return;
     }
-    const controller = new AbortController();
     setLoading(true);
-    api
-      .listLocalWorkCleanup(searched, page, pageSize, controller.signal)
-      .then((next) => {
+    return startLoad((signal) => api.listLocalWorkCleanup(searched, page, pageSize, signal), {
+      onSuccess: (next) => {
         // A run that removed every work of the last page moves back to the
         // last page left, which loads in turn.
         const available = availableCleanupPage(page, next.total, pageSize);
@@ -129,13 +129,12 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
         setSelected((current) => reconcileSelection(current, next.works));
         setSearchedAt(Date.now());
         setLoading(false);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
+      },
+      onError: (error) => {
         setLoading(false);
         toast.notify(toastFromError(error, t("cleanup.ratedWorks.loadFailed")));
-      });
-    return () => controller.abort();
+      },
+    });
   }, [page, pages, searched, t, toast]);
 
   /** Loads the shown page of the same search again, as after a deletion. */
@@ -158,14 +157,14 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
         kind: "warning",
         message: t("cleanup.ratedWorks.partial"),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(run.id),
+        onAction: () => openWorkflowRun(run.id),
       });
     } else {
       toast.notify({
         kind: "error",
         message: t("cleanup.ratedWorks.runFailed"),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(run.id),
+        onAction: () => openWorkflowRun(run.id),
       });
     }
     refresh();
@@ -220,7 +219,7 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
         kind: "success",
         message: t("cleanup.ratedWorks.queued", { runId: queued.runId }),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(queued.runId),
+        onAction: () => openWorkflowRun(queued.runId),
       });
     } catch (error) {
       // A refused request, such as one whose folders changed, is confirmed
@@ -668,9 +667,4 @@ function formatSelectionSize(works: readonly LocalWorkCleanupWork[]) {
 /** Whether more works matched than the search keeps. */
 function isLimitedSearch(result: LocalWorkCleanupPage) {
   return result.matched > result.total;
-}
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

@@ -287,7 +287,7 @@ func (s *DLsiteSyncer) fetchProductInLocale(ctx context.Context, code string, lo
 }
 
 func productLocale(product dlsite.Product) string {
-	return normalizeRequestLocale(firstNonEmptyText(product.RequestLocale, product.Language))
+	return normalizeRequestLocale(firstNonBlank(product.RequestLocale, product.Language))
 }
 
 // purchaseBonusProduct fills the bonus's empty genres, credits and series from

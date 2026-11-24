@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type FavoriteList, type WorkDetail } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * The favorite lists with a work's membership in each, reloaded when the
@@ -11,18 +12,10 @@ export function useWorkFavoriteLists(work: WorkDetail | null) {
 
   useEffect(() => {
     if (!work?.id) return;
-    let cancelled = false;
-    api
-      .getWorkFavoriteLists(work.id)
-      .then((lists) => {
-        if (!cancelled) setFavoriteLists(lists);
-      })
-      .catch(() => {
-        if (!cancelled) setFavoriteLists([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    return startLoad(() => api.getWorkFavoriteLists(work.id), {
+      onSuccess: setFavoriteLists,
+      onError: () => setFavoriteLists([]),
+    });
   }, [work?.id, work?.favorite]);
 
   // A smart list's rule match is in the list without being a favorite; a work

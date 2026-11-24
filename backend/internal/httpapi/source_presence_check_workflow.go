@@ -147,13 +147,13 @@ func (s *Server) createSourcePresenceCheckRun(w http.ResponseWriter, r *http.Req
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source presence check request"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source presence check request", false)
 		return
 	}
 	result, err := s.enqueueSourcePresenceCheck(r.Context(), request, workflowRunTrigger{Type: "manual", Reason: "manual"})
 	var inputErr sourcePresenceCheckInputError
 	if errors.As(err, &inputErr) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": inputErr.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", inputErr.Error(), false)
 		return
 	}
 	if err != nil {
@@ -243,17 +243,17 @@ func (s *Server) enqueueSourcePresenceCheck(ctx context.Context, request sourceP
 func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflowJobRecord) error {
 	var options sourcePresenceCheckOptions
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &options); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	checkpoint := sourcePresenceCheckCheckpoint{}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	source, err := s.sourcePresenceCheckSource(ctx, options.SourceID)
@@ -264,7 +264,7 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 			checkpoint, map[string]any{"source_id": options.SourceID}, inputErr.Error())
 	}
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	summary := func() map[string]any {
@@ -279,16 +279,16 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 	}
 
 	if !checkpoint.Selected {
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "selecting", checkpoint, 0, 0)
+		s.checkpointJobOrLog(ctx, job, "selecting", checkpoint, 0, 0)
 		workIDs, err := s.selectSourcePresenceCheckWorks(ctx, options)
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		}
 		checkpoint = sourcePresenceCheckCheckpoint{Selected: true, WorkIDs: workIDs}
 		if err := s.advanceSourcePresenceCheckNode(ctx, job, nodeIDs[sourcePresenceCheckSelectNodeID], nodeIDs[sourcePresenceCheckHealthNodeID],
 			map[string]any{"selected_works": len(workIDs)}, len(workIDs)); err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		}
 		if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "health", checkpoint, 0, len(workIDs)); err != nil {
@@ -301,7 +301,7 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if probe.Err != nil {
@@ -312,7 +312,7 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 	}
 	if err := s.advanceSourcePresenceCheckNode(ctx, job, nodeIDs[sourcePresenceCheckHealthNodeID], nodeIDs[sourcePresenceCheckCheckNodeID],
 		map[string]any{"health_status": probe.Status}, len(checkpoint.WorkIDs)); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 
@@ -328,7 +328,7 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 		case errors.Is(err, sql.ErrNoRows) || (err == nil && strings.TrimSpace(code) == ""):
 			checkpoint.Skipped++
 		case err != nil:
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		default:
 			result, err := s.checkOneWorkSourceAvailability(ctx, source, code, sourcePresenceCheckWorkflowCode)
@@ -340,7 +340,7 @@ func (s *Server) executeSourcePresenceCheckJob(ctx context.Context, job workflow
 				err = s.recordSourceAvailabilityObservation(ctx, code, []sourceAvailabilitySummary{result})
 			}
 			if err != nil {
-				_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+				s.failJobOrLog(ctx, job, err.Error())
 				return err
 			}
 			switch result.Status {
@@ -542,8 +542,12 @@ func (s *Server) retrySourcePresenceCheck(ctx context.Context, runID int64) (int
 	if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
 		return 0, err
 	}
+	// A retry repeats the run's own sources and options, never the defaults
+	// in their place.
 	var options sourcePresenceCheckOptions
-	_ = json.Unmarshal([]byte(inputJSON), &options)
+	if err := json.Unmarshal([]byte(inputJSON), &options); err != nil {
+		return 0, fmt.Errorf("decode source presence check run %d input: %w", runID, err)
+	}
 	result, err := s.enqueueSourcePresenceCheck(ctx, options, workflowRunTrigger{Type: "manual", Reason: "retry_run"})
 	return result.RunID, err
 }

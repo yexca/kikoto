@@ -83,7 +83,7 @@ func (s *Server) checkUnlinkedWorkSources(w http.ResponseWriter, r *http.Request
 	}
 	workIDs, err := normalizeUnlinkedWorkIDs(request.WorkIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	result, err := s.enqueueUnlinkedWorkSourceCheck(r.Context(), actor.ID, workIDs)
@@ -108,12 +108,12 @@ func (s *Server) deleteUnlinkedWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !request.Confirm {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "confirmation is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "confirmation is required", false)
 		return
 	}
 	workIDs, err := normalizeUnlinkedWorkIDs(request.WorkIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	result, err := s.deleteUnlinkedWorkFamilies(r.Context(), actor.ID, workIDs)
@@ -127,7 +127,7 @@ func (s *Server) deleteUnlinkedWorks(w http.ResponseWriter, r *http.Request) {
 func decodeUnlinkedWorkMaintenanceRequest(w http.ResponseWriter, r *http.Request) (unlinkedWorkMaintenanceRequest, bool) {
 	var request unlinkedWorkMaintenanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return unlinkedWorkMaintenanceRequest{}, false
 	}
 	return request, true
@@ -227,17 +227,17 @@ func (s *Server) enqueueUnlinkedWorkSourceCheck(ctx context.Context, actorUserID
 func (s *Server) executeUnlinkedWorkSourceCheckJob(ctx context.Context, job workflowJobRecord) error {
 	var payload unlinkedWorkSourceCheckPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	checkpoint := unlinkedWorkSourceCheckCheckpoint{CompletedWorkIDs: []int64{}}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	healthySourceIDs, err := s.healthyRemoteSourceIDsForAvailability(ctx, 0)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	checkpoint.HealthySources = len(healthySourceIDs)
@@ -251,7 +251,7 @@ func (s *Server) executeUnlinkedWorkSourceCheckJob(ctx context.Context, job work
 		}
 		outcome, err := s.processUnlinkedWorkSourceCheck(ctx, workID, healthySourceIDs)
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			s.failJobOrLog(ctx, job, err.Error())
 			return err
 		}
 		checkpoint.Checked += outcome.Checked

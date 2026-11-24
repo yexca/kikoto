@@ -10,6 +10,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { api, type LibraryLayout } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 
 import { LibraryLayoutEditor } from "./LibraryLayoutEditor";
 import { LegacyWorkflowMigrationReview } from "./LegacyWorkflowMigrationReview";
@@ -33,16 +34,8 @@ function LibraryOnboardingGate() {
   const [layout, setLayout] = useState<LibraryLayout | null>(null);
   const [postponed, setPostponed] = useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .getLibraryLayout(controller.signal)
-      .then(setLayout)
-      .catch(() => {
-        // Setup is optional for the current page; never block the app on it.
-      });
-    return () => controller.abort();
-  }, []);
+  // Setup is optional for the current page; never block the app on it.
+  useEffect(() => startLoad((signal) => api.getLibraryLayout(signal), { onSuccess: setLayout }), []);
 
   if (!layout || layout.onboardingCompleted || postponed) return null;
   return <LibraryOnboardingDialog initial={layout} onClose={() => setPostponed(true)} />;

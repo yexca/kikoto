@@ -4,6 +4,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 
 import { api, type WorkCoverCandidate } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import i18n from "@/i18n";
 
@@ -37,20 +38,14 @@ export function useDebouncedSuggestion<T>(
       setState({ key: requestKey, result: emptySuggestionResult<T>() });
       return;
     }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      runRequest()
-        .then((next) => {
-          if (!cancelled) setState({ key: requestKey, result: next });
-        })
-        .catch(() => {
-          if (!cancelled) setState({ key: requestKey, result: emptySuggestionResult<T>() });
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    return startLoad(
+      () => runRequest(),
+      {
+        onSuccess: (next) => setState({ key: requestKey, result: next }),
+        onError: () => setState({ key: requestKey, result: emptySuggestionResult<T>() }),
+      },
+      { delayMs: 250 },
+    );
   }, [query, requestKey, runRequest]);
 
   const result = state.key === requestKey ? state.result : emptySuggestionResult<T>();
@@ -68,27 +63,18 @@ export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof 
   const [loadingCovers, setLoadingCovers] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
     setLoadingCovers(true);
-    api
-      .listWorkCoverCandidates(workId)
-      .then((result) => {
-        if (cancelled) return;
+    return startLoad(() => api.listWorkCoverCandidates(workId), {
+      onSuccess: (result) => {
         setCoverCandidates(result.candidates);
         setProviderCoverUrl(result.providerCoverUrl ?? "");
         const selected = result.candidates.find((candidate) => candidate.selected)?.locationId ?? null;
         setSelectedCoverId(selected);
         setInitialCoverId(selected);
-      })
-      .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, i18n.t("libraryDetail.coverCandidatesLoadFailed")));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingCovers(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      onError: (error) => toast.notify(toastFromError(error, i18n.t("libraryDetail.coverCandidatesLoadFailed"))),
+      onSettled: () => setLoadingCovers(false),
+    });
   }, [toast, workId]);
 
   return { coverCandidates, providerCoverUrl, selectedCoverId, setSelectedCoverId, initialCoverId, loadingCovers };

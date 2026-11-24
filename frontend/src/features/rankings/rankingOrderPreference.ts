@@ -8,11 +8,11 @@ import { decodeRankingOrder, encodeRankingOrder } from "./rankingModel";
  * the server's lists. It is never shared configuration; the default order
  * applies when storage is unavailable.
  */
-const storageKey = () => currentServerScopedStorageKey("kikoto:ranking-orders");
+const rankingOrdersStorageKey = () => currentServerScopedStorageKey("kikoto:ranking-orders");
 
 export function readRankingOrderPreferences(): Record<string, RankingOrder> {
   try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(storageKey()) ?? "{}");
+    const stored: unknown = JSON.parse(window.localStorage.getItem(rankingOrdersStorageKey()) ?? "{}");
     if (!stored || typeof stored !== "object") return {};
     const preferences: Record<string, RankingOrder> = {};
     for (const [chipKey, value] of Object.entries(stored)) {
@@ -31,7 +31,7 @@ export function writeRankingOrderPreference(chipKey: string, order: RankingOrder
       Object.entries(readRankingOrderPreferences()).map(([key, value]) => [key, encodeRankingOrder(value)]),
     );
     stored[chipKey] = encodeRankingOrder(order);
-    window.localStorage.setItem(storageKey(), JSON.stringify(stored));
+    window.localStorage.setItem(rankingOrdersStorageKey(), JSON.stringify(stored));
   } catch {
     // The choice lasts for this visit when local storage is unavailable.
   }

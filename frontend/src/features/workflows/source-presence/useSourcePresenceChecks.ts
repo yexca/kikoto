@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { isActiveRunStatus } from "@/features/workflows/runPresentation";
 import { api, type FileSourcePresenceCheck } from "@/lib/api";
+import { createEffectScope } from "@/lib/effectScope";
 
 const busyPollMs = 4000;
 
@@ -16,23 +17,20 @@ export function useSourcePresenceChecks(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return;
-    let active = true;
+    const scope = createEffectScope();
     const load = () =>
-      api
-        .listFileSources()
-        .then((sources) => {
-          if (!active) return;
+      scope.load(() => api.listFileSources(), {
+        onSuccess: (sources) =>
           setChecks(
             Object.fromEntries(
               sources.flatMap((source) => (source.presenceCheck ? [[source.id, source.presenceCheck] as const] : [])),
             ),
-          );
-        })
-        .catch(() => undefined);
-    void load();
-    const timer = busy ? window.setInterval(() => void load(), busyPollMs) : null;
+          ),
+      });
+    load();
+    const timer = busy ? window.setInterval(load, busyPollMs) : null;
     return () => {
-      active = false;
+      scope.cancel();
       if (timer !== null) window.clearInterval(timer);
     };
   }, [busy, enabled, revision]);

@@ -1,5 +1,5 @@
 import { AudioLines, Check, History, Languages, Loader2, RefreshCw, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
@@ -19,6 +19,7 @@ import {
   translationSourceFiles,
   workOriginLyricsLanguage,
 } from "@/features/work-detail/lyrics/lyricsTaskModel";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import {
   ApiError,
   api,
@@ -136,18 +137,18 @@ export function TranslateWithAIDialog({
 
   // Only the latest plan request applies, so a slower answer for languages
   // chosen before never replaces the plan of the current ones.
-  const planRequest = useRef(0);
-  const loadPlan = useCallback(async () => {
-    const request = ++planRequest.current;
-    try {
-      const next = await api.translationPlan(work.id, languages);
-      if (request !== planRequest.current) return;
-      setPlan(next);
-      setPlanError(false);
-    } catch {
-      if (request === planRequest.current) setPlanError(true);
-    }
-  }, [languages, work.id]);
+  const planLoad = useLatestLoad();
+  const loadPlan = useCallback(
+    () =>
+      planLoad.run(() => api.translationPlan(work.id, languages), {
+        onSuccess: (next) => {
+          setPlan(next);
+          setPlanError(false);
+        },
+        onError: () => setPlanError(true),
+      }),
+    [languages, planLoad, work.id],
+  );
   const loadItems = useCallback(async () => {
     try {
       const result = await api.listTranslationItems(["review", "active", "attention", "history"], { workId: work.id });

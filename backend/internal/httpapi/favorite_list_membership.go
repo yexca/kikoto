@@ -40,12 +40,12 @@ func (s *Server) summarizeFavoriteListMembership(w http.ResponseWriter, r *http.
 		WorkIDs []int64 `json:"workIds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	workIDs, err := normalizeFavoriteMembershipWorkIDs(payload.WorkIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	// Membership belongs to each family's canonical work.
@@ -271,17 +271,17 @@ func (s *Server) updateFavoriteListMembership(w http.ResponseWriter, r *http.Req
 		RemoveListIDs []int64 `json:"removeListIds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	workIDs, err := normalizeFavoriteMembershipWorkIDs(payload.WorkIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	add, remove, err := normalizeFavoriteMembershipListChanges(payload.AddListIDs, payload.RemoveListIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -293,9 +293,9 @@ func (s *Server) updateFavoriteListMembership(w http.ResponseWriter, r *http.Req
 	if err := applyFavoriteListMembershipChanges(r.Context(), tx, user.ID, workIDs, add, remove); err != nil {
 		switch {
 		case errors.Is(err, errInvalidFavoriteListID):
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		case errors.Is(err, sql.ErrNoRows):
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		default:
 			writeError(w, err)
 		}
@@ -405,12 +405,12 @@ func (s *Server) getWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if err := s.requireWorkExists(r.Context(), workID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -435,12 +435,12 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if err := s.requireWorkExists(r.Context(), workID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -455,7 +455,7 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		ListIDs []int64 `json:"listIds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	selected := map[int64]bool{}
@@ -472,7 +472,7 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback() }()
 	if err := applyWorkFavoriteListSelection(r.Context(), tx, user.ID, workID, selected); err != nil {
 		if errors.Is(err, errInvalidFavoriteListID) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		writeError(w, err)

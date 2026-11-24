@@ -16,6 +16,7 @@ import {
   type CreatorSubscriptionLookup,
   type CreatorSubscriptionTarget,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { subscribeButtonState, subscribeConfirmation, subscriptionSubjectName } from "./subscriptionModel";
@@ -72,11 +73,9 @@ export function SubscribeButton({
   };
 
   useEffect(() => {
-    const controller = new AbortController();
     setLookup(null);
     setMenuOpen(false);
-    void reload(controller.signal).catch(() => undefined);
-    return () => controller.abort();
+    return startLoad((signal) => reload(signal));
     // The key names the target; the object may be recreated on each render.
   }, [key]);
 

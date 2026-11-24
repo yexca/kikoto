@@ -96,17 +96,17 @@ func (s *Server) setWorkFileDisplayNames(w http.ResponseWriter, r *http.Request)
 	}
 	var change fileDisplayNamesChange
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFileDisplayNamesBody)).Decode(&change); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := normalizeFileDisplayNamesChange(&change); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if err := s.applyFileDisplayNames(r.Context(), user.ID, mediaWorkID, change); err != nil {
 		var requestErr fileDisplayNameRequestError
 		if errors.As(err, &requestErr) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": requestErr.message})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", requestErr.message, false)
 			return
 		}
 		writeError(w, err)
@@ -134,7 +134,7 @@ func (s *Server) fileDisplayNamesWork(w http.ResponseWriter, r *http.Request) (i
 	mediaWorkID, err := s.resolveMediaWorkIDForRequest(r.Context(), workID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return 0, 0, false
 		}
 		writeError(w, err)

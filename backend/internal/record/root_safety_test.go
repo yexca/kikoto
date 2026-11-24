@@ -32,6 +32,25 @@ func TestInitializingAnOfflineRootKeepsItsCatalog(t *testing.T) {
 	}
 }
 
+// A root state that cannot be recorded is an error, never the earlier state
+// read back, so an unmounted disk never reports online to a scan.
+func TestUnrecordedRootStateIsAnError(t *testing.T) {
+	store, db, root := scannedStore(t, map[string]string{"trip/clip.mp4": "video"})
+	ctx := context.Background()
+	if state, err := store.EnsureRoot(ctx); err != nil || state.State != "online" {
+		t.Fatalf("mounted root = %+v, %v", state, err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER refuse_record_root_state BEFORE UPDATE ON record_root BEGIN SELECT RAISE(ABORT, 'record root state is not writable'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(root, root+"-unmounted"); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := store.EnsureRoot(ctx); err == nil {
+		t.Fatalf("unmounted root whose state was not recorded = %+v, want an error", state)
+	}
+}
+
 // Restoring the marker needs the catalog's disk: an empty mount point without
 // any recorded folder or file is refused, so it never goes online over the
 // catalog and has every file marked missing.

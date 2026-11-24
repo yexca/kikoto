@@ -59,18 +59,18 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 		Rule        *personal.SmartRule `json:"rule"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	name := strings.TrimSpace(payload.Name)
 	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "name is required", false)
 		return
 	}
 	description := strings.TrimSpace(payload.Description)
 	icon, ok := personal.NormalizeFavoriteListIcon(payload.Icon)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list icon"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list icon", false)
 		return
 	}
 	kind := strings.TrimSpace(payload.Kind)
@@ -78,11 +78,11 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 		kind = "user"
 	}
 	if kind != "user" && kind != "smart" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list kind"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list kind", false)
 		return
 	}
 	if (kind == "smart") != (payload.Rule != nil) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "a smart list needs a rule and only a smart list has one", "code": "invalid_smart_rule", "reason": "rule"})
+		writeAPIErrorDetails(w, http.StatusBadRequest, "invalid_smart_rule", "a smart list needs a rule and only a smart list has one", false, map[string]any{"reason": "rule"})
 		return
 	}
 	var rule personal.SmartRule
@@ -111,7 +111,7 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if smartCount >= personal.MaxSmartListsPerUser {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "too many smart lists", "code": "smart_list_limit", "limit": personal.MaxSmartListsPerUser})
+			writeAPIErrorDetails(w, http.StatusConflict, "smart_list_limit", "too many smart lists", false, map[string]any{"limit": personal.MaxSmartListsPerUser})
 			return
 		}
 	}
@@ -126,7 +126,7 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 	`, user.ID, name, description, icon, sortOrder, kind)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
+			writeAPIError(w, http.StatusConflict, "conflict", "favorite list already exists", false)
 			return
 		}
 		writeError(w, err)
@@ -162,7 +162,7 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 	}
 	listID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list id", false)
 		return
 	}
 	var payload struct {
@@ -173,24 +173,24 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 		Rule        *personal.SmartRule `json:"rule"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	current, err := s.loadFavoriteList(r.Context(), user.ID, listID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "favorite list not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if current.Kind == "marked" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "system marked list cannot be edited"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "system marked list cannot be edited", false)
 		return
 	}
 	if payload.Rule != nil && current.Kind != "smart" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "only a smart list has a rule", "code": "invalid_smart_rule", "reason": "rule"})
+		writeAPIErrorDetails(w, http.StatusBadRequest, "invalid_smart_rule", "only a smart list has a rule", false, map[string]any{"reason": "rule"})
 		return
 	}
 	var rule personal.SmartRule
@@ -215,7 +215,7 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 		name = strings.TrimSpace(*payload.Name)
 	}
 	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "name is required", false)
 		return
 	}
 	description := current.Description
@@ -226,7 +226,7 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 	if payload.Icon != nil {
 		var ok bool
 		if icon, ok = personal.NormalizeFavoriteListIcon(*payload.Icon); !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list icon"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list icon", false)
 			return
 		}
 	}
@@ -246,7 +246,7 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 		WHERE id = ? AND user_id = ?
 	`, name, description, icon, sortOrder, listID, user.ID); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
+			writeAPIError(w, http.StatusConflict, "conflict", "favorite list already exists", false)
 			return
 		}
 		writeError(w, err)
@@ -277,20 +277,20 @@ func (s *Server) deleteFavoriteList(w http.ResponseWriter, r *http.Request) {
 	}
 	listID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list id", false)
 		return
 	}
 	var kind string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT kind FROM favorite_list WHERE id = ? AND user_id = ?", listID, user.ID).Scan(&kind); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "favorite list not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if kind == "marked" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "system marked list cannot be deleted"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "system marked list cannot be deleted", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM favorite_list WHERE id = ? AND user_id = ? AND kind IN "+library.ManualFavoriteListKindsSQL, listID, user.ID)
@@ -304,7 +304,7 @@ func (s *Server) deleteFavoriteList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if deleted == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "favorite list not found", false)
 		return
 	}
 	if err := s.reconcileFavoriteSummariesForUser(r.Context(), user.ID); err != nil {
@@ -321,13 +321,13 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 	}
 	listID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list id", false)
 		return
 	}
 	var kind string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT kind FROM favorite_list WHERE id = ? AND user_id = ?", listID, user.ID).Scan(&kind); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "favorite list not found", false)
 			return
 		}
 		writeError(w, err)

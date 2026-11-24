@@ -134,7 +134,7 @@ func writeSettingsUpdateError(w http.ResponseWriter, err error) {
 			writeAPIError(w, http.StatusBadRequest, validationErr.code, validationErr.Error(), false)
 			return
 		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": validationErr.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", validationErr.Error(), false)
 		return
 	}
 	writeError(w, err)
@@ -184,7 +184,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload settingsUpdatePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": jsonBodyErrorMessage(err)})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", jsonBodyErrorMessage(err), false)
 		return
 	}
 	recommendationConfig, err := s.parseRecommendationConfig(r.Context(), payload.RecommendationConfig)

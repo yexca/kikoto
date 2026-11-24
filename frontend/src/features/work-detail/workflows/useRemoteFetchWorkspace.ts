@@ -21,6 +21,7 @@ import { fetchDestinationCode, fetchSubmissionFailure, librarySettingsPath } fro
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { filterRemoteFetchPaths } from "@/lib/remoteFetchFilters";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
+import { openWorkflowPath, openWorkflowRun, workflowsPath } from "@/lib/workflowLinks";
 
 export type { FetchIntent, RemoteFetchDraft } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
 
@@ -330,7 +331,7 @@ function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWor
       ? t("remoteFetch.alreadyQueued", { runId: result.runId })
       : t("remoteFetch.queued", { code: result.primaryCode, runId: result.runId }),
     actionLabel: t("remoteFetch.activity"),
-    onAction: () => openActivity(`/workflows?run=${result.runId}`),
+    onAction: () => openWorkflowRun(result.runId),
   });
 }
 
@@ -353,7 +354,7 @@ function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>, t: TFunction
     kind: "warning",
     message: t("remoteFetch.unconfirmed"),
     actionLabel: t("remoteFetch.activity"),
-    onAction: () => openActivity("/workflows"),
+    onAction: () => openWorkflowPath(workflowsPath()),
   });
 }
 

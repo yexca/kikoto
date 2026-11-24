@@ -96,7 +96,7 @@ func (s *Server) loadVoiceWorksPage(ctx context.Context, userID, personID int64,
 	}
 	return voiceWorksPage{
 		PersonID: personID, Works: works, Page: page,
-		PageSize: minInt(maxInt(worksQuery.PageSize, 1), 100), Total: total,
+		PageSize: min(max(worksQuery.PageSize, 1), 100), Total: total,
 	}, nil
 }
 

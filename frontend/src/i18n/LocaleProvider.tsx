@@ -11,6 +11,7 @@ import i18n, {
   type UiLocale,
   writeAnonymousUiLocale,
 } from "@/i18n";
+import { startLoad } from "@/lib/effectScope";
 
 type LocaleContextValue = {
   preference: UiLocale;
@@ -31,23 +32,23 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const resolvedLocale = useMemo(() => resolveUiLocale(preference, systemLanguages), [preference, systemLanguages]);
 
   useEffect(() => {
-    let cancelled = false;
-    void ensureUiLocale(resolvedLocale)
-      .then(() => {
-        if (cancelled) return;
-        return i18n.changeLanguage(resolvedLocale);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        document.documentElement.lang = "en";
-        return i18n.changeLanguage("en");
-      });
+    const cancel = startLoad(
+      async (signal) => {
+        await ensureUiLocale(resolvedLocale);
+        signal.throwIfAborted();
+        await i18n.changeLanguage(resolvedLocale);
+      },
+      {
+        onError: () => {
+          document.documentElement.lang = "en";
+          void i18n.changeLanguage("en");
+        },
+      },
+    );
     document.documentElement.lang =
       resolvedLocale === "zh-Hans" ? "zh-Hans" : resolvedLocale === "zh-Hant" ? "zh-Hant" : resolvedLocale;
     document.documentElement.dir = "ltr";
-    return () => {
-      cancelled = true;
-    };
+    return cancel;
   }, [resolvedLocale]);
 
   useEffect(() => {

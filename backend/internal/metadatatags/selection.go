@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // StoredLanguages is the priority of every stored display name. Stored and
@@ -82,7 +84,7 @@ func Base(ctx context.Context, q Querier, workID int64) ([]int64, error) {
 		}
 		ids = append(ids, id)
 	}
-	return ids, closeRows(rows)
+	return ids, sqlutil.CloseRows(rows)
 }
 
 // AffectedWorks follows the whole connected merge component, including hidden
@@ -102,7 +104,7 @@ func AffectedWorks(ctx context.Context, q Querier, id int64) ([]int64, error) {
 		}
 		ids = append(ids, id)
 	}
-	return ids, closeRows(rows)
+	return ids, sqlutil.CloseRows(rows)
 }
 
 const affectedWorksSQL = `WITH RECURSIVE related(tag_id) AS (

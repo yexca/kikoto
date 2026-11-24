@@ -1,5 +1,6 @@
 import { navItems, type PageID } from "./navigation";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "../lib/browserHistory";
+import { safeDecodePathSegment } from "../lib/routeSegment";
 import { WORK_CODE_PATH_PATTERN } from "../lib/workCode";
 
 const ownerPageStateKey = "__kikotoWorkDetailOwner";
@@ -106,14 +107,6 @@ export function historyStateWithWorkDetailOwner(state: unknown, owner: PageID, r
   const record = state && typeof state === "object" && !Array.isArray(state) ? (state as Record<string, unknown>) : {};
   if (!replace && navItems.some((item) => item.id === record[ownerPageStateKey])) return record;
   return { ...record, [ownerPageStateKey]: owner };
-}
-
-function safeDecodePathSegment(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }
 
 function validSourceID(value: number) {

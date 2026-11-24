@@ -119,12 +119,12 @@ func (s *Server) cleanupMediaLocations(w http.ResponseWriter, r *http.Request) {
 	}
 	var request mediaCleanupRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	mode, err := parseMediaCleanupMode(request.Mode)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if mode == mediaCleanupForgetWork {
@@ -164,16 +164,15 @@ func parseMediaCleanupMode(value string) (mediaCleanupMode, error) {
 func writeMediaCleanupError(w http.ResponseWriter, err error) {
 	var symlinkErr symlinkMediaLocationError
 	if errors.As(err, &symlinkErr) {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error": symlinkErr.Error(), "runId": symlinkErr.RunID, "candidateId": symlinkErr.CandidateID,
+		// The path stays in the review run the response points to.
+		writeAPIErrorDetails(w, http.StatusConflict, "conflict", "a local media file is a symlink; review the location before deleting", false, map[string]any{
+			"runId": symlinkErr.RunID, "candidateId": symlinkErr.CandidateID,
 		})
 		return
 	}
 	var conflictErr mediaCleanupTargetConflictError
 	if errors.As(err, &conflictErr) {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error": conflictErr.Error(), "code": "media_cleanup_target_changed", "retryable": false,
-		})
+		writeAPIError(w, http.StatusConflict, "media_cleanup_target_changed", conflictErr.Error(), false)
 		return
 	}
 	writeError(w, err)
@@ -619,7 +618,7 @@ func (s *Server) finishCancelledMediaCleanup(ctx context.Context, job workflowJo
 func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflowJobRecord) error {
 	payload, checkpoint, err := decodeMediaCleanupExecution(job)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
+		s.failJobOrLog(context.WithoutCancel(ctx), job, err.Error())
 		return err
 	}
 	statusCtx := context.WithoutCancel(ctx)
@@ -641,7 +640,7 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 	}
 	workIDs, err := mediaCleanupForgetWorkIDs(payload)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+		s.failJobOrLog(statusCtx, job, err.Error())
 		return err
 	}
 	if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
@@ -788,8 +787,8 @@ func (s *Server) clearMediaCleanupTarget(ctx context.Context, target mediaCleanu
 }
 
 func (s *Server) failMediaCleanupTarget(ctx context.Context, job workflowJobRecord, err error) error {
-	_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
-	_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+	logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
+	s.failJobOrLog(ctx, job, err.Error())
 	return err
 }
 
@@ -828,13 +827,13 @@ func (s *Server) finishMediaCleanupExecution(
 	}
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
-		_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
+		logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var runStatus string
 	if err := tx.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); err != nil {
-		_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
+		logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
 		return err
 	}
 	if runStatus == "cancelled" {
@@ -879,8 +878,8 @@ func (s *Server) finishMediaCleanupFilesOnly(
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	return nil
@@ -1020,8 +1019,8 @@ func (s *Server) finishMediaCleanupForget(
 		return finishCancelled()
 	}
 	if err := tx.Commit(); err != nil {
-		_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		logWorkflowWriteError(ctx, "restore cleanup folders", job, s.restoreMediaCleanupFolders(ctx, job.RunID))
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	return nil

@@ -113,11 +113,11 @@ type workFolderEditExecution struct {
 func (s *Server) executeWorkFolderEditJob(ctx context.Context, job workflowJobRecord) error {
 	execution := &workFolderEditExecution{server: s, job: job, node: "stage"}
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &execution.payload); err != nil {
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
+		s.failJobOrLog(context.WithoutCancel(ctx), job, err.Error())
 		return err
 	}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &execution.checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
+		s.failJobOrLog(context.WithoutCancel(ctx), job, err.Error())
 		return err
 	}
 	execution.total = workFolderEditProgressTotal(execution.payload)
@@ -172,7 +172,9 @@ func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64)
 	// A settlement that started finishes, so a stop never leaves it between
 	// moved files.
 	ctx = context.WithoutCancel(ctx)
-	defer func() { _ = s.restoreMediaCleanupFolders(ctx, runID) }()
+	defer func() {
+		logWorkflowWriteError(ctx, "restore cleanup folders", workflowJobRecord{RunID: runID, WorkerType: workFolderEditWorkerType}, s.restoreMediaCleanupFolders(ctx, runID))
+	}()
 	execution := &workFolderEditExecution{server: s}
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workflow_run_id, payload_json, checkpoint_json FROM workflow_job
@@ -1309,7 +1311,7 @@ func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error 
 		// keeps its result.
 		if runStatus == "cancelled" {
 			e.discardStaging(statusCtx)
-			_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
+			logWorkflowWriteError(statusCtx, "restore cleanup folders", e.job, s.restoreMediaCleanupFolders(statusCtx, e.job.RunID))
 		}
 		return runErr
 	}
@@ -1322,7 +1324,7 @@ func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error 
 		kept = e.discardStaging(statusCtx)
 		// A merged folder the edit had started to delete is a folder of the
 		// work again, holding whatever it still holds.
-		_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
+		logWorkflowWriteError(statusCtx, "restore cleanup folders", e.job, s.restoreMediaCleanupFolders(statusCtx, e.job.RunID))
 	}
 	slog.Error("work folder edit failed", "run_id", e.job.RunID, "job_id", e.job.ID, "step", e.node, "error", runErr)
 	tx, err := beginTxWithDatabaseBusyRetry(statusCtx, s.db)

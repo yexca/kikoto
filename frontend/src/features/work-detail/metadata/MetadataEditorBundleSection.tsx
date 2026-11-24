@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Package, Plus, Undo2, Unlink } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type WorkBundleCandidates, type WorkBundleMember } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { MetadataFieldStatusBadge } from "./MetadataEditorFields";
 import { normalizedMetadataLinkCode } from "./metadataEditorModel";
@@ -46,19 +47,15 @@ export function MetadataEditorBundleSection({
 
   useEffect(() => {
     if (readOnly) return;
-    const controller = new AbortController();
     setLoadingSuggestions(true);
-    api.listWorkBundleCandidates(workId, controller.signal).then(
-      (result) => {
+    return startLoad((signal) => api.listWorkBundleCandidates(workId, signal), {
+      onSuccess: (result) => {
         setSuggestions(result);
         setLoadingSuggestions(false);
       },
-      () => {
-        // Suggestions are optional; members can still be added by code.
-        if (!controller.signal.aborted) setLoadingSuggestions(false);
-      },
-    );
-    return () => controller.abort();
+      // Suggestions are optional; members can still be added by code.
+      onError: () => setLoadingSuggestions(false),
+    });
   }, [readOnly, workId]);
 
   const candidates = suggestions?.candidates ?? [];

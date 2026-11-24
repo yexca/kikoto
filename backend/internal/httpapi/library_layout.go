@@ -90,12 +90,24 @@ func (s *Server) loadLibraryLayout(ctx context.Context) (libraryLayout, error) {
 	if err := rows.Close(); err != nil {
 		return libraryLayout{}, err
 	}
-	decodeString := func(key string) string {
+	// An unset value is empty; a stored value that cannot be read is an error,
+	// never a layout read as unconfigured or a pool without its identity.
+	decodeString := func(key string) (string, error) {
+		raw := values[key]
+		if raw == "" {
+			return "", nil
+		}
 		var value string
-		_ = json.Unmarshal([]byte(values[key]), &value)
-		return strings.TrimSpace(value)
+		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+			return "", fmt.Errorf("decode %s: %w", key, err)
+		}
+		return strings.TrimSpace(value), nil
 	}
-	layout := libraryLayout{Mode: decodeString(settingLibraryMode)}
+	mode, err := decodeString(settingLibraryMode)
+	if err != nil {
+		return libraryLayout{}, err
+	}
+	layout := libraryLayout{Mode: mode}
 	if layout.poolsMode() {
 		pools := []storagepool.Pool{}
 		if raw := values[settingStoragePools]; raw != "" {
@@ -108,13 +120,20 @@ func (s *Server) loadLibraryLayout(ctx context.Context) (libraryLayout, error) {
 				layout.Pools = append(layout.Pools, pool)
 			}
 		}
-		layout.FetchPool = decodeString(settingFetchPool)
+		layout.FetchPool, err = decodeString(settingFetchPool)
+		if err != nil {
+			return libraryLayout{}, err
+		}
 		return layout, nil
 	}
 	if layout.Mode != storagepool.ModeStandard {
 		layout.Mode = ""
 	}
-	layout.Pools = []storagepool.Pool{{Path: "", ID: decodeString(settingStandardPoolID)}}
+	poolID, err := decodeString(settingStandardPoolID)
+	if err != nil {
+		return libraryLayout{}, err
+	}
+	layout.Pools = []storagepool.Pool{{Path: "", ID: poolID}}
 	return layout, nil
 }
 

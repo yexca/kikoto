@@ -28,13 +28,13 @@ func TestNormalizeWorkCodeUsesSupportedPrefixesAndLength(t *testing.T) {
 		testfixture.PrefixCC,
 	} {
 		code := testfixture.WorkCode(prefix, 0)
-		if got := normalizeWorkCode(strings.ToLower(code)); got != code {
-			t.Fatalf("normalizeWorkCode(%q) = %q, want %q", strings.ToLower(code), got, code)
+		if got := normalizeCatalogWorkCode(strings.ToLower(code)); got != code {
+			t.Fatalf("normalizeCatalogWorkCode(%q) = %q, want %q", strings.ToLower(code), got, code)
 		}
 	}
 	for _, code := range []string{"RJ0000", "RJ000000000", "ZZ00000000"} {
-		if got := normalizeWorkCode(code); got != "" {
-			t.Fatalf("normalizeWorkCode(%q) = %q, want empty", code, got)
+		if got := normalizeCatalogWorkCode(code); got != "" {
+			t.Fatalf("normalizeCatalogWorkCode(%q) = %q, want empty", code, got)
 		}
 	}
 }

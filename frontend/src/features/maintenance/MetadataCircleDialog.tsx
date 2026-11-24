@@ -5,6 +5,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { useMetadataEntrySuggestions } from "@/hooks/useMetadataEntrySuggestions";
 import { api, type CircleMergeReview, type MetadataCircle } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 export function MetadataCircleDialog({
   entry,
@@ -29,23 +30,17 @@ export function MetadataCircleDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const suggestions = useMetadataEntrySuggestions("circles", query);
-  useEffect(() => {
-    let cancelled = false;
-    void api
-      .listCircleMerges(entry.id)
-      .then((reviews) => {
-        if (!cancelled) {
+  useEffect(
+    () =>
+      startLoad(() => api.listCircleMerges(entry.id), {
+        onSuccess: (reviews) => {
           setHistory(reviews);
           setHistoryFailed(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setHistoryFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [entry.id, refresh]);
+        },
+        onError: () => setHistoryFailed(true),
+      }),
+    [entry.id, refresh],
+  );
   const mutate = async (request: () => Promise<unknown>, undo = false) => {
     setBusy(true);
     setError("");

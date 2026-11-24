@@ -6,6 +6,7 @@ import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { deviceTimeZone, setListeningTimeZone } from "@/lib/timeZone";
 
 import { TimeZoneSelect } from "./TimeZoneSelect";
@@ -31,19 +32,15 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
   const autosave = useAutosaveStatus();
 
   useEffect(() => {
-    const controller = new AbortController();
     setFailed(false);
-    api
-      .getUserPreferences(controller.signal)
-      .then((preferences) => {
+    return startLoad((signal) => api.getUserPreferences(signal), {
+      onSuccess: (preferences) => {
         const next = preferences.timeZone ?? "";
         setSaved(next);
         setDraft(next);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
+      },
+      onError: () => setFailed(true),
+    });
   }, [attempt]);
 
   const save = async (zone: string) => {

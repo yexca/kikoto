@@ -505,7 +505,7 @@ func (s *Server) serveAutomaticLocalPlayback(w http.ResponseWriter, r *http.Requ
 	}
 	profile, err := s.playbackProfile(r, target.Kind)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	capabilities := playbackCapabilities(r)
@@ -768,7 +768,7 @@ func (s *Server) loadRemotePlaybackSource(ctx context.Context, sourceID int64) (
 
 func writeRemotePlaybackSourceError(w http.ResponseWriter, err error) bool {
 	if errors.Is(err, errRemotePlaybackSourceUnavailable) || errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media source is not available"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote media source is not available", false)
 		return true
 	}
 	return false
@@ -918,11 +918,11 @@ func (s *Server) serveRemotePlaybackResponse(w http.ResponseWriter, r *http.Requ
 func (s *Server) streamRemoteURL(w http.ResponseWriter, r *http.Request, source remoteSourceForUse, remoteURL string, path string, kind string) {
 	_, err := s.playbackProfile(r, kind)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if !remotePlaybackSourceUsable(source) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media source is not available"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote media source is not available", false)
 		return
 	}
 	parsed, err := remotePlaybackURLAllowed(remoteURL, source)
@@ -956,7 +956,7 @@ func (s *Server) streamRemoteURL(w http.ResponseWriter, r *http.Request, source 
 func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -965,7 +965,7 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 	}
 	path := cleanRemoteRelativePath(r.URL.Query().Get("path"))
 	if code == "" || path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code and media path are required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code and media path are required", false)
 		return
 	}
 	source, err := s.loadRemotePlaybackSource(r.Context(), id)
@@ -979,7 +979,7 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 	_, _, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeUpstreamError(w, err)
@@ -987,7 +987,7 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 	}
 	remoteURL, kind, ok := remoteMediaTrackURL(tracks, path, "")
 	if !ok || (kind != "audio" && kind != "video") {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media file was not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote media file was not found", false)
 		return
 	}
 	s.streamRemoteURL(w, r, source, remoteURL, path, kind)

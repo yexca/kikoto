@@ -14,7 +14,7 @@ export function isCircleListLocation(location: string) {
 
 export function readLastCircleListLocation(storageScope: string) {
   try {
-    const value = window.sessionStorage.getItem(storageKey(storageScope));
+    const value = window.sessionStorage.getItem(circleNavigationStorageKey(storageScope));
     return value && isCircleListLocation(value) ? normalizeInternalLocation(value) : null;
   } catch {
     return null;
@@ -25,13 +25,13 @@ export function writeLastCircleListLocation(storageScope: string, location: stri
   const normalized = normalizeInternalLocation(location);
   if (!normalized || !isCircleListLocation(normalized)) return;
   try {
-    window.sessionStorage.setItem(storageKey(storageScope), normalized);
+    window.sessionStorage.setItem(circleNavigationStorageKey(storageScope), normalized);
   } catch {
     // Navigation remains usable when session storage is unavailable.
   }
 }
 
-function storageKey(storageScope: string) {
+function circleNavigationStorageKey(storageScope: string) {
   return `${lastCircleListLocationPrefix}${storageScope}`;
 }
 

@@ -2,6 +2,7 @@ import { openWorkDetail, REMOTE_SOURCE_WORK_PATTERN, workDetailCodeFromLocation 
 import { type DetailSourceIntent, remoteSourceTabKey } from "@/features/work-detail/source/sourceContextModel";
 import type { RemoteWorkPreview, WorkPreview } from "@/features/work-detail/workDetailShared";
 import type { LibrarySource, Work } from "@/lib/api";
+import { safeDecodePathSegment } from "@/lib/routeSegment";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 
 import { remoteWorkPreviewFromHistory } from "./workPreviewHistory";
@@ -124,14 +125,6 @@ export function localScopeFromPath(path: string): LocalLibraryScope {
 
 function sourceRouteKey(source: LibrarySource) {
   return source.code || source.displayName;
-}
-
-function safeDecodePathSegment(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }
 
 export function detailSourceIntentFromLocation(search: string): DetailSourceIntent {

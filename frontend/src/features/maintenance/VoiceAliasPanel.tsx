@@ -8,6 +8,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type VoiceAlias, type VoiceAliasCandidate, type VoiceMergeReview } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 const aliasSuggestMinChars = 2;
@@ -89,23 +90,17 @@ export function VoiceAliasPanel({
 
   useEffect(() => {
     if (!searching) return;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const items = await api.listVoiceAliasCandidates(personId, draft);
-          if (!controller.signal.aborted) setCandidateResult({ query: draft, items });
-        } catch {
-          if (controller.signal.aborted) return;
+    return startLoad(
+      () => api.listVoiceAliasCandidates(personId, draft),
+      {
+        onSuccess: (items) => setCandidateResult({ query: draft, items }),
+        onError: () => {
           setCandidateResult({ query: draft, items: [] });
           reportError("creatorBrowse.aliasCandidateSearchFailed");
-        }
-      })();
-    }, 180);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
+        },
+      },
+      { delayMs: 180 },
+    );
   }, [draft, personId, reportError, searching]);
 
   const addAlias = async () => {

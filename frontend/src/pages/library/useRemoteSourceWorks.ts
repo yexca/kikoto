@@ -9,6 +9,7 @@ import {
   type RemoteWorksResponse,
   type SortDirection,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import { defaultRemoteSourceViewState, remoteLibrarySort, type RemoteSourceViewState } from "./libraryBrowseModel";
 import type { LibraryTab } from "./libraryRoutes";
@@ -92,7 +93,6 @@ export function useRemoteSourceWorks({
       skipNextEffect.current = false;
       return;
     }
-    const controller = new AbortController();
     const sourceState = sourceStates[tab.source.id] ?? defaultRemoteSourceViewState;
     const requestKey = JSON.stringify([
       tab.source.id,
@@ -112,34 +112,37 @@ export function useRemoteSourceWorks({
     const seq = ++requestSeq.current;
     setResult((current) => (current?.sourceId === tab.source.id ? current : null));
     setIsLoading(true);
-    api
-      .listRemoteSourceWorks(
-        tab.source.id,
-        sourceState.page,
-        sourceState.pageSize,
-        query,
-        remoteLibrarySort(sort),
-        direction,
-        randomSeed,
-        inlineRecommendations,
-        controller.signal,
-        recommendationSessionId,
-      )
-      .then((loaded) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        loadedRequestKey.current = requestKey;
-        setResult(loaded);
-        onResultsShown();
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        setResult(unavailableRemoteWorks(tab.source.id, sourceState.page, sourceState.pageSize, sort, direction));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) =>
+        api.listRemoteSourceWorks(
+          tab.source.id,
+          sourceState.page,
+          sourceState.pageSize,
+          query,
+          remoteLibrarySort(sort),
+          direction,
+          randomSeed,
+          inlineRecommendations,
+          signal,
+          recommendationSessionId,
+        ),
+      {
+        onSuccess: (loaded) => {
+          if (seq !== requestSeq.current) return;
+          loadedRequestKey.current = requestKey;
+          setResult(loaded);
+          onResultsShown();
+        },
+        onError: (error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          if (seq !== requestSeq.current) return;
+          setResult(unavailableRemoteWorks(tab.source.id, sourceState.page, sourceState.pageSize, sort, direction));
+        },
+        onSettled: () => {
+          if (seq === requestSeq.current) setIsLoading(false);
+        },
+      },
+    );
   }, [
     visible,
     ready,

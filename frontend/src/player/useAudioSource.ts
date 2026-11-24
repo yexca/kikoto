@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { startLoad } from "@/lib/effectScope";
 import { audioSourceKey, peekAudioSource, resolveAudioSource, type PlayerAudioSource } from "./audioPlaybackSource";
 import type { PlayerTrack } from "./playerTypes";
 
@@ -35,13 +36,9 @@ export function useAudioSource(
   useEffect(() => {
     const target = trackRef.current;
     if (!needsResolving || !target || key === null) return;
-    let current = true;
-    void resolveAudioSource(target, compatibility).then((source) => {
-      if (current) setResolved({ key, instanceKey, source });
+    return startLoad(() => resolveAudioSource(target, compatibility), {
+      onSuccess: (source) => setResolved({ key, instanceKey, source }),
     });
-    return () => {
-      current = false;
-    };
   }, [compatibility, instanceKey, key, needsResolving]);
 
   return resolvedHere ? resolved.source : known;

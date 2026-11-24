@@ -1,3 +1,4 @@
+import { normalizeRelativePath } from "@/features/work-detail/workFilePath";
 import { lyricsRootFolderName } from "@/lib/lyricsLanguage";
 
 /**
@@ -19,17 +20,13 @@ export type FolderEditPlaced = { key: string; path: string };
 /** Why a folder name was refused. */
 export type FolderEditNameError = "empty" | "invalid" | "taken" | "reserved";
 
-function normalize(path: string) {
-  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-}
-
 /**
  * The identity of a path below a folder, as the server compares target paths:
  * two paths that differ only in letter case or Unicode composition are the
  * same path.
  */
 export function pathIdentity(path: string) {
-  return normalize(path).normalize("NFC").toLowerCase();
+  return normalizeRelativePath(path).normalize("NFC").toLowerCase();
 }
 
 const identity = pathIdentity;
@@ -49,7 +46,7 @@ export function baseName(path: string) {
 
 /** Whether a path below a work folder lies in Kikoto's lyrics folder, which only lyrics roles arrange. */
 export function inLyricsFolder(path: string) {
-  const first = normalize(path).split("/")[0] ?? "";
+  const first = normalizeRelativePath(path).split("/")[0] ?? "";
   return first.toLowerCase() === lyricsRootFolderName.toLowerCase();
 }
 
@@ -89,9 +86,9 @@ function freePath(path: string, taken: ReadonlySet<string>, isFolder = false) {
 export function layoutFolders(files: readonly FolderEditPlaced[], folders: readonly string[]) {
   const all = new Set<string>();
   const add = (folder: string) => {
-    for (let current = normalize(folder); current; current = parentFolder(current)) all.add(current);
+    for (let current = normalizeRelativePath(folder); current; current = parentFolder(current)) all.add(current);
   };
-  for (const file of files) add(parentFolder(normalize(file.path)));
+  for (const file of files) add(parentFolder(normalizeRelativePath(file.path)));
   for (const folder of folders) add(folder);
   return [...all];
 }
@@ -113,7 +110,7 @@ function relocate(
   for (const folder of layoutFolders(staying, folders)) taken.add(identity(folder));
   const placements: Record<string, string> = { ...layout.placements };
   for (const file of moving) {
-    const path = freePath(normalize(file.path), taken);
+    const path = freePath(normalizeRelativePath(file.path), taken);
     taken.add(identity(path));
     for (let folder = parentFolder(path); folder; folder = parentFolder(folder)) taken.add(identity(folder));
     placements[file.key] = path;
@@ -151,7 +148,7 @@ export function placeFilesBelow(
   return relocate(
     layout,
     files,
-    arriving.map((file) => ({ key: file.key, path: joinFolderPath(folder, normalize(file.path)) })),
+    arriving.map((file) => ({ key: file.key, path: joinFolderPath(folder, normalizeRelativePath(file.path)) })),
   );
 }
 

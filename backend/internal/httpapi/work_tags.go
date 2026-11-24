@@ -38,12 +38,12 @@ func (s *Server) setWorkUserTags(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if err := s.requireWorkExists(r.Context(), workID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -53,11 +53,11 @@ func (s *Server) setWorkUserTags(w http.ResponseWriter, r *http.Request) {
 		Tags []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if len(payload.Tags) > maxWorkUserTags {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many work tags"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "too many work tags", false)
 		return
 	}
 	// Personal tags belong to the family's canonical work, also when the

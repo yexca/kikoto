@@ -115,17 +115,17 @@ func (s *Server) queueGenreNameLearning(ctx context.Context, reason string) {
 func (s *Server) executeGenreNameLearningJob(ctx context.Context, job workflowJobRecord) error {
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	languages := metasync.GenreNameLearningLanguages(s.learnedMetadataLanguages(ctx))
 	pending, err := metasync.PendingGenreNames(ctx, s.db, languages)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if err := s.startGenreNameLearning(ctx, job, nodeIDs, languages, pending); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	lastCheckpoint := time.Now()
@@ -134,13 +134,13 @@ func (s *Server) executeGenreNameLearningJob(ctx context.Context, job workflowJo
 			return
 		}
 		lastCheckpoint = time.Now()
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "learning", map[string]any{
+		s.checkpointJobOrLog(ctx, job, "learning", map[string]any{
 			"requests": progress.Requests, "learnedNames": progress.LearnedNames, "exhausted": progress.Exhausted, "failed": progress.Failed,
 		}, min(pending, progress.LearnedNames+progress.Exhausted), pending)
 	}
 	result, err := s.newDLsiteMetadataSyncer(ctx).LearnGenreNames(ctx, languages, report)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	status := "succeeded"

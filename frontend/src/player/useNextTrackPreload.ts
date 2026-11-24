@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { startLoad } from "@/lib/effectScope";
 import { warmAudioHls } from "./audioHlsSource";
 import type { PlayerAudioSource } from "./audioPlaybackSource";
 
@@ -23,11 +24,8 @@ export function useNextTrackPreload(source: PlayerAudioSource | null) {
 
   useEffect(() => {
     if (!url || delivery !== "hls" || prefersReducedData()) return;
-    const controller = new AbortController();
-    void warmAudioHls(url, controller.signal).catch(() => {
-      // Warming is best-effort; the player requests the playlist itself.
-    });
-    return () => controller.abort();
+    // Warming is best-effort; the player requests the playlist itself.
+    return startLoad((signal) => warmAudioHls(url, signal));
   }, [delivery, url]);
 
   const elementURL = delivery === "hls" ? null : url;

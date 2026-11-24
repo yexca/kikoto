@@ -140,14 +140,14 @@ func (s *Server) enqueueDatabaseBackup(ctx context.Context, kind string, actorUs
 func (s *Server) executeDatabaseBackupJob(ctx context.Context, job workflowJobRecord) error {
 	var payload databaseBackupPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if payload.Kind != storage.BackupKindScheduled {
 		payload.Kind = storage.BackupKindManual
 	}
 	if s.cfg.DatabaseBackupDir == "" {
-		_ = s.failClaimedWorkflowJob(ctx, job, errDatabaseBackupUnavailable.Error())
+		s.failJobOrLog(ctx, job, errDatabaseBackupUnavailable.Error())
 		return errDatabaseBackupUnavailable
 	}
 	name := storage.BackupFileName(payload.Kind, time.Now(), "")
@@ -159,7 +159,7 @@ func (s *Server) executeDatabaseBackupJob(ctx context.Context, job workflowJobRe
 		// The detailed error can name the backup directory; keep it in the
 		// server log and record a generic failure in Activity.
 		slog.Error("database backup failed", "run_id", job.RunID, "error", err)
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, "database backup failed; see the server log for details")
+		s.failJobOrLog(context.WithoutCancel(ctx), job, "database backup failed; see the server log for details")
 		return err
 	}
 	keep := databaseManualBackupsKept

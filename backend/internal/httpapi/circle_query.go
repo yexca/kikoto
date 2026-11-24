@@ -119,13 +119,6 @@ func (s *Server) demoCircleEligible(ctx context.Context, partyID int64) (bool, e
 	return eligible, err
 }
 
-func maxInt(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}
-
 func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleSeries, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
@@ -208,7 +201,7 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			item.LocalWorks = min(item.LocalWorks, item.Works)
 			item.RemoteWorks = min(item.RemoteWorks, item.Works-item.LocalWorks)
 		}
-		item.MissingWorks = maxInt(0, item.Works-item.LocalWorks-item.RemoteWorks)
+		item.MissingWorks = max(0, item.Works-item.LocalWorks-item.RemoteWorks)
 	}
 	return items, nil
 }

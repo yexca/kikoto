@@ -449,14 +449,15 @@ for (const cancel of [false, true]) {
     page,
   }) => {
     const requests: Record<string, number> = {};
+    await page.clock.install();
     await page.addInitScript(() => {
       window.history.replaceState({ __kikotoScrollY: 1800 }, "", window.location.href);
     });
     const mocks = await mockBrowsePages(page, requests, { collectionSize: 24, deferWorks: true });
     await page.goto("/");
     await expect.poll(() => requests.works ?? 0).toBeGreaterThan(0);
-    // Keep the response pending beyond any fixed retry window.
-    await page.waitForTimeout(800);
+    // Keep the response pending beyond any fixed retry window, but inside the shell's ten-second give-up limit.
+    await page.clock.runFor(5_000);
     await expect.poll(() => page.evaluate(() => window.history.state.__kikotoScrollY)).toBe(1800);
     if (cancel) await page.mouse.wheel(0, -300);
     const userScroll = await page.evaluate(() => window.scrollY);
@@ -480,6 +481,7 @@ for (const cancel of [false, true]) {
 
 test("same-URL history entries keep independent positions when a scroll write is pending", async ({ page }) => {
   const requests: Record<string, number> = {};
+  await page.clock.install();
   await page.addInitScript(() => {
     Reflect.deleteProperty(Object.getPrototypeOf(window.crypto), "randomUUID");
   });
@@ -494,8 +496,8 @@ test("same-URL history entries keep independent positions when a scroll write is
     window.dispatchEvent(new Event("kikoto:navigation"));
   });
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  // Let any trailing scroll write run before traversing identical locations.
-  await page.waitForTimeout(200);
+  // Let any trailing scroll write (debounced by 150 ms) run before traversing identical locations.
+  await page.clock.runFor(200);
   await page.goBack();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1800);
   await page.goForward();

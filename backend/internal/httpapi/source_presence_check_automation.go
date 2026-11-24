@@ -39,41 +39,39 @@ func (s *Server) updateSourcePresenceCheck(w http.ResponseWriter, r *http.Reques
 	}
 	sourceID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid file source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid file source id", false)
 		return
 	}
 	var request sourcePresenceCheckSettingsRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source presence check settings"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source presence check settings", false)
 		return
 	}
 	if request.Options == nil || request.Startup == nil || request.Schedule == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "options, startup, and schedule are required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "options, startup, and schedule are required", false)
 		return
 	}
 	options := *request.Options
 	if options.SourceID != 0 && options.SourceID != sourceID {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "options name another source"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "options name another source", false)
 		return
 	}
 	options.SourceID = sourceID
 	options, err = normalizeSourcePresenceCheckOptions(options)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	interval := request.Schedule.IntervalMinutes
 	if interval < minimumWorkflowIntervalMinutes || interval > maximumWorkflowIntervalMinutes {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("intervalMinutes must be between %d and %d", minimumWorkflowIntervalMinutes, maximumWorkflowIntervalMinutes),
-		})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("intervalMinutes must be between %d and %d", minimumWorkflowIntervalMinutes, maximumWorkflowIntervalMinutes), false)
 		return
 	}
 	source, err := s.loadRemoteSourceForUse(r.Context(), sourceID)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "file source not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "file source not found", false)
 		return
 	}
 	if err != nil {
@@ -81,7 +79,7 @@ func (s *Server) updateSourcePresenceCheck(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !isKikoeruSourceType(source.SourceType) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source type does not support work checks"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "source type does not support work checks", false)
 		return
 	}
 	// Switching a check on needs a source that can run it; saving options or
@@ -89,7 +87,7 @@ func (s *Server) updateSourcePresenceCheck(w http.ResponseWriter, r *http.Reques
 	if request.Startup.Enabled || request.Schedule.Enabled {
 		var inputErr sourcePresenceCheckInputError
 		if _, err := s.sourcePresenceCheckSource(r.Context(), sourceID); errors.As(err, &inputErr) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": inputErr.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", inputErr.Error(), false)
 			return
 		} else if err != nil {
 			writeError(w, err)

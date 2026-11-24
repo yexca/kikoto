@@ -55,15 +55,15 @@ func (s *Server) actOnAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 	}
 	var payload availabilityWatchActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if len(payload.TargetIDs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "targetIds are required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "targetIds are required", false)
 		return
 	}
 	if err := validateAvailabilityWatchTargetIDs(payload.TargetIDs, remoteBulkMaxWorks); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	excluded := []string{}
@@ -206,11 +206,11 @@ func (s *Server) removeAvailabilityWatchTargetList(w http.ResponseWriter, r *htt
 	}
 	var payload availabilityWatchTargetIDs
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := validateAvailabilityWatchTargetIDs(payload.TargetIDs, availabilityWatchMaxTargets); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if len(payload.TargetIDs) > 0 {

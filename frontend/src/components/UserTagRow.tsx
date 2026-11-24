@@ -19,6 +19,7 @@ import {
 } from "@/components/userTagEditorModel";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type UserTagScope, type UserTagSuggestion } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { USER_TAGS_CHANGED_EVENT, type UserTagsChangedDetail } from "@/lib/userTagEvents";
 
@@ -287,19 +288,17 @@ function UserTagEditor({
     return () => window.clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listUserTags(scope, controller.signal)
-      .then((result) => {
-        suggestionCache.set(scope, result.tags);
-        setSuggestions(result.tags);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setSuggestionsFailed(true);
-      });
-    return () => controller.abort();
-  }, [scope]);
+  useEffect(
+    () =>
+      startLoad((signal) => api.listUserTags(scope, signal), {
+        onSuccess: (result) => {
+          suggestionCache.set(scope, result.tags);
+          setSuggestions(result.tags);
+        },
+        onError: () => setSuggestionsFailed(true),
+      }),
+    [scope],
+  );
 
   const options = useMemo(
     () => buildUserTagEditorOptions({ query, selected, pinned, suggestions: suggestions ?? [] }),

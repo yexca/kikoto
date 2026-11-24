@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 var ErrInvalid = errors.New("invalid circle identity change")
@@ -55,14 +57,6 @@ type Querier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func closeRows(rows *sql.Rows) error {
-	err := rows.Err()
-	other := rows.Close()
-	if err != nil {
-		return err
-	}
-	return other
-}
 func Load(ctx context.Context, q Querier, id int64) (Circle, error) {
 	var c Circle
 	err := q.QueryRowContext(ctx, "SELECT id,display_name,manual_name,provider_name,COALESCE("+CodeSQL("party.id")+",''),(SELECT COUNT(DISTINCT work_id) FROM work_party WHERE party_id=party.id) FROM party WHERE id=? AND party_type IN ('circle','brand','maker')", id).Scan(&c.ID, &c.DisplayName, &c.ManualName, &c.ProviderName, &c.Code, &c.WorkCount)
@@ -83,7 +77,7 @@ func Load(ctx context.Context, q Querier, id int64) (Circle, error) {
 		}
 		c.Aliases = append(c.Aliases, a)
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return c, err
 	}
 	rows, err = q.QueryContext(ctx, "SELECT external_id FROM party_external_id WHERE party_id=? ORDER BY is_primary DESC,id", id)
@@ -98,7 +92,7 @@ func Load(ctx context.Context, q Querier, id int64) (Circle, error) {
 		}
 		c.ExternalIDs = append(c.ExternalIDs, e)
 	}
-	return c, closeRows(rows)
+	return c, sqlutil.CloseRows(rows)
 }
 func RenameTx(ctx context.Context, tx *sql.Tx, id int64, name string) error {
 	name = strings.TrimSpace(name)
@@ -140,5 +134,5 @@ func Reviews(ctx context.Context, q Querier, id int64) ([]Review, error) {
 		}
 		result = append(result, r)
 	}
-	return result, closeRows(rows)
+	return result, sqlutil.CloseRows(rows)
 }

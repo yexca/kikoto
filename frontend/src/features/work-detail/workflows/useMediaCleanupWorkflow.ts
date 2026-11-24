@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { api, type MediaCleanupMode } from "@/lib/api";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 export type { MediaCleanupMode } from "@/lib/api";
 
@@ -58,7 +59,7 @@ export function useMediaCleanupWorkflow({
           kind: "warning",
           message: `Files were deleted, but workflow #${run.id} kept the work because another source is still available.`,
           actionLabel: "Activity",
-          onAction: () => openActivityRun(run.id),
+          onAction: () => openWorkflowRun(run.id),
         });
       } else if (workForgotten) {
         toast.success(`Files deleted and work forgotten in workflow #${run.id}.`);
@@ -78,7 +79,7 @@ export function useMediaCleanupWorkflow({
       kind: "error",
       message: `Delete workflow #${run.id} ${run.status}.`,
       actionLabel: "Activity",
-      onAction: () => openActivityRun(run.id),
+      onAction: () => openWorkflowRun(run.id),
     });
   }, [activeRunId, onCompleted, toast, watchedRun.run]);
 
@@ -105,7 +106,7 @@ export function useMediaCleanupWorkflow({
         kind: "success",
         message: `${mode === "files_and_forget_work" ? "Deletion and work-forget" : "File deletion"} queued for ${targets.length} ${targets.length === 1 ? "item" : "items"} as workflow run #${result.runId}.`,
         actionLabel: "Activity",
-        onAction: () => openActivityRun(result.runId),
+        onAction: () => openWorkflowRun(result.runId),
       });
     } catch (error) {
       toast.notify(toastFromError(error, "Delete submission failed."));
@@ -130,9 +131,4 @@ function parseCleanupSummary(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
-}
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }

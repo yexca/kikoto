@@ -23,6 +23,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { dateTimeFormat, formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { createEffectScope, startLoad } from "@/lib/effectScope";
 import { announceListeningHistoryCleared } from "@/lib/listeningHistoryEvents";
 import {
   listeningApi,
@@ -159,85 +160,64 @@ export function ListeningHistoryPage({
   }, [debouncedQuery, query]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setStatistics((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .statistics(range, controller.signal)
-      .then((data) => setStatistics({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setStatistics((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    return startLoad((signal) => listeningApi.statistics(range, signal), {
+      onSuccess: (data) => setStatistics({ status: "ready", data }),
+      onError: () => setStatistics((current) => ({ status: "error", data: current.data })),
+    });
   }, [range, statisticsToken]);
 
   // The past year's calendar also feeds the rhythm of a monthly or yearly report, so it loads whatever year is shown.
   useEffect(() => {
-    const controller = new AbortController();
     setPastCalendar((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .calendar(null, controller.signal)
-      .then((data) => setPastCalendar({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setPastCalendar((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    return startLoad((signal) => listeningApi.calendar(null, signal), {
+      onSuccess: (data) => setPastCalendar({ status: "ready", data }),
+      onError: () => setPastCalendar((current) => ({ status: "error", data: current.data })),
+    });
   }, [statisticsToken]);
 
   useEffect(() => {
     if (!year) return;
-    const controller = new AbortController();
+    const scope = createEffectScope();
     setYearCalendar((current) => ({ status: "loading", data: current.data }));
     setYearStatistics((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .calendar(year, controller.signal)
-      .then((data) => setYearCalendar({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setYearCalendar((current) => ({ status: "error", data: current.data }));
-      });
-    listeningApi
-      .statistics(year as ListeningStatisticsRange, controller.signal)
-      .then((data) => setYearStatistics({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setYearStatistics((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    scope.load((signal) => listeningApi.calendar(year, signal), {
+      onSuccess: (data) => setYearCalendar({ status: "ready", data }),
+      onError: () => setYearCalendar((current) => ({ status: "error", data: current.data })),
+    });
+    scope.load((signal) => listeningApi.statistics(year as ListeningStatisticsRange, signal), {
+      onSuccess: (data) => setYearStatistics({ status: "ready", data }),
+      onError: () => setYearStatistics((current) => ({ status: "error", data: current.data })),
+    });
+    return scope.cancel;
   }, [statisticsToken, year]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setProfile((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .profile(range, controller.signal)
-      .then((data) => setProfile({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setProfile((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    return startLoad((signal) => listeningApi.profile(range, signal), {
+      onSuccess: (data) => setProfile({ status: "ready", data }),
+      onError: () => setProfile((current) => ({ status: "error", data: current.data })),
+    });
   }, [range, statisticsToken]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setBreakdown((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .breakdown(range, rank, controller.signal)
-      .then((data) => setBreakdown({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setBreakdown((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    return startLoad((signal) => listeningApi.breakdown(range, rank, signal), {
+      onSuccess: (data) => setBreakdown({ status: "ready", data }),
+      onError: () => setBreakdown((current) => ({ status: "error", data: current.data })),
+    });
   }, [range, rank, statisticsToken]);
 
   useEffect(() => {
     if (!recordsOpen) return;
-    const controller = new AbortController();
     setHistory((current) => ({ status: "loading", data: current.data }));
-    listeningApi
-      .history({ page, pageSize: LISTENING_HISTORY_PAGE_SIZE, query: debouncedQuery }, controller.signal)
-      .then((data) => setHistory({ status: "ready", data }))
-      .catch(() => {
-        if (!controller.signal.aborted) setHistory((current) => ({ status: "error", data: current.data }));
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) => listeningApi.history({ page, pageSize: LISTENING_HISTORY_PAGE_SIZE, query: debouncedQuery }, signal),
+      {
+        onSuccess: (data) => setHistory({ status: "ready", data }),
+        onError: () => setHistory((current) => ({ status: "error", data: current.data })),
+      },
+    );
   }, [debouncedQuery, historyToken, page, recordsOpen]);
 
   const clearHistory = async () => {

@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 
 import { api, type VideoEmbeddedSubtitle } from "@/lib/api";
+import { createEffectScope, startLoad, type EffectScope } from "@/lib/effectScope";
 import { keepOneVideoSubtitle } from "@/player/video/videoControlsModel";
 import {
   initialVideoSubtitleKey,
@@ -62,13 +63,13 @@ export function useVideoSubtitleTracks(
   const initialAppliedRef = useRef(false);
   /** The track that shows, kept when the browser shows another beside it. */
   const shownKeyRef = useRef<string | null>(null);
-  const lifetimeRef = useRef<{ controller: AbortController; urls: string[] } | null>(null);
+  const lifetimeRef = useRef<{ scope: EffectScope; urls: string[] } | null>(null);
 
   useEffect(() => {
-    const lifetime = { controller: new AbortController(), urls: [] as string[] };
+    const lifetime = { scope: createEffectScope(), urls: [] as string[] };
     lifetimeRef.current = lifetime;
     return () => {
-      lifetime.controller.abort();
+      lifetime.scope.cancel();
       for (const url of lifetime.urls) URL.revokeObjectURL(url);
       lifetimeRef.current = null;
     };
@@ -76,7 +77,7 @@ export function useVideoSubtitleTracks(
 
   const store = useCallback((key: string, content: string | null) => {
     const lifetime = lifetimeRef.current;
-    if (!lifetime || lifetime.controller.signal.aborted) return;
+    if (!lifetime || lifetime.scope.signal.aborted) return;
     const src = content ? URL.createObjectURL(new Blob([content], { type: "text/vtt" })) : null;
     if (src) lifetime.urls.push(src);
     setSources((current) => ({ ...current, [key]: src }));
@@ -87,23 +88,23 @@ export function useVideoSubtitleTracks(
       setSidecarsSettled(true);
       return;
     }
-    const controller = new AbortController();
-    void Promise.allSettled(sidecars.map((subtitle) => loadSidecarSubtitle(subtitle, controller.signal))).then(
-      (results) => {
-        if (controller.signal.aborted) return;
-        results.forEach((result, index) =>
-          store(sidecarSubtitleKey(sidecars[index]), result.status === "fulfilled" ? result.value : null),
-        );
-        setSidecarsSettled(true);
+    return startLoad(
+      (signal) => Promise.allSettled(sidecars.map((subtitle) => loadSidecarSubtitle(subtitle, signal))),
+      {
+        onSuccess: (results) => {
+          results.forEach((result, index) =>
+            store(sidecarSubtitleKey(sidecars[index]), result.status === "fulfilled" ? result.value : null),
+          );
+          setSidecarsSettled(true);
+        },
       },
     );
-    return () => controller.abort();
   }, [sidecars, store]);
 
   const requestEmbedded = useCallback(
     (track: VideoSubtitleTrack) => {
-      const signal = lifetimeRef.current?.controller.signal;
-      if (!signal || track.kind !== "embedded" || requestedRef.current.has(track.key)) return;
+      const scope = lifetimeRef.current?.scope;
+      if (!scope || track.kind !== "embedded" || requestedRef.current.has(track.key)) return;
       requestedRef.current.add(track.key);
       const settle = (status: "failed" | null) =>
         setStatuses((current) => {
@@ -113,18 +114,17 @@ export function useVideoSubtitleTracks(
           return next;
         });
       setStatuses((current) => ({ ...current, [track.key]: "loading" }));
-      void api
-        .getVideoSubtitle(track.url, signal)
-        .then((text) => {
+      scope.load((signal) => api.getVideoSubtitle(track.url, signal), {
+        onSuccess: (text) => {
           store(track.key, text);
-          if (!signal.aborted) settle(null);
-        })
-        .catch(() => {
-          if (signal.aborted) return;
+          settle(null);
+        },
+        onError: () => {
           // Selecting the track again retries, such as after a busy server frees a slot.
           requestedRef.current.delete(track.key);
           settle("failed");
-        });
+        },
+      });
     },
     [store],
   );

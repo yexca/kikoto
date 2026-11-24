@@ -7,9 +7,10 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { api, type WorkflowPreset } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 export type CatalogSyncCode = "circle_catalog_sync" | "series_catalog_sync" | "voice_catalog_sync";
 
@@ -41,18 +42,10 @@ export function CatalogSyncDialog({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    let current = true;
-    api
-      .listWorkflowPresets()
-      .then((presets) => {
-        if (current) setPreset(presets.find((item) => item.code === code) ?? null);
-      })
-      .catch(() => {
-        if (current) setPreset(null);
-      });
-    return () => {
-      current = false;
-    };
+    return startLoad(() => api.listWorkflowPresets(), {
+      onSuccess: (presets) => setPreset(presets.find((item) => item.code === code) ?? null),
+      onError: () => setPreset(null),
+    });
   }, [code]);
 
   const run = async (inputs: Record<string, unknown>) => {
@@ -64,7 +57,7 @@ export function CatalogSyncDialog({
         kind: "success",
         message: workflowCopy("catalogSyncQueued", { id: result.runId }),
         actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
-        onAction: canOpenActivity ? () => openWorkflowPath(workflowRunPath(result.runId)) : undefined,
+        onAction: canOpenActivity ? () => openWorkflowRun(result.runId) : undefined,
       });
       onClose();
     } catch (error) {

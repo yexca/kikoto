@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const Namespace = "metadata"
@@ -189,14 +191,6 @@ func MergeTx(ctx context.Context, tx *sql.Tx, source, target int64) error {
 	}
 	return err
 }
-func closeRows(rows *sql.Rows) error {
-	err := rows.Err()
-	other := rows.Close()
-	if err != nil {
-		return err
-	}
-	return other
-}
 
 // Provider names come from a remote source's declared localizations of a
 // concept without a DLsite genre id. They rank after manual and dictionary names.
@@ -219,7 +213,7 @@ func loadNames(ctx context.Context, q Querier, id, genre int64) ([]Name, error) 
 		}
 		result = append(result, n)
 	}
-	return result, closeRows(rows)
+	return result, sqlutil.CloseRows(rows)
 }
 func languageName(names []Name, language string) string {
 	find := func(source, lang string) string {
@@ -286,7 +280,7 @@ func RefreshNamesTx(ctx context.Context, tx *sql.Tx, priorities []string, ids ..
 		}
 		items = append(items, i)
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return err
 	}
 	for _, i := range items {
@@ -345,7 +339,7 @@ func Load(ctx context.Context, q Querier, id int64) (Tag, error) {
 		}
 		t.MergedFrom = append(t.MergedFrom, source)
 	}
-	return t, closeRows(rows)
+	return t, sqlutil.CloseRows(rows)
 }
 func Overrides(ctx context.Context, q Querier, workID int64) ([]Override, error) {
 	rows, err := q.QueryContext(ctx, "SELECT tag_id,action FROM work_tag_override WHERE work_id=? ORDER BY tag_id", workID)
@@ -361,7 +355,7 @@ func Overrides(ctx context.Context, q Querier, workID int64) ([]Override, error)
 		}
 		result = append(result, o)
 	}
-	return result, closeRows(rows)
+	return result, sqlutil.CloseRows(rows)
 }
 func SetOverridesTx(ctx context.Context, tx *sql.Tx, workID int64, values []Override, userID int64) error {
 	if len(values) > 256 {

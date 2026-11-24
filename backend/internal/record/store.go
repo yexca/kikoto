@@ -162,6 +162,15 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT marker_id FROM record_root WHERE id=1`).Scan(&expectedMarker); err != nil {
 		return Root{}, err
 	}
+	// Scans and the API act on the recorded state, so a state that cannot be
+	// recorded is an error, never the earlier state read back, such as online
+	// for a disk that was just unmounted.
+	setState := func(state string) (Root, error) {
+		if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state); err != nil {
+			return Root{}, err
+		}
+		return s.rootRecord(ctx)
+	}
 	if info, err := os.Stat(path); err != nil {
 		// A root the database initialized is unmounted while its path is
 		// gone; only a root never initialized waits for initialization.
@@ -169,15 +178,9 @@ func (s *Store) EnsureRoot(ctx context.Context) (Root, error) {
 		if errors.Is(err, os.ErrNotExist) && expectedMarker == "" {
 			state = "unconfigured"
 		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state)
-		return s.rootRecord(ctx)
+		return setState(state)
 	} else if !info.IsDir() {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state='unreadable', updated_at=CURRENT_TIMESTAMP WHERE id=1`, path)
-		return s.rootRecord(ctx)
-	}
-	setState := func(state string) (Root, error) {
-		_, _ = s.db.ExecContext(ctx, `UPDATE record_root SET configured_path=?, state=?, updated_at=CURRENT_TIMESTAMP WHERE id=1`, path, state)
-		return s.rootRecord(ctx)
+		return setState("unreadable")
 	}
 	markerID, found, err := readMarker(path)
 	switch {
@@ -676,7 +679,7 @@ func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel strin
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM record_folder WHERE root_id=1 AND path_key=?`, key).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		res, err := s.db.ExecContext(ctx, `INSERT INTO record_folder(root_id,parent_id,name,sort_key,relative_path,path_key,depth,last_seen_generation,last_scanned_at) VALUES(1,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`, nullableID(parent), name, naturalorder.Key(name), rel, key, depth, generation)
+		res, err := s.db.ExecContext(ctx, `INSERT INTO record_folder(root_id,parent_id,name,sort_key,relative_path,path_key,depth,last_seen_generation,last_scanned_at) VALUES(1,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`, nullableInt64Pointer(parent), name, naturalorder.Key(name), rel, key, depth, generation)
 		if err != nil {
 			return 0, err
 		}
@@ -686,11 +689,12 @@ func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel strin
 	if err != nil {
 		return 0, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE record_folder SET parent_id=?, name=?, sort_key=?, relative_path=?, depth=?, state='active', last_seen_generation=?, last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`, nullableID(parent), name, naturalorder.Key(name), rel, depth, generation, id)
+	_, err = s.db.ExecContext(ctx, `UPDATE record_folder SET parent_id=?, name=?, sort_key=?, relative_path=?, depth=?, state='active', last_seen_generation=?, last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?`, nullableInt64Pointer(parent), name, naturalorder.Key(name), rel, depth, generation, id)
 	return id, err
 }
 
-func nullableID(value *int64) any {
+// nullableInt64Pointer binds a nil pointer as SQL NULL and any other id as is.
+func nullableInt64Pointer(value *int64) any {
 	if value == nil {
 		return nil
 	}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type RemoteWork } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 const emptyScores = new Map<string, number>();
 
@@ -32,31 +33,28 @@ export function useRemoteRecommendations({
 
   useEffect(() => {
     if (!enabled || candidates === "[]") return;
-    const controller = new AbortController();
-    void api
-      .scoreRemoteRecommendations(
-        sourceId,
-        {
-          recommendationSession: sessionId,
-          works: JSON.parse(candidates) as Array<
-            Pick<RemoteWork, "primaryCode" | "workId" | "tags" | "voiceActors" | "circle">
-          >,
-        },
-        controller.signal,
-      )
-      .then(({ scores }) => {
-        if (!controller.signal.aborted) {
+    return startLoad(
+      (signal) =>
+        api.scoreRemoteRecommendations(
+          sourceId,
+          {
+            recommendationSession: sessionId,
+            works: JSON.parse(candidates) as Array<
+              Pick<RemoteWork, "primaryCode" | "workId" | "tags" | "voiceActors" | "circle">
+            >,
+          },
+          signal,
+        ),
+      {
+        onSuccess: ({ scores }) =>
           setResult({
             key,
             scores: new Map(scores.map(({ primaryCode, score }) => [primaryCode, score])),
             failed: false,
-          });
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setResult({ key, scores: emptyScores, failed: true });
-      });
-    return () => controller.abort();
+          }),
+        onError: () => setResult({ key, scores: emptyScores, failed: true }),
+      },
+    );
   }, [enabled, sourceId, sessionId, candidates, key]);
 
   const current = enabled && result?.key === key ? result : null;

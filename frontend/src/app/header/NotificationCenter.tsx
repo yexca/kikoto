@@ -23,7 +23,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { ActivityRunSummary } from "@/features/workflows/ActivityRunSummary";
 import { formatRelativeTime, formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
-import { workflowRunPath, workflowsPath } from "@/features/workflows/workflowLinks";
+import { workflowRunPath, workflowsPath } from "@/lib/workflowLinks";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -297,7 +297,10 @@ export function NotificationCenter({
         <div role={canViewWorkflows ? "tabpanel" : undefined} className="app-scroll min-h-0 flex-1 overflow-auto p-1.5">
           {showAttention ? (
             attentionRuns.length === 0 ? (
-              <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} text={t("notifications.attentionEmpty")} />
+              <NotificationEmptyState
+                icon={<CheckCircle2 className="h-5 w-5" />}
+                text={t("notifications.attentionEmpty")}
+              />
             ) : (
               <ul className="space-y-0.5">
                 {attentionRuns.map((run) => (
@@ -320,7 +323,7 @@ export function NotificationCenter({
               </ul>
             )
           ) : notifications.length === 0 ? (
-            <EmptyState icon={<Inbox className="h-5 w-5" />} text={t("notifications.empty")} />
+            <NotificationEmptyState icon={<Inbox className="h-5 w-5" />} text={t("notifications.empty")} />
           ) : (
             <ul className="space-y-0.5">
               {notifications.map((notification) => (
@@ -420,7 +423,7 @@ function TabButton({
   );
 }
 
-function EmptyState({ icon, text }: { icon: ReactNode; text: string }) {
+function NotificationEmptyState({ icon, text }: { icon: ReactNode; text: string }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
       <span className="grid h-10 w-10 place-items-center rounded-full bg-muted">{icon}</span>

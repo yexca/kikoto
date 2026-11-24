@@ -1,5 +1,6 @@
 import type { DuplicateFileGroup } from "../../../lib/api";
 import { naturalNameCompare } from "../../../lib/naturalNameOrder";
+import { normalizeRelativePath } from "../workFilePath";
 import { baseName, folderContains } from "./folderEditLayout";
 import type { FolderEditFile, FolderEditResource } from "./folderEditModel";
 
@@ -78,19 +79,15 @@ export function compareKeepCandidates(left: string, right: string) {
   return naturalNameCompare(left, right);
 }
 
-function normalize(path: string) {
-  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-}
-
 /** The workspace place and the path inside it of a file outside the edited folder. */
 function locate(
   file: DuplicateFileGroup["files"][number],
   resources: readonly FolderEditResource[],
 ): Pick<IdenticalCopy, "path" | "resourceId" | "folder"> {
-  const full = normalize(file.path);
+  const full = normalizeRelativePath(file.path);
   for (const resource of resources) {
     if (resource.kind !== "local" || resource.workId !== file.workId) continue;
-    const root = normalize(resource.rootPath);
+    const root = normalizeRelativePath(resource.rootPath);
     if (root && folderContains(root, full) && full !== root) {
       return { path: full.slice(root.length + 1), resourceId: resource.id, folder: root };
     }

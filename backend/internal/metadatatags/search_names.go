@@ -1,6 +1,10 @@
 package metadatatags
 
-import "context"
+import (
+	"context"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
+)
 
 // SearchNames retains exact-name matching for completion after merged sources
 // have been collapsed into their final target. These names are not authored
@@ -26,5 +30,5 @@ func SearchNames(ctx context.Context, q Querier, targetID int64) ([]Name, error)
 		}
 		result = append(result, name)
 	}
-	return result, closeRows(rows)
+	return result, sqlutil.CloseRows(rows)
 }

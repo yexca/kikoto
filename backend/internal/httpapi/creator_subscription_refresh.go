@@ -146,12 +146,12 @@ func (execution *creatorSubscriptionExecution) fail(node, message string) {
 func (s *Server) executeCreatorSubscriptionRefreshJob(ctx context.Context, job workflowJobRecord) error {
 	var payload creatorSubscriptionJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Subscription refresh input is invalid")
+		s.failJobOrLog(ctx, job, "Subscription refresh input is invalid")
 		return err
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	execution := &creatorSubscriptionExecution{
@@ -159,23 +159,23 @@ func (s *Server) executeCreatorSubscriptionRefreshJob(ctx context.Context, job w
 		feed:   map[int64][]string{},
 	}
 	if err := s.activateCreatorSubscriptions(ctx); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Subscriptions could not be loaded")
+		s.failJobOrLog(ctx, job, "Subscriptions could not be loaded")
 		return err
 	}
 	if err := s.refreshSubscribedCreatorCatalogs(ctx, job, execution); err != nil {
 		if ctx.Err() == nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "Subscribed catalogs could not be refreshed")
+			s.failJobOrLog(ctx, job, "Subscribed catalogs could not be refreshed")
 		}
 		return err
 	}
 	if err := s.activateCreatorSubscriptions(ctx); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Subscriptions could not be loaded")
+		s.failJobOrLog(ctx, job, "Subscriptions could not be loaded")
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "new_works", execution.result, 0, 0)
+	s.checkpointJobOrLog(ctx, job, "new_works", execution.result, 0, 0)
 	if err := s.processCreatorReleaseCandidates(ctx, job.RunID, s.newDLsiteMetadataSyncer(ctx), execution); err != nil {
 		if ctx.Err() == nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "New works could not be added to feeds")
+			s.failJobOrLog(ctx, job, "New works could not be added to feeds")
 		}
 		return err
 	}
@@ -188,7 +188,7 @@ func (s *Server) executeCreatorSubscriptionRefreshJob(ctx context.Context, job w
 		execution.result.Status = "partial"
 	}
 	if err := s.finishCreatorSubscriptionJob(ctx, job, nodeIDs, execution); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Subscription refresh could not be finalized")
+		s.failJobOrLog(ctx, job, "Subscription refresh could not be finalized")
 		return err
 	}
 	return nil
@@ -243,7 +243,7 @@ func (s *Server) refreshSubscribedCreatorCatalogs(ctx context.Context, job workf
 		}
 		result.Refreshed++
 		execution.catalogs = append(execution.catalogs, circle.circleID)
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "catalogs", result, index+1, total)
+		s.checkpointJobOrLog(ctx, job, "catalogs", result, index+1, total)
 	}
 	sourceIDs, err := s.compatibleRemoteSourceIDs(ctx)
 	if err != nil {
@@ -282,7 +282,7 @@ func (s *Server) refreshSubscribedCreatorCatalogs(ctx context.Context, job workf
 		}
 		result.Refreshed++
 		execution.catalogs = append(execution.catalogs, label)
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "catalogs", result, len(circles)+index+1, total)
+		s.checkpointJobOrLog(ctx, job, "catalogs", result, len(circles)+index+1, total)
 	}
 	return nil
 }

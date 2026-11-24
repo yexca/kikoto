@@ -74,22 +74,22 @@ func (s *Server) prepareWorkflowGraphRuntime(ctx context.Context, job workflowJo
 	var runtime workflowGraphRuntime
 	var payload workflowGraphJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow payload is invalid")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, 0, "custom workflow payload is invalid"))
 		return runtime, err
 	}
 	graph, err := validateWorkflowGraphDefinition(payload.DefinitionJSON)
 	if err != nil {
-		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow snapshot is invalid")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, 0, "custom workflow snapshot is invalid"))
 		return runtime, err
 	}
 	if missing := missingWorkflowGraphPermission(payload.Permissions, workflowGraphRequiredPermissions(graph)); missing != "" {
 		err := fmt.Errorf("permission snapshot is missing %s", missing)
-		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow permission snapshot is invalid")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, 0, "custom workflow permission snapshot is invalid"))
 		return runtime, err
 	}
 	checkpoint := workflowGraphCheckpoint{Outputs: map[string]map[string]graphPortValue{}, CompletedNodeIDs: []string{}}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow checkpoint is invalid")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, 0, "custom workflow checkpoint is invalid"))
 		return runtime, err
 	}
 	if checkpoint.Outputs == nil {
@@ -101,7 +101,7 @@ func (s *Server) prepareWorkflowGraphRuntime(ctx context.Context, job workflowJo
 	}
 	nodeRunIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failWorkflowGraphJob(ctx, job, 0, "custom workflow node runs are unavailable")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, 0, "custom workflow node runs are unavailable"))
 		return runtime, err
 	}
 	return workflowGraphRuntime{payload: payload, graph: graph, checkpoint: checkpoint, completed: completed, nodeRunIDs: nodeRunIDs}, nil
@@ -114,7 +114,7 @@ func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workfl
 	node := runtime.graph.NodesByID[nodeID]
 	inputs, err := graphRuntimeNodeInputs(runtime.graph, node, runtime.checkpoint.Outputs)
 	if err != nil {
-		_ = s.failWorkflowGraphJob(ctx, job, runtime.nodeRunIDs[nodeID], "custom workflow input resolution failed")
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, runtime.nodeRunIDs[nodeID], "custom workflow input resolution failed"))
 		return err
 	}
 	nodeRunID := runtime.nodeRunIDs[nodeID]
@@ -124,7 +124,7 @@ func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workfl
 	execution, runErr := s.executeWorkflowGraphNode(ctx, job.RunID, runtime.payload, node, inputs)
 	if runErr != nil {
 		slog.Error("custom workflow node failed", "run_id", job.RunID, "node_id", node.ID, "node_type", node.Type, "error", runErr)
-		_ = s.failWorkflowGraphJob(ctx, job, nodeRunID, publicWorkflowGraphError(node.Type))
+		logWorkflowWriteError(ctx, "fail custom workflow", job, s.failWorkflowGraphJob(ctx, job, nodeRunID, publicWorkflowGraphError(node.Type)))
 		return runErr
 	}
 	status := "succeeded"

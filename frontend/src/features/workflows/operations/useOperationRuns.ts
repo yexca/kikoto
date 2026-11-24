@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api, type WorkflowRun, type WorkflowStatus } from "@/lib/api";
+import { createEffectScope } from "@/lib/effectScope";
 
 const activeListSize = 50;
 const busyPollMs = 3000;
@@ -36,44 +37,49 @@ export function useOperationRuns({
   const codesKey = codes.join(",");
 
   useEffect(() => {
-    const controller = new AbortController();
+    const scope = createEffectScope();
     let fetching = false;
-    const load = async () => {
-      if (fetching || document.hidden || controller.signal.aborted) return;
+    const load = () => {
+      if (fetching || document.hidden) return;
       fetching = true;
       const wanted = codesKey ? codesKey.split(",") : [];
-      try {
+      scope.load(
         // Each answer stands alone; one that fails keeps its last known state.
-        const [page, listed] = await Promise.allSettled([
-          api.listWorkflowRuns(1, activeListSize, "running", "", "", controller.signal),
-          wanted.length > 0 ? api.listWorkflowStatuses(wanted, controller.signal) : Promise.resolve([]),
-        ]);
-        if (controller.signal.aborted) return;
-        if (page.status === "fulfilled") {
-          setQueue({
-            runs: page.value.runs,
-            running: page.value.viewTotals?.running ?? page.value.total,
-            attention: page.value.viewTotals?.attention ?? 0,
-          });
-        }
-        // Run lists report load failures where they block a task.
-        if (listed.status === "fulfilled") {
-          setStatuses((current) => {
-            const next = { ...current };
-            for (const status of listed.value) next[status.code] = status;
-            return next;
-          });
-        }
-      } finally {
-        fetching = false;
-      }
+        (signal) =>
+          Promise.allSettled([
+            api.listWorkflowRuns(1, activeListSize, "running", "", "", signal),
+            wanted.length > 0 ? api.listWorkflowStatuses(wanted, signal) : Promise.resolve([]),
+          ]),
+        {
+          onSuccess: ([page, listed]) => {
+            if (page.status === "fulfilled") {
+              setQueue({
+                runs: page.value.runs,
+                running: page.value.viewTotals?.running ?? page.value.total,
+                attention: page.value.viewTotals?.attention ?? 0,
+              });
+            }
+            // Run lists report load failures where they block a task.
+            if (listed.status === "fulfilled") {
+              setStatuses((current) => {
+                const next = { ...current };
+                for (const status of listed.value) next[status.code] = status;
+                return next;
+              });
+            }
+          },
+          onSettled: () => {
+            fetching = false;
+          },
+        },
+      );
     };
-    void load();
-    if (staticDemo) return () => controller.abort();
-    const timer = window.setInterval(() => void load(), busy ? busyPollMs : idlePollMs);
+    load();
+    if (staticDemo) return scope.cancel;
+    const timer = window.setInterval(load, busy ? busyPollMs : idlePollMs);
     document.addEventListener("visibilitychange", load);
     return () => {
-      controller.abort();
+      scope.cancel();
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", load);
     };

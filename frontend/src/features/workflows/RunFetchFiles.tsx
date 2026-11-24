@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Ban, CheckCircle2, ChevronDown, CircleDashed, Download, PauseCircle, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { api, type FetchFile, type FetchFileState, type WorkflowRun } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import { fetchFilePercent, fetchFilesSummary, isCurrentFetchFile, orderFetchFiles } from "./fetchFilesModel";
 import { formatBytes } from "./runPresentation";
@@ -41,22 +42,19 @@ function useFetchFiles(run: FetchFilesRun) {
   const [files, setFiles] = useState<FetchFile[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const requestSeq = useRef(0);
   const { id, status, progressBytesCurrent, progressBytesTotal, progressBytesUnknownItems } = run;
-  useEffect(() => {
-    const seq = ++requestSeq.current;
-    api
-      .listWorkflowRunFetchFiles(id)
-      .then((result) => {
-        if (seq !== requestSeq.current) return;
-        setFiles(result.files);
-        setFailed(false);
-      })
-      .catch(() => {
+  useEffect(
+    () =>
+      startLoad(() => api.listWorkflowRunFetchFiles(id), {
+        onSuccess: (result) => {
+          setFiles(result.files);
+          setFailed(false);
+        },
         // Keep the last known list; only an empty panel needs the failure state.
-        if (seq === requestSeq.current) setFailed(true);
-      });
-  }, [id, status, progressBytesCurrent, progressBytesTotal, progressBytesUnknownItems, attempt]);
+        onError: () => setFailed(true),
+      }),
+    [id, status, progressBytesCurrent, progressBytesTotal, progressBytesUnknownItems, attempt],
+  );
   return { files, failed, retry: () => setAttempt((value) => value + 1) };
 }
 

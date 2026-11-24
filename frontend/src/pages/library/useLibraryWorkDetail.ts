@@ -10,6 +10,7 @@ import {
 import { directoryLoadErrorMessage, type WorkPreview } from "@/features/work-detail/workDetailShared";
 import { api, type WorkDetail } from "@/lib/api";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 
 import { workLoadFailure, type WorkLoadFailure } from "./workLoadFailure";
 import { workPreviewFromHistory } from "./workPreviewHistory";
@@ -98,55 +99,57 @@ export function useLibraryWorkDetail({
     }
     setLoadFailure(null);
     setMediaError("");
-    const controller = new AbortController();
     const historyPreview = workPreviewFromHistory(selectedCode);
     const workID = historyPreview?.id ?? null;
     setPreview(historyPreview);
     if (workID !== null) {
       setMediaLoading(true);
-      void loadWorkDetailStages(
-        workID,
-        principalID,
-        controller.signal,
-        setWork,
-        (mediaItems) => setWork((current) => (current?.id === workID ? { ...current, mediaItems } : current)),
-        (error) => setMediaError(directoryLoadErrorMessage(error)),
-        () =>
-          resolveAndOpenWork(
-            selectedCode,
+      return startLoad(
+        (signal) =>
+          loadWorkDetailStages(
+            workID,
             principalID,
+            signal,
             setWork,
-            setPreview,
-            onCodeResolved,
-            setMediaLoading,
-            setLoadFailure,
-            setMediaError,
-            controller.signal,
+            (mediaItems) => setWork((current) => (current?.id === workID ? { ...current, mediaItems } : current)),
+            (error) => setMediaError(directoryLoadErrorMessage(error)),
+            () =>
+              resolveAndOpenWork(
+                selectedCode,
+                principalID,
+                setWork,
+                setPreview,
+                onCodeResolved,
+                setMediaLoading,
+                setLoadFailure,
+                setMediaError,
+                signal,
+              ),
           ),
-      )
-        .catch((error) => {
-          if (!controller.signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
-            setWork(null);
-            setLoadFailure(workLoadFailure(error));
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setMediaLoading(false);
-        });
-      return () => controller.abort();
+        {
+          onError: (error) => {
+            if (!(error instanceof DOMException && error.name === "AbortError")) {
+              setWork(null);
+              setLoadFailure(workLoadFailure(error));
+            }
+          },
+          onSettled: () => setMediaLoading(false),
+        },
+      );
     }
-    void resolveAndOpenWork(
-      selectedCode,
-      principalID,
-      setWork,
-      setPreview,
-      onCodeResolved,
-      setMediaLoading,
-      setLoadFailure,
-      setMediaError,
-      controller.signal,
+    return startLoad((signal) =>
+      resolveAndOpenWork(
+        selectedCode,
+        principalID,
+        setWork,
+        setPreview,
+        onCodeResolved,
+        setMediaLoading,
+        setLoadFailure,
+        setMediaError,
+        signal,
+      ),
     );
-    return () => controller.abort();
   }, [principalID, selectedCode, loadAttempt, onCodeResolved]);
 
   const reload = async (workID: number, includeMedia = false) => {

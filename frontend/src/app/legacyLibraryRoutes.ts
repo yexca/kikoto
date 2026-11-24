@@ -1,4 +1,4 @@
-import { legacyRunLogPath } from "@/features/workflows/workflowLinks";
+import { legacyRunLogPath } from "@/lib/workflowLinks";
 
 import { FOR_YOU_PATH, TAGS_PATH } from "./navigation";
 import {

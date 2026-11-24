@@ -52,7 +52,7 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, voiceSummaryPage{
-		Voices: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(summaries), TagOptions: tagOptions,
+		Voices: pageItems, Page: page, PageSize: min(pageSize, 100), Total: len(summaries), TagOptions: tagOptions,
 	})
 }
 
@@ -60,13 +60,13 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	summary, err := s.loadVoiceSummary(r.Context(), userID, personID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -114,7 +114,7 @@ func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	query := parseVoiceWorksQuery(r)
@@ -144,12 +144,12 @@ func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -180,12 +180,12 @@ func (s *Server) listVoiceAliasCandidates(w http.ResponseWriter, r *http.Request
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -206,19 +206,19 @@ func (s *Server) createVoiceAlias(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	var payload struct {
 		Alias string `json:"alias"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json", false)
 		return
 	}
 	alias := strings.TrimSpace(payload.Alias)
 	if alias == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "alias is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "alias is required", false)
 		return
 	}
 	if len(alias) > 120 {
@@ -226,7 +226,7 @@ func (s *Server) createVoiceAlias(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -254,12 +254,12 @@ func (s *Server) deleteVoiceAlias(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	aliasID, err := parseInt64PathValue(r, "aliasId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid alias id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid alias id", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM person_alias WHERE id = ? AND person_id = ? AND source <> 'primary_name'", aliasID, personID)
@@ -282,24 +282,24 @@ func (s *Server) mergeVoiceAliasCandidate(w http.ResponseWriter, r *http.Request
 	}
 	targetID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	var payload struct {
 		SourcePersonID int64 `json:"sourcePersonId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json", false)
 		return
 	}
 	if payload.SourcePersonID <= 0 || payload.SourcePersonID == targetID {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source person must be different"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "source person must be different", false)
 		return
 	}
 	result, err := s.mergeVoicePeople(r.Context(), targetID, payload.SourcePersonID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -314,7 +314,7 @@ func (s *Server) listVoiceMergeReviews(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	items, err := s.loadVoiceMergeReviews(r.Context(), personID)
@@ -331,18 +331,18 @@ func (s *Server) undoVoiceMergeReview(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	mergeID, err := parseInt64PathValue(r, "mergeId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid merge id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid merge id", false)
 		return
 	}
 	result, err := s.undoVoiceMerge(r.Context(), personID, mergeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "merge review not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "merge review not found", false)
 			return
 		}
 		writeError(w, err)

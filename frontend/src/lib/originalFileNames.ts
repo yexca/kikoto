@@ -4,13 +4,13 @@ import { useCallback, useSyncExternalStore } from "react";
 // place of their display names. The work detail directory and the player share
 // the choice, which stays on this device.
 
-const storageKey = "kikoto:work-directory-original-names";
+const originalFileNamesStorageKey = "kikoto:work-directory-original-names";
 const listeners = new Set<() => void>();
 let original = readStored();
 
 function readStored() {
   try {
-    return localStorage.getItem(storageKey) === "true";
+    return localStorage.getItem(originalFileNamesStorageKey) === "true";
   } catch {
     return false;
   }
@@ -19,7 +19,7 @@ function readStored() {
 function subscribe(listener: () => void) {
   listeners.add(listener);
   const syncFromOtherTab = (event: StorageEvent) => {
-    if (event.key !== storageKey) return;
+    if (event.key !== originalFileNamesStorageKey) return;
     original = readStored();
     listener();
   };
@@ -38,7 +38,7 @@ export function originalFileNamesShown() {
 export function setOriginalFileNamesShown(next: boolean) {
   original = next;
   try {
-    localStorage.setItem(storageKey, String(next));
+    localStorage.setItem(originalFileNamesStorageKey, String(next));
   } catch {
     // The choice still applies to this page view.
   }

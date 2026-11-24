@@ -10,6 +10,7 @@ import type { WorkCollectionColumnSetting } from "@/components/work-collection/W
 import type { ShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type RankingOrder, type RankingPage, type Work } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import { RankingEntryList } from "./RankingEntryList";
 import { RankingHistoryPopover } from "./RankingHistoryPopover";
@@ -176,9 +177,7 @@ export function RankingsView({
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    return startLoad((signal) => load(signal));
     // A new reloadKey reads the ranking again.
   }, [load, reloadKey]);
 
@@ -240,7 +239,7 @@ export function RankingsView({
   }
   if (!selected) {
     return (
-      <EmptyState
+      <RankingsEmptyState
         title={t("subscriptions.rankings.empty")}
         description={
           canManage && !readOnly ? t("subscriptions.rankings.emptyOperator") : t("subscriptions.rankings.emptyViewer")
@@ -292,7 +291,7 @@ export function RankingsView({
     );
   } else if (!current.snapshot && !current.at) {
     body = (
-      <EmptyState
+      <RankingsEmptyState
         title={t("subscriptions.rankings.waiting")}
         description={t("subscriptions.rankings.waitingDescription")}
         action={canRefresh ? refreshButton(true) : null}
@@ -450,7 +449,7 @@ function LoadFailure({ message, onRetry }: { message: string; onRetry: () => voi
   );
 }
 
-function EmptyState({ title, description, action }: { title: string; description: string; action: ReactNode }) {
+function RankingsEmptyState({ title, description, action }: { title: string; description: string; action: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 py-16 text-center">
       <ListOrdered className="h-8 w-8 text-muted-foreground" aria-hidden="true" />

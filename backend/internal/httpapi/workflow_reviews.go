@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
@@ -24,12 +24,12 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow candidate id", false)
 		return
 	}
 	payload, err := decodeWorkflowCandidateUpdate(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -52,14 +52,14 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		WHERE id = ?
 	`, id).Scan(&runID, &nodeRunID, &candidateType, &externalKey); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow candidate not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "workflow candidate not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if candidateType == remoteOriginBlockedCandidateType {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "update the remote source outbound policy, then retry the workflow run"})
+		writeAPIError(w, http.StatusConflict, "conflict", "update the remote source outbound policy, then retry the workflow run", false)
 		return
 	}
 	if err := updateWorkflowCandidateReview(r.Context(), tx, id, payload, runID, nodeRunID, candidateType, externalKey); err != nil {
@@ -126,12 +126,12 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow candidate id", false)
 		return
 	}
 	var payload localCandidateCleanupPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	payload.Action = strings.TrimSpace(payload.Action)
@@ -139,7 +139,7 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 		payload.Action = "mark_unavailable"
 	}
 	if payload.Action != "mark_unavailable" && payload.Action != "delete_files" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be mark_unavailable or delete_files"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "action must be mark_unavailable or delete_files", false)
 		return
 	}
 	if !requireWorkflowCandidateManagement(w, r, s.db, actor, id) {
@@ -171,12 +171,12 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow candidate id", false)
 		return
 	}
 	request, err := decodeArchivedFetchReviewRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if !requireWorkflowCandidateManagement(w, r, s.db, actor, id) {
@@ -188,19 +188,19 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if candidate.Type != "local_fetch_merge_cleanup" || !candidateNeedsResolution(candidate.Status) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "candidate is not an unresolved Fetch archive review"})
+		writeAPIError(w, http.StatusConflict, "conflict", "candidate is not an unresolved Fetch archive review", false)
 		return
 	}
 	archivedRoots, err := archivedFetchRootsFromCandidate(candidate.PayloadJSON)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "candidate has no archived roots"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "candidate has no archived roots", false)
 		return
 	}
 	if request.Action == "delete_archived" {
 		if err := s.deleteArchivedFetchRoots(r.Context(), archivedRoots); err != nil {
 			var pathErr *archivedFetchRootPathError
 			if errors.As(err, &pathErr) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 				return
 			}
 			writeError(w, err)
@@ -385,7 +385,7 @@ func (s *Server) executeLocalLocationCleanupJob(ctx context.Context, job workflo
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'review' LIMIT 1
 	`, job.RunID).Scan(&reviewNodeID); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	_, err := s.performLocalLocationCleanupJob(ctx, job, reviewNodeID)
@@ -395,12 +395,12 @@ func (s *Server) executeLocalLocationCleanupJob(ctx context.Context, job workflo
 func (s *Server) performLocalLocationCleanupJob(ctx context.Context, job workflowJobRecord, reviewNodeID int64) (localCandidateCleanupResult, error) {
 	var payload localLocationCleanupJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return localCandidateCleanupResult{}, err
 	}
 	checkpoint := localLocationCleanupCheckpoint{}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return localCandidateCleanupResult{}, err
 	}
 	result := checkpoint.Result
@@ -430,7 +430,7 @@ func (s *Server) performLocalLocationCleanupJob(ctx context.Context, job workflo
 		completed[locationID] = true
 		checkpoint.Result = result
 		checkpoint.CompletedLocationIDs = append(checkpoint.CompletedLocationIDs, locationID)
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, index+1, len(payload.LocationIDs))
+		s.checkpointJobOrLog(ctx, job, "cleanup", checkpoint, index+1, len(payload.LocationIDs))
 	}
 	result.Status = "succeeded"
 	if result.Failed > 0 {
@@ -497,7 +497,7 @@ func candidateLocalLocationIDs(payloadJSON string) []int64 {
 		location, _ := raw.(map[string]any)
 		ids = append(ids, int64Values(location["location_id"])...)
 	}
-	return uniqueInt64s(ids)
+	return sortedUniquePositiveInt64s(ids)
 }
 
 func int64Values(value any) []int64 {
@@ -532,7 +532,7 @@ func intersectLocationIDs(allowed []int64, requested []int64) []int64 {
 		}
 	}
 	if len(requested) == 0 {
-		return uniqueInt64s(allowed)
+		return sortedUniquePositiveInt64s(allowed)
 	}
 	result := []int64{}
 	for _, id := range requested {
@@ -540,20 +540,13 @@ func intersectLocationIDs(allowed []int64, requested []int64) []int64 {
 			result = append(result, id)
 		}
 	}
-	return uniqueInt64s(result)
+	return sortedUniquePositiveInt64s(result)
 }
 
-func uniqueInt64s(values []int64) []int64 {
-	seen := map[int64]bool{}
-	result := []int64{}
-	for _, value := range values {
-		if value <= 0 || seen[value] {
-			continue
-		}
-		seen[value] = true
-		result = append(result, value)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+// sortedUniquePositiveInt64s drops non-positive and repeated ids and sorts the rest ascending.
+func sortedUniquePositiveInt64s(values []int64) []int64 {
+	result := uniquePositiveInt64s(values)
+	slices.Sort(result)
 	return result
 }
 

@@ -52,6 +52,7 @@ import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
 import { useNativeUnlockLabels } from "@/hooks/useNativePrivacySettings";
+import { createEffectScope } from "@/lib/effectScope";
 import { addNativeEdgeBackListener } from "@/lib/nativeEdgeBack";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -87,7 +88,7 @@ import { readLastLibraryLocation } from "@/lib/libraryBrowseState";
 import { libraryTagSearchLocation } from "@/lib/libraryTagSearch";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
-import { workflowRunPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 import {
   closePlayerLayer,
   closeTopDocumentLayer,
@@ -501,7 +502,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     if (!isNativeApp()) return;
-    let disposed = false;
+    const scope = createEffectScope();
     const goBack = (leaveDestination: boolean) => {
       const step = handleNativeBack({
         commandPalette: {
@@ -518,7 +519,7 @@ function AuthenticatedApp() {
       return step;
     };
     CapacitorApp.addListener("backButton", async () => {
-      if (disposed) return;
+      if (scope.signal.aborted) return;
       const step = goBack(true);
       if (step === "history") exitBackDeadlineRef.current = 0;
       if (step !== "root") return;
@@ -535,23 +536,20 @@ function AuthenticatedApp() {
     }).catch(() => {});
     // An edge swipe follows the same order but never leaves the destination or
     // the app: at a destination's root it does nothing.
-    let removeEdgeBack: (() => void) | null = null;
-    void addNativeEdgeBackListener((swipe) => {
-      if (disposed) return;
-      const start = document.elementFromPoint(swipe.x, swipe.y);
-      if (edgeSwipeStartsOnHorizontalGesture(start, (element) => getComputedStyle(element as Element).overflowX)) {
-        return;
-      }
-      goBack(false);
-    })
-      .then((remove) => {
-        if (disposed) remove();
-        else removeEdgeBack = remove;
-      })
-      .catch(() => {});
+    scope.listen(
+      () =>
+        addNativeEdgeBackListener((swipe) => {
+          if (scope.signal.aborted) return;
+          const start = document.elementFromPoint(swipe.x, swipe.y);
+          if (edgeSwipeStartsOnHorizontalGesture(start, (element) => getComputedStyle(element as Element).overflowX)) {
+            return;
+          }
+          goBack(false);
+        }),
+      (remove) => remove(),
+    );
     return () => {
-      disposed = true;
-      removeEdgeBack?.();
+      scope.cancel();
       void CapacitorApp.removeAllListeners();
     };
   }, [commandPaletteBusy, commandPaletteOpen, loginOpen, navigateNativeBack, t, toast]);
@@ -1042,25 +1040,21 @@ function RemoteTrackWorkflowObserver({
   const handled = useRef(false);
 
   useEffect(() => {
-    let disposed = false;
-    let timer: number | null = null;
-    const poll = async () => {
-      try {
-        const next = await api.getRemoteTrackRunStatus(detail.runId);
-        if (disposed) return;
-        setRun(next);
-        if (next.status === "queued" || next.status === "running") {
-          timer = window.setTimeout(() => void poll(), document.hidden ? 10_000 : 1_500);
-        }
-      } catch {
-        if (!disposed) timer = window.setTimeout(() => void poll(), 5_000);
-      }
-    };
-    void poll();
-    return () => {
-      disposed = true;
-      if (timer !== null) window.clearTimeout(timer);
-    };
+    const scope = createEffectScope();
+    const poll = (delayMs?: number) =>
+      scope.load(
+        (signal) => api.getRemoteTrackRunStatus(detail.runId, signal),
+        {
+          onSuccess: (next) => {
+            setRun(next);
+            if (next.status === "queued" || next.status === "running") poll(document.hidden ? 10_000 : 1_500);
+          },
+          onError: () => poll(5_000),
+        },
+        { delayMs },
+      );
+    poll();
+    return scope.cancel;
   }, [detail.runId]);
 
   useEffect(() => {
@@ -1083,7 +1077,7 @@ function RemoteTrackWorkflowObserver({
         ? t("workflows.trackCompleted", { id: run.runId, primaryCode })
         : t("workflows.trackFailed", { id: run.runId, primaryCode }),
       actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
-      onAction: canOpenActivity ? () => openWorkflowActivity(run.runId) : undefined,
+      onAction: canOpenActivity ? () => openWorkflowRun(run.runId) : undefined,
     });
     window.dispatchEvent(new CustomEvent<RemoteTrackTerminalDetail>(REMOTE_TRACK_TERMINAL_EVENT, { detail: terminal }));
     onDone(detail.runId);
@@ -1107,11 +1101,6 @@ function parseRemoteTrackSummary(raw: string) {
     fileSourceId: Number.isInteger(fileSourceId) && fileSourceId > 0 ? fileSourceId : 0,
     primaryCode: typeof value.primary_code === "string" ? value.primary_code.trim().toUpperCase() : "",
   };
-}
-
-function openWorkflowActivity(runId: number) {
-  window.history.pushState({}, "", workflowRunPath(runId));
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function MobileConnectionBanner({

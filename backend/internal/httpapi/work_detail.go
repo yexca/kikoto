@@ -244,7 +244,7 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	work, err := s.loadWorkDetail(r.Context(), userID, id, includeMedia)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -295,7 +295,7 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 	mediaWorkID, err := s.resolveMediaWorkIDForRequest(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)

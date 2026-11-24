@@ -118,20 +118,20 @@ func (s *Server) cleanupDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	var request databaseCleanupRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	requested := map[string]bool{}
 	for _, key := range request.Tasks {
 		key = strings.TrimSpace(key)
 		if !isDatabaseCleanupTask(key) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown cleanup task"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "unknown cleanup task", false)
 			return
 		}
 		requested[key] = true
 	}
 	if len(requested) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select at least one cleanup task"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "select at least one cleanup task", false)
 		return
 	}
 	dataRootAvailable := s.databaseCleanupDataRootAvailable()

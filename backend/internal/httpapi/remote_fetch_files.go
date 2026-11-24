@@ -36,7 +36,7 @@ func (s *Server) listWorkflowRunFetchFiles(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow run id", false)
 		return
 	}
 	if !s.requireWorkflowRunAccess(w, r, actor, id) {
@@ -45,7 +45,7 @@ func (s *Server) listWorkflowRunFetchFiles(w http.ResponseWriter, r *http.Reques
 	files, err := s.remoteFetchFiles(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "fetch files not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "fetch files not found", false)
 			return
 		}
 		writeError(w, err)
@@ -87,7 +87,7 @@ func (s *Server) remoteFetchFiles(ctx context.Context, runID int64) ([]remoteFet
 	}
 	var output remoteFetchCacheOutput
 	if strings.TrimSpace(outputJSON) != "" {
-		// A malformed progress snapshot only loses the live position.
+		// Tolerant: a malformed progress snapshot only loses the live position.
 		_ = json.Unmarshal([]byte(outputJSON), &output)
 	}
 	return remoteFetchFileStates(plan, effectiveFetchCacheStatus(nodeStatus, runStatus), output), nil

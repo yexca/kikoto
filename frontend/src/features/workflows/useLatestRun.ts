@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type WorkflowRun } from "@/lib/api";
+import { createEffectScope } from "@/lib/effectScope";
 
 import { mergeLatestRun, type KnownRun, type LatestRun } from "./latestRunModel";
 import { isActiveRunStatus } from "./runPresentation";
@@ -35,25 +36,24 @@ export function useLatestRun({
 
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
+    const scope = createEffectScope();
     let fetching = false;
-    const load = async () => {
-      if (fetching || document.hidden || controller.signal.aborted) return;
+    const load = () => {
+      if (fetching || document.hidden) return;
       fetching = true;
-      try {
-        const [status] = await api.listWorkflowStatuses([code], controller.signal);
-        if (!controller.signal.aborted) setListed(status?.latestRun ?? null);
-      } catch {
-        // Keep the last answer; Activity reports load failures where they block a task.
-      } finally {
-        fetching = false;
-      }
+      // A failure keeps the last answer; Activity reports load failures where they block a task.
+      scope.load((signal) => api.listWorkflowStatuses([code], signal), {
+        onSuccess: ([status]) => setListed(status?.latestRun ?? null),
+        onSettled: () => {
+          fetching = false;
+        },
+      });
     };
-    void load();
-    const timer = window.setInterval(() => void load(), busy ? activePollMs : idlePollMs);
+    load();
+    const timer = window.setInterval(load, busy ? activePollMs : idlePollMs);
     document.addEventListener("visibilitychange", load);
     return () => {
-      controller.abort();
+      scope.cancel();
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", load);
     };

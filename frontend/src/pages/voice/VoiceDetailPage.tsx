@@ -33,7 +33,6 @@ import { LibrarySortButton } from "@/pages/library/LibrarySortButton";
 import { creatorWorkPageSizeOptions } from "@/lib/creatorWorksBrowse";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { CatalogSyncDialog } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
@@ -65,6 +64,8 @@ import {
 import { creatorCoverUrl } from "@/lib/creatorApi";
 import { NAVIGATION_EVENT, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { createEffectScope, startLoad } from "@/lib/effectScope";
+import { openWorkflowPath, openWorkflowRun } from "@/lib/workflowLinks";
 import { useRemoteWorkActions } from "@/pages/useRemoteWorkActions";
 import {
   readLastVoiceListLocation,
@@ -117,12 +118,9 @@ export function VoiceDetailPage({ routeKey, active }: { routeKey: string; active
   const resolved = route.status !== "loading" && route.keys.includes(routeKey);
   useEffect(() => {
     if (!active || resolved) return;
-    const controller = new AbortController();
     setRoute({ status: "loading" });
-    void (async () => {
-      try {
-        const next = await api.resolveVoiceRoute(routeKey, controller.signal);
-        if (controller.signal.aborted) return;
+    return startLoad((signal) => api.resolveVoiceRoute(routeKey, signal), {
+      onSuccess: (next) => {
         setRoute({
           status: "found",
           keys: [routeKey, next.routeKey],
@@ -130,14 +128,13 @@ export function VoiceDetailPage({ routeKey, active }: { routeKey: string; active
           routeKey: next.routeKey,
         });
         replaceVoiceRouteKey(routeKey, next.routeKey);
-      } catch (error) {
-        if (controller.signal.aborted) return;
+      },
+      onError: (error) => {
         const notFound = error instanceof ApiError && error.status === 404;
         setRoute({ status: notFound ? "not-found" : "error", keys: [routeKey] });
         if (!notFound) toast.notify(toastFromError(error, t("errors.unavailable")));
-      }
-    })();
-    return () => controller.abort();
+      },
+    });
   }, [active, resolved, routeKey, t, toast]);
 
   if (route.status === "found" && resolved) {
@@ -253,7 +250,6 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
 
   useEffect(() => {
     if (!active || loadedPersonID.current === personId) return;
-    const controller = new AbortController();
     setIsLoading(true);
     setRemoteMatches([]);
     setCatalogRefresh(null);
@@ -262,17 +258,15 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
     setTotalWorks(0);
     setPage(1);
     loadedWorksKey.current = "";
-    void (async () => {
-      try {
-        const item = await api.getVoiceSummary(personId, controller.signal);
-        if (controller.signal.aborted) return;
+    return startLoad((signal) => api.getVoiceSummary(personId, signal), {
+      onSuccess: (item) => {
         loadedPersonID.current = personId;
         setDetail(item);
         setMessage("");
         // The works load starts once the summary is shown.
         setIsWorksLoading(true);
-      } catch (error) {
-        if (controller.signal.aborted) return;
+      },
+      onError: (error) => {
         setDetail(null);
         if (error instanceof ApiError && error.status === 404) {
           loadedPersonID.current = personId;
@@ -280,11 +274,9 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           return;
         }
         toast.notify(toastFromError(error, t("errors.unavailable")));
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
-      }
-    })();
-    return () => controller.abort();
+      },
+      onSettled: () => setIsLoading(false),
+    });
   }, [active, personId, t, toast]);
 
   useEffect(() => {
@@ -315,36 +307,34 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
       completeResultsScroll();
       return;
     }
-    const controller = new AbortController();
     setIsWorksLoading(true);
-    api
-      .getVoiceWorks(personId, {
-        page,
-        pageSize,
-        query: requestQuery,
-        availability: filter,
-        sort: workSort,
-        direction: workSortDirection,
-        signal: controller.signal,
-      })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        // A page past the end resolves to the last page.
-        loadedWorksKey.current = requestKey(result.page);
-        setWorks(result.works);
-        setTotalWorks(result.total);
-        if (result.page !== page) setPage(result.page);
-        completeResultsScroll();
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        cancelResultsScroll();
-        toast.notify(toastFromError(error, t("errors.unavailable")));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsWorksLoading(false);
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) =>
+        api.getVoiceWorks(personId, {
+          page,
+          pageSize,
+          query: requestQuery,
+          availability: filter,
+          sort: workSort,
+          direction: workSortDirection,
+          signal,
+        }),
+      {
+        onSuccess: (result) => {
+          // A page past the end resolves to the last page.
+          loadedWorksKey.current = requestKey(result.page);
+          setWorks(result.works);
+          setTotalWorks(result.total);
+          if (result.page !== page) setPage(result.page);
+          completeResultsScroll();
+        },
+        onError: (error) => {
+          cancelResultsScroll();
+          toast.notify(toastFromError(error, t("errors.unavailable")));
+        },
+        onSettled: () => setIsWorksLoading(false),
+      },
+    );
   }, [
     active,
     cancelResultsScroll,
@@ -393,28 +383,16 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   useEffect(() => {
     // Loads once per voice; the ref makes re-runs for a new `t` no-ops.
     if (!active || !hasDetail || loadedCatalogPersonID.current === personId) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    const loadPersistedCatalog = async () => {
-      setIsRemoteLoading(true);
-      try {
-        const persisted = await api.getVoiceRemoteMatches(personId, controller.signal);
-        if (cancelled) return;
+    setIsRemoteLoading(true);
+    return startLoad((signal) => api.getVoiceRemoteMatches(personId, signal), {
+      onSuccess: (persisted) => {
         loadedCatalogPersonID.current = personId;
         setRemoteMatches(persisted.remoteMatches);
         setCatalogRefresh(persisted.refresh);
-      } catch (error) {
-        if (cancelled) return;
-        toast.notify(toastFromError(error, t("errors.unavailable")));
-      } finally {
-        if (!cancelled) setIsRemoteLoading(false);
-      }
-    };
-    void loadPersistedCatalog();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+      },
+      onError: (error) => toast.notify(toastFromError(error, t("errors.unavailable"))),
+      onSettled: () => setIsRemoteLoading(false),
+    });
   }, [active, hasDetail, personId, t, toast]);
 
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
@@ -423,7 +401,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
   const [catalogSyncOpen, setCatalogSyncOpen] = useState(false);
-  const openRefreshRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
+  const openRefreshRun = openWorkflowRun;
   const runAction = (runId?: number) =>
     canOpenWorkflows && runId ? { actionLabel: t("workflowPage.viewRun"), onAction: () => openRefreshRun(runId) } : {};
   // Stable so the refresh poll does not restart on every render.
@@ -439,45 +417,48 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const catalogRefreshActive = catalogRefresh?.status === "queued" || catalogRefresh?.status === "running";
   useEffect(() => {
     if (!active || !catalogRefreshActive) return;
-    let cancelled = false;
+    const scope = createEffectScope();
     let requestRunning = false;
     let catalogSignature: string | null = null;
-    const poll = async () => {
+    const poll = () => {
       // A hidden tab skips ticks and catches up as soon as it is shown again.
       if (requestRunning || document.hidden) return;
       requestRunning = true;
-      try {
-        const result = await api.getVoiceRemoteMatches(personId);
-        if (cancelled) return;
-        setRemoteMatches(result.remoteMatches);
-        const stillActive = result.refresh.status === "queued" || result.refresh.status === "running";
-        // The works page follows the catalog as each source's pass lands.
-        const signature = voiceCatalogSignature(result.remoteMatches);
-        if (!stillActive || (catalogSignature !== null && catalogSignature !== signature)) reloadWorks();
-        catalogSignature = signature;
-        if (!stillActive) {
-          notifyRefreshSettled(result.refresh);
-          try {
-            const summary = await api.getVoiceSummary(personId);
-            if (!cancelled) setDetail((current) => (current ? summary : current));
-          } catch {
-            // The persisted catalog remains usable if only the summary refresh fails.
+      scope.load(
+        async (signal) => {
+          const result = await api.getVoiceRemoteMatches(personId, signal);
+          setRemoteMatches(result.remoteMatches);
+          const stillActive = result.refresh.status === "queued" || result.refresh.status === "running";
+          // The works page follows the catalog as each source's pass lands.
+          const signature = voiceCatalogSignature(result.remoteMatches);
+          if (!stillActive || (catalogSignature !== null && catalogSignature !== signature)) reloadWorks();
+          catalogSignature = signature;
+          if (!stillActive) {
+            notifyRefreshSettled(result.refresh);
+            try {
+              const summary = await api.getVoiceSummary(personId, signal);
+              setDetail((current) => (current ? summary : current));
+            } catch {
+              // The persisted catalog remains usable if only the summary refresh fails.
+            }
           }
-        }
-        if (!cancelled) setCatalogRefresh(result.refresh);
-      } catch {
-        // A failed poll keeps the known state; the next tick retries.
-      } finally {
-        requestRunning = false;
-      }
+          return result.refresh;
+        },
+        {
+          onSuccess: setCatalogRefresh,
+          // A failed poll keeps the known state; the next tick retries.
+          onSettled: () => {
+            requestRunning = false;
+          },
+        },
+      );
     };
-    const pollNow = () => void poll();
-    const timer = window.setInterval(pollNow, 2_000);
-    document.addEventListener("visibilitychange", pollNow);
+    const timer = window.setInterval(poll, 2_000);
+    document.addEventListener("visibilitychange", poll);
     return () => {
-      cancelled = true;
+      scope.cancel();
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", pollNow);
+      document.removeEventListener("visibilitychange", poll);
     };
   }, [active, catalogRefresh?.runId, catalogRefreshActive, notifyRefreshSettled, personId]);
 

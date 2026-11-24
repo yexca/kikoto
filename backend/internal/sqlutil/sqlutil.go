@@ -36,6 +36,17 @@ func SelectID(ctx context.Context, db RowQuerier, query string, args ...any) (in
 	return id, nil
 }
 
+// CloseRows closes rows after iteration and returns the iteration error when
+// there is one, otherwise the close error.
+func CloseRows(rows *sql.Rows) error {
+	err := rows.Err()
+	closeErr := rows.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
 // String returns nil for SQL NULL and a pointer to the value otherwise.
 func String(value sql.NullString) *string {
 	if !value.Valid {

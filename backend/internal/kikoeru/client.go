@@ -498,7 +498,7 @@ func workPageComplete(page WorksPage, pageNumber int) bool {
 
 func WorkCode(work Work) string {
 	for _, candidate := range []string{work.SourceID, work.OriginalWorkNumber} {
-		code := normalizeWorkCode(candidate)
+		code := normalizeCatalogWorkCode(candidate)
 		if code != "" {
 			return code
 		}
@@ -604,9 +604,9 @@ func cloneValues(values url.Values) url.Values {
 	return clone
 }
 
-// normalizeWorkCode accepts only catalog codes: a remote source never holds a
+// normalizeCatalogWorkCode accepts only catalog codes: a remote source never holds a
 // custom work, which exists only in this library.
-func normalizeWorkCode(value string) string {
+func normalizeCatalogWorkCode(value string) string {
 	return workcode.NormalizeCatalog(value)
 }
 

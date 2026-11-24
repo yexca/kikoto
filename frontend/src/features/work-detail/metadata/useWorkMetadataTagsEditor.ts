@@ -6,6 +6,7 @@ import {
   type MetadataTagOverride,
   type WorkMetadataTags,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import {
   changeMetadataTagOverride,
   changedMetadataTagNames,
@@ -35,22 +36,19 @@ export function useWorkMetadataTagsEditor(workId: number) {
   const [nameDrafts, setNameDrafts] = useState<Record<number, Record<string, string>>>({});
   const nextDraftID = useRef(-1);
   const [reload, setReload] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    void api
-      .getWorkMetadataTags(workId, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setInitial(result);
-        setTags(result.tags);
-        setOverrides(result.overrides);
-        setFailed(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
-  }, [workId, reload]);
+  useEffect(
+    () =>
+      startLoad((signal) => api.getWorkMetadataTags(workId, signal), {
+        onSuccess: (result) => {
+          setInitial(result);
+          setTags(result.tags);
+          setOverrides(result.overrides);
+          setFailed(false);
+        },
+        onError: () => setFailed(true),
+      }),
+    [workId, reload],
+  );
 
   const savedNames = (id: number) => {
     const detail = details[id];

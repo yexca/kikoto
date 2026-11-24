@@ -35,6 +35,7 @@ import {
   useFolderWorkspaceFiles,
   type FolderWorkspace,
 } from "@/features/work-detail/folder-edit/folderWorkspace";
+import { useDebouncedRequest } from "@/hooks/useDebouncedRequest";
 import {
   ApiError,
   api,
@@ -44,6 +45,7 @@ import {
   type WorkFolderEditRequest,
   type WorkFolderEditResult,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 export type { FolderEditFilesState } from "@/features/work-detail/folder-edit/folderWorkspace";
 
@@ -91,10 +93,6 @@ export function useFolderEditWorkspace({
   const { files, setFiles, selection, setSelection, setSelected, loadResource, readyFiles } = useFolderWorkspaceFiles();
   const [activeId, setActiveId] = useState(CURRENT_FOLDER_RESOURCE);
   const [decisions, setDecisions] = useState<Record<string, RemoteFetchFileDecision>>({});
-  const [plan, setPlan] = useState<WorkFolderEditPlan | null>(null);
-  const [plannedRevision, setPlannedRevision] = useState("");
-  const [planFailed, setPlanFailed] = useState(false);
-  const [planAttempt, setPlanAttempt] = useState(0);
   const [applying, setApplying] = useState(false);
   const [layout, setLayout] = useState<FolderEditLayout>(emptyFolderEditLayout);
   const [merged, setMerged] = useState<ReadonlySet<number>>(new Set());
@@ -131,10 +129,9 @@ export function useFolderEditWorkspace({
   );
 
   useEffect(() => {
-    const controller = new AbortController();
     setSourcesStatus("loading");
-    api.getWorkFolderEditSources(target.workId, controller.signal).then(
-      (sources) => {
+    return startLoad((signal) => api.getWorkFolderEditSources(target.workId, signal), {
+      onSuccess: (sources) => {
         const next = folderEditResources(sources, target);
         setResources(next);
         setSourcesStatus("ready");
@@ -146,11 +143,8 @@ export function useFolderEditWorkspace({
         setActiveId(remote.id);
         void loadResource(remote);
       },
-      () => {
-        if (!controller.signal.aborted) setSourcesStatus("error");
-      },
-    );
-    return () => controller.abort();
+      onError: () => setSourcesStatus("error"),
+    });
   }, [loadResource, sourcesAttempt, target]);
 
   // A check asks the remote sources again; until then the list shows the
@@ -230,29 +224,13 @@ export function useFolderEditWorkspace({
     setUndone(null);
   };
 
-  useEffect(() => {
-    if (demo || !needsPlan || applying) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      api.planWorkFolderEdit(target.workId, request).then(
-        (next) => {
-          if (cancelled) return;
-          setPlan(next);
-          setPlannedRevision(revision);
-          setPlanFailed(false);
-        },
-        () => {
-          if (!cancelled) setPlanFailed(true);
-        },
-      );
-    }, PLAN_DELAY_MS);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-    // The request is identified by its revision.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [applying, demo, needsPlan, planAttempt, revision, target.workId]);
+  const planRequest = useDebouncedRequest<WorkFolderEditPlan>({
+    key: `${target.workId}:${revision}`,
+    enabled: !demo && needsPlan && !applying,
+    delayMs: PLAN_DELAY_MS,
+    send: (signal) => api.planWorkFolderEdit(target.workId, request, signal),
+  });
+  const plan = planRequest.result;
 
   const pending = useMemo(() => {
     const additions: FolderEditPendingAddition[] = [];
@@ -272,7 +250,7 @@ export function useFolderEditWorkspace({
     [demo, needsPlan, pending, request, target],
   );
   const currentPlan = demo ? demoPlan : needsPlan ? plan : null;
-  const planCurrent = needsPlan && (demo || plannedRevision === revision);
+  const planCurrent = needsPlan && (demo || planRequest.current);
   const readiness = folderEditReadiness({ request, plan: currentPlan, planCurrent });
   const currentSelection = selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
   // Until the preview catches up, the final folder shows only what is still
@@ -323,13 +301,11 @@ export function useFolderEditWorkspace({
       );
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_merge_changed") {
-        setPlannedRevision("");
-        setPlanAttempt((value) => value + 1);
+        planRequest.invalidate();
         toast.notify({ kind: "warning", message: t("folderEdit.mergeChanged") });
       } else if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_conflict") {
         // The folder changed since the preview; show what it holds now.
-        setPlannedRevision("");
-        setPlanAttempt((value) => value + 1);
+        planRequest.invalidate();
         toast.notify({ kind: "warning", message: t("folderEdit.folderChanged") });
       } else {
         toast.notify(toastFromError(error, t("folderEdit.applyFailed")));
@@ -363,11 +339,8 @@ export function useFolderEditWorkspace({
     addCount: currentPlan?.summary.add ?? 0,
     removeCount: request.removeLocationIds.length,
     conflictCount: currentPlan?.summary.conflict ?? 0,
-    planFailed: needsPlan && planFailed && !planCurrent,
-    retryPlan: () => {
-      setPlanFailed(false);
-      setPlanAttempt((value) => value + 1);
-    },
+    planFailed: needsPlan && planRequest.failed && !planCurrent,
+    retryPlan: planRequest.retry,
     applying,
     arrange: folderWorkspaceArrange({
       layout,

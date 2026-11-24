@@ -358,6 +358,8 @@ func (s *Server) buildVoiceCatalogRemoteWork(ctx context.Context, row voiceCatal
 
 func decodeVoiceCatalogStrings(raw string) []string {
 	var values []string
+	// Tolerant: a catalog row's tags and voice actors only label the row, which
+	// an unreadable list must not hide.
 	_ = json.Unmarshal([]byte(raw), &values)
 	if values == nil {
 		return []string{}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useNativePrivacySettings } from "@/hooks/useNativePrivacySettings";
+import { createEffectScope } from "@/lib/effectScope";
 import { addNativeOutputListener, nativeOutputIsPhoneSpeaker, supportsNativePrivacy } from "@/lib/nativePrivacy";
 
 import { createSpeakerPlaybackGuard } from "./speakerPlaybackGuard";
@@ -37,19 +38,15 @@ export function useSpeakerPlaybackGuard({ refs, play }: { refs: PlaybackRefs; pl
 
   useEffect(() => {
     if (!supportsNativePrivacy()) return;
-    let disposed = false;
-    let removeListener: (() => void) | null = null;
-    void nativeOutputIsPhoneSpeaker().then((phoneSpeaker) => {
-      if (!disposed) guard.initializeOutput(phoneSpeaker);
+    const scope = createEffectScope();
+    scope.load(() => nativeOutputIsPhoneSpeaker(), {
+      onSuccess: (phoneSpeaker) => guard.initializeOutput(phoneSpeaker),
     });
-    void addNativeOutputListener(guard.outputChanged).then((remove) => {
-      if (disposed) remove();
-      else removeListener = remove;
-    });
-    return () => {
-      disposed = true;
-      removeListener?.();
-    };
+    scope.listen(
+      () => addNativeOutputListener(guard.outputChanged),
+      (remove) => remove(),
+    );
+    return scope.cancel;
   }, [guard]);
 
   useEffect(() => {

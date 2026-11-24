@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { APP_CLIENT_VERSION, appClientPlatformName, appVersionStatus, githubReleaseURL } from "@/lib/appInfo";
 import { api, type HealthStatus } from "@/lib/api";
+import { createEffectScope } from "@/lib/effectScope";
 import { recordDiagnostic } from "@/lib/mobileDiagnostics";
 import { getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 
@@ -190,9 +191,9 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
     const timer = window.setInterval(() => {
       void reconnect();
     }, 30000);
-    let disposed = false;
+    const scope = createEffectScope();
     Network.addListener("networkStatusChange", (status) => {
-      if (disposed) return;
+      if (scope.signal.aborted) return;
       if (!status.connected) {
         const next = {
           ...initialConnection,
@@ -218,7 +219,7 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
       });
     });
     return () => {
-      disposed = true;
+      scope.cancel();
       window.clearInterval(timer);
       void Network.removeAllListeners();
     };

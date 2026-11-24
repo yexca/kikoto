@@ -35,6 +35,11 @@ The backend stack, the internal package map, and the layering rule between HTTP 
 - `backend/internal/kikoeru`: Kikoeru-compatible client, including the
   account and SQLite readers used by personal data import.
 - `backend/internal/metasync`: metadata sync.
+- `backend/internal/filesource`: reading stored file sources: a
+  `file_source` row with its endpoint, the decoded and normalized
+  `config_json` and allowed host patterns, and the API URL fallback a client
+  uses. A stored setting that does not decode is reported on the record, never
+  replaced with defaults; see [File Availability](../data-model/file-availability.md).
 - `backend/internal/remotemetadata`: remote source metadata ordering,
   bounded snapshot decoding, and reconciliation for the opt-in fallback.
 - `backend/internal/metadatatags`: shared metadata tag concepts, projection,

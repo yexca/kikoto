@@ -39,10 +39,10 @@ import {
   type ASRTranscriptionState,
   type WorkDetail,
 } from "@/lib/api";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
 import { serviceModelChoices } from "@/lib/serviceModels";
 import { cn } from "@/lib/tailwindClassNames";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 const activeStates: ReadonlySet<ASRTranscriptionState> = new Set(["pending", "requesting"]);
 /** States a track's row reports: work in progress or waiting for someone. */
@@ -289,7 +289,7 @@ export function TranscriptionPanel({
               (joined > 0 ? ` ${t("asrTranscription.joinedCount", { count: joined })}` : "")
             : t("asrTranscription.joinedCount", { count: joined }),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(lastRun),
+        onAction: () => openWorkflowRun(lastRun),
       });
     }
     await load();
@@ -725,9 +725,4 @@ function LyricsLanguageChips({ lyrics, origin }: { lyrics: ReadonlyMap<string, n
       ))}
     </span>
   );
-}
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

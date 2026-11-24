@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/filesource"
 )
 
 // SettingKey stores the opt-in fallback switch and the ordered source ids.
@@ -20,14 +22,11 @@ const MaxSources = 16
 
 // CapabilityMetadata is the file_source config_json capability a source
 // declares when it can describe works, not only serve their files.
-const CapabilityMetadata = "metadata"
+const CapabilityMetadata = filesource.CapabilityMetadata
 
 // ProviderCodePrefix derives a remote source's metadata provider identity from
 // its stable source code, never from its configurable display name.
 const ProviderCodePrefix = "kikoeru_source_"
-
-// remoteSourceTypes are the file source types whose API can describe a work.
-var remoteSourceTypes = map[string]bool{"kikoeru_compatible": true, "kikoeru_compatible_number178": true}
 
 type Querier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -77,7 +76,7 @@ func NormalizeSourceIDs(ids []int64) []int64 {
 
 // IsRemoteSourceType reports whether a file source type has a metadata API.
 func IsRemoteSourceType(sourceType string) bool {
-	return remoteSourceTypes[sourceType]
+	return filesource.IsRemoteType(sourceType)
 }
 
 // SupportsMetadata reports a declared metadata capability. A remote source

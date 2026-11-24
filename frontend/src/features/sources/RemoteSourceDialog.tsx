@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Loader2, Plus, Save, Wand2 } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsDisclosure } from "@/components/settings/SettingsSection";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { api, type FileSource, type FileSourceDetectResult } from "@/lib/api";
 import { wholeNumberFromInput } from "@/lib/numberInput";
 import { sourceProvidesMetadata, withMetadataCapability } from "@/lib/remoteSourceCapabilities";
@@ -59,7 +60,7 @@ export function RemoteSourceDialog({
   const [detect, setDetect] = useState<DetectState>({ status: "idle" });
   const [showDetails, setShowDetails] = useState(editing);
   const [connectionOpen, setConnectionOpen] = useState(false);
-  const detectAbort = useRef<AbortController | null>(null);
+  const detection = useLatestLoad();
   const nameInput = useRef<HTMLInputElement>(null);
   const apiInput = useRef<HTMLInputElement>(null);
   const patch = (next: Partial<FileSource>) => onChange({ ...source, ...next });
@@ -74,33 +75,26 @@ export function RemoteSourceDialog({
   );
   const canSave = Boolean(source.displayName.trim() && source.endpoint.apiUrl.trim()) && !saving && !readOnly;
 
-  useEffect(() => () => detectAbort.current?.abort(), []);
-
   const runDetect = async (event?: FormEvent) => {
     event?.preventDefault();
     const value = address.trim();
     if (!value || detect.status === "detecting") return;
-    detectAbort.current?.abort();
-    const controller = new AbortController();
-    detectAbort.current = controller;
     setDetect({ status: "detecting" });
-    try {
-      const result: FileSourceDetectResult = await api.detectFileSource(value, controller.signal);
-      if (controller.signal.aborted) return;
-      onChange(applyDetectResult(source, result));
-      setShowDetails(true);
-      if (result.detected) {
-        setDetect({ status: "detected", apiUrl: result.apiUrl });
-        window.requestAnimationFrame(() => nameInput.current?.focus());
-      } else {
-        setDetect({ status: "failed", tried: result.tried });
-        setConnectionOpen(true);
-        window.requestAnimationFrame(() => apiInput.current?.focus());
-      }
-    } catch {
-      if (controller.signal.aborted) return;
-      setDetect({ status: "error" });
-    }
+    await detection.run((signal) => api.detectFileSource(value, signal), {
+      onSuccess: (result: FileSourceDetectResult) => {
+        onChange(applyDetectResult(source, result));
+        setShowDetails(true);
+        if (result.detected) {
+          setDetect({ status: "detected", apiUrl: result.apiUrl });
+          window.requestAnimationFrame(() => nameInput.current?.focus());
+        } else {
+          setDetect({ status: "failed", tried: result.tried });
+          setConnectionOpen(true);
+          window.requestAnimationFrame(() => apiInput.current?.focus());
+        }
+      },
+      onError: () => setDetect({ status: "error" }),
+    });
   };
 
   const enterManually = () => {

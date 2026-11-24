@@ -10,10 +10,10 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { RunBusyLabelContext, RunOptionRows, WorkflowRunButton } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus } from "@/features/workflows/runPresentation";
 import { RelativeTime } from "@/features/workflows/WorkflowDetailLayout";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { intervalLabel } from "@/features/workflows/workflowTriggerModel";
 import { api, type FileSourcePresenceCheck, type SourcePresenceCheckOptions } from "@/lib/api";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { SourcePresenceCheckLine } from "./SourcePresenceCheckLine";
 import { sourceCheckIntervalChoices, sourceCheckPausedMessage, sourceCheckSettings } from "./sourcePresenceCheckModel";
@@ -94,7 +94,7 @@ export function SourcePresenceCheckDialog({
         kind: "success",
         message: workflowCopy("sourceCheck.queued", { id: result.runId }),
         actionLabel: canOpenActivity ? t("workflowPage.viewRun") : undefined,
-        onAction: canOpenActivity ? () => openWorkflowPath(workflowRunPath(result.runId)) : undefined,
+        onAction: canOpenActivity ? () => openWorkflowRun(result.runId) : undefined,
       });
       onChanged();
       onClose();
@@ -123,7 +123,7 @@ export function SourcePresenceCheckDialog({
               canOpenActivity
                 ? (runId) => {
                     onClose();
-                    openWorkflowPath(workflowRunPath(runId));
+                    openWorkflowRun(runId);
                   }
                 : undefined
             }

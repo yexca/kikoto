@@ -9,6 +9,7 @@ import {
   type RecordSectionPages,
   type RecordSiblings,
 } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 import { crumbFromFolder } from "./recordsModel";
 import { recordTrailFromState, type RecordCrumb } from "./recordsLocation";
@@ -101,8 +102,6 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
 
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
-    const signal = controller.signal;
     generationRef.current += 1;
     inflightRef.current.clear();
     const current = treeRef.current;
@@ -110,7 +109,7 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
     const readSoFar = refreshing ? current.sections : null;
     setPending(true);
     if (!refreshing) setTree({ status: "loading", folderId });
-    const load = async () => {
+    const load = async (signal: AbortSignal): Promise<RecordTreeState> => {
       const result = await api.listRecordTree(folderId || undefined, signal);
       const sections = sectionsFromPages(result.sections) as unknown as Record<RecordSectionName, AnySection>;
       if (readSoFar) {
@@ -124,22 +123,18 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
           sections[name] = section;
         }
       }
-      if (signal.aborted) return;
-      setTree({
+      return {
         status: "ready",
         folderId,
         trail: result.trail.map(crumbFromFolder),
         sections: sections as unknown as RecordSections,
-      });
+      };
     };
-    void load()
-      .catch(() => {
-        if (!signal.aborted) setTree({ status: "error", folderId });
-      })
-      .finally(() => {
-        if (!signal.aborted) setPending(false);
-      });
-    return () => controller.abort();
+    return startLoad(load, {
+      onSuccess: setTree,
+      onError: () => setTree({ status: "error", folderId }),
+      onSettled: () => setPending(false),
+    });
   }, [enabled, folderId, reloadToken]);
 
   const updateSection = useCallback(
@@ -258,14 +253,10 @@ export function useRecordSiblings(assetId: number | null, version: number) {
   const [state, setState] = useState<{ id: number; siblings: RecordSiblings | null } | null>(null);
   useEffect(() => {
     if (assetId === null) return;
-    const controller = new AbortController();
-    api
-      .getRecordSiblings(assetId, controller.signal)
-      .then((siblings) => setState({ id: assetId, siblings }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ id: assetId, siblings: null });
-      });
-    return () => controller.abort();
+    return startLoad((signal) => api.getRecordSiblings(assetId, signal), {
+      onSuccess: (siblings) => setState({ id: assetId, siblings }),
+      onError: () => setState({ id: assetId, siblings: null }),
+    });
   }, [assetId, version]);
   return state && state.id === assetId ? state : null;
 }

@@ -135,16 +135,16 @@ func (s *Server) parseLyricsEditRequest(w http.ResponseWriter, r *http.Request) 
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return currentUser{}, 0, lyricsEditRequest{}, false
 	}
 	var payload lyricsEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return currentUser{}, 0, lyricsEditRequest{}, false
 	}
 	if payload.Assign && !userHasPermission(actor, "library:write") {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "library:write permission is required to assign lyrics"})
+		writeAPIError(w, http.StatusForbidden, "permission_denied", "library:write permission is required to assign lyrics", false)
 		return currentUser{}, 0, lyricsEditRequest{}, false
 	}
 	return actor, workID, payload, true
@@ -180,7 +180,7 @@ func (s *Server) applyWorkLyricsEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(payload.Assignments) > 0 && !userHasPermission(actor, "library:write") {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "library:write permission is required to assign lyrics"})
+		writeAPIError(w, http.StatusForbidden, "permission_denied", "library:write permission is required to assign lyrics", false)
 		return
 	}
 	// An edit that has started finishes even when the client goes away, so the
@@ -200,7 +200,7 @@ func (s *Server) applyWorkLyricsEdit(w http.ResponseWriter, r *http.Request) {
 func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 	var conflict lyricsEditConflictError
 	if errors.As(err, &conflict) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": conflict.Error(), "code": "lyrics_edit_conflict", "summary": conflict.Summary})
+		writeAPIErrorDetails(w, http.StatusConflict, "lyrics_edit_conflict", conflict.Error(), false, map[string]any{"summary": conflict.Summary})
 		return
 	}
 	var requestErr lyricsFetchRequestError
@@ -209,7 +209,8 @@ func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 			writeAPIError(w, requestErr.status, requestErr.code, requestErr.message, false)
 			return
 		}
-		writeJSON(w, requestErr.status, map[string]string{"error": requestErr.message})
+		code, retryable := defaultErrorClassification(requestErr.status)
+		writeAPIError(w, requestErr.status, code, requestErr.message, retryable)
 		return
 	}
 	var symlinkErr symlinkMediaLocationError
@@ -222,14 +223,14 @@ func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 		return
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	if writeLibraryStorageError(w, err) {
 		return
 	}
 	slog.Warn("lyrics edit failed", "work_id", workID, "error", err)
-	writeJSON(w, http.StatusBadGateway, map[string]string{"error": "the lyrics could not be changed"})
+	writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "the lyrics could not be changed", true)
 }
 
 // buildLyricsEditPlan resolves a requested edit against the folder as it is on

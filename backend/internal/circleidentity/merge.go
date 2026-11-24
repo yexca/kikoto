@@ -131,7 +131,7 @@ func mergeSeries(ctx context.Context, tx *sql.Tx, target, source int64) error {
 		}
 		items = append(items, s)
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return err
 	}
 	for _, s := range items {

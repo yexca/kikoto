@@ -105,7 +105,7 @@ func (s *Server) syncMetadataScopeFromRemote(ctx context.Context, job workflowJo
 		if err := metasync.RecordProviderOutcome(ctx, s.db, item.id, remotemetadata.ProviderCode(source.Code), source.DisplayName, status); err != nil {
 			return result, err
 		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"sourceId": source.ID, "sourceCode": source.Code}, index+1, len(targets))
+		s.checkpointJobOrLog(ctx, job, "syncing", map[string]any{"sourceId": source.ID, "sourceCode": source.Code}, index+1, len(targets))
 		if requestErr != nil && isRetryableWorkflowError(requestErr) {
 			return result, metadataSyncRequestError{cause: requestErr}
 		}

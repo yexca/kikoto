@@ -288,7 +288,9 @@ func (s *Server) serveDemoRemotePopular(w http.ResponseWriter, r *http.Request) 
 		Page     int `json:"page"`
 		PageSize int `json:"pageSize"`
 	}
-	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload)
+	if !decodeOptionalJSON(w, json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)), &payload) {
+		return
+	}
 	catalog, err := s.demoRemoteCatalog(r.Context())
 	if err != nil {
 		http.Error(w, "catalog unavailable", http.StatusInternalServerError)

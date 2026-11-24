@@ -12,8 +12,8 @@ import { formatNumber } from "@/i18n/format";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type DatabaseCleanupTaskKey, type DatabaseMaintenanceOverview } from "@/lib/api";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { formatByteSize } from "./cacheCleanupModel";
 
@@ -341,7 +341,7 @@ export function DatabaseOptimizeSection({
         kind: "error",
         message: t("cleanup.optimize.runFailed"),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(run.id),
+        onAction: () => openWorkflowRun(run.id),
       });
       return;
     }
@@ -371,7 +371,7 @@ export function DatabaseOptimizeSection({
           runId: queued.runId,
         }),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(queued.runId),
+        onAction: () => openWorkflowRun(queued.runId),
       });
     } catch (error) {
       toast.notify(toastFromError(error, t("cleanup.optimize.failed")));
@@ -435,9 +435,4 @@ function parseOptimizeSummary(raw: string): { beforeBytes: number; afterBytes: n
   } catch {
     return null;
   }
-}
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

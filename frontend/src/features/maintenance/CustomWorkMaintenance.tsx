@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useId, useState, type KeyboardEvent, type MouseEventHandler, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AcceptanceNotice } from "@/components/AcceptanceNotice";
 import { badgeVariants } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import {
   api,
   ApiError,
@@ -28,6 +29,7 @@ import {
   type CustomWorkTreeFolder,
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { useMaintenanceSearch } from "./MaintenanceControls";
 
@@ -285,24 +287,17 @@ function FoundFolders({
 
   useEffect(() => {
     if (refresh === 0) return;
-    const controller = new AbortController();
     setLoading(true);
-    void api
-      .listCustomWorkFolders(search.query, controller.signal)
-      .then((next) => {
-        if (controller.signal.aborted) return;
+    return startLoad((signal) => api.listCustomWorkFolders(search.query, signal), {
+      onSuccess: (next) => {
         setFolders(next.folders);
         setTruncated(next.truncated);
         setLoaded(true);
         setFailed(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
+      },
+      onError: () => setFailed(true),
+      onSettled: () => setLoading(false),
+    });
   }, [search.query, refresh]);
 
   return (
@@ -619,30 +614,27 @@ function TypedPath({
   const [result, setResult] = useState<{ folder: CustomWorkFolder } | { error: string } | null>(null);
   const inputId = useId();
   // Editing the path during a check makes that check's answer stale.
-  const request = useRef(0);
+  const pathCheck = useLatestLoad();
 
   const check = async () => {
     if (!value.trim()) return;
-    const current = ++request.current;
     setChecking(true);
     setResult(null);
     onSelect(null);
-    try {
-      const folder = await api.getCustomWorkFolder(value);
-      if (current !== request.current) return;
-      setResult({ folder });
-      onSelect(folder.inUse ? null : folder);
-    } catch (error) {
-      if (current !== request.current) return;
-      setResult({
-        error:
-          error instanceof ApiError && (error.status === 409 || error.status === 400)
-            ? "customWorks.pathUnavailable"
-            : "customWorks.pathCheckFailed",
-      });
-    } finally {
-      if (current === request.current) setChecking(false);
-    }
+    await pathCheck.run(() => api.getCustomWorkFolder(value), {
+      onSuccess: (folder) => {
+        setResult({ folder });
+        onSelect(folder.inUse ? null : folder);
+      },
+      onError: (error) =>
+        setResult({
+          error:
+            error instanceof ApiError && (error.status === 409 || error.status === 400)
+              ? "customWorks.pathUnavailable"
+              : "customWorks.pathCheckFailed",
+        }),
+      onSettled: () => setChecking(false),
+    });
   };
 
   return (
@@ -665,7 +657,7 @@ function TypedPath({
             aria-describedby={`${inputId}-hint`}
             value={value}
             onChange={(event) => {
-              request.current += 1;
+              pathCheck.cancel();
               setChecking(false);
               setValue(event.target.value);
               setResult(null);

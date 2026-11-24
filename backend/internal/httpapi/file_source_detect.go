@@ -45,12 +45,12 @@ func (s *Server) detectFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	var request fileSourceDetectRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	input, err := normalizeFileSourceDetectInput(request.URL)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "address must be an HTTP(S) URL without credentials"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "address must be an HTTP(S) URL without credentials", false)
 		return
 	}
 	candidates := fileSourceDetectCandidates(input)

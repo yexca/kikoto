@@ -161,7 +161,7 @@ func (s *Server) listLocalWorkCleanup(w http.ResponseWriter, r *http.Request) {
 	}
 	filter, err := parseLocalWorkCleanupFilter(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	page := max(queryInt(r, "page", 1), 1)
@@ -659,7 +659,7 @@ func (s *Server) cleanupLocalWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	var request localWorkCleanupRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if request.Forget {

@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import {
-  WORKFLOWS_PATH,
-  workflowTabFromParam,
-  type HistoryStatus,
-  type WorkflowTab,
-} from "@/features/workflows/workflowLinks";
 import { NAVIGATION_EVENT, navigateBackOr } from "@/lib/browserHistory";
+import { WORKFLOWS_PATH, workflowTabFromParam, type HistoryStatus, type WorkflowTab } from "@/lib/workflowLinks";
 
 /** Marks an entry this page pushed to open a run, so closing the run steps back to the entry below. */
 const openedRunStateKey = "__kikotoWorkflowRunOpened";

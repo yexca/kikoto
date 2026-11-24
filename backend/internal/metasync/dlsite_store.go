@@ -95,7 +95,7 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if editionToken == "" {
 		editionToken = strings.ToUpper(editionLanguage)
 	}
-	requestLocale := normalizeRequestLocale(firstNonEmptyText(product.RequestLocale, product.Language))
+	requestLocale := normalizeRequestLocale(firstNonBlank(product.RequestLocale, product.Language))
 	if requestLocale == "" {
 		requestLocale = dlsite.LocaleForMetadataLanguage(editionToken)
 	}
@@ -365,7 +365,7 @@ func upsertDLsiteMetadataVariant(
 	tags := make([]string, 0, len(genres))
 	seen := map[string]bool{}
 	for _, genre := range genres {
-		name := strings.TrimSpace(firstNonEmptyText(genre.Name, genre.NameBase))
+		name := strings.TrimSpace(firstNonBlank(genre.Name, genre.NameBase))
 		key := strings.ToLower(name)
 		if name == "" || seen[key] {
 			continue

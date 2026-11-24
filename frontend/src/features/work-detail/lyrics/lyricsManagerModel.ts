@@ -50,7 +50,7 @@ export function lyricsManagerEntries(items: MediaItem[]): LyricsManagerEntries {
     const location = item.locations.find(
       (candidate) => candidate.locationType === "local" && candidate.availability === "available",
     );
-    return location ? [{ item, location, path: normalizePath(location.path) }] : [];
+    return location ? [{ item, location, path: normalizeKeepingTrailingSlash(location.path) }] : [];
   });
   const root = commonDirectory(local.map((entry) => entry.path));
   const relative = (path: string) => (root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path);
@@ -280,7 +280,7 @@ function commonDirectory(paths: string[]) {
   return prefix.join("/");
 }
 
-function normalizePath(path: string) {
+function normalizeKeepingTrailingSlash(path: string) {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 

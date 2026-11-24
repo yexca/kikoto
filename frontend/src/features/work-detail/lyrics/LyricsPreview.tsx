@@ -4,12 +4,13 @@ import { useTranslation } from "react-i18next";
 
 import { lyricsTimingCheck } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
-import { api, assetURL } from "@/lib/api";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { api } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { type ParsedLyrics, untimedLyrics } from "@/lib/timedLyrics";
 
 const previewLineCount = 6;
 const panelLineCount = 200;
-const maxRemotePreviewCharacters = 512 * 1024;
 
 type LyricsPreviewState = { key: string; text: string; parsed: ParsedLyrics } | { key: string; failed: true };
 
@@ -26,34 +27,31 @@ export function LyricsPreview({
   variant = "inline",
 }: {
   label: string;
-  /** Identifies the file; a new key loads again. */
+  /** Identifies the file; a new key loads again, a new `load` for the same key does not. */
   loadKey: string;
-  load: () => Promise<string>;
+  load: (signal: AbortSignal) => Promise<string>;
   durationSeconds: number | null;
   variant?: "inline" | "panel";
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<LyricsPreviewState | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    // The server reads the text as timed lyrics, whichever file or task it came from.
-    load()
-      .then(async (text) => {
-        const result = await api.parseLyrics(text);
-        return { text, parsed: result.timed ? { timed: true, lines: result.lines } : untimedLyrics };
-      })
-      .then(({ text, parsed }) => {
-        if (!cancelled) setState({ key: loadKey, text, parsed });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ key: loadKey, failed: true });
-      });
-    return () => {
-      cancelled = true;
-    };
-    // The key identifies the file; a new load function for the same file is not a new request.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadKey]);
+  const loadText = useStableCallback(load);
+  useEffect(
+    () =>
+      startLoad(
+        async (signal) => {
+          const text = await loadText(signal);
+          // The server reads the text as timed lyrics, whichever file or task it came from.
+          const result = await api.parseLyrics(text, signal);
+          return { text, parsed: result.timed ? { timed: true, lines: result.lines } : untimedLyrics };
+        },
+        {
+          onSuccess: ({ text, parsed }) => setState({ key: loadKey, text, parsed }),
+          onError: () => setState({ key: loadKey, failed: true }),
+        },
+      ),
+    [loadKey, loadText],
+  );
   const current = state?.key === loadKey ? state : null;
   const text = current && "text" in current ? current.text : null;
   const parsed = current && "parsed" in current ? current.parsed : null;
@@ -167,22 +165,8 @@ function LyricsTimingWarning({
   );
 }
 
-export function loadLocalLyricsText(locationId: number) {
-  return api.getMediaText(locationId).then((result) => result.content);
-}
-
-/** Loads a remote tree file through the server's bounded, policy-checked text preview. */
-export async function loadRemoteLyricsText(sourceId: number, workCode: string, path: string) {
-  const response = await fetch(
-    assetURL(
-      `/api/remote-sources/${sourceId}/works/${encodeURIComponent(workCode)}/text?path=${encodeURIComponent(path)}`,
-    ),
-    { headers: { Accept: "text/plain,text/*" } },
-  );
-  if (!response.ok) throw new Error(`Remote lyrics preview returned HTTP ${response.status}.`);
-  const text = await response.text();
-  if (text.length > maxRemotePreviewCharacters) throw new Error("Remote lyrics are too large to preview.");
-  return text;
+export function loadLocalLyricsText(locationId: number, signal?: AbortSignal) {
+  return api.getMediaText(locationId, signal).then((result) => result.content);
 }
 
 /** The first lines as playback shows them: timed lines with their start, else the raw text. */

@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "oxlint-plugin-kikoto.test.mjs"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

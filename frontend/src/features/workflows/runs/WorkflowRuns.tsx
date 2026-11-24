@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/input";
 import { SubNavTabs } from "@/components/ui/sub-nav";
-import { workflowTabs, type HistoryStatus, type WorkflowTab } from "@/features/workflows/workflowLinks";
+import { workflowTabs, type HistoryStatus, type WorkflowTab } from "@/lib/workflowLinks";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { WorkflowRun } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";

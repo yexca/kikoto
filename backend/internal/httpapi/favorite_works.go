@@ -32,7 +32,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	query, err := parseFavoriteWorksQuery(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	queryText := strings.TrimSpace(r.URL.Query().Get("q"))

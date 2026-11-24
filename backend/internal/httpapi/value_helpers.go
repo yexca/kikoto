@@ -32,6 +32,8 @@ func normalizeDate(value string) any {
 	return value
 }
 
+// firstNonEmpty returns the first value that is not blank, trimmed. Use
+// cmp.Or only when whitespace-only values cannot occur.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

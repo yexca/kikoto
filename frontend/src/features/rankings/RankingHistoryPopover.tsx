@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { segmentedItemClassName } from "@/components/ui/segmented";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type RankingList, type RankingPage, type RankingSnapshotRef, type RankingVariant } from "@/lib/api";
+import { createEffectScope, type EffectScope } from "@/lib/effectScope";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
 import {
@@ -115,62 +116,67 @@ function RankingTimeTravel({
   const dayKey = `${timeZone}:${day}`;
   const [timeline, setTimeline] = useState<DayTimeline | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const dayLoad = useRef<AbortController | null>(null);
+  const dayLoad = useRef<EffectScope | null>(null);
   const shown = timeline?.key === dayKey ? timeline : null;
 
   useEffect(() => {
-    const controller = new AbortController();
-    dayLoad.current = controller;
+    const scope = createEffectScope();
+    dayLoad.current = scope;
     const range = zonedDayRange(day, timeZone);
-    api
-      .listRankingSnapshots(
-        list.id,
-        {
-          from: new Date(range.start).toISOString(),
-          to: new Date(range.end).toISOString(),
-          releaseWindow: variant.releaseWindow,
-          sort: variant.sort,
-        },
-        controller.signal,
-      )
-      .then((page) => setTimeline({ key: dayKey, updates: page.snapshots, more: page.nextAfterId, failed: false }))
-      .catch(() => {
-        if (!controller.signal.aborted) setTimeline({ key: dayKey, updates: [], more: null, failed: true });
-      });
-    return () => controller.abort();
+    scope.load(
+      (signal) =>
+        api.listRankingSnapshots(
+          list.id,
+          {
+            from: new Date(range.start).toISOString(),
+            to: new Date(range.end).toISOString(),
+            releaseWindow: variant.releaseWindow,
+            sort: variant.sort,
+          },
+          signal,
+        ),
+      {
+        onSuccess: (page) =>
+          setTimeline({ key: dayKey, updates: page.snapshots, more: page.nextAfterId, failed: false }),
+        onError: () => setTimeline({ key: dayKey, updates: [], more: null, failed: true }),
+      },
+    );
+    return scope.cancel;
   }, [day, dayKey, list.id, timeZone, variant.releaseWindow, variant.sort]);
 
   // More continues the shown day under its load, so choosing another day
   // stops it.
   const loadMore = () => {
-    const controller = dayLoad.current;
-    if (!shown || shown.more === null || !controller || loadingMore) return;
+    const scope = dayLoad.current;
+    if (!shown || shown.more === null || !scope || loadingMore) return;
     const { key, more } = shown;
     const range = zonedDayRange(day, timeZone);
     setLoadingMore(true);
-    api
-      .listRankingSnapshots(
-        list.id,
+    // Choosing another day drops the page but still ends the wait for it.
+    void scope
+      .load(
+        (signal) =>
+          api.listRankingSnapshots(
+            list.id,
+            {
+              to: new Date(range.end).toISOString(),
+              afterId: more,
+              releaseWindow: variant.releaseWindow,
+              sort: variant.sort,
+            },
+            signal,
+          ),
         {
-          to: new Date(range.end).toISOString(),
-          afterId: more,
-          releaseWindow: variant.releaseWindow,
-          sort: variant.sort,
+          onSuccess: (page) =>
+            setTimeline((current) =>
+              current?.key === key
+                ? { key, updates: [...current.updates, ...page.snapshots], more: page.nextAfterId, failed: false }
+                : current,
+            ),
+          onError: () => setTimeline((current) => (current?.key === key ? { ...current, failed: true } : current)),
         },
-        controller.signal,
       )
-      .then((page) =>
-        setTimeline((current) =>
-          current?.key === key
-            ? { key, updates: [...current.updates, ...page.snapshots], more: page.nextAfterId, failed: false }
-            : current,
-        ),
-      )
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setTimeline((current) => (current?.key === key ? { ...current, failed: true } : current));
-      })
-      .finally(() => setLoadingMore(false));
+      .then(() => setLoadingMore(false));
   };
   const updates = shown?.updates ?? [];
   const noUpdates = shown?.failed === false && updates.length === 0;

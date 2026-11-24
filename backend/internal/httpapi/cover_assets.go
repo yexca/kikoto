@@ -69,7 +69,7 @@ func coverRevision(info os.FileInfo) string {
 func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 	relPath := strings.TrimPrefix(r.URL.Path, "/api/assets/covers/")
 	if relPath == "" || strings.Contains(relPath, "..") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid cover file", false)
 		return
 	}
 	if eligible, err := s.demoCoverEligible(r.Context(), relPath); err != nil || !eligible {
@@ -82,7 +82,7 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := safeCachePath(filepath.Join(s.cfg.CacheRoot, "cover"), relPath)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid cover file", false)
 		return
 	}
 	serveCoverFile(w, r, path, relPath)
@@ -91,7 +91,7 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
 	file := filepath.Base(r.PathValue("file"))
 	if file == "." || file == string(filepath.Separator) || strings.Contains(file, "..") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid manual asset file"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid manual asset file", false)
 		return
 	}
 	if eligible, err := s.demoManualAssetEligible(r.Context(), file); err != nil || !eligible {

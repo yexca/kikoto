@@ -186,6 +186,8 @@ func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs 
 			LastAttemptAt: voiceCatalogStringValue(lastAttempt),
 			Queries:       []string{},
 		}
+		// Tolerant: the queries only label one voice in a list of many, which
+		// an unreadable row must not fail.
 		_ = json.Unmarshal([]byte(queryJSON), &projection.Queries)
 		if projection.Queries == nil {
 			projection.Queries = []string{}

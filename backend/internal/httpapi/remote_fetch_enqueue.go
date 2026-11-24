@@ -357,14 +357,14 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		// An empty selection fetches every file of the edition, which a
 		// follow-up never asks for.
 		if len(payload.Paths) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose at least one file of the edition to fetch"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "choose at least one file of the edition to fetch", false)
 			return
 		}
 	}
 	r = r.WithContext(withRemoteFetchEdition(r.Context(), payload.EditionCode))
 	payload.RequestID = strings.TrimSpace(payload.RequestID)
 	if payload.RequestID != "" && !validRemoteFetchRequestID(payload.RequestID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid fetch request id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid fetch request id", false)
 		return
 	}
 	if payload.RequestID != "" {
@@ -392,7 +392,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		}
 		var conflict remoteWorkSaveConflictError
 		if errors.As(err, &conflict) {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
+			writeAPIErrorDetails(w, http.StatusConflict, "conflict", conflict.Error(), false, map[string]any{"summary": conflict.Summary})
 			return
 		}
 		writeWorkFolderEditError(w, err)
@@ -510,7 +510,7 @@ func remoteWorkFetchDefinition() map[string]any {
 func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, string, remoteWorkSaveRequest, bool) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return 0, "", remoteWorkSaveRequest{}, false
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -518,11 +518,13 @@ func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, 
 		return 0, "", remoteWorkSaveRequest{}, false
 	}
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return 0, "", remoteWorkSaveRequest{}, false
 	}
 	var payload remoteWorkSaveRequest
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	if !decodeOptionalJSONBody(w, r, &payload) {
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
 	return id, code, payload, true
 }
 

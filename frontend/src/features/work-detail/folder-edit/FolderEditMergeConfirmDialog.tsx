@@ -10,6 +10,7 @@ import {
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { api, type WorkFolderEditMerge, type WorkFolderEditMergeCheck, type WorkFolderEditRequest } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * A check that still has files to compare is asked again for as long as it
@@ -57,33 +58,25 @@ export function FolderEditMergeConfirmDialog({
   const [checked] = useState(request);
 
   useEffect(() => {
-    const controller = new AbortController();
-    let cancelled = false;
-    void (async () => {
-      setState({ status: "checking", check: null });
-      try {
+    setState({ status: "checking", check: null });
+    return startLoad(
+      async (signal) => {
         let furthest: FolderEditMergeCheckProgress | null = null;
         for (let stalled = 0; stalled < MAX_STALLED_ROUNDS;) {
-          const check = await api.checkWorkFolderEditMerge(workId, checked, controller.signal);
-          if (cancelled) return;
-          if (check.complete && check.review) {
-            setState({ status: "done", check });
-            return;
-          }
+          const check = await api.checkWorkFolderEditMerge(workId, checked, signal);
+          if (check.complete && check.review) return check;
           setState({ status: "checking", check });
           const round = folderEditMergeCheckProgress(furthest, check);
           furthest = round.progress;
           stalled = round.advanced ? 0 : stalled + 1;
         }
-        if (!cancelled) setState({ status: "failed" });
-      } catch {
-        if (!cancelled) setState({ status: "failed" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+        return null;
+      },
+      {
+        onSuccess: (check) => setState(check ? { status: "done", check } : { status: "failed" }),
+        onError: () => setState({ status: "failed" }),
+      },
+    );
   }, [attempt, checked, workId]);
 
   const lost = state.status === "done" ? state.check.lost : [];

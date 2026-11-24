@@ -18,7 +18,7 @@ export type MobileTabSnapshot = {
 
 export function readMobileTabSnapshot(storageScope: string, page: PageID): MobileTabSnapshot | null {
   try {
-    const raw = window.sessionStorage.getItem(storageKey(storageScope, page));
+    const raw = window.sessionStorage.getItem(mobileTabStorageKey(storageScope, page));
     return raw ? mobileTabSnapshotFromValue(JSON.parse(raw), page) : null;
   } catch {
     return null;
@@ -39,7 +39,7 @@ export function writeMobileTabSnapshot(
     if (serialized.length > maxSnapshotLength) {
       serialized = JSON.stringify({ ...snapshot, state: {} });
     }
-    window.sessionStorage.setItem(storageKey(storageScope, page), serialized);
+    window.sessionStorage.setItem(mobileTabStorageKey(storageScope, page), serialized);
   } catch {
     // Mobile navigation still works when session storage is unavailable.
   }
@@ -77,6 +77,6 @@ function serializableState(value: unknown): Record<string, unknown> {
   }
 }
 
-function storageKey(storageScope: string, page: PageID) {
+function mobileTabStorageKey(storageScope: string, page: PageID) {
   return `${storagePrefix}${storageScope}:${page}`;
 }

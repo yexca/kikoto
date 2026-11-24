@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, type WorkDetail } from "@/lib/api";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { setCachedWorkMedia } from "@/features/work-detail/media/workMediaCache";
 import { directoryLoadErrorMessage } from "@/features/work-detail/workDetailShared";
@@ -33,34 +34,26 @@ export function useWorkEditionSelection({
   const [editionLoadingCode, setEditionLoadingCode] = useState("");
   const [editionError, setEditionError] = useState("");
   const [editionErrorCode, setEditionErrorCode] = useState("");
-  const requestSeq = useRef(0);
-  const requestController = useRef<AbortController | null>(null);
+  const editionLoad = useLatestLoad();
 
   useEffect(() => {
-    requestSeq.current += 1;
-    requestController.current?.abort();
-    requestController.current = null;
+    editionLoad.cancel();
     setActiveEdition(null);
     setActiveEditionCode("");
     setEditionLoadingCode("");
     setEditionError("");
     setEditionErrorCode("");
-    return () => {
-      requestSeq.current += 1;
-      requestController.current?.abort();
-      requestController.current = null;
-    };
-  }, [principalID, work?.id]);
+    return editionLoad.cancel;
+  }, [editionLoad, principalID, work?.id]);
 
   const selectEdition = useStableCallback(async (translation: WorkEdition) => {
-    if (!translation.workId || !work) return;
+    const editionWorkId = translation.workId;
+    if (!editionWorkId || !work) return;
     onSelectionStart();
-    const seq = ++requestSeq.current;
-    requestController.current?.abort();
-    requestController.current = null;
+    editionLoad.cancel();
     setEditionError("");
     setEditionErrorCode("");
-    if (translation.workId === work.id) {
+    if (editionWorkId === work.id) {
       setEditionLoadingCode("");
       setActiveEdition(null);
       setActiveEditionCode(translation.primaryCode);
@@ -68,26 +61,21 @@ export function useWorkEditionSelection({
       return;
     }
     setEditionLoadingCode(translation.primaryCode);
-    const controller = new AbortController();
-    requestController.current = controller;
-    try {
-      const detail = await api.getWork(translation.workId, controller.signal);
-      if (seq !== requestSeq.current) return;
-      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
-      setActiveEdition(detail);
-      setActiveEditionCode(detail.primaryCode);
-      onLocalEditionSelected();
-    } catch (error) {
-      if (seq !== requestSeq.current) return;
-      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-      setEditionError(directoryLoadErrorMessage(error));
-      setEditionErrorCode(translation.primaryCode);
-    } finally {
-      if (seq === requestSeq.current) {
-        requestController.current = null;
-        setEditionLoadingCode("");
-      }
-    }
+    await editionLoad.run((signal) => api.getWork(editionWorkId, signal), {
+      onSuccess: (detail) => {
+        setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
+        setActiveEdition(detail);
+        setActiveEditionCode(detail.primaryCode);
+        onLocalEditionSelected();
+      },
+      onError: (error) => {
+        // A session change cancels the read without failing the edition.
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setEditionError(directoryLoadErrorMessage(error));
+        setEditionErrorCode(translation.primaryCode);
+      },
+      onSettled: () => setEditionLoadingCode(""),
+    });
   });
 
   useEffect(() => {
@@ -118,26 +106,19 @@ export function useWorkEditionSelection({
    */
   const showEditionById = useStableCallback(async (editionWorkId: number) => {
     if (!work) return;
-    const seq = ++requestSeq.current;
-    requestController.current?.abort();
-    requestController.current = null;
+    editionLoad.cancel();
     if (editionWorkId === work.id) {
       setActiveEdition(null);
       setActiveEditionCode(work.primaryCode);
       return;
     }
-    const controller = new AbortController();
-    requestController.current = controller;
-    try {
-      const detail = await api.getWork(editionWorkId, controller.signal);
-      if (seq !== requestSeq.current) return;
-      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
-      showEdition(detail);
-    } catch {
-      // The directory keeps the edition it shows.
-    } finally {
-      if (seq === requestSeq.current) requestController.current = null;
-    }
+    // A failure keeps the edition the directory shows.
+    await editionLoad.run((signal) => api.getWork(editionWorkId, signal), {
+      onSuccess: (detail) => {
+        setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
+        showEdition(detail);
+      },
+    });
   });
 
   /** Returns to the opened work's own edition, as a non-local source requires. */

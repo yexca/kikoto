@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { useToast } from "@/components/ui/toast";
-import { openWorkflowPath, workflowRunPath, workflowsPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath, workflowRunPath, workflowsPath } from "@/lib/workflowLinks";
 import type { RankingRefreshRun } from "@/lib/api";
 
 /**

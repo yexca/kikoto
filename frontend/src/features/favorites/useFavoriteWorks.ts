@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { FavoritesBrowseState } from "@/features/favorites/favoritesBrowseState";
 import { api, type CurrentUser, type FavoriteWorksPage, type Work } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * The favorite works page that the browse state asks for, with the shelf,
@@ -47,7 +48,6 @@ export function useFavoriteWorks({
   const [snapshotUserID, setSnapshotUserID] = useState<number | null>(null);
   const [loadError, setLoadError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
-  const requestSeq = useRef(0);
   const loadedRequestKey = useRef("");
   const requestKey = JSON.stringify([
     newOnly,
@@ -96,44 +96,39 @@ export function useFavoriteWorks({
       setIsLoading(false);
       return;
     }
-    const controller = new AbortController();
-    const seq = ++requestSeq.current;
     setIsLoading(true);
     setLoadError("");
-    api
-      .listFavoriteWorksPage(
-        page,
-        pageSize,
-        query,
-        activeList,
-        statusFilter,
-        availabilityFilter,
-        sort,
-        sortDirection,
-        randomSeed,
-        controller.signal,
-        newOnly,
-      )
-      .then((result) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        loadedRequestKey.current = currentRequestKey;
-        setWorks(result.works);
-        setTotalWorks(result.total);
-        setFavoriteTotal(result.shelfTotal);
-        setListCounts(result.listCounts);
-        setNewCounts(result.newCounts ?? {});
-        setNewWorkIDs(new Set(result.newWorkIds ?? []));
-        setStatusCounts(result.statusCounts);
-        setSnapshotUserID(principalID);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        notifyUnavailable(error, setLoadError);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) =>
+        api.listFavoriteWorksPage(
+          page,
+          pageSize,
+          query,
+          activeList,
+          statusFilter,
+          availabilityFilter,
+          sort,
+          sortDirection,
+          randomSeed,
+          signal,
+          newOnly,
+        ),
+      {
+        onSuccess: (result) => {
+          loadedRequestKey.current = currentRequestKey;
+          setWorks(result.works);
+          setTotalWorks(result.total);
+          setFavoriteTotal(result.shelfTotal);
+          setListCounts(result.listCounts);
+          setNewCounts(result.newCounts ?? {});
+          setNewWorkIDs(new Set(result.newWorkIds ?? []));
+          setStatusCounts(result.statusCounts);
+          setSnapshotUserID(principalID);
+        },
+        onError: (error) => notifyUnavailable(error, setLoadError),
+        onSettled: () => setIsLoading(false),
+      },
+    );
   }, [
     active,
     activeList,

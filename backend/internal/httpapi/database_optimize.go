@@ -114,7 +114,7 @@ func (s *Server) enqueueDatabaseOptimize(ctx context.Context, actorUserID int64)
 func (s *Server) executeDatabaseOptimizeJob(ctx context.Context, job workflowJobRecord) error {
 	var payload databaseOptimizePayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	result, err := s.compactDatabase(ctx)
@@ -122,7 +122,7 @@ func (s *Server) executeDatabaseOptimizeJob(ctx context.Context, job workflowJob
 		return err
 	}
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, "database optimization failed: "+err.Error())
+		s.failJobOrLog(context.WithoutCancel(ctx), job, "database optimization failed: "+err.Error())
 		return err
 	}
 	return s.finishDatabaseOptimizeJob(context.WithoutCancel(ctx), job, payload, result)

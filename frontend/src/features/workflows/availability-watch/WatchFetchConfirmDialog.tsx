@@ -7,6 +7,7 @@ import { TokenInput } from "@/components/ui/token-input";
 import { SwitchControl } from "@/features/workflows/RunOptionControls";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { api } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
@@ -67,16 +68,9 @@ export function WatchFetchConfirmDialog({
   }
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .listLibrarySources()
-      .then((sources) => {
-        if (!cancelled) setSourceNames(new Map(sources.map((source) => [source.id, source.displayName])));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: (sources) => setSourceNames(new Map(sources.map((source) => [source.id, source.displayName]))),
+    });
   }, []);
 
   const confirm = () => {

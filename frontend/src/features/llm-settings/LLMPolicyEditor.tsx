@@ -9,6 +9,7 @@ import { SuggestionCombobox } from "@/components/ui/suggestion-combobox";
 import { Switch } from "@/components/ui/switch";
 import { useMetadataEntrySuggestions } from "@/hooks/useMetadataEntrySuggestions";
 import { api, type LLMKeywordRule, type LLMPolicy, type MetadataTag } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { KEYWORD_RULE_FIELDS, KEYWORD_RULE_LIMIT } from "./llmSettingsModel";
@@ -27,23 +28,21 @@ export function LLMPolicyEditor({
   const [query, setQuery] = useState("");
   const [names, setNames] = useState<Record<number, string>>({});
   const suggestions = useMetadataEntrySuggestions("tags", query);
-  useEffect(() => {
-    let active = true;
-    void Promise.allSettled(policy.tagRules.map((rule) => api.getMetadataTag(rule.tagId))).then((results) => {
-      if (!active) return;
-      setNames((current) => ({
-        ...current,
-        ...Object.fromEntries(
-          results.flatMap((result) =>
-            result.status === "fulfilled" ? [[result.value.id, result.value.displayName]] : [],
-          ),
-        ),
-      }));
-    });
-    return () => {
-      active = false;
-    };
-  }, [policy.tagRules]);
+  useEffect(
+    () =>
+      startLoad((signal) => Promise.allSettled(policy.tagRules.map((rule) => api.getMetadataTag(rule.tagId, signal))), {
+        onSuccess: (results) =>
+          setNames((current) => ({
+            ...current,
+            ...Object.fromEntries(
+              results.flatMap((result) =>
+                result.status === "fulfilled" ? [[result.value.id, result.value.displayName]] : [],
+              ),
+            ),
+          })),
+      }),
+    [policy.tagRules],
+  );
   const updateRule = (index: number, change: Partial<LLMKeywordRule>) =>
     onChange({ ...policy, keywords: policy.keywords.map((rule, i) => (i === index ? { ...rule, ...change } : rule)) });
   const tagName = (id: number) => names[id] ?? `#${id}`;

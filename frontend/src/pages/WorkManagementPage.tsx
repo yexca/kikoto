@@ -15,6 +15,7 @@ import { WorkReasonFilter, type CatalogWorkReason } from "@/features/maintenance
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { startLoad } from "@/lib/effectScope";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -140,24 +141,17 @@ export function WorkManagementPage({
   const needsCustomNotice = view === "works" && reason === "custom" && canCreateCustomWorks && customNotice === null;
   useEffect(() => {
     if (!needsCustomNotice) return;
-    const controller = new AbortController();
-    api.getCustomWorkNotice(controller.signal).then(
-      (result) => setCustomNotice(result.noticeAccepted),
-      // Without an answer the list stays usable and Add stays disabled.
-      () => undefined,
-    );
-    return () => controller.abort();
+    // Without an answer the list stays usable and Add stays disabled.
+    return startLoad((signal) => api.getCustomWorkNotice(signal), {
+      onSuccess: (result) => setCustomNotice(result.noticeAccepted),
+    });
   }, [needsCustomNotice]);
 
   // Counts are a guide beside the views; without them the rail simply shows none.
-  useEffect(() => {
-    const controller = new AbortController();
-    api.getMaintenanceCounts(controller.signal).then(
-      (next) => setCounts(next),
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, [countsRevision, listRevision]);
+  useEffect(
+    () => startLoad((signal) => api.getMaintenanceCounts(signal), { onSuccess: setCounts }),
+    [countsRevision, listRevision],
+  );
   const refreshCounts = () => setCountsRevision((value) => value + 1);
 
   const inlineSearch = useInlineSearchFits(headerRef, headerActionsRef);

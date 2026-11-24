@@ -21,7 +21,7 @@ export const defaultMetadataRunOptions: MetadataRunOptions = {
 /** The most sources one fallback asks, as the backend enforces. */
 export const maxFallbackSources = 16;
 
-const storageKey = () => currentServerScopedStorageKey("kikoto:metadata-run-options");
+const metadataRunOptionsStorageKey = () => currentServerScopedStorageKey("kikoto:metadata-run-options");
 
 export function decodeMetadataRunOptions(value: unknown): MetadataRunOptions {
   if (!value || typeof value !== "object") return defaultMetadataRunOptions;
@@ -41,7 +41,7 @@ export function decodeMetadataRunOptions(value: unknown): MetadataRunOptions {
 
 export function readMetadataRunOptions(): MetadataRunOptions {
   try {
-    return decodeMetadataRunOptions(JSON.parse(window.localStorage.getItem(storageKey()) ?? "null"));
+    return decodeMetadataRunOptions(JSON.parse(window.localStorage.getItem(metadataRunOptionsStorageKey()) ?? "null"));
   } catch {
     return defaultMetadataRunOptions;
   }
@@ -49,7 +49,7 @@ export function readMetadataRunOptions(): MetadataRunOptions {
 
 export function writeMetadataRunOptions(options: MetadataRunOptions) {
   try {
-    window.localStorage.setItem(storageKey(), JSON.stringify(options));
+    window.localStorage.setItem(metadataRunOptionsStorageKey(), JSON.stringify(options));
   } catch {
     // The options last for this visit when local storage is unavailable.
   }

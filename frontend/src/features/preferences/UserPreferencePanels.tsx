@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type UserPreferences } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 import { renewRecommendationSession, USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { FolderPreferences, reweightDirectoryRoutingRules } from "./FolderPreferences";
 import { RecommendationPreferences } from "./RecommendationPreferences";
@@ -24,18 +25,12 @@ export function UserPreferencePanels({
   const [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    const controller = new AbortController();
     setPreferences(null);
     setError(false);
-    api
-      .getUserPreferences(controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) setPreferences(value);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setError(true);
-      });
-    return () => controller.abort();
+    return startLoad((signal) => api.getUserPreferences(signal), {
+      onSuccess: setPreferences,
+      onError: () => setError(true),
+    });
   }, [userId, retry]);
   const save = async () => {
     if (!preferences || saving || readOnly) return;

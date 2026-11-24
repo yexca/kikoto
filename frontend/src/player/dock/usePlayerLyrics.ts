@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api, type TimedLyricsResult } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import {
   activeTimedLyricIndex,
   offsetTimedLyrics,
@@ -58,22 +59,17 @@ export function usePlayerLyrics({
     setLyricsFile(null);
     setLyricsError("");
     if (!activeLyricsLocationId) return;
-    const controller = new AbortController();
     // The server reads the file where its bytes are, within its text preview
     // limit, and returns its timed lines.
     const lyricsURL = activeLyricsChoice?.url;
-    const request = lyricsURL
-      ? api.getTextUrlLyrics(lyricsURL, controller.signal)
-      : api.getMediaLyrics(activeLyricsLocationId, controller.signal);
-    request
-      .then((result) => {
-        if (!controller.signal.aborted) setLyricsFile(result);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted)
-          setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed.");
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) =>
+        lyricsURL ? api.getTextUrlLyrics(lyricsURL, signal) : api.getMediaLyrics(activeLyricsLocationId, signal),
+      {
+        onSuccess: setLyricsFile,
+        onError: (error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."),
+      },
+    );
   }, [activeLyricsChoice?.url, activeLyricsLocationId]);
 
   const selectLyricsLocation = (locationId: number | null) => {

@@ -148,7 +148,7 @@ func optionalUserID(ctx context.Context) int64 {
 func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, permission string) (currentUser, bool) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return currentUser{}, false
 	}
 	if s.cfg.IsDemo() && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
@@ -159,7 +159,7 @@ func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, permi
 			return user, true
 		}
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+	writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 	return currentUser{}, false
 }
 
@@ -202,7 +202,7 @@ func parseLoginRequest(r *http.Request) (string, string, error) {
 func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	actor, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	var payload struct {
@@ -212,7 +212,7 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		NewPassword     string  `json:"newPassword"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	displayName := actor.DisplayName
@@ -223,20 +223,20 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if payload.NewPassword == "" && payload.CurrentPassword != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "new password is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "new password is required", false)
 		return
 	}
 	if payload.NewPassword != "" {
 		if actor.PasswordManagedBy == "environment" {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "root password is managed by KIKOTO_ROOT_PASSWORD"})
+			writeAPIError(w, http.StatusForbidden, "permission_denied", "root password is managed by KIKOTO_ROOT_PASSWORD", false)
 			return
 		}
 		if payload.CurrentPassword == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password is required"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "current password is required", false)
 			return
 		}
 		if err := account.ValidateNewPassword(payload.NewPassword); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 	}
@@ -249,7 +249,7 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, account.ErrInvalidCurrentPassword) || errors.Is(err, account.ErrPasswordUnchanged) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -278,7 +278,7 @@ func (s *Server) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	username, password, err := parseLoginRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 
@@ -311,7 +311,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, sql.ErrNoRows) {
 		attempt.Fail()
 		s.loginDelay.Fail(accountKey)
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "invalid username or password", false)
 		return
 	}
 	if err != nil {

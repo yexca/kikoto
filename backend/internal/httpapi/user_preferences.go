@@ -63,7 +63,7 @@ func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPrefere
 func (s *Server) getUserPreferences(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	result, err := s.loadUserPreferences(r, user.ID)
@@ -77,7 +77,7 @@ func (s *Server) getUserPreferences(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	var payload struct {
@@ -95,13 +95,13 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid preferences"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid preferences", false)
 		return
 	}
 	var rulesJSON, configJSON any
 	if payload.DirectoryRoutingRules != nil {
 		if len(*payload.DirectoryRoutingRules) > 20 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at most 20 folder rules are allowed"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "at most 20 folder rules are allowed", false)
 			return
 		}
 		encoded, err := json.Marshal(normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules))
@@ -113,7 +113,7 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.RecommendationConfig != nil {
 		if err := library.ValidateRecommendationConfig(*payload.RecommendationConfig); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		encoded, err := json.Marshal(payload.RecommendationConfig)
@@ -124,7 +124,7 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		configJSON = string(encoded)
 	}
 	if payload.RecommendationThreshold != nil && (*payload.RecommendationThreshold < 1 || *payload.RecommendationThreshold > 100) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "recommendationThreshold must be between 1 and 100"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "recommendationThreshold must be between 1 and 100", false)
 		return
 	}
 	metadataLanguagesChanged := len(payload.MetadataLanguages) > 0
@@ -132,12 +132,12 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	if metadataLanguagesChanged && string(payload.MetadataLanguages) != "null" {
 		var values []string
 		if err := json.Unmarshal(payload.MetadataLanguages, &values); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "metadataLanguages must be a list of languages or null"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "metadataLanguages must be a list of languages or null", false)
 			return
 		}
 		languages, err := validateDLsiteMetadataLanguages(values)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		// Choosing only the original language is the same as no preference.
@@ -152,7 +152,7 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.ForYouTemperature != nil {
 		if !payload.ForYouTemperature.Valid() {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "forYouTemperature must be 1 to 5"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "forYouTemperature must be 1 to 5", false)
 			return
 		}
 	}

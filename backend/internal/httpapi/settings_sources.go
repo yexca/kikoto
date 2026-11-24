@@ -14,27 +14,28 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/filesource"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const (
-	sourceTypeKikoeruCompatible    = "kikoeru_compatible"
-	sourceTypeKikoeruCompatible178 = "kikoeru_compatible_number178"
+	sourceTypeKikoeruCompatible    = filesource.TypeKikoeruCompatible
+	sourceTypeKikoeruCompatible178 = filesource.TypeKikoeruCompatible178
 	historicalMisspelled178Type    = "kikoeru_compilable_number178"
-	sourceTypeLocalFolder          = "local_folder"
+	sourceTypeLocalFolder          = filesource.TypeLocalFolder
 	defaultRemoteWorkURLTemplate   = "/work/{code}"
 	maxRemoteAllowedHostPatterns   = 64
 	defaultDLsiteMetadataLanguage  = "ja-jp"
-	defaultRemoteRequestLanguage   = "ja-JP"
+	defaultRemoteRequestLanguage   = filesource.DefaultRequestLanguage
 	maxDLsiteMetadataLanguages     = 6
 	dlsiteMetadataLanguageSetting  = "dlsite_metadata_language"
 	dlsiteMetadataLanguagesSetting = "dlsite_metadata_languages"
 )
 
 func isKikoeruSourceType(sourceType string) bool {
-	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompatible178
+	return filesource.IsRemoteType(sourceType)
 }
 
 func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
@@ -104,7 +105,7 @@ func normalizeRemoteSourceSeed(seed config.RemoteSourceSeed) (*normalizedRemoteS
 	if requestLanguage == "" {
 		requestLanguage = defaultRemoteRequestLanguage
 	} else {
-		requestLanguage = normalizeRemoteRequestLanguage(requestLanguage)
+		requestLanguage = filesource.NormalizeRequestLanguage(requestLanguage)
 		if requestLanguage == "" {
 			return nil, fmt.Errorf("remote source seed has an invalid request language")
 		}
@@ -170,23 +171,11 @@ type fileSourceHealthCheckResult struct {
 	ElapsedMS     int64   `json:"elapsedMs"`
 }
 
-type fileSourceConfig struct {
-	SaveRootTemplate string `json:"saveRootTemplate,omitempty"`
-	ScanDepth        *int   `json:"scanDepth,omitempty"`
-	RequestLanguage  string `json:"requestLanguage,omitempty"`
-	// Capabilities declares what a remote source offers beyond its files. A
-	// nil list keeps the source type's default; an empty list declares none.
-	Capabilities *[]string `json:"capabilities,omitempty"`
-}
-
-type fileSourceEndpoint struct {
-	BaseURL               string   `json:"baseUrl"`
-	APIURL                string   `json:"apiUrl"`
-	FallbackURL           string   `json:"fallbackUrl"`
-	WorkURLTemplate       string   `json:"workUrlTemplate"`
-	RestrictOutboundHosts bool     `json:"restrictOutboundHosts"`
-	AllowedHostPatterns   []string `json:"allowedHostPatterns"`
-}
+// The stored source settings are read and decoded only by internal/filesource.
+type (
+	fileSourceConfig   = filesource.Config
+	fileSourceEndpoint = filesource.Endpoint
+)
 
 type librarySource struct {
 	ID              int64  `json:"id"`
@@ -198,7 +187,6 @@ type librarySource struct {
 }
 
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
-var remoteRequestLanguagePattern = regexp.MustCompile(`^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{2,8})*$`)
 
 func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
@@ -287,7 +275,7 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	payload, ok := parseFileSourcePayload(w, r, true, true)
@@ -296,11 +284,11 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.validateFileSourceUpdate(r.Context(), id, payload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "source not found", false)
 			return
 		}
 		if errors.Is(err, errLocalFolderSourceManaged) || errors.Is(err, errLegacySourceTypeSelection) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		writeError(w, err)
@@ -314,28 +302,25 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var wasEnabled bool
-	var previousAPIURL string
-	if err := tx.QueryRowContext(r.Context(), `
-		SELECT source.enabled, COALESCE(endpoint.api_url, '')
-		FROM file_source AS source
-		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.id = ?
-	`, id).Scan(&wasEnabled, &previousAPIURL); err != nil {
+	// The save replaces the stored settings, so an undecodable one does not
+	// matter here.
+	previous, err := filesource.Get(r.Context(), tx, id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "source not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
+	wasEnabled, previousAPIURL := previous.Enabled, previous.Endpoint.APIURL
 	updated, err := updateFileSourceTx(r.Context(), tx, id, payload)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	if !updated {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "source not found", false)
 		return
 	}
 	var code string
@@ -437,7 +422,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	s.remoteSourceConfigMu.Lock()
@@ -451,7 +436,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 	var code string
 	if err := tx.QueryRowContext(r.Context(), "SELECT code FROM file_source WHERE id = ? AND source_type <> ?", id, sourceTypeLocalFolder).Scan(&code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "source not found or cannot be deleted", false)
 			return
 		}
 		writeError(w, err)
@@ -492,28 +477,28 @@ func (s *Server) checkFileSourceHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	source, err := s.loadRemoteSourceForUse(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "source not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
 	if !source.Enabled {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "source is disabled"})
+		writeAPIError(w, http.StatusConflict, "conflict", "source is disabled", false)
 		return
 	}
 	if !isKikoeruSourceType(source.SourceType) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source type does not support health checks"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "source type does not support health checks", false)
 		return
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source API endpoint is not configured"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "source API endpoint is not configured", false)
 		return
 	}
 
@@ -590,105 +575,45 @@ func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status 
 }
 
 func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			source.id,
-			source.code,
-			source.display_name,
-			source.source_type,
-			source.priority,
-			source.enabled,
-			source.config_json,
-			COALESCE(endpoint.base_url, ''),
-			COALESCE(endpoint.api_url, ''),
-			COALESCE(endpoint.fallback_url, ''),
-			COALESCE(endpoint.work_url_template, ''),
-			COALESCE(endpoint.restrict_outbound_hosts, 0),
-			COALESCE(endpoint.allowed_host_patterns_json, '[]'),
-			COALESCE(endpoint.health_status, 'unknown'),
-			endpoint.last_checked_at
-		FROM file_source AS source
-		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		ORDER BY source.priority ASC, source.id ASC
-	`)
+	records, err := filesource.List(r.Context(), s.db, filesource.AllSources)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	sources := []fileSourceSummary{}
-	for rows.Next() {
-		source, err := scanFileSource(rows)
-		if err != nil {
-			return nil, err
-		}
-		sources = append(sources, source)
+	sources := make([]fileSourceSummary, 0, len(records))
+	for _, record := range records {
+		sources = append(sources, fileSourceSummaryFrom(record))
 	}
-	return sources, rows.Err()
+	return sources, nil
 }
 
 func (s *Server) loadFileSource(r *http.Request, id int64) (fileSourceSummary, error) {
-	row := s.db.QueryRowContext(r.Context(), `
-		SELECT
-			source.id,
-			source.code,
-			source.display_name,
-			source.source_type,
-			source.priority,
-			source.enabled,
-			source.config_json,
-			COALESCE(endpoint.base_url, ''),
-			COALESCE(endpoint.api_url, ''),
-			COALESCE(endpoint.fallback_url, ''),
-			COALESCE(endpoint.work_url_template, ''),
-			COALESCE(endpoint.restrict_outbound_hosts, 0),
-			COALESCE(endpoint.allowed_host_patterns_json, '[]'),
-			COALESCE(endpoint.health_status, 'unknown'),
-			endpoint.last_checked_at
-		FROM file_source AS source
-		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.id = ?
-	`, id)
-	return scanFileSource(row)
-}
-
-type fileSourceScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
-	var source fileSourceSummary
-	var configJSON, allowedHostPatternsJSON string
-	var lastCheckedAt sql.NullString
-	if err := scanner.Scan(
-		&source.ID,
-		&source.Code,
-		&source.DisplayName,
-		&source.SourceType,
-		&source.Priority,
-		&source.Enabled,
-		&configJSON,
-		&source.Endpoint.BaseURL,
-		&source.Endpoint.APIURL,
-		&source.Endpoint.FallbackURL,
-		&source.Endpoint.WorkURLTemplate,
-		&source.Endpoint.RestrictOutboundHosts,
-		&allowedHostPatternsJSON,
-		&source.HealthStatus,
-		&lastCheckedAt,
-	); err != nil {
+	record, err := filesource.Get(r.Context(), s.db, id)
+	if err != nil {
 		return fileSourceSummary{}, err
 	}
-	source.LastCheckedAt = sqlutil.String(lastCheckedAt)
-	if strings.TrimSpace(configJSON) != "" {
-		_ = json.Unmarshal([]byte(configJSON), &source.Config)
+	return fileSourceSummaryFrom(record), nil
+}
+
+// fileSourceSummaryFrom lists a source as stored. A source whose stored
+// settings cannot be decoded is listed as unavailable, with the settings that
+// did decode, because nothing uses it until an administrator saves it again.
+func fileSourceSummaryFrom(record filesource.Record) fileSourceSummary {
+	summary := fileSourceSummary{
+		ID:            record.ID,
+		Code:          record.Code,
+		DisplayName:   record.DisplayName,
+		SourceType:    record.SourceType,
+		Priority:      record.Priority,
+		Enabled:       record.Enabled,
+		Config:        record.Config,
+		Endpoint:      record.Endpoint,
+		HealthStatus:  record.HealthStatus,
+		LastCheckedAt: record.LastCheckedAt,
 	}
-	normalizeFileSourceConfig(&source.Config, source.SourceType)
-	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
-	if source.Endpoint.AllowedHostPatterns == nil {
-		source.Endpoint.AllowedHostPatterns = []string{}
+	if record.SettingsErr != nil {
+		summary.HealthStatus = "unavailable"
 	}
-	return source, nil
+	return summary
 }
 
 type fileSourcePayload struct {
@@ -703,12 +628,12 @@ type fileSourcePayload struct {
 func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal bool, allowLegacy bool) (fileSourcePayload, bool) {
 	payload, err := decodeFileSourcePayload(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return fileSourcePayload{}, false
 	}
 	normalizeFileSourcePayload(&payload)
 	if err := validateFileSourcePayload(&payload, allowLocal, allowLegacy); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return fileSourcePayload{}, false
 	}
 	return payload, true
@@ -735,7 +660,7 @@ func normalizeFileSourcePayload(payload *fileSourcePayload) {
 	if payload.Priority <= 0 {
 		payload.Priority = 30
 	}
-	normalizeFileSourceConfig(&payload.Config, payload.SourceType)
+	filesource.NormalizeConfig(&payload.Config, payload.SourceType)
 }
 
 func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLegacy bool) error {
@@ -760,50 +685,6 @@ func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLega
 		payload.Endpoint.AllowedHostPatterns = []string{}
 	}
 	return nil
-}
-
-func normalizeFileSourceConfig(config *fileSourceConfig, sourceType string) {
-	if !isKikoeruSourceType(sourceType) {
-		config.Capabilities = nil
-		return
-	}
-	if config.Capabilities != nil {
-		capabilities := []string{}
-		for _, capability := range *config.Capabilities {
-			if capability == remotemetadata.CapabilityMetadata && len(capabilities) == 0 {
-				capabilities = append(capabilities, capability)
-			}
-		}
-		config.Capabilities = &capabilities
-	}
-	raw := strings.TrimSpace(config.RequestLanguage)
-	if raw == "" {
-		config.RequestLanguage = defaultRemoteRequestLanguage
-		return
-	}
-	config.RequestLanguage = normalizeRemoteRequestLanguage(raw)
-}
-
-func normalizeRemoteRequestLanguage(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "_", "-"))
-	if value == "" {
-		return defaultRemoteRequestLanguage
-	}
-	if !remoteRequestLanguagePattern.MatchString(value) {
-		return ""
-	}
-	parts := strings.Split(value, "-")
-	parts[0] = strings.ToLower(parts[0])
-	for index := 1; index < len(parts); index++ {
-		if len(parts[index]) == 4 {
-			parts[index] = strings.ToUpper(parts[index][:1]) + strings.ToLower(parts[index][1:])
-		} else if len(parts[index]) == 2 || len(parts[index]) == 3 {
-			parts[index] = strings.ToUpper(parts[index])
-		} else {
-			parts[index] = strings.ToLower(parts[index])
-		}
-	}
-	return strings.Join(parts, "-")
 }
 
 func validateRemoteFileSourceEndpoint(endpoint *fileSourceEndpoint) error {

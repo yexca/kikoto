@@ -9,6 +9,7 @@ import { FloatingSelect } from "@/components/ui/floating-select";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { assetURL } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { startLoad } from "@/lib/effectScope";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { interfaceLyricsLanguage } from "@/lib/translationTargets";
 import { BatchTranslationDialog } from "./BatchTranslationDialog";
@@ -114,11 +115,9 @@ export function TranslationCoverage({
   }, [page, pageSize, query, language, missing]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setLoading(true);
-    translationCoverageApi
-      .list({ language, missing, query, page, pageSize }, controller.signal)
-      .then((next) => {
+    return startLoad((signal) => translationCoverageApi.list({ language, missing, query, page, pageSize }, signal), {
+      onSuccess: (next) => {
         if (next.works.length === 0 && page > 1 && next.total <= (page - 1) * pageSize) {
           setPage(Math.max(1, Math.ceil(next.total / pageSize)));
           return;
@@ -128,14 +127,10 @@ export function TranslationCoverage({
         setLoadError("");
         const present = new Set(next.works.map((work) => work.id));
         setSelectedWorkIds((current) => new Set([...current].filter((id) => present.has(id))));
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setLoadError(t("errors.unavailable"));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
+      },
+      onError: () => setLoadError(t("errors.unavailable")),
+      onSettled: () => setLoading(false),
+    });
   }, [language, missing, query, page, pageSize, refreshKey, preferenceRevision, t]);
 
   const reload = () => setRefreshKey((current) => current + 1);

@@ -106,7 +106,7 @@ const recordScanProgressEvery = time.Second
 func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord) error {
 	var payload recordScanPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	var lastProgress time.Time
@@ -117,13 +117,13 @@ func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord
 		lastProgress = time.Now()
 		// The walk does not know how many files it will find, so the total
 		// stays unknown while it runs.
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "walking", map[string]any{"folders": folders, "assets": assets}, assets, 0)
+		s.checkpointJobOrLog(ctx, job, "walking", map[string]any{"folders": folders, "assets": assets}, assets, 0)
 	})
 	if err != nil {
 		if shutdownInterrupted(ctx) {
 			return err
 		}
-		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, "record library scan failed")
+		s.failJobOrLog(context.WithoutCancel(ctx), job, "record library scan failed")
 		return err
 	}
 	return s.finishRecordScanJob(context.WithoutCancel(ctx), job, payload, result)
@@ -170,7 +170,7 @@ func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord,
 	if err := s.commitRecordScanJob(ctx, job, result, false); err != nil {
 		return err
 	}
-	_ = s.recordWorkflowRunEvent(ctx, job.RunID, "warning", "record_library_scan.follow_up_failed", "Record media details could not be queued.", map[string]any{})
+	s.recordRunEventOrLog(ctx, job.RunID, "warning", "record_library_scan.follow_up_failed", "Record media details could not be queued.", map[string]any{})
 	return nil
 }
 

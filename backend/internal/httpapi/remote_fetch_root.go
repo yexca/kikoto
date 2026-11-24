@@ -473,34 +473,8 @@ func fetchPathWithinRoot(root string, path string) bool {
 
 func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string, error) {
 	defaultTemplate := s.settingStringContext(ctx, "remote_save_root_template", defaultRemoteSaveRootTemplate)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, code, config_json
-		FROM file_source
-		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
-		ORDER BY id ASC
-	`)
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
-		return nil, err
-	}
-	type configuredSource struct {
-		id         int64
-		code       string
-		configJSON string
-	}
-	sources := []configuredSource{}
-	for rows.Next() {
-		var source configuredSource
-		if err := rows.Scan(&source.id, &source.code, &source.configJSON); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		sources = append(sources, source)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	layout, err := s.loadLibraryLayout(ctx)
@@ -509,14 +483,14 @@ func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string,
 	}
 	roots := []string{}
 	seen := map[string]bool{}
-	for _, configured := range sources {
-		var sourceConfig fileSourceConfig
-		_ = json.Unmarshal([]byte(configured.configJSON), &sourceConfig)
-		template := strings.TrimSpace(sourceConfig.SaveRootTemplate)
+	// A source whose stored settings cannot be decoded is not listed: its save
+	// template is unknown, and no Fetch publishes with it.
+	for _, source := range sources {
+		template := strings.TrimSpace(source.Config.SaveRootTemplate)
 		if template == "" {
 			template = defaultTemplate
 		}
-		templateRoot, ok := remoteFetchManagedRootFromTemplate(template, configured.code)
+		templateRoot, ok := remoteFetchManagedRootFromTemplate(template, source.Code)
 		if !ok {
 			continue
 		}
@@ -524,7 +498,7 @@ func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string,
 		// changing the Fetch pool does not expose earlier Fetch folders.
 		for _, pool := range layout.Pools {
 			root := storagepool.Join(pool.Path, templateRoot)
-			review, err := s.inspectManagedFetchRoot(ctx, remoteSourceForUse{ID: configured.id, Code: configured.code, Config: sourceConfig}, root)
+			review, err := s.inspectManagedFetchRoot(ctx, source, root)
 			if err != nil {
 				return nil, err
 			}

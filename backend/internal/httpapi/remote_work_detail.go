@@ -92,7 +92,7 @@ type remoteTrackDetail struct {
 func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -100,13 +100,13 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return
 	}
 	source, remoteWork, err := s.loadRemoteWorkCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeUpstreamError(w, err)
@@ -131,7 +131,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getRemoteSourceWorkTracks(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -139,13 +139,13 @@ func (s *Server) getRemoteSourceWorkTracks(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return
 	}
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeUpstreamError(w, err)

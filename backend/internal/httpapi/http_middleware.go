@@ -98,11 +98,7 @@ func writeError(w http.ResponseWriter, err error) {
 	}
 	slog.Error("http request failed", "error", err)
 	if isDatabaseBusyError(err) {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error":     "database is busy; please retry",
-			"code":      "database_busy",
-			"retryable": true,
-		})
+		writeAPIError(w, http.StatusServiceUnavailable, "database_busy", "database is busy; please retry", true)
 		return
 	}
 	writeAPIError(w, http.StatusInternalServerError, "internal_error", "internal server error", false)
@@ -123,12 +119,27 @@ func writeUpstreamError(w http.ResponseWriter, err error) {
 	writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "remote source request failed", true)
 }
 
+// writeAPIError answers with the shared error shape: a public message, a
+// stable code, and whether retrying can succeed. Every error response in this
+// package goes through it or writeAPIErrorDetails; scripts/check-api-errors.go
+// rejects ad-hoc {"error": ...} maps. The message must not carry a local path,
+// a private endpoint, a credential, or upstream detail.
 func writeAPIError(w http.ResponseWriter, status int, code string, message string, retryable bool) {
-	writeJSON(w, status, map[string]any{
-		"error":     message,
-		"code":      code,
-		"retryable": retryable,
-	})
+	writeAPIErrorDetails(w, status, code, message, retryable, nil)
+}
+
+// writeAPIErrorDetails answers with the shared error shape plus fields that
+// tell the client more about the refusal, such as the permission it lacks.
+// details cannot replace error, code, or retryable.
+func writeAPIErrorDetails(w http.ResponseWriter, status int, code string, message string, retryable bool, details map[string]any) {
+	body := make(map[string]any, len(details)+3)
+	for key, value := range details {
+		body[key] = value
+	}
+	body["error"] = message
+	body["code"] = code
+	body["retryable"] = retryable
+	writeJSON(w, status, body)
 }
 
 // jsonBodyErrorMessage describes why a JSON request body could not be decoded.
@@ -193,7 +204,7 @@ func limitRequestBody(next http.Handler, maxBytes int64) http.Handler {
 				limit = maxKikoeruDatabaseBytes + (64 << 10)
 			}
 			if r.ContentLength > limit {
-				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				writeAPIError(w, http.StatusRequestEntityTooLarge, "invalid_request", "request body too large", false)
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -221,7 +232,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			return
 		}
 		if !allowed[origin] && !requestOriginMatches(r, origin) && !isMobileAppOrigin(origin) && !(s.cfg.IsDevelopment() && isLoopbackOrigin(origin)) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+			writeAPIError(w, http.StatusForbidden, "permission_denied", "origin not allowed", false)
 			return
 		}
 		w.Header().Add("Vary", "Origin")

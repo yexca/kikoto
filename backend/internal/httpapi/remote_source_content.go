@@ -63,7 +63,7 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -72,13 +72,13 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 	}
 	targetPath := cleanRemoteRelativePath(r.URL.Query().Get("path"))
 	if code == "" || targetPath == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code and text path are required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code and text path are required", false)
 		return
 	}
 	source, _, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeUpstreamError(w, err)
@@ -86,12 +86,12 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 	}
 	remoteURL, ok := remoteTextTrackURL(tracks, targetPath, "")
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote text file was not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote text file was not found", false)
 		return
 	}
 	parsed, err := url.Parse(remoteURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || !remotePreviewURLAllowed(parsed, source) {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text URL is not allowed"})
+		writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "remote text URL is not allowed", true)
 		return
 	}
 	content, contentType, err := s.readRemoteText(r.Context(), source, parsed.String())
@@ -126,7 +126,7 @@ func (err remoteTextError) Error() string { return err.message }
 func writeRemoteTextError(w http.ResponseWriter, err error) {
 	var textErr remoteTextError
 	if errors.As(err, &textErr) {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": textErr.message})
+		writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", textErr.message, true)
 		return
 	}
 	writeUpstreamError(w, err)

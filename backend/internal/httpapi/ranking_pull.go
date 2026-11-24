@@ -312,10 +312,10 @@ func (puller serverRankingPuller) pull(ctx context.Context, list rankingList, va
 	}
 	page, err := puller.server.kikoeruCrawlClientForSource(ctx, source).PopularWorks(ctx, 1, list.Depth)
 	if err != nil {
-		_ = puller.server.updateSourceHealth(ctx, source.ID, "unavailable")
+		puller.server.setSourceHealthOrLog(ctx, source.ID, "unavailable")
 		return rankingPull{}, err
 	}
-	_ = puller.server.updateSourceHealth(ctx, source.ID, "healthy")
+	puller.server.setSourceHealthOrLog(ctx, source.ID, "healthy")
 	works := uniqueRankingWorks(page.Works, list.Depth)
 	pull := rankingPull{Items: make([]rankingPulledItem, 0, len(works))}
 	for _, work := range page.Works {
@@ -410,9 +410,9 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 		if task.err != nil {
 			message := fmt.Sprintf("%s: %s", rankingVariantLabel(task.list, task.variant), task.err.Error())
 			pullFailures = append(pullFailures, message)
-			_ = s.recordWorkflowRunEvent(ctx, job.RunID, "warning", "ranking_pull_failed", message, map[string]any{"list_id": task.list.ID, "variant_id": task.variant.ID})
+			s.recordRunEventOrLog(ctx, job.RunID, "warning", "ranking_pull_failed", message, map[string]any{"list_id": task.list.ID, "variant_id": task.variant.ID})
 		}
-		_ = s.updateRankingPullCheckpoint(ctx, job, listIDs, index+1, len(tasks))
+		logWorkflowProgressWriteError(ctx, "checkpoint ranking pull", job, s.updateRankingPullCheckpoint(ctx, job, listIDs, index+1, len(tasks)))
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["record"]); err != nil {
 		return err
@@ -502,7 +502,7 @@ func (s *Server) failRankingPullBeforeClaim(ctx context.Context, job workflowJob
 		SET checkpoint_json = json_set(checkpoint_json, '$.rankingScheduleSettled', 1) WHERE id = ? AND status = 'running'`, job.ID); settleErr != nil {
 		slog.Warn("ranking pull without lists could not be marked settled", "job_id", job.ID, "error", settleErr)
 	}
-	_ = s.failClaimedWorkflowJob(ctx, job, message)
+	s.failJobOrLog(ctx, job, message)
 	s.refreshRankingDispatchersBestEffort(ctx)
 	return runErr
 }

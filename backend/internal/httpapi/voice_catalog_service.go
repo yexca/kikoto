@@ -183,19 +183,19 @@ func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	var request creatorRefreshRequest
 	if r.Body != nil {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice catalog refresh request"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice catalog refresh request", false)
 			return
 		}
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -210,7 +210,7 @@ func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(sourceIDs) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errVoiceCatalogNoSourcesSelected.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", errVoiceCatalogNoSourcesSelected.Error(), false)
 			return
 		}
 		inputs.SourceIDs = sourceIDs
@@ -395,8 +395,14 @@ func (s *Server) loadVoiceCatalogRefreshState(ctx context.Context, personID int6
 	if lastRunID.Valid {
 		state.RunID = lastRunID.Int64
 	}
-	_ = json.Unmarshal([]byte(queryJSON), &state.Queries)
-	_ = json.Unmarshal([]byte(sourceJSON), &state.Sources)
+	// The next refresh merges into this state and saves it, so an unreadable
+	// state is an error rather than an empty one that refresh overwrites.
+	if err := json.Unmarshal([]byte(queryJSON), &state.Queries); err != nil {
+		return voiceCatalogRefreshState{}, fmt.Errorf("decode voice catalog queries of person %d: %w", personID, err)
+	}
+	if err := json.Unmarshal([]byte(sourceJSON), &state.Sources); err != nil {
+		return voiceCatalogRefreshState{}, fmt.Errorf("decode voice catalog sources of person %d: %w", personID, err)
+	}
 	if state.Queries == nil {
 		state.Queries = []string{}
 	}
@@ -685,7 +691,7 @@ func (s *Server) refreshVoiceCatalogRemote(ctx context.Context, progress voiceCa
 	_, statuses, pages, complete, remoteStatus, err := s.refreshVoiceCatalogSources(ctx, progress, payload, previous)
 	if err != nil {
 		if !shutdownInterrupted(ctx) {
-			_ = s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, progress.runID)
+			logWorkflowWriteError(ctx, "fail voice catalog refresh", workflowJobRecord{RunID: progress.runID}, s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, progress.runID))
 		}
 		return voiceCatalogRefreshOutcome{}, err
 	}

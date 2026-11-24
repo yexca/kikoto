@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api, type RecordAsset, type RecordProgress } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * Saved progress for the open folder's videos: what the folder listing
@@ -45,16 +46,10 @@ export function useRecordContinue(active: boolean, savedToken: number) {
   const [assets, setAssets] = useState<RecordAsset[]>([]);
   useEffect(() => {
     if (!active) return;
-    const controller = new AbortController();
-    void api
-      .listRecordContinue(controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setAssets(result.assets);
-      })
-      .catch(() => {
-        // The row is optional; the folder stays usable without it.
-      });
-    return () => controller.abort();
+    // A failure is ignored. The row is optional; the folder stays usable without it.
+    return startLoad((signal) => api.listRecordContinue(signal), {
+      onSuccess: (result) => setAssets(result.assets),
+    });
   }, [active, savedToken]);
   return assets;
 }

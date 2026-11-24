@@ -157,11 +157,15 @@ func (s *Server) materializeRemoteWorkFetchItem(
 	downloadSources map[int64]remoteSourceForUse,
 ) (remoteFetchItemOutcome, error) {
 	totalProgress := len(execution.plan.Items) * 2
+	job := workflowJobRecord{ID: jobID, RunID: runID}
 	markProgress := func() {
-		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, totalProgress)
-		_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{
+		logWorkflowProgressWriteError(ctx, "update Fetch progress", job, updateWorkflowJobProgress(ctx, s.db, jobID, index+1, totalProgress))
+		s.checkpointJobOrLog(ctx, job, "materialize", map[string]any{
 			"index": index + 1, "itemKey": item.ItemKey, "action": item.Action,
 		}, index+1, totalProgress)
+	}
+	markCacheProgress := func(current int, written int64) {
+		logWorkflowProgressWriteError(ctx, "update Fetch cache progress", job, s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, current, len(execution.plan.Items), item, written))
 	}
 	if item.Action == "skip" || item.Action == "exclude" {
 		markProgress()
@@ -171,7 +175,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		markProgress()
 		return remoteFetchItemOutcome{}, nil
 	}
-	_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index, len(execution.plan.Items), item, 0)
+	markCacheProgress(index, 0)
 	// The stored media item is resolved before anything is written, so a file
 	// the listing does not know never reaches the cache without a record.
 	mediaItemID, err := s.remoteFetchMediaItemID(ctx, execution.workID, item)
@@ -192,7 +196,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		if _, upsertErr := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, info.Size()); upsertErr != nil {
 			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, upsertErr)
 		}
-		_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, 0)
+		markCacheProgress(index+1, 0)
 		markProgress()
 		return remoteFetchItemOutcome{cacheHit: true}, nil
 	}
@@ -255,7 +259,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 			}
 			return remoteFetchItemOutcome{}, remoteOriginReviewError{Origin: blockedOrigin.Origin}
 		}
-		_ = s.recordRemoteFetchManifestError(ctx, execution.manifest.ID, err)
+		logWorkflowWriteError(ctx, "record Fetch manifest error", job, s.recordRemoteFetchManifestError(ctx, execution.manifest.ID, err))
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
 	if err := execution.byteProgress.complete(index+1, item, written); err != nil {
@@ -265,7 +269,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 	if _, err := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, written); err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
-	_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, written)
+	markCacheProgress(index+1, written)
 	markProgress()
 	return remoteFetchItemOutcome{cacheDownloaded: true}, nil
 }
@@ -355,8 +359,9 @@ func (s *Server) finalizeRemoteWorkFetch(
 // its follow-up.
 func (s *Server) finishRemoteFetchAfterPublication(ctx context.Context, jobID int64, execution remoteWorkFetchExecution, manifest remoteFetchManifestRecord, promoted int, counts remoteFetchMaterializeCounts) (remoteWorkSaveResult, error) {
 	ctx = context.WithoutCancel(ctx)
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "published", map[string]any{"targetRoot": execution.plan.SaveRoot, "promoted": promoted}, len(execution.plan.Items), len(execution.plan.Items)*2)
-	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
+	job := workflowJobRecord{ID: jobID, RunID: manifest.WorkflowRunID}
+	s.checkpointJobOrLog(ctx, job, "published", map[string]any{"targetRoot": execution.plan.SaveRoot, "promoted": promoted}, len(execution.plan.Items), len(execution.plan.Items)*2)
+	logWorkflowProgressWriteError(ctx, "update Fetch progress", job, updateWorkflowJobProgress(ctx, s.db, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2))
 	if err := s.markRemoteFetchPublished(ctx, jobID, execution.promoteNodeID, execution.plan, promoted); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -397,7 +402,7 @@ func (s *Server) failRemoteWorkFetchPhase(ctx context.Context, runID, nodeID, jo
 func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobRecord) error {
 	var payload remoteWorkFetchJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload)
@@ -423,13 +428,13 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		if errors.Is(err, errStoragePoolOffline) || errors.Is(err, errLibraryOffline) {
 			// The manifest is unchanged, so a retry once the pool is back
 			// finishes the publication.
-			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+			s.failJobOrLog(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		}
 		return result, err
 	}
 	execution, err := s.prepareRemoteWorkFetchExecution(ctx, runID, jobID, payload)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+		s.failJobOrLog(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
 	counts, err := s.materializeRemoteWorkFetch(ctx, runID, jobID, execution)

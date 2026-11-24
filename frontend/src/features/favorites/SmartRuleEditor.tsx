@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { SuggestionCombobox, type SuggestionOption } from "@/components/ui/suggestion-combobox";
 import { api, type SmartRuleTagOption, type UserTagSuggestion } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import {
@@ -213,19 +214,14 @@ function SmartRulePreviewLine({ listId, draft }: { listId?: number; draft: Smart
   const ruleJSON = JSON.stringify(rule);
   useEffect(() => {
     if (!canPreview) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      api
-        .previewSmartRule(JSON.parse(ruleJSON), listId, controller.signal)
-        .then((result) => setState({ key, total: result.total, failed: false }))
-        .catch(() => {
-          if (!controller.signal.aborted) setState({ key, total: null, failed: true });
-        });
-    }, 300);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
+    return startLoad(
+      (signal) => api.previewSmartRule(JSON.parse(ruleJSON), listId, signal),
+      {
+        onSuccess: (result) => setState({ key, total: result.total, failed: false }),
+        onError: () => setState({ key, total: null, failed: true }),
+      },
+      { delayMs: 300 },
+    );
   }, [canPreview, key, listId, ruleJSON]);
   let message: string;
   if (!canPreview) message = t("favorites.smart.matchRequired");
@@ -241,16 +237,11 @@ function SmartRulePreviewLine({ listId, draft }: { listId?: number; draft: Smart
 
 function usePersonalTagVocabulary() {
   const [tags, setTags] = useState<UserTagSuggestion[]>([]);
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listUserTags("work", controller.signal)
-      .then((result) => setTags(result.tags))
-      .catch(() => {
-        // Personal tags are optional suggestions; metadata tags stay searchable.
-      });
-    return () => controller.abort();
-  }, []);
+  // Personal tags are optional suggestions; metadata tags stay searchable.
+  useEffect(
+    () => startLoad((signal) => api.listUserTags("work", signal), { onSuccess: (result) => setTags(result.tags) }),
+    [],
+  );
   return tags;
 }
 
@@ -259,19 +250,14 @@ function useMetadataTagSearch(query: string) {
   const trimmed = query.trim();
   useEffect(() => {
     if (!trimmed) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      api
-        .listSmartRuleTags(trimmed, controller.signal)
-        .then((page) => setResult({ query: trimmed, tags: page.tags }))
-        .catch(() => {
-          if (!controller.signal.aborted) setResult({ query: trimmed, tags: [] });
-        });
-    }, 200);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
+    return startLoad(
+      (signal) => api.listSmartRuleTags(trimmed, signal),
+      {
+        onSuccess: (page) => setResult({ query: trimmed, tags: page.tags }),
+        onError: () => setResult({ query: trimmed, tags: [] }),
+      },
+      { delayMs: 200 },
+    );
   }, [trimmed]);
   const loaded = Boolean(trimmed) && result.query === trimmed;
   return { tags: loaded ? result.tags : [], loaded };

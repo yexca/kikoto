@@ -7,6 +7,7 @@ import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { assetURL } from "@/lib/api";
 import type { CreatorCover, CreatorLatestWork } from "@/lib/creatorApi";
+import { startLoad } from "@/lib/effectScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -64,19 +65,18 @@ export function CreatorCoverDialog({
   }, [query, request.query]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setStatus("loading");
-    load({ page: request.page, pageSize: coverWorksPageSize, query: request.query, signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setWorks((current) => appendCoverWorks(request.page === 1 ? [] : current, result.works));
-        setTotal(result.total);
-        setStatus("ready");
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setStatus("failed");
-      });
-    return () => controller.abort();
+    return startLoad(
+      (signal) => load({ page: request.page, pageSize: coverWorksPageSize, query: request.query, signal }),
+      {
+        onSuccess: (result) => {
+          setWorks((current) => appendCoverWorks(request.page === 1 ? [] : current, result.works));
+          setTotal(result.total);
+          setStatus("ready");
+        },
+        onError: () => setStatus("failed"),
+      },
+    );
   }, [load, request]);
 
   const select = async (primaryCode: string) => {

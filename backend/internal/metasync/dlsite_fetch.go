@@ -47,7 +47,7 @@ func (s *DLsiteSyncer) fetchProductForEdition(ctx context.Context, workno string
 	if exactLocale == "" {
 		return product, nil
 	}
-	requestedLocale := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(firstNonEmptyText(product.RequestLocale, product.Language), "_", "-")))
+	requestedLocale := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(firstNonBlank(product.RequestLocale, product.Language), "_", "-")))
 	if requestedLocale == exactLocale {
 		product.RequestLocale = exactLocale
 		return product, nil

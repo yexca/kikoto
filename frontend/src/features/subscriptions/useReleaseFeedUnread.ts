@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { api } from "@/lib/api";
 
 import { RELEASE_FEED_SEEN_EVENT } from "./subscriptionModel";
@@ -13,21 +14,16 @@ const refreshIntervalMs = 5 * 60 * 1000;
  */
 export function useReleaseFeedUnread(enabled: boolean) {
   const [count, setCount] = useState(0);
+  // Each read replaces the one before it.
+  const latest = useLatestLoad();
 
   useEffect(() => {
     if (!enabled) {
       setCount(0);
       return;
     }
-    let controller = new AbortController();
-    const load = () => {
-      controller.abort();
-      controller = new AbortController();
-      api
-        .getReleaseFeedUnread(controller.signal)
-        .then((result) => setCount(result.count))
-        .catch(() => undefined);
-    };
+    const load = () =>
+      void latest.run((signal) => api.getReleaseFeedUnread(signal), { onSuccess: (result) => setCount(result.count) });
     const loadWhenVisible = () => {
       if (!document.hidden) load();
     };
@@ -37,12 +33,12 @@ export function useReleaseFeedUnread(enabled: boolean) {
     document.addEventListener("visibilitychange", loadWhenVisible);
     window.addEventListener(RELEASE_FEED_SEEN_EVENT, clear);
     return () => {
-      controller.abort();
+      latest.cancel();
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", loadWhenVisible);
       window.removeEventListener(RELEASE_FEED_SEEN_EVENT, clear);
     };
-  }, [enabled]);
+  }, [enabled, latest]);
 
   return count;
 }

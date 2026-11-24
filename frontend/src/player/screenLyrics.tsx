@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { createEffectScope } from "@/lib/effectScope";
 import {
   addNativeLyricsOverlayListener,
   addNativeLyricsOverlayPlaybackListener,
@@ -221,35 +222,31 @@ export function useScreenLyrics() {
 
   useEffect(() => {
     if (backend !== "native") return;
-    let disposed = false;
-    let remove: (() => void) | null = null;
-    void addNativeLyricsOverlayListener(() => {
-      nativeSyncRef.current = null;
-      setOpen(false);
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else remove = dispose;
-    });
-    let removePlayback: (() => void) | null = null;
-    void addNativeLyricsOverlayPlaybackListener((playing) => {
-      if (snapshotRef.current.playing !== playing) controlsRef.current?.onTogglePlay();
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else removePlayback = dispose;
-    });
-    let removeSeek: (() => void) | null = null;
-    void addNativeLyricsOverlaySeekListener((positionMs) => {
-      controlsRef.current?.onSeekTo(positionMs / 1000);
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else removeSeek = dispose;
-    });
-    return () => {
-      disposed = true;
-      remove?.();
-      removePlayback?.();
-      removeSeek?.();
-    };
+    const scope = createEffectScope();
+    const dispose = (remove: () => void) => remove();
+    scope.listen(
+      () =>
+        addNativeLyricsOverlayListener(() => {
+          nativeSyncRef.current = null;
+          setOpen(false);
+        }),
+      dispose,
+    );
+    scope.listen(
+      () =>
+        addNativeLyricsOverlayPlaybackListener((playing) => {
+          if (snapshotRef.current.playing !== playing) controlsRef.current?.onTogglePlay();
+        }),
+      dispose,
+    );
+    scope.listen(
+      () =>
+        addNativeLyricsOverlaySeekListener((positionMs) => {
+          controlsRef.current?.onSeekTo(positionMs / 1000);
+        }),
+      dispose,
+    );
+    return scope.cancel;
   }, [backend]);
 
   useEffect(() => () => stop(), [stop]);

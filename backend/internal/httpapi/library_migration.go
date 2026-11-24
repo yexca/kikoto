@@ -160,7 +160,7 @@ func (s *Server) startLibraryMigration(w http.ResponseWriter, r *http.Request) {
 	s.layoutMigrationActive.Store(true)
 	if !s.Go(func(ctx context.Context) { s.executeLibraryMigration(ctx, plan) }) {
 		s.layoutMigrationActive.Store(false)
-		_, _ = s.db.ExecContext(context.Background(), `UPDATE library_layout_migration SET status = 'failed', error_message = 'Server stopped before migration started' WHERE id = 1`)
+		s.failUnstartedLibraryMigration("Server stopped before migration started")
 		writeAPIError(w, http.StatusServiceUnavailable, "service_stopping", "The server is stopping.", true)
 		return
 	}
@@ -214,16 +214,16 @@ func (s *Server) retryLibraryMigration(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if _, err := s.db.ExecContext(r.Context(), `UPDATE library_layout_migration SET status = 'running', error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = 1`); err != nil {
+	// A retry in the scan phase forgets the failed scan run, so the retry
+	// queues a new scan instead of waiting on the old one.
+	if _, err := s.db.ExecContext(r.Context(), `UPDATE library_layout_migration SET status = 'running', error_message = '',
+		scan_run_id = CASE WHEN phase = 'scan' THEN NULL ELSE scan_run_id END, updated_at = CURRENT_TIMESTAMP WHERE id = 1`); err != nil {
 		writeError(w, err)
 		return
 	}
 	s.layoutMigrationActive.Store(true)
-	if phase, _, err := s.libraryMigrationPhase(r.Context()); err == nil && phase == "scan" {
-		_, _ = s.db.ExecContext(r.Context(), `UPDATE library_layout_migration SET scan_run_id = NULL WHERE id = 1`)
-	}
 	if !s.Go(func(ctx context.Context) { s.executeLibraryMigration(ctx, plan) }) {
-		_, _ = s.db.ExecContext(context.Background(), `UPDATE library_layout_migration SET status = 'failed', error_message = 'Server stopped before retry started' WHERE id = 1`)
+		s.failUnstartedLibraryMigration("Server stopped before retry started")
 		writeAPIError(w, http.StatusServiceUnavailable, "service_stopping", "The server is stopping.", true)
 		return
 	}

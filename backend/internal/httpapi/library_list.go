@@ -113,7 +113,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	recommendationSessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
 	if recommendationSessionID != "" && !recommendationSessionIDPattern.MatchString(recommendationSessionID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation session", false)
 		return
 	}
 	options := library.ListOptions{

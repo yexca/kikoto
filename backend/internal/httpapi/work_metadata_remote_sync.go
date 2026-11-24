@@ -36,10 +36,10 @@ func (s *Server) loadMetadataRefreshSource(ctx context.Context, sourceID int64) 
 func (s *Server) executeRemoteWorkMetadataSyncJob(ctx context.Context, job workflowJobRecord, payload workMetadataSyncPayload) error {
 	source, err := s.loadMetadataRefreshSource(ctx, payload.SourceID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"sourceId": source.ID}, 0, 1)
+	s.checkpointJobOrLog(ctx, job, "syncing", map[string]any{"sourceId": source.ID}, 0, 1)
 	outcome, _, refreshErr := s.requestWorkMetadataFromRemoteSource(ctx, payload.WorkID, payload.PrimaryCode, source, false)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -51,14 +51,14 @@ func (s *Server) executeRemoteWorkMetadataSyncJob(ctx context.Context, job workf
 		providerOutcome = metasync.ProviderOutcomeFailed
 	}
 	if err := metasync.RecordProviderOutcome(ctx, s.db, payload.WorkID, remotemetadata.ProviderCode(source.Code), source.DisplayName, providerOutcome); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if refreshErr != nil || providerOutcome == metasync.ProviderOutcomeFailed {
 		if refreshErr == nil {
 			refreshErr = errors.New("remote metadata refresh failed")
 		}
-		_ = s.failClaimedWorkflowJob(ctx, job, refreshErr.Error())
+		s.failJobOrLog(ctx, job, refreshErr.Error())
 		return refreshErr
 	}
 	status, level := "succeeded", "info"

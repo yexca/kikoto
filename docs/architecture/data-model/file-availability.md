@@ -15,6 +15,15 @@ Important tables:
 - `work_folder_display_name`
 - `media_lyrics_ai_source`
 
+A source's JSON settings, `file_source.config_json` and
+`file_source_endpoint.allowed_host_patterns_json`, are decoded in one place,
+`internal/filesource`. A source whose stored settings do not decode is not run
+on defaults: no request, Fetch, check, or metadata lookup uses it, lists of
+sources to use leave it out, and the scan depth minimum and Fetch folder
+exclusions skip its save template. The source list in Settings shows it as
+unavailable, with the settings that did decode, until an administrator saves
+it again. A protected log names the source and the setting.
+
 Presence can describe that a source knows about a work. Concrete playback,
 download, local, and cache paths belong in media file locations.
 

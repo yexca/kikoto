@@ -16,17 +16,17 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	payload, err := decodeVoiceUserStateUpdate(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)
@@ -39,7 +39,7 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !usable {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errCreatorCoverUnavailable.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", errCreatorCoverUnavailable.Error(), false)
 			return
 		}
 	}
@@ -155,19 +155,19 @@ func (s *Server) setVoiceUserTags(w http.ResponseWriter, r *http.Request) {
 	}
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid voice person id", false)
 		return
 	}
 	var payload struct {
 		Tags []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json", false)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "voice actor not found", false)
 			return
 		}
 		writeError(w, err)

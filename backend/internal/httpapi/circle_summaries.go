@@ -176,7 +176,7 @@ func (s *Server) circleSummaryPage(ctx context.Context, userID int64, query, fil
 		s.presentCircleCover(&pageItems[index])
 	}
 	return circleSummaryPage{
-		Circles: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(items),
+		Circles: pageItems, Page: page, PageSize: min(pageSize, 100), Total: len(items),
 		CatalogWorks: catalogWorks, AvailableWorks: availableWorks,
 	}, nil
 }

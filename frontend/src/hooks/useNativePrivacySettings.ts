@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { startLoad } from "@/lib/effectScope";
 import {
   DEFAULT_NATIVE_PRIVACY_SETTINGS,
   getNativePrivacySettings,
@@ -32,10 +33,9 @@ export function useNativePrivacySettings() {
 
   useEffect(() => {
     if (!supportsNativePrivacy()) return;
-    let disposed = false;
-    void getNativePrivacySettings().then((settings) => {
+    const cancel = startLoad(() => getNativePrivacySettings(), {
       // A change saved while this read was pending is newer.
-      if (!disposed) setState((current) => (current.loaded ? current : { settings, loaded: true }));
+      onSuccess: (settings) => setState((current) => (current.loaded ? current : { settings, loaded: true })),
     });
     const sync = (event: Event) => {
       const settings = (event as CustomEvent<NativePrivacySettings>).detail;
@@ -43,7 +43,7 @@ export function useNativePrivacySettings() {
     };
     window.addEventListener(NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT, sync);
     return () => {
-      disposed = true;
+      cancel();
       window.removeEventListener(NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT, sync);
     };
   }, []);

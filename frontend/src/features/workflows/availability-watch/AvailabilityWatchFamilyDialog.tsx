@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import i18n, { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { Modal } from "@/features/workflows/WorkflowPanelParts";
 import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { assetURL, type AvailabilityWatchTarget } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { watchTargetStateLabel, type WatchCardPermissions } from "./AvailabilityWatchTargetCard";
 import {
@@ -192,7 +192,7 @@ export function AvailabilityWatchFamilyDialog({
                 size="sm"
                 variant="ghost"
                 title={workflowCopy("openRelatedActivity")}
-                onClick={() => openActivityRunID(runId)}
+                onClick={() => openWorkflowRun(runId)}
               >
                 <Activity className="h-4 w-4" />
                 {workflowCopy("activity")}
@@ -258,8 +258,4 @@ function watchTargetLocation(targetId: number) {
   params.set("view", "watch");
   params.set("target", String(targetId));
   return `${window.location.pathname}?${params}`;
-}
-
-function openActivityRunID(runID: number) {
-  openWorkflowPath(workflowRunPath(runID));
 }

@@ -144,7 +144,7 @@ func (s *Server) createCreatorSubscription(w http.ResponseWriter, r *http.Reques
 	}
 	var request creatorSubscriptionRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	subject, err := s.resolveCreatorSubscriptionSubject(r.Context(), request)
@@ -163,7 +163,7 @@ func (s *Server) createCreatorSubscription(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if request.PullNow && !userHasPermission(user, "metadata:sync") {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied", "permission": "metadata:sync"})
+		writeAPIErrorDetails(w, http.StatusForbidden, "permission_denied", "permission denied", false, map[string]any{"permission": "metadata:sync"})
 		return
 	}
 	created, conflict, err := s.subscribeCreator(r.Context(), user.ID, subject, request.WatchAvailability, request.ReplaceSeries)
@@ -172,7 +172,7 @@ func (s *Server) createCreatorSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if conflict != nil {
-		writeJSON(w, http.StatusConflict, conflict)
+		writeAPIErrorDetails(w, http.StatusConflict, conflict.code, conflict.message, false, conflict.details)
 		return
 	}
 	if request.PullNow && created.Subscription.Status == "pending" {
@@ -199,14 +199,14 @@ func (s *Server) updateCreatorSubscription(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", false)
 		return
 	}
 	var payload struct {
 		WatchAvailability *bool `json:"watchAvailability"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.WatchAvailability == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watchAvailability is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "watchAvailability is required", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), `
@@ -217,7 +217,7 @@ func (s *Server) updateCreatorSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if changed, _ := result.RowsAffected(); changed == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": errCreatorSubscriptionNotFound.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", errCreatorSubscriptionNotFound.Error(), false)
 		return
 	}
 	subscriptions, err := s.loadCreatorSubscriptions(r.Context(), "sub.id = ? AND sub.user_id = ?", id, user.ID)
@@ -235,7 +235,7 @@ func (s *Server) deleteCreatorSubscription(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM creator_subscription WHERE id = ? AND user_id = ?", id, user.ID)
@@ -244,7 +244,7 @@ func (s *Server) deleteCreatorSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if changed, _ := result.RowsAffected(); changed == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": errCreatorSubscriptionNotFound.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", errCreatorSubscriptionNotFound.Error(), false)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -337,11 +337,19 @@ func (s *Server) resolveCreatorSubscriptionSubject(ctx context.Context, request 
 	return subject, nil
 }
 
+// creatorSubscriptionConflict refuses a subscription that the account's
+// existing subscriptions decide: details carry the subscriptions involved.
+type creatorSubscriptionConflict struct {
+	code    string
+	message string
+	details map[string]any
+}
+
 // subscribeCreator adds a subscription and enforces that a circle
 // subscription covers its series: a series of a subscribed circle is refused,
 // and subscribing to a circle removes the account's series subscriptions only
 // when the caller confirmed it.
-func (s *Server) subscribeCreator(ctx context.Context, userID int64, subject creatorSubscriptionSubject, watchAvailability bool, replaceSeries bool) (creatorSubscriptionCreated, map[string]any, error) {
+func (s *Server) subscribeCreator(ctx context.Context, userID int64, subject creatorSubscriptionSubject, watchAvailability bool, replaceSeries bool) (creatorSubscriptionCreated, *creatorSubscriptionConflict, error) {
 	created := creatorSubscriptionCreated{RemovedSeries: []creatorSubscription{}}
 	existing, err := s.findCreatorSubscription(ctx, userID, subject)
 	if err != nil {
@@ -359,8 +367,9 @@ func (s *Server) subscribeCreator(ctx context.Context, userID int64, subject cre
 			return created, nil, err
 		}
 		if len(circle) > 0 {
-			return created, map[string]any{
-				"code": "covered_by_circle", "error": "The circle subscription already includes this series.", "coveredBy": circle[0],
+			return created, &creatorSubscriptionConflict{
+				code: "covered_by_circle", message: "The circle subscription already includes this series.",
+				details: map[string]any{"coveredBy": circle[0]},
 			}, nil
 		}
 	case "circle":
@@ -369,8 +378,9 @@ func (s *Server) subscribeCreator(ctx context.Context, userID int64, subject cre
 			return created, nil, err
 		}
 		if len(series) > 0 && !replaceSeries {
-			return created, map[string]any{
-				"code": "series_will_be_removed", "error": "Subscribing to the circle replaces your series subscriptions.", "series": series,
+			return created, &creatorSubscriptionConflict{
+				code: "series_will_be_removed", message: "Subscribing to the circle replaces your series subscriptions.",
+				details: map[string]any{"series": series},
 			}, nil
 		}
 	}
@@ -799,7 +809,7 @@ func (s *Server) updateCreatorSubscriptionSchedule(w http.ResponseWriter, r *htt
 		AvailabilityWatch *bool `json:"availabilityWatch"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	current, err := s.loadCreatorSubscriptionSchedule(r.Context())
@@ -808,7 +818,7 @@ func (s *Server) updateCreatorSubscriptionSchedule(w http.ResponseWriter, r *htt
 		return
 	}
 	if current.triggerID == 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the subscription schedule is unavailable"})
+		writeAPIError(w, http.StatusConflict, "conflict", "the subscription schedule is unavailable", false)
 		return
 	}
 	enabled, interval, watch := current.Enabled, current.IntervalHours, current.AvailabilityWatch
@@ -822,7 +832,7 @@ func (s *Server) updateCreatorSubscriptionSchedule(w http.ResponseWriter, r *htt
 		watch = *payload.AvailabilityWatch
 	}
 	if interval < creatorSubscriptionMinIntervalHours || interval > creatorSubscriptionMaxIntervalHours {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("intervalHours must be between %d and %d", creatorSubscriptionMinIntervalHours, creatorSubscriptionMaxIntervalHours)})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("intervalHours must be between %d and %d", creatorSubscriptionMinIntervalHours, creatorSubscriptionMaxIntervalHours), false)
 		return
 	}
 	var nextRunAt any
@@ -857,7 +867,7 @@ func (s *Server) runCreatorSubscriptionRefresh(w http.ResponseWriter, r *http.Re
 	}
 	result, err := s.enqueueCreatorSubscriptionRefresh(r.Context(), workflowRunTrigger{Type: "manual", Reason: "manual_run"}, actor.ID, schedule.AvailabilityWatch)
 	if errors.Is(err, errCreatorSubscriptionRunActive) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", err.Error(), false)
 		return
 	}
 	if err != nil {

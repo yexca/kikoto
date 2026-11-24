@@ -48,6 +48,7 @@ import {
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 import { visibleBadgeCountForRows } from "./tagLayout";
@@ -786,12 +787,10 @@ export function WorkCardTags({
     const observer = typeof ResizeObserver === "undefined" || !container ? null : new ResizeObserver(measure);
     if (observer && container) observer.observe(container);
     window.addEventListener("resize", measure);
-    let cancelled = false;
-    void document.fonts?.ready.then(() => {
-      if (!cancelled) measure();
-    });
+    const fontsReady = document.fonts?.ready;
+    const cancelFontsMeasure = fontsReady ? startLoad(() => fontsReady, { onSuccess: measure }) : undefined;
     return () => {
-      cancelled = true;
+      cancelFontsMeasure?.();
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
@@ -1199,6 +1198,7 @@ export function WorkCardQuickMarkButton({
         anchorRef={ref}
         onOpenChange={setOpen}
         bottomCollisionPadding={bottomCollisionPadding}
+        ariaLabel={t("workCard.mark", { status: currentLabel })}
         className="w-40 p-1 text-sm"
       >
         {quickMarkOptions.map((option) => {

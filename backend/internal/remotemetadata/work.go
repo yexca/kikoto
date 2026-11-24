@@ -138,6 +138,7 @@ func decodeTag(tag kikoeru.Tag) (metadatatags.ProviderTag, error) {
 	return result, nil
 }
 
+// firstNonEmpty returns the first value that is not blank, trimmed.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

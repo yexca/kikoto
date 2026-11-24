@@ -1,8 +1,8 @@
 import { useState } from "react";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import type { FileSource } from "@/lib/api";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { SourcePresenceCheckDialog } from "./SourcePresenceCheckDialog";
 import { SourcePresenceCheckLine } from "./SourcePresenceCheckLine";
@@ -31,7 +31,7 @@ export function useSourcePresenceCheckSlots({
   const [openSourceId, setOpenSourceId] = useState<number | null>(null);
   const openSource = sources.find((source) => source.id === openSourceId) ?? null;
   const openCheck = openSource ? checks[openSource.id] : undefined;
-  const openRun = canOpenActivity ? (runId: number) => openWorkflowPath(workflowRunPath(runId)) : undefined;
+  const openRun = canOpenActivity ? openWorkflowRun : undefined;
 
   return {
     refresh,

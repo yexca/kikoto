@@ -2,11 +2,11 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/filesource"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
@@ -37,36 +37,22 @@ func (s *Server) requiredLocalScanDepthFor(ctx context.Context, defaultTemplate 
 	if strings.TrimSpace(defaultTemplate) == "" {
 		defaultTemplate = s.settingStringContext(ctx, "remote_save_root_template", defaultRemoteSaveRootTemplate)
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT code, config_json
-		FROM file_source
-		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
-	`)
+	sources, err := filesource.List(ctx, s.db, filesource.RemoteSources)
 	if err != nil {
-		return 0, err
-	}
-	type configuredSource struct{ code, configJSON string }
-	sources := []configuredSource{}
-	for rows.Next() {
-		var source configuredSource
-		if err := rows.Scan(&source.code, &source.configJSON); err != nil {
-			_ = rows.Close()
-			return 0, err
-		}
-		sources = append(sources, source)
-	}
-	if err := rows.Close(); err != nil {
 		return 0, err
 	}
 	required := localScanDepthMin
 	for _, source := range sources {
-		var config fileSourceConfig
-		_ = json.Unmarshal([]byte(source.configJSON), &config)
-		template := strings.TrimSpace(config.SaveRootTemplate)
+		// No Fetch publishes with a save template that cannot be decoded; the
+		// roots such a source already published are counted below.
+		if source.SettingsErr != nil {
+			continue
+		}
+		template := strings.TrimSpace(source.Config.SaveRootTemplate)
 		if template == "" {
 			template = defaultTemplate
 		}
-		required = max(required, remoteSaveTemplateDepth(template, source.code))
+		required = max(required, remoteSaveTemplateDepth(template, source.Code))
 	}
 	roots, err := s.db.QueryContext(ctx, `
 		SELECT root_path FROM work_folder_location WHERE role = 'managed_fetch' AND state = 'active'

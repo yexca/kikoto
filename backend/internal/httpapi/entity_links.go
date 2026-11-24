@@ -32,12 +32,12 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	}
 	code := normalizeWorkCode(r.PathValue("code"))
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work code", false)
 		return
 	}
 	request, err := decodeWorkEntityLinkRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	// Only a metadata:sync user may fetch from the provider, and only for a
@@ -47,11 +47,11 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	resolution, stage, err := s.resolveWorkEntityLinkRoute(r.Context(), code, request, canFetch)
 	if err != nil {
 		if stage == "metadata" {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load entity metadata for this work."})
+			writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "Could not load entity metadata for this work.", true)
 			return
 		}
 		if stage == "catalog" {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load the series catalog for this circle."})
+			writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "Could not load the series catalog for this circle.", true)
 			return
 		}
 		writeError(w, err)
@@ -66,7 +66,7 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
+	writeAPIError(w, http.StatusNotFound, "not_found", fmt.Sprintf("No %s link was found for this work.", request.Kind), false)
 }
 
 // lookupWorkEntityLink resolves a route from already persisted relationships
@@ -75,7 +75,7 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 func (s *Server) lookupWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	code := normalizeWorkCode(r.PathValue("code"))
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work code", false)
 		return
 	}
 	request, err := normalizeWorkEntityLinkRequest(workEntityLinkRequest{
@@ -83,7 +83,7 @@ func (s *Server) lookupWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		Name: r.URL.Query().Get("name"),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if !s.requireDemoWorkCode(w, r, code) {
@@ -95,7 +95,7 @@ func (s *Server) lookupWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if route == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
+		writeAPIError(w, http.StatusNotFound, "not_found", fmt.Sprintf("No %s link was found for this work.", request.Kind), false)
 		return
 	}
 	writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true})

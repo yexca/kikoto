@@ -4,11 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import type { WorkFolderEditResult } from "@/lib/api";
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
-}
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 /**
  * Follows a queued folder edit to its result: announces that it was queued,
@@ -31,7 +27,7 @@ export function useFolderEditWorkflow({ onCompleted }: { onCompleted: () => Prom
         kind: "error",
         message: t("folderEdit.runEnded", { runId: run.id, status: run.status }),
         actionLabel: t("remoteFetch.activity"),
-        onAction: () => openActivityRun(run.id),
+        onAction: () => openWorkflowRun(run.id),
       });
     }
     // A failed edit may have changed part of the folder, so reload either way.
@@ -46,7 +42,7 @@ export function useFolderEditWorkflow({ onCompleted }: { onCompleted: () => Prom
       kind: "success",
       message: t("folderEdit.queued", { runId: result.runId }),
       actionLabel: t("remoteFetch.activity"),
-      onAction: () => openActivityRun(result.runId),
+      onAction: () => openWorkflowRun(result.runId),
     });
   };
 

@@ -236,7 +236,7 @@ func InsertEvent(ctx context.Context, tx *sql.Tx, runID int64, spec EventSpec) e
 			detail_json
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, runID, nullableID(spec.NodeRunID), nullableID(spec.JobID), level, eventType, message, detailJSON)
+	`, runID, nullablePositiveID(spec.NodeRunID), nullablePositiveID(spec.JobID), level, eventType, message, detailJSON)
 	return err
 }
 
@@ -271,7 +271,8 @@ func eventLevelForStatus(status string) string {
 	}
 }
 
-func nullableID(id int64) any {
+// nullablePositiveID binds a non-positive id as SQL NULL.
+func nullablePositiveID(id int64) any {
 	if id <= 0 {
 		return nil
 	}

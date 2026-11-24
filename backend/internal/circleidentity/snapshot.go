@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // The table inventory is fixed application code. Snapshot JSON is never
@@ -61,7 +63,7 @@ func capture(ctx context.Context, tx *sql.Tx, target, source int64) (snapshot, e
 			}
 			data = append(data, values)
 		}
-		if err := closeRows(rows); err != nil {
+		if err := sqlutil.CloseRows(rows); err != nil {
 			return nil, err
 		}
 		result[spec.name] = data

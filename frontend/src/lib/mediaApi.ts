@@ -164,6 +164,9 @@ export type TimedLyricsResult = {
   text?: string;
 };
 
+/** The longest text a viewer previews, the same bound the server reads a preview within. */
+const TEXT_PREVIEW_MAX_LENGTH = 512 * 1024;
+
 /** A text route answers in these formats when asked with `format`. */
 function withTextFormat(url: string, format: "lyrics" | "webvtt") {
   return `${url}${url.includes("?") ? "&" : "?"}format=${format}`;
@@ -323,7 +326,13 @@ export type MediaCleanupResult = {
 };
 
 export const mediaApi = {
-  getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  getMediaText: (locationId: number, signal?: AbortSignal) =>
+    getJSON<MediaTextPreview>(`/api/media/${locationId}/text`, signal),
+  /**
+   * Reads a text file named by the server's text URL, such as a remote source's,
+   * as plain text within the preview bound.
+   */
+  getTextPreview: (url: string, signal?: AbortSignal) => getText(url, signal, { maxLength: TEXT_PREVIEW_MAX_LENGTH }),
   /** Reads a lyrics file of a work as timed lines; every kind of location is read where its bytes are. */
   getMediaLyrics: (locationId: number, signal?: AbortSignal) =>
     getJSON<TimedLyricsResult>(`/api/media/${locationId}/text?format=lyrics`, signal),

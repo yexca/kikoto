@@ -20,7 +20,7 @@ import { recordsApi } from "@/lib/recordsApi";
 import { playbackQueueApi } from "@/lib/playbackQueueApi";
 
 export type { CatalogSyncState } from "@/lib/catalogSyncState";
-export { API_BASE, ApiError, apiTransport, assetURL } from "@/lib/apiTransport";
+export { API_BASE, ApiError, TextTooLargeError, apiTransport, assetURL } from "@/lib/apiTransport";
 export type * from "@/lib/accountApi";
 export type * from "@/lib/libraryApi";
 export type * from "@/lib/workApi";

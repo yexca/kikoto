@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { writeDemoMetadataLanguages } from "@/lib/demoMetadataLanguages";
+import { startLoad } from "@/lib/effectScope";
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import {
   dlsiteMetadataLanguagesFor,
@@ -39,19 +40,14 @@ export function useMetadataDisplayLanguage(
 
   useEffect(() => {
     if (!enabled || loaded || userId === null) return;
-    const controller = new AbortController();
     setFailed(false);
-    api
-      .getUserPreferences(controller.signal)
-      .then((preferences) => {
-        if (controller.signal.aborted) return;
+    return startLoad((signal) => api.getUserPreferences(signal), {
+      onSuccess: (preferences) => {
         setValue(preferredDlsiteMetadataLanguage(preferences.metadataLanguages));
         setLoadedUserId(userId);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
+      },
+      onError: () => setFailed(true),
+    });
   }, [enabled, loaded, userId]);
 
   const change = async (next: DlsiteMetadataLanguage) => {

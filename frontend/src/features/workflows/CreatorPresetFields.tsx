@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type LibrarySource } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * Creator target fields for the circle and voice actor follow presets: the
@@ -18,21 +19,11 @@ export function useCompatibleRemoteSources() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((items) => {
-        if (active) setSources(items);
-      })
-      .catch(() => {
-        if (active) setSources([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: setSources,
+      onError: () => setSources([]),
+      onSettled: () => setLoading(false),
+    });
   }, []);
   const compatible = useMemo(
     () =>
@@ -110,25 +101,17 @@ function useVoiceSearch(query: string, enabled: boolean) {
       setLoading(false);
       return;
     }
-    const controller = new AbortController();
     setLoading(true);
-    const timer = window.setTimeout(() => {
-      api
-        .listVoices({ query: needle, pageSize: 8, signal: controller.signal })
-        .then((page) =>
+    return startLoad(
+      (signal) => api.listVoices({ query: needle, pageSize: 8, signal }),
+      {
+        onSuccess: (page) =>
           setResults(page.voices.map((voice) => ({ personId: voice.personId, displayName: voice.displayName }))),
-        )
-        .catch(() => {
-          if (!controller.signal.aborted) setResults([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
-        });
-    }, 250);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
+        onError: () => setResults([]),
+        onSettled: () => setLoading(false),
+      },
+      { delayMs: 250 },
+    );
   }, [enabled, query]);
   return { results, loading };
 }
@@ -160,12 +143,9 @@ export function VoiceActorPicker({
 
   useEffect(() => {
     if (!selected || displayName) return;
-    const controller = new AbortController();
-    api
-      .getVoiceSummary(selectedId, controller.signal)
-      .then((summary) => resolveName(String(summary.personId), summary.displayName))
-      .catch(() => undefined);
-    return () => controller.abort();
+    return startLoad((signal) => api.getVoiceSummary(selectedId, signal), {
+      onSuccess: (summary) => resolveName(String(summary.personId), summary.displayName),
+    });
   }, [displayName, resolveName, selected, selectedId]);
 
   if (selected) {

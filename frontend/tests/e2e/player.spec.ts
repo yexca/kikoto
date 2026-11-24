@@ -98,7 +98,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await page.goto("/");
 
   await page.getByText("Test track.wav", { exact: true }).click();
-  let fullPlayer = page.locator("section.fixed.inset-0");
+  let fullPlayer = page.locator('[data-player-surface="full"]');
   await expect(fullPlayer).toBeVisible();
   await expect(fullPlayer.getByText("Test circle", { exact: true })).toBeVisible();
   const fullBox = await fullPlayer.boundingBox();
@@ -110,7 +110,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await expect(fullPlayer).toBeHidden();
 
   await page.getByText("Test track.wav", { exact: true }).click();
-  fullPlayer = page.locator("section.fixed.inset-0");
+  fullPlayer = page.locator('[data-player-surface="full"]');
   await expect(fullPlayer).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   await doubleTap(page, cover);
@@ -124,7 +124,7 @@ test("double-tapping the cover opens the work in the destination its playback st
   await page.goto("/");
 
   await page.getByText("Test track.wav", { exact: true }).click();
-  const fullPlayer = page.locator("section.fixed.inset-0");
+  const fullPlayer = page.locator('[data-player-surface="full"]');
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   await doubleTap(page, cover);
 
@@ -174,7 +174,7 @@ test("entering a playing work opens the current track folder", async ({ page }) 
   await page.goto("/");
 
   await page.getByText("Playing track", { exact: true }).click();
-  const fullPlayer = page.locator("section.fixed.inset-0");
+  const fullPlayer = page.locator('[data-player-surface="full"]');
   await fullPlayer.getByRole("button", { name: "Play", exact: true }).click();
   await expect(fullPlayer.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
@@ -198,7 +198,7 @@ test("mobile full player gives artwork room and does not latch transport feedbac
   await page.goto("/");
 
   await page.getByText("Test track.wav", { exact: true }).click();
-  const fullPlayer = page.locator("section.fixed.inset-0");
+  const fullPlayer = page.locator('[data-player-surface="full"]');
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   const forward = fullPlayer.getByRole("button", { name: "Forward 30 seconds" });
   await expect(fullPlayer).toBeVisible();
@@ -260,7 +260,7 @@ test("current lyric line follows playback and opens the lyrics panel", async ({ 
 
   await preview.click();
   await expect(page.locator(`[data-lyric-index="${activeIndex}"]`)).toHaveAttribute("aria-current", "true");
-  const fullPlayer = page.locator("section.fixed.inset-0");
+  const fullPlayer = page.locator('[data-player-surface="full"]');
   const playerBefore = await fullPlayer.boundingBox();
   expect(playerBefore).not.toBeNull();
   const lyricsSelect = page.getByRole("combobox", { name: "Lyrics" });
@@ -417,14 +417,14 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   await page.goto("/");
 
   await page.getByRole("button", { name: "Playback queue" }).click();
-  const queueMarquee = page.locator(".overflow-marquee--auto", { hasText: longTitle });
+  const queueMarquee = page.locator('[data-marquee="auto"]', { hasText: longTitle });
   await expect(queueMarquee).toBeVisible();
-  await expect(queueMarquee.locator(".overflow-marquee__copy")).toHaveCount(2);
-  await expect(queueMarquee.locator(".overflow-marquee__copy").nth(1)).toHaveAttribute("aria-hidden", "true");
+  await expect(queueMarquee.locator("[data-marquee-copy]")).toHaveCount(2);
+  await expect(queueMarquee.locator("[data-marquee-copy]").nth(1)).toHaveAttribute("aria-hidden", "true");
   await expect
     .poll(() =>
       queueMarquee
-        .locator(".overflow-marquee__track")
+        .locator("[data-marquee-track]")
         .evaluate((element) => getComputedStyle(element).animationTimingFunction),
     )
     .toBe("linear");
@@ -435,12 +435,12 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
 
   await page.getByRole("button", { name: "Collapse player" }).click();
-  const compactMarquee = page.locator(".overflow-marquee-group", { hasText: longTitle });
+  const compactMarquee = page.locator('[data-player-surface="compact"] [data-marquee]', { hasText: longTitle });
   await expect(compactMarquee).toBeVisible();
-  await expect(compactMarquee.locator(".overflow-marquee-group__copy")).toHaveCount(2);
-  await expect(compactMarquee.locator(".overflow-marquee-group__copy").first()).toContainText("Test circle");
+  await expect(compactMarquee.locator("[data-marquee-copy]")).toHaveCount(2);
+  await expect(compactMarquee.locator("[data-marquee-copy]").first()).toContainText("Test circle");
   await expect(compactMarquee).not.toContainText("Tagged mobile work with an extended display name");
-  const compactTrack = compactMarquee.locator(".overflow-marquee-group__track");
+  const compactTrack = compactMarquee.locator("[data-marquee-track]");
   await expect(compactTrack).toHaveAttribute("data-marquee-pause-ms", "2500");
   await expect.poll(() => compactTrack.evaluate((element) => element.getAnimations().length)).toBe(1);
   const compactKeyframes = await compactTrack.evaluate(
@@ -497,7 +497,7 @@ test("@desktop compact player supports relative drag seeking and global playback
   expect(scrubDeltaSeconds).toBeGreaterThan(4.5);
   await page.mouse.up();
   await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(44.5);
-  await expect(page.locator("section.fixed.inset-0")).toBeHidden();
+  await expect(page.locator('[data-player-surface="full"]')).toBeHidden();
 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("ArrowRight");
@@ -511,19 +511,23 @@ test("@desktop mini player delays hiding hover actions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
+  await page.clock.install();
   await page.goto("/");
 
   await page.getByRole("button", { name: "Collapse player" }).click();
   await page.getByRole("button", { name: "Mini player" }).click();
-  const mini = page.locator(".mini-player");
+  const mini = page.locator('[data-player-surface="mini"]');
   const compactAction = page.getByRole("button", { name: "Open compact player" });
   await mini.hover();
   await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
 
+  // The actions stay for 900 ms after the pointer leaves, measured on the page clock. They keep taking input while
+  // they are open; their opacity only starts to fade once they close, so the input state tells the two apart.
   await page.mouse.move(0, 0);
-  await page.waitForTimeout(350);
-  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
-  await page.waitForTimeout(700);
+  await page.clock.runFor(350);
+  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("auto");
+  await page.clock.runFor(700);
+  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("none");
   await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
 });
 
@@ -564,8 +568,11 @@ test("@desktop compact player reserves the final directory action area", async (
   const [compactBox, rowBox, contentPadding, sidebarBox] = await Promise.all([
     compact.boundingBox(),
     lastRow.boundingBox(),
-    page.locator(".app-main").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
-    page.locator(".app-shell > aside").boundingBox(),
+    page.getByRole("main").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
+    page
+      .getByRole("complementary")
+      .filter({ has: page.getByRole("button", { name: "Collapse sidebar", exact: true }) })
+      .boundingBox(),
   ]);
   expect(compactBox).not.toBeNull();
   expect(rowBox).not.toBeNull();
@@ -599,7 +606,9 @@ test("compact player swipes up to full and down to mini on phones", async ({ pag
   await expect(page.getByRole("button", { name: "Mini player" })).toHaveCount(0);
   // A short swipe springs back and does not count as a tap on the track title.
   await swipeCompact(page, -12);
-  await page.waitForTimeout(300);
+  await expect
+    .poll(() => page.locator('[data-player-surface="compact"]').evaluate((bar) => getComputedStyle(bar).transform))
+    .toBe("none");
   expect(await playerMode()).toBe("compact");
 
   await swipeCompact(page, -80);
@@ -617,11 +626,11 @@ test("mini player opens compact on tap, persists its snapped edge, and compact m
   await page.goto("/");
 
   const padding = await page
-    .locator(".app-main")
+    .getByRole("main")
     .evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom));
   expect(padding).toBeGreaterThanOrEqual(160);
   await swipeCompact(page, 40);
-  const mini = page.locator(".mini-player");
+  const mini = page.locator('[data-player-surface="mini"]');
   await expect(mini).toBeVisible();
   await mini.tap({ position: { x: 8, y: 46 } });
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
@@ -640,7 +649,7 @@ test("mini player opens compact on tap, persists its snapped edge, and compact m
 
   await page.reload();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("mini");
-  const restored = await page.locator(".mini-player").boundingBox();
+  const restored = await page.locator('[data-player-surface="mini"]').boundingBox();
   expect(restored).not.toBeNull();
   expect(restored!.x).toBeLessThanOrEqual(10);
 });
@@ -831,9 +840,7 @@ test("failed direct playback offers compatibility before source fallback and the
   await expect(page.getByRole("button", { name: "30 min" })).toBeVisible();
   await expect(page.getByRole("button", { name: "60 min" })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Finish current track" })).toHaveAttribute("data-state", "unchecked");
-  const sleepPopover = page
-    .getByRole("button", { name: "30 min" })
-    .locator("xpath=ancestor::div[contains(@class, 'fixed')]");
+  const sleepPopover = page.getByRole("dialog", { name: "Sleep timer", exact: true });
   expect((await sleepPopover.boundingBox())!.width).toBeLessThanOrEqual(230);
   const rewindMinutes = page.getByRole("spinbutton", { name: "Minutes to rewind when the sleep timer stops playback" });
   await expect(rewindMinutes).toHaveValue("0");

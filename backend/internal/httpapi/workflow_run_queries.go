@@ -20,7 +20,7 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow run id", false)
 		return
 	}
 	if !s.requireWorkflowRunAccess(w, r, actor, id) {
@@ -29,7 +29,7 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	detail, err := s.workflowStore.LoadRunDetail(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "workflow run not found", false)
 			return
 		}
 		writeError(w, err)
@@ -71,7 +71,7 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow run id", false)
 		return
 	}
 	if !s.requireWorkflowRunAccess(w, r, actor, id) {
@@ -81,7 +81,7 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 	if value := strings.TrimSpace(r.URL.Query().Get("afterId")); value != "" {
 		afterID, err = strconv.ParseInt(value, 10, 64)
 		if err != nil || afterID < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow event cursor"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow event cursor", false)
 			return
 		}
 	}
@@ -101,7 +101,7 @@ func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid workflow run id", false)
 		return
 	}
 	if !s.requireWorkflowRunAccess(w, r, actor, id) {

@@ -190,7 +190,7 @@ func (s *Server) getCustomWorkFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	rel := s.customWorkRequestPath(r.URL.Query().Get("path"))
 	if rel == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "folder is required", false)
 		return
 	}
 	folder, err := s.customWorkCandidate(r.Context(), rel)
@@ -232,17 +232,17 @@ func (s *Server) createCustomWork(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json body", false)
 		return
 	}
 	rel := s.customWorkRequestPath(payload.Path)
 	title := strings.TrimSpace(payload.Title)
 	if rel == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "folder is required", false)
 		return
 	}
 	if utf8.RuneCountInString(title) > customWorkTitleLimit {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is too long"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "title is too long", false)
 		return
 	}
 
@@ -341,7 +341,7 @@ func (s *Server) customWorkNoticeAccepted(ctx context.Context) (bool, error) {
 
 func (s *Server) requireCustomWorkAccess(w http.ResponseWriter, r *http.Request) (currentUser, bool) {
 	if s.cfg.IsDemo() {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "custom works are unavailable in demo mode"})
+		writeAPIError(w, http.StatusForbidden, "permission_denied", "custom works are unavailable in demo mode", false)
 		return currentUser{}, false
 	}
 	return s.requirePermissions(w, r, "library:write", "downloads:manage")
@@ -350,17 +350,17 @@ func (s *Server) requireCustomWorkAccess(w http.ResponseWriter, r *http.Request)
 func writeCustomWorkError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errLibraryUnavailable):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the library folder is unavailable"})
+		writeAPIError(w, http.StatusConflict, "conflict", "the library folder is unavailable", false)
 	case errors.Is(err, errCustomWorkFolderUnavailable):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkFolderUnavailable.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", errCustomWorkFolderUnavailable.Error(), false)
 	case errors.Is(err, errCustomWorkCodesExhausted):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkCodesExhausted.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", errCustomWorkCodesExhausted.Error(), false)
 	case errors.Is(err, errCustomWorkFolderInUse):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkFolderInUse.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", errCustomWorkFolderInUse.Error(), false)
 	default:
 		// Filesystem errors name host paths; they stay in the server log.
 		slog.Warn("custom work request failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "the custom work could not be created"})
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "the custom work could not be created", false)
 	}
 }
 

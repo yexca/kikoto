@@ -291,21 +291,21 @@ func (s *Server) runWorkflowPreset(w http.ResponseWriter, r *http.Request) {
 	}
 	spec, found := presetWorkflowSpecByCode(strings.TrimSpace(r.PathValue("code")))
 	if !found {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow preset not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "workflow preset not found", false)
 		return
 	}
 	var request presetWorkflowRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	plan, err := s.planPresetWorkflow(r.Context(), spec, request.Inputs, time.Now(), false)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if missing := missingWorkflowGraphPermission(actor.Permissions, plan.Permissions); missing != "" {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied", "permission": missing})
+		writeAPIErrorDetails(w, http.StatusForbidden, "permission_denied", "permission denied", false, map[string]any{"permission": missing})
 		return
 	}
 	definition, err := s.loadWorkflowDefinitionByCode(r.Context(), spec.Code)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api, type RankingList, type RankingOverview } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * The tracked rankings and their schedule, shared by the Rankings view, its
@@ -20,11 +21,7 @@ export function useRankingOverview() {
     }
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void reload(controller.signal);
-    return () => controller.abort();
-  }, [reload]);
+  useEffect(() => startLoad((signal) => reload(signal)), [reload]);
 
   const updateList = useCallback((list: RankingList) => {
     setOverview((current) =>

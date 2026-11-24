@@ -412,12 +412,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByText("Drama", { exact: true })).toBeVisible();
   await expect(page.getByText("Synced", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("+1", { exact: true })).toHaveCount(0);
-  await expect(
-    page
-      .locator("div.inline-flex")
-      .filter({ hasText: /^Soft$/ })
-      .first(),
-  ).toBeVisible();
+  await expect(page.getByText("Soft", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Page 1 · 30 Voice actors", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Voice actor pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
@@ -529,8 +524,10 @@ test("creator detail does not auto-refresh and offers First pull beside More", a
 });
 
 // Counts React commits through the devtools hook, so a render loop that
-// leaves the DOM unchanged is still observable.
+// leaves the DOM unchanged is still observable. It also installs the page
+// clock, which expectReactCommitsToSettle advances instead of sleeping.
 async function countReactCommits(page: Page) {
+  await page.clock.install();
   await page.addInitScript(() => {
     const renderers = new Map<number, unknown>();
     const counter = window as unknown as { __reactCommitCount: number };
@@ -562,7 +559,7 @@ async function expectReactCommitsToSettle(page: Page) {
   await expect
     .poll(async () => {
       const before = await commitCount();
-      await page.waitForTimeout(250);
+      await page.clock.runFor(250);
       return (await commitCount()) - before;
     })
     .toBe(0);

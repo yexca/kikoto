@@ -111,7 +111,8 @@ func (s *Server) writeCreatorRefreshError(w http.ResponseWriter, err error) bool
 	}
 	var refreshErr creatorRefreshError
 	if errors.As(err, &refreshErr) {
-		writeJSON(w, refreshErr.status, map[string]string{"error": refreshErr.message})
+		code, retryable := defaultErrorClassification(refreshErr.status)
+		writeAPIError(w, refreshErr.status, code, refreshErr.message, retryable)
 		return false
 	}
 	writeError(w, err)

@@ -28,7 +28,11 @@ export const alwaysRun = ["plan", "style"];
 // runs, and it formats and tests every script, so one that only Style or no
 // job uses selects nothing. An unlisted script selects every job.
 export const scriptJobs = {
+  "check-api-errors.go": ["backend"],
+  "check-go-dropped-errors.go": ["backend"],
   "check-go-format.go": ["backend"],
+  "check-httpapi-sql.go": ["backend"],
+  "httpapi-sql-baseline.json": ["backend"],
   "golangci-lint.yml": ["backend"],
   "go-test-shard.mjs": ["backend"],
   "go-test-durations.json": ["backend"],
@@ -36,6 +40,9 @@ export const scriptJobs = {
   "production-browser-smoke.mjs": ["production"],
   "smoke.mjs": ["dev_smoke"],
   "check-doc-links.mjs": [],
+  "check-duplicate-helpers.mjs": [],
+  "duplicate-helpers-baseline.json": [],
+  "check-e2e-locators.mjs": [],
   "check-doc-locales.mjs": [],
   "check-playwright-image.mjs": [],
   "check-pr-description.mjs": [],

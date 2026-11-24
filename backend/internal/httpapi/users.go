@@ -45,7 +45,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		Enabled     *bool  `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	username := strings.TrimSpace(payload.Username)
@@ -55,11 +55,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		displayName = username
 	}
 	if err := account.ValidateUserWrite(actor, role, payload.Password, true); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if username == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "username is required", false)
 		return
 	}
 	enabled := true
@@ -71,7 +71,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		Enabled: enabled, ActorUserID: actor.ID,
 	})
 	if errors.Is(err, account.ErrUsernameExists) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "username already exists"})
+		writeAPIError(w, http.StatusConflict, "conflict", "username already exists", false)
 		return
 	}
 	if err != nil {
@@ -88,12 +88,12 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid user id", false)
 		return
 	}
 	payload, err := decodeUpdateUserPayload(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	updated, err := s.accountStore.PatchManagedUser(r.Context(), userID, account.ManagedUserPatch{
@@ -130,7 +130,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid user id", false)
 		return
 	}
 	if err := s.accountStore.DeleteManagedUserWithPolicy(r.Context(), userID, account.ManagedUserPolicy{
@@ -145,13 +145,13 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 func writeManagedUserError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "user not found", false)
 	case errors.Is(err, account.ErrEnvironmentManaged), errors.Is(err, account.ErrManagedUserForbidden):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusForbidden, "permission_denied", err.Error(), false)
 	case errors.Is(err, account.ErrLastSuperAdmin), errors.Is(err, account.ErrDeleteOwnAccount),
 		errors.Is(err, account.ErrPasswordTooShort), errors.Is(err, account.ErrPasswordRequired),
 		errors.Is(err, account.ErrPlaceholderPassword), errors.Is(err, account.ErrInvalidUserRole), errors.Is(err, account.ErrGrantSuperAdmin):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 	default:
 		writeError(w, err)
 	}

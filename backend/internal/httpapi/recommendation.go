@@ -51,7 +51,7 @@ func (s *Server) workRecommendationScore(ctx context.Context, userID, workID int
 func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.requireDemoWork(w, r, workID) || s.refuseRemoteOnlyWork(w, r, workID) {
@@ -60,7 +60,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	recommendationSessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
 	if recommendationSessionID != "" && !recommendationSessionIDPattern.MatchString(recommendationSessionID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation session", false)
 		return
 	}
 	if s.cfg.IsDemo() {
@@ -98,7 +98,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -114,7 +114,7 @@ func (s *Server) recordRecommendationEvents(w http.ResponseWriter, r *http.Reque
 	}
 	events, err := decodeRecommendationEvents(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -125,7 +125,7 @@ func (s *Server) recordRecommendationEvents(w http.ResponseWriter, r *http.Reque
 	defer func() { _ = tx.Rollback() }()
 	if err := insertRecommendationEvents(r.Context(), tx, user.ID, events); err != nil {
 		if isRecommendationEventValidationError(err) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		writeError(w, err)
@@ -214,7 +214,7 @@ func insertRecommendationEvents(ctx context.Context, tx *sql.Tx, userID int64, e
 func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		writeAPIError(w, http.StatusUnauthorized, "authentication_required", "login required", false)
 		return
 	}
 	const windowDays = 30

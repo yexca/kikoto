@@ -79,8 +79,8 @@ export type LyricsEditResult = {
 };
 
 export const lyricsEditApi = {
-  planWorkLyricsEdit: (workId: number, request: LyricsEditRequest) =>
-    postJSONBody<LyricsEditPlan>(`/api/works/${workId}/lyrics-edit/plan`, request),
+  planWorkLyricsEdit: (workId: number, request: LyricsEditRequest, signal?: AbortSignal) =>
+    postJSONBody<LyricsEditPlan>(`/api/works/${workId}/lyrics-edit/plan`, request, signal),
   applyWorkLyricsEdit: (workId: number, request: LyricsEditRequest) =>
     postJSONBody<LyricsEditResult>(`/api/works/${workId}/lyrics-edit`, request),
 };

@@ -227,18 +227,18 @@ func (s *Server) demoBundleRelations(ctx context.Context, members []workBundleMe
 func (s *Server) bundleMemberRequest(w http.ResponseWriter, r *http.Request) (int64, string, string, map[string]bool, bool) {
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return 0, "", "", nil, false
 	}
 	memberCode := normalizeDLsiteCode(r.PathValue("code"))
 	if memberCode == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work code", false)
 		return 0, "", "", nil, false
 	}
 	var bundleCode string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT UPPER(primary_code) FROM work WHERE id = ?", workID).Scan(&bundleCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return 0, "", "", nil, false
 		}
 		writeError(w, err)
@@ -250,7 +250,7 @@ func (s *Server) bundleMemberRequest(w http.ResponseWriter, r *http.Request) (in
 		return 0, "", "", nil, false
 	}
 	if family[memberCode] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a bundle cannot contain an edition of itself"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "a bundle cannot contain an edition of itself", false)
 		return 0, "", "", nil, false
 	}
 	return workID, bundleCode, memberCode, family, true
@@ -278,7 +278,7 @@ func (s *Server) addWorkBundleMember(w http.ResponseWriter, r *http.Request) {
 		known = known || member.Code == memberCode
 	}
 	if !known && len(members) >= maxWorkBundleMembers {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a bundle has too many members"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "a bundle has too many members", false)
 		return
 	}
 	if _, err := s.db.ExecContext(ctx, `
@@ -358,14 +358,14 @@ func (s *Server) listWorkBundleCandidates(w http.ResponseWriter, r *http.Request
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	ctx := r.Context()
 	var title string
 	if err := s.db.QueryRowContext(ctx, "SELECT COALESCE(title, '') FROM work WHERE id = ?", workID).Scan(&title); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)

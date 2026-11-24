@@ -396,7 +396,7 @@ func dumpSeedData(db *sql.DB, tables []schemaObject) ([]string, error) {
 		if isVirtualTable(table) {
 			continue
 		}
-		columns, err := tableColumns(db, table.name)
+		columns, err := tableColumnDefinitions(db, table.name)
 		if err != nil {
 			return nil, err
 		}
@@ -530,7 +530,7 @@ func orderSeedData(db *sql.DB, data []seedTableData) ([]seedTableData, error) {
 	return ordered, nil
 }
 
-func tableColumns(db *sql.DB, table string) ([]column, error) {
+func tableColumnDefinitions(db *sql.DB, table string) ([]column, error) {
 	rows, err := db.Query("PRAGMA table_info(" + quoteIdentifier(table) + ")")
 	if err != nil {
 		return nil, err

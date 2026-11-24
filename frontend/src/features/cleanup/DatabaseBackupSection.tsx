@@ -9,7 +9,7 @@ import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkfl
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type DatabaseBackupList } from "@/lib/api";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 import { formatByteSize } from "./cacheCleanupModel";
 
@@ -46,7 +46,7 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
         kind: "error",
         message: t("cleanup.backup.runFailed"),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(run.id),
+        onAction: () => openWorkflowRun(run.id),
       });
       return;
     }
@@ -63,7 +63,7 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
         kind: queued.existing ? "info" : "success",
         message: t(queued.existing ? "cleanup.backup.alreadyQueued" : "cleanup.backup.queued", { runId: queued.runId }),
         actionLabel: t("notifications.openActivity"),
-        onAction: () => openActivityRun(queued.runId),
+        onAction: () => openWorkflowRun(queued.runId),
       });
     } catch (error) {
       toast.notify(toastFromError(error, t("cleanup.backup.failed")));
@@ -108,9 +108,4 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
       }
     />
   );
-}
-
-function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/workflows?run=${runId}`);
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

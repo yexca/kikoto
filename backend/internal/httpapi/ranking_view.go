@@ -208,22 +208,22 @@ func (s *Server) getRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	request, err := parseRankingPageRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if s.cfg.IsDemo() {
 		page, found, err := demoRankingPage(id, request)
 		if !found {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": errRankingListNotFound.Error()})
+			writeAPIError(w, http.StatusNotFound, "not_found", errRankingListNotFound.Error(), false)
 			return
 		}
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		writeJSON(w, http.StatusOK, page)
@@ -231,7 +231,7 @@ func (s *Server) getRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := s.loadVisibleRankingList(r.Context(), user, id)
 	if errors.Is(err, errRankingListNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -240,7 +240,7 @@ func (s *Server) getRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := s.loadRankingPage(r.Context(), user.ID, list, request)
 	if errors.Is(err, errRankingSnapshotNotFound) || errors.Is(err, errRankingOrderUnknown) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -762,22 +762,22 @@ func (s *Server) listRankingSnapshots(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	request, err := parseRankingTimelineRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if s.cfg.IsDemo() {
 		timeline, found, err := demoRankingTimeline(id, request)
 		if !found {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": errRankingListNotFound.Error()})
+			writeAPIError(w, http.StatusNotFound, "not_found", errRankingListNotFound.Error(), false)
 			return
 		}
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 			return
 		}
 		writeJSON(w, http.StatusOK, timeline)
@@ -785,7 +785,7 @@ func (s *Server) listRankingSnapshots(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := s.loadVisibleRankingList(r.Context(), user, id)
 	if errors.Is(err, errRankingListNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -794,7 +794,7 @@ func (s *Server) listRankingSnapshots(w http.ResponseWriter, r *http.Request) {
 	}
 	variant, err := list.variantFor(request.order)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	timeline, err := s.loadRankingTimeline(r.Context(), variant.ID, request)
@@ -861,14 +861,14 @@ func (s *Server) markRankingSeen(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	var payload struct {
 		SnapshotID int64 `json:"snapshotId"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil || payload.SnapshotID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "snapshotId is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "snapshotId is required", false)
 		return
 	}
 	// The seen snapshot is kept for the order it belongs to.
@@ -879,7 +879,7 @@ func (s *Server) markRankingSeen(w http.ResponseWriter, r *http.Request) {
 		WHERE snapshot.id = ? AND variant.ranking_list_id = ?
 	`, payload.SnapshotID, id).Scan(&variantID)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": errRankingSnapshotNotFound.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", errRankingSnapshotNotFound.Error(), false)
 		return
 	}
 	if err != nil {

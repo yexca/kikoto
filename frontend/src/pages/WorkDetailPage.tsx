@@ -14,6 +14,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { PersistedWorkDetailController, RemoteOnlyWorkDetailController } from "@/features/work-detail/lazyWorkDetail";
 import { api, type LibrarySource, type ListeningStatus } from "@/lib/api";
 import { NAVIGATION_EVENT, navigateToHistoryReturn } from "@/lib/browserHistory";
+import { startLoad } from "@/lib/effectScope";
 import {
   detailRemoteCodeFromLocation,
   detailSourceIntentFromLocation,
@@ -68,19 +69,15 @@ export function WorkDetailPage({
 
   useEffect(() => {
     if (!active || sourcesLoaded.current) return;
-    const controller = new AbortController();
-    api
-      .listLibrarySources(controller.signal)
-      .then((items) => {
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: (items) => {
         sourcesLoaded.current = true;
         setSources(items);
         setSourcesSettled(true);
-      })
-      .catch(() => {
-        // A work still opens without its remote sources; the next visit asks again.
-        if (!controller.signal.aborted) setSourcesSettled(true);
-      });
-    return () => controller.abort();
+      },
+      // A work still opens without its remote sources; the next visit asks again.
+      onError: () => setSourcesSettled(true),
+    });
   }, [active]);
 
   const code = active ? route.code : null;

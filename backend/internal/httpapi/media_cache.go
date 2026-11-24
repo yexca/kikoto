@@ -23,7 +23,7 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 	}
 	sourceID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid source id", false)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
@@ -31,19 +31,19 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "work code is required", false)
 		return
 	}
 	var payload struct {
 		Path string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	remotePath := cleanRemoteRelativePath(payload.Path)
 	if remotePath == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remote path is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "remote path is required", false)
 		return
 	}
 	if !s.settingBoolContext(r.Context(), "remote_cache_enabled", false) {
@@ -126,7 +126,7 @@ func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	result, err := s.enqueueRemoteMediaCache(r.Context(), actor.ID, id)
@@ -259,23 +259,23 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, requestedByUserID 
 func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJobRecord) error {
 	var payload mediaCacheJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "resolve", map[string]any{"mediaLocationId": payload.MediaLocationID}, 0, 1)
+	s.checkpointJobOrLog(ctx, job, "resolve", map[string]any{"mediaLocationId": payload.MediaLocationID}, 0, 1)
 	target, err := s.loadMediaCacheTarget(ctx, payload.MediaLocationID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	releaseCacheLock, err := s.acquireCachePathLock(ctx, target.CachePath)
 	if err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
 	defer releaseCacheLock()
 	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, sqlutil.Int64(target.SizeBytes)); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	} else if ok {
 		if err := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", 0); err != nil {
@@ -287,17 +287,17 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 	}
 	targetPath, err := safeCachePath(s.cfg.CacheRoot, target.CachePath)
 	if err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
 	if info, statErr := os.Stat(targetPath); statErr == nil && fileMatchesKnownSize(targetPath, sqlutil.Int64(target.SizeBytes), s.recordedFileSize(ctx, "cache", target.SourceID, target.CachePath)) {
 		cacheLocationID, upsertErr := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, sqlutil.Int64(target.SizeBytes), sqlutil.Int64(target.DurationSeconds), info.Size())
 		if upsertErr != nil {
-			_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, upsertErr.Error(), 0)
+			logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, upsertErr.Error(), 0))
 			return upsertErr
 		}
 		if finishErr := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", info.Size()); finishErr != nil {
@@ -309,23 +309,23 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 	}
 	source, err := s.loadRemoteSourceForUse(ctx, target.SourceID)
 	if err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "download", map[string]any{"cachePath": target.CachePath}, 0, 1)
+	s.checkpointJobOrLog(ctx, job, "download", map[string]any{"cachePath": target.CachePath}, 0, 1)
 	written, err := s.downloadToFile(ctx, source, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
 		MaxBytes: s.remoteMediaDownloadLimitBytes(ctx),
 	})
 	if err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
 	cacheLocationID, err := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, sqlutil.Int64(target.SizeBytes), sqlutil.Int64(target.DurationSeconds), written)
 	if err != nil {
-		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		logWorkflowWriteError(ctx, "finish media cache run", job, s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0))
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "register", map[string]any{"cachePath": target.CachePath, "bytes": written}, 1, 1)
+	s.checkpointJobOrLog(ctx, job, "register", map[string]any{"cachePath": target.CachePath, "bytes": written}, 1, 1)
 	if err := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", written); err != nil {
 		return err
 	}

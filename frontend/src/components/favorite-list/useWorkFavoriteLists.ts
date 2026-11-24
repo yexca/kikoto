@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type FavoriteList } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 function editableLists(lists: FavoriteList[]) {
   return lists.filter((list) => list.kind !== "marked");
@@ -51,22 +52,15 @@ export function useWorkFavoriteLists({
 
   useEffect(() => {
     if (!open || !workId) return;
-    let cancelled = false;
     setLoadError("");
-    api
-      .getWorkFavoriteLists(workId)
-      .then((result) => {
-        if (!cancelled) replaceLists(editableLists(result));
-      })
-      .catch((error) => {
-        if (cancelled) return;
+    return startLoad(() => api.getWorkFavoriteLists(workId), {
+      onSuccess: (result) => replaceLists(editableLists(result)),
+      onError: (error) => {
         const feedback = toastFromError(error, t("workCard.favoriteListsLoadFailed"));
         toast.notify(feedback);
         setLoadError(feedback.message);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+    });
   }, [open, replaceLists, t, toast, workId]);
 
   // Another work starts from its own lists rather than the previous one's.

@@ -322,7 +322,7 @@ export const RecordPhotoTile = memo(function RecordPhotoTile({
   );
 });
 
-function fileIcon(kind: RecordAsset["kind"]) {
+function recordAssetIcon(kind: RecordAsset["kind"]) {
   switch (kind) {
     case "audio":
       return Music;
@@ -350,7 +350,7 @@ function FileThumbnail({ file }: { file: RecordAsset }) {
       />
     );
   }
-  const Icon = fileIcon(file.kind);
+  const Icon = recordAssetIcon(file.kind);
   return <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />;
 }
 

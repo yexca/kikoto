@@ -28,7 +28,7 @@ type VoiceCredit struct {
 
 func (s *Store) LoadVoiceCredits(ctx context.Context, workIDs []int64) (map[int64][]VoiceCredit, error) {
 	result := map[int64][]VoiceCredit{}
-	workIDs = uniqueInt64s(workIDs)
+	workIDs = uniquePositiveInt64s(workIDs)
 	if len(workIDs) == 0 {
 		return result, nil
 	}
@@ -203,7 +203,7 @@ func (s *Store) LoadAvailability(ctx context.Context, workIDs []int64) (map[int6
 			(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available'),
 			COALESCE((SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available'), '')
 		FROM work WHERE work.id IN (%s)
-	`, uniqueInt64s(workIDs))
+	`, uniquePositiveInt64s(workIDs))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func (s *Store) LoadSeries(ctx context.Context, codes []string) (map[string]stri
 
 func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[int64][]ManualOverrideRow, error) {
 	result := map[int64][]ManualOverrideRow{}
-	query, args := int64InQuery(`SELECT work_id, field_name, value_json, asset_path, language FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, uniqueInt64s(workIDs))
+	query, args := int64InQuery(`SELECT work_id, field_name, value_json, asset_path, language FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, uniquePositiveInt64s(workIDs))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -296,7 +296,7 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 		WHERE requested_work.id IN (%s)
 			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 		ORDER BY requested_work.id
-	`, uniqueInt64s(workIDs))
+	`, uniquePositiveInt64s(workIDs))
 	args = append([]any{userID}, args...)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -329,7 +329,7 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 }
 
 func int64InQuery(format string, values []int64) (string, []any) {
-	values = uniqueInt64s(values)
+	values = uniquePositiveInt64s(values)
 	args := make([]any, len(values))
 	for index, value := range values {
 		args[index] = value
@@ -352,7 +352,8 @@ func placeholders(count int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
-func uniqueInt64s(values []int64) []int64 {
+// uniquePositiveInt64s drops non-positive and repeated ids, keeping first-seen order.
+func uniquePositiveInt64s(values []int64) []int64 {
 	result := []int64{}
 	seen := map[int64]bool{}
 	for _, value := range values {

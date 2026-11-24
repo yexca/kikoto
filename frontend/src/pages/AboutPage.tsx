@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { APP_CLIENT_VERSION, appClientPlatformName, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { startLoad } from "@/lib/effectScope";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
 import { cn } from "@/lib/tailwindClassNames";
 import { NowPlayingBars } from "@/player/dock/playerControls";
@@ -112,18 +113,7 @@ export function AboutPage() {
 /** The server's update check, which also reports the server's own version. */
 function useAppUpdate() {
   const [appUpdate, setAppUpdate] = useState<AppUpdate | null>(null);
-  useEffect(() => {
-    let active = true;
-    void api
-      .appUpdate()
-      .then((result) => {
-        if (active) setAppUpdate(result);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
+  useEffect(() => startLoad(() => api.appUpdate(), { onSuccess: setAppUpdate }), []);
   return appUpdate;
 }
 

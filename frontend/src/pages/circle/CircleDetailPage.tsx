@@ -35,7 +35,6 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { CatalogSyncDialog, type CatalogSyncCode } from "@/features/workflows/catalog-sync/CatalogSyncDialog";
-import { openWorkflowPath, workflowRunPath } from "@/features/workflows/workflowLinks";
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import {
   api,
@@ -48,6 +47,7 @@ import {
 import { creatorCoverUrl } from "@/lib/creatorApi";
 import { navigateToHistoryReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { startLoad } from "@/lib/effectScope";
 import { coalesceRuns } from "@/lib/inflightRequests";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
@@ -68,6 +68,7 @@ import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { creatorWorkPageSizeOptions } from "@/lib/creatorWorksBrowse";
+import { openWorkflowPath, openWorkflowRun } from "@/lib/workflowLinks";
 import { circleRefreshSettledMessage, useCircleRefreshRun } from "@/pages/circleRefreshRun";
 import { CreatorWorkFetchConfirm, CreatorWorkSelectionBar } from "@/pages/creator/CreatorWorkSelectionBar";
 import { useCreatorWorkSelection } from "@/pages/creator/useCreatorWorkSelection";
@@ -244,13 +245,12 @@ export function CircleDetailPage({
 
   useEffect(() => {
     if (!active) return;
-    const controller = new AbortController();
-    void loadCircleDetail(true, controller.signal).then((next) => {
-      if (controller.signal.aborted) return;
-      if (next) completeResultsScroll();
-      else cancelResultsScroll();
+    return startLoad((signal) => loadCircleDetail(true, signal), {
+      onSuccess: (next) => {
+        if (next) completeResultsScroll();
+        else cancelResultsScroll();
+      },
     });
-    return () => controller.abort();
   }, [active, cancelResultsScroll, completeResultsScroll, externalId, loadCircleDetail]);
 
   // The fallback must keep its identity across renders: works-derived memos
@@ -324,7 +324,7 @@ export function CircleDetailPage({
   const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
   const openSubscriptions = () => openWorkflowPath("/discover?panel=subscriptions");
-  const openRefreshRun = (runId: number) => openWorkflowPath(workflowRunPath(runId));
+  const openRefreshRun = openWorkflowRun;
   const refreshRun = useCircleRefreshRun({
     run: detail?.refresh,
     canWatchRuns: canOpenWorkflows,

@@ -65,7 +65,9 @@ response embeds a credential or CSRF token. The split-deployment
 `frontend/nginx.conf` applies the same `/assets/` caching, `no-cache` app shell,
 and static compression.
 
-Error responses share one shape: `error`, a stable `code`, and `retryable`. A
+Error responses share one shape: `error`, a stable `code`, and `retryable`.
+Fields beside them explain a refusal further, such as the permission a request
+lacks or the summary of a conflicting plan. A
 request the caller got wrong answers with a 4xx, is not retryable, and is not
 logged as an error. An addressed work, media location, source, alias, or
 tracked source that does not exist is a 404 `not_found`; one of the wrong kind,

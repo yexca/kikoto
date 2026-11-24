@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, NativeSelect } from "@/components/ui/input";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { userDataApi, type KikoeruAuth, type KikoeruImportOptions, type KikoeruImportResponse } from "./userDataApi";
@@ -50,20 +51,16 @@ export function KikoeruAccountPanel({ disabled, onLoaded }: PanelProps) {
   const locked = disabled || running;
 
   useEffect(() => {
-    const controller = new AbortController();
-    userDataApi
-      .kikoeruOptions(controller.signal)
-      .then((next) => {
+    return startLoad((signal) => userDataApi.kikoeruOptions(signal), {
+      onSuccess: (next) => {
         setOptions(next);
         setServer((current) => current || (next.sources[0] ? String(next.sources[0].id) : manualServer));
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setOptionsFailed(true);
-          setServer(manualServer);
-        }
-      });
-    return () => controller.abort();
+      },
+      onError: () => {
+        setOptionsFailed(true);
+        setServer(manualServer);
+      },
+    });
   }, []);
 
   /** Runs a change that needs consent now, or after the user confirms the notice. */

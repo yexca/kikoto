@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"sort"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // Effective resolves merges before applying overrides. A removal wins over an
@@ -23,7 +25,7 @@ func Effective(ctx context.Context, q Querier, workID, genreWorkID int64, fallba
 		}
 		ids = append(ids, id)
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return nil, err
 	}
 	if len(ids) == 0 {
@@ -124,7 +126,7 @@ func projectWorkTx(ctx context.Context, tx *sql.Tx, workID, genreWorkID int64, f
 			}
 			base = append(base, id)
 		}
-		if err := closeRows(rows); err != nil {
+		if err := sqlutil.CloseRows(rows); err != nil {
 			return err
 		}
 	}
@@ -165,7 +167,7 @@ func projectWorkTx(ctx context.Context, tx *sql.Tx, workID, genreWorkID int64, f
 			obsolete = append(obsolete, v)
 		}
 	}
-	if err := closeRows(rows); err != nil {
+	if err := sqlutil.CloseRows(rows); err != nil {
 		return err
 	}
 	for _, v := range obsolete {
@@ -198,5 +200,5 @@ func Read(ctx context.Context, q Querier, workID int64) ([]EffectiveTag, error) 
 		}
 		result = append(result, t)
 	}
-	return result, closeRows(rows)
+	return result, sqlutil.CloseRows(rows)
 }

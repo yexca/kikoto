@@ -142,11 +142,11 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 	}
 	var payload availabilityWatchConfigUpdate
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := s.validateAvailabilityWatchSource(r.Context(), payload.SourceID); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if payload.SourceID == nil || *payload.SourceID <= 0 {
@@ -176,12 +176,12 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 	}
 	var payload availabilityWatchTargetsUpdate
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	codes, err := normalizeGraphWorkCodes(payload.TargetCodes, availabilityWatchMaxTargets)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if !replace {
@@ -198,7 +198,7 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if total > availabilityWatchMaxTargets {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many work codes; maximum is 1000"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "too many work codes; maximum is 1000", false)
 			return
 		}
 	}
@@ -215,7 +215,7 @@ func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Re
 	}
 	targetID, err := parseInt64PathValue(r, "id")
 	if err != nil || targetID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid Availability Watch target id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid Availability Watch target id", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), `
@@ -230,7 +230,7 @@ func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Re
 	}
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Availability Watch target not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "Availability Watch target not found", false)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -245,11 +245,11 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload availabilityWatchTargetIDs
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	if err := validateAvailabilityWatchTargetIDs(payload.TargetIDs, availabilityWatchMaxTargets); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	view, err := s.loadAvailabilityWatch(r.Context())
@@ -258,7 +258,7 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if view.ID == 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "add works to Availability Watch before checking it"})
+		writeAPIError(w, http.StatusConflict, "conflict", "add works to Availability Watch before checking it", false)
 		return
 	}
 	trigger := workflowRunTrigger{Type: "manual", Reason: "manual_run"}
@@ -267,7 +267,7 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.enqueueAvailabilityWatch(r.Context(), actor.ID, trigger, payload.TargetIDs...)
 	if errors.Is(err, errAvailabilityWatchRunActive) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -671,30 +671,30 @@ func availabilityWatchNodes() []map[string]string {
 func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJobRecord) error {
 	var payload availabilityWatchJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch snapshot is invalid")
+		s.failJobOrLog(ctx, job, "Availability Watch snapshot is invalid")
 		return err
 	}
 	if payload.RequestedByUserID <= 0 {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch requester is unavailable")
+		s.failJobOrLog(ctx, job, "Availability Watch requester is unavailable")
 		return fmt.Errorf("availability watch requester is unavailable")
 	}
 	owner, err := s.accountStore.LoadByID(ctx, payload.RequestedByUserID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch requester is unavailable")
+		s.failJobOrLog(ctx, job, "Availability Watch requester is unavailable")
 		return err
 	}
 	if missing := missingWorkflowGraphPermission(owner.Permissions, availabilityWatchPermissions); missing != "" {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch permission is no longer available")
+		s.failJobOrLog(ctx, job, "Availability Watch permission is no longer available")
 		return fmt.Errorf("availability watch requires permission %s", missing)
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	healthy, healthErr := s.healthyRemoteSourceIDsForAvailability(ctx, payload.SourceID)
 	if healthErr != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch source health check failed")
+		s.failJobOrLog(ctx, job, "Availability Watch source health check failed")
 		return healthErr
 	}
 	execution := availabilityWatchExecution{
@@ -712,14 +712,14 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 		if err := s.executeAvailabilityWatchTarget(ctx, job, payload, snapshot, healthy, &execution); err != nil {
 			return err
 		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", execution.result, index+1, len(payload.Targets))
+		s.checkpointJobOrLog(ctx, job, "checking", execution.result, index+1, len(payload.Targets))
 	}
 	execution.result.Ready = len(execution.result.ReadyCodes)
 	if len(execution.result.Failures) > 0 {
 		execution.result.Status = "partial"
 	}
 	if err := s.finishAvailabilityWatchJob(ctx, job, nodeIDs, execution); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch run could not be finalized")
+		s.failJobOrLog(ctx, job, "Availability Watch run could not be finalized")
 		return err
 	}
 	return nil
@@ -737,7 +737,7 @@ func (s *Server) executeAvailabilityWatchTarget(
 ) error {
 	target, err := s.loadAvailabilityWatchExecutionTarget(ctx, snapshot.ID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch target state could not be loaded")
+		s.failJobOrLog(ctx, job, "Availability Watch target state could not be loaded")
 		return err
 	}
 	if !target.Active || target.Revision != snapshot.Revision {
@@ -772,18 +772,18 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 	result.Checked++
 	if err := s.refreshAvailabilityWatchFamilyMetadata(ctx, execution.syncer, targetID, code, &execution.metadata); err != nil {
 		if ctx.Err() == nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch family metadata state could not be saved")
+			s.failJobOrLog(ctx, job, "Availability Watch family metadata state could not be saved")
 		}
 		return false, err
 	}
 	if len(healthy) == 0 {
 		result.Failures = append(result.Failures, code+": no healthy remote source")
-		_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Remote source is unavailable")
+		logWorkflowWriteError(ctx, "record Availability Watch target error", job, s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Remote source is unavailable"))
 		return false, nil
 	}
 	familyCodes, err := s.availabilityWatchFamilyCodes(ctx, code)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch family could not be loaded")
+		s.failJobOrLog(ctx, job, "Availability Watch family could not be loaded")
 		return false, err
 	}
 	// Any edition of the family satisfies the watch; the watched code is
@@ -797,7 +797,7 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 				return false, ctx.Err()
 			}
 			result.Failures = append(result.Failures, code+": availability check failed")
-			_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Availability check failed")
+			logWorkflowWriteError(ctx, "record Availability Watch target error", job, s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Availability check failed"))
 			return false, nil
 		}
 		if hit := firstAvailableSource(response); hit != nil {
@@ -807,7 +807,7 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 	}
 	if available == nil {
 		if err := s.updateAvailabilityWatchTargetNotFound(ctx, targetID, target.Revision); err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
+			s.failJobOrLog(ctx, job, "Availability Watch result could not be saved")
 			return false, err
 		}
 		return false, nil
@@ -817,7 +817,7 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 		result.NewlyAvailableCodes = append(result.NewlyAvailableCodes, code)
 	}
 	if err := s.updateAvailabilityWatchTargetReady(ctx, targetID, target.Revision, available.SourceID, availableCode, target.Epoch); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
+		s.failJobOrLog(ctx, job, "Availability Watch result could not be saved")
 		return false, err
 	}
 	target.State = "ready"

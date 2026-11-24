@@ -33,7 +33,6 @@ export function useMediaTree<TTree>({
       setIsDirectoryLoading(true);
       return;
     }
-    let cancelled = false;
     setIsDirectoryLoading(true);
     const timer = window.setTimeout(() => {
       const nextTree =
@@ -47,15 +46,10 @@ export function useMediaTree<TTree>({
                   workCode: remoteDetail.remoteCode || remoteDetail.primaryCode || remoteDetail.remoteId,
                 })
               : buildLocalTree(localItems, fileSourceId);
-      if (!cancelled) {
-        setTree(nextTree);
-        setIsDirectoryLoading(false);
-      }
+      setTree(nextTree);
+      setIsDirectoryLoading(false);
     }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    return () => window.clearTimeout(timer);
   }, [
     buildLocalTree,
     buildRemoteTree,

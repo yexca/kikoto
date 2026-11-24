@@ -75,6 +75,7 @@ export function SleepTimerMenu({
       open={open}
       anchorRef={anchorRef}
       onOpenChange={onOpenChange}
+      ariaLabel={t("player.sleepTimer")}
       className={cn("w-[min(14rem,calc(100vw-1.5rem))]", menuSurface)}
     >
       <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">

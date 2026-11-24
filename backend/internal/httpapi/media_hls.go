@@ -107,7 +107,7 @@ func (source hlsPlaybackSource) segmentCount() int {
 func (s *Server) getMediaPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	locationID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	requestedProfile, ok := parseRequestedPlaybackProfile(w, r)
@@ -233,7 +233,7 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	locationID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media location id", false)
 		return
 	}
 	requestedProfile, ok := parseRequestedPlaybackProfile(w, r)

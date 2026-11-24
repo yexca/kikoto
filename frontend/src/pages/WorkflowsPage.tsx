@@ -1,5 +1,5 @@
 import { Compass } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePageHeaderBack } from "@/app/pageHeader";
@@ -33,11 +33,12 @@ import { WorkflowRuns } from "@/features/workflows/runs/WorkflowRuns";
 import { NextTriggers, type NextTriggerOwner } from "@/features/workflows/triggers/NextTriggers";
 import { OperationTriggersDialog } from "@/features/workflows/triggers/OperationTriggersDialog";
 import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation";
-import { openWorkflowPath } from "@/features/workflows/workflowLinks";
+import { openWorkflowPath } from "@/lib/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
 import { pageManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
+import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -95,30 +96,25 @@ export function WorkflowsPage({
   const [isLoading, setIsLoading] = useState(true);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const requestSeq = useRef(0);
+  const metadataLoad = useLatestLoad();
 
-  const refresh = () => {
-    const seq = ++requestSeq.current;
+  const refresh = useCallback(() => {
     setIsLoading(true);
     setLoadError("");
-    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers()])
-      .then(([nextDefinitions, nextTriggers]) => {
-        if (seq !== requestSeq.current) return;
+    void metadataLoad.run(() => Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers()]), {
+      onSuccess: ([nextDefinitions, nextTriggers]) => {
         setDefinitions(nextDefinitions);
         setTriggers(nextTriggers);
         setHasSnapshot(true);
-      })
-      .catch(() => {
-        if (seq === requestSeq.current) setLoadError(workflowCopy("metadataLoadFailed"));
-      })
-      .finally(() => {
-        if (seq === requestSeq.current) setIsLoading(false);
-      });
-  };
+      },
+      onError: () => setLoadError(workflowCopy("metadataLoadFailed")),
+      onSettled: () => setIsLoading(false),
+    });
+  }, [metadataLoad]);
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
 
   const operations = useMemo(
     () => operationsFromDefinitions(definitions, { recordEnabled: auth.recordEnabled }),

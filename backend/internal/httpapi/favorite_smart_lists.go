@@ -366,11 +366,11 @@ func writeSmartRuleError(w http.ResponseWriter, err error) bool {
 	if !errors.As(err, &ruleErr) {
 		return false
 	}
-	body := map[string]any{"error": "invalid smart list rule", "code": "invalid_smart_rule", "reason": ruleErr.Reason}
+	details := map[string]any{"reason": ruleErr.Reason}
 	if ruleErr.TagID > 0 {
-		body["tagId"] = ruleErr.TagID
+		details["tagId"] = ruleErr.TagID
 	}
-	writeJSON(w, http.StatusBadRequest, body)
+	writeAPIErrorDetails(w, http.StatusBadRequest, "invalid_smart_rule", "invalid smart list rule", false, details)
 	return true
 }
 
@@ -402,7 +402,7 @@ func (s *Server) previewSmartRule(w http.ResponseWriter, r *http.Request) {
 		Rule   personal.SmartRule `json:"rule"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	rule, err := personal.NormalizeSmartRule(payload.Rule)
@@ -543,7 +543,7 @@ func (s *Server) listSmartRuleTags(w http.ResponseWriter, r *http.Request) {
 func (s *Server) loadOwnSmartList(ctx context.Context, q personal.Querier, w http.ResponseWriter, r *http.Request, userID int64) (editableFavoriteList, bool) {
 	listID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid favorite list id", false)
 		return editableFavoriteList{}, false
 	}
 	scope, err := s.loadFavoriteListScope(ctx, q, userID, listID)
@@ -553,12 +553,12 @@ func (s *Server) loadOwnSmartList(ctx context.Context, q personal.Querier, w htt
 	}
 	switch scope.Kind {
 	case "":
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "favorite list not found", false)
 		return editableFavoriteList{}, false
 	case "smart":
 		return editableFavoriteList{ID: listID, Kind: scope.Kind, Match: scope.Match}, true
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "favorite list is not a smart list", "code": "not_smart_list"})
+		writeAPIError(w, http.StatusBadRequest, "not_smart_list", "favorite list is not a smart list", false)
 		return editableFavoriteList{}, false
 	}
 }

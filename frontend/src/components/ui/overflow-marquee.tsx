@@ -60,14 +60,15 @@ export function OverflowMarquee({
         overflowing && (interactionOnly ? "overflow-marquee--interaction" : "overflow-marquee--auto"),
         className,
       )}
+      data-marquee={overflowing ? (interactionOnly ? "interaction" : "auto") : "static"}
       title={overflowing ? text : undefined}
     >
-      <span className="overflow-marquee__track inline-flex min-w-max gap-[32px]" style={style}>
-        <span ref={contentRef} className="overflow-marquee__copy inline-block min-w-max">
+      <span className="overflow-marquee__track inline-flex min-w-max gap-[32px]" data-marquee-track style={style}>
+        <span ref={contentRef} className="overflow-marquee__copy inline-block min-w-max" data-marquee-copy>
           {text}
         </span>
         {overflowing && (
-          <span className="overflow-marquee__copy inline-block min-w-max" aria-hidden="true">
+          <span className="overflow-marquee__copy inline-block min-w-max" data-marquee-copy aria-hidden="true">
             {text}
           </span>
         )}
@@ -152,6 +153,7 @@ export function OverflowMarqueeGroup({
     <span
       ref={containerRef}
       className={cn("overflow-marquee-group block min-w-0 overflow-hidden", className)}
+      data-marquee={overflowing ? "auto" : "static"}
       title={overflowing ? `${primaryText}\n${secondaryText}` : undefined}
     >
       <span
@@ -160,14 +162,15 @@ export function OverflowMarqueeGroup({
           "overflow-marquee-group__track inline-flex min-w-max gap-[32px]",
           overflowing && "will-change-transform",
         )}
+        data-marquee-track
         data-marquee-pause-ms={overflowing ? MARQUEE_ORIGIN_PAUSE_MS : undefined}
       >
-        <span ref={contentRef} className="overflow-marquee-group__copy grid min-w-max">
+        <span ref={contentRef} className="overflow-marquee-group__copy grid min-w-max" data-marquee-copy>
           <span className={cn("block min-w-max whitespace-nowrap", primaryClassName)}>{primaryText}</span>
           <span className={cn("block min-w-max whitespace-nowrap", secondaryClassName)}>{secondaryText}</span>
         </span>
         {overflowing && (
-          <span className="overflow-marquee-group__copy grid min-w-max" aria-hidden="true">
+          <span className="overflow-marquee-group__copy grid min-w-max" data-marquee-copy aria-hidden="true">
             <span className={cn("block min-w-max whitespace-nowrap", primaryClassName)}>{primaryText}</span>
             <span className={cn("block min-w-max whitespace-nowrap", secondaryClassName)}>{secondaryText}</span>
           </span>

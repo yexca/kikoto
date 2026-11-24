@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api, type WorkflowRunsPage } from "@/lib/api";
+import { createEffectScope } from "@/lib/effectScope";
 
 const pollMs = 5000;
 
@@ -36,31 +37,31 @@ export function useRunList({
   outOfRange.current = onPageOutOfRange;
 
   useEffect(() => {
-    const controller = new AbortController();
+    const effectScope = createEffectScope();
     let fetching = false;
-    const load = async () => {
-      if (fetching || document.hidden || controller.signal.aborted) return;
+    const load = () => {
+      if (fetching || document.hidden) return;
       fetching = true;
-      try {
-        const result = await api.listWorkflowRuns(page, pageSize, view, query, workflowCode, controller.signal);
-        if (controller.signal.aborted) return;
-        if (page > 1 && result.total <= (page - 1) * pageSize) {
-          outOfRange.current?.(Math.max(1, Math.ceil(result.total / pageSize)));
-          return;
-        }
-        setSnapshot({ scope, result });
-        setError(false);
-      } catch {
-        if (!controller.signal.aborted) setError(true);
-      } finally {
-        fetching = false;
-      }
+      effectScope.load((signal) => api.listWorkflowRuns(page, pageSize, view, query, workflowCode, signal), {
+        onSuccess: (result) => {
+          if (page > 1 && result.total <= (page - 1) * pageSize) {
+            outOfRange.current?.(Math.max(1, Math.ceil(result.total / pageSize)));
+            return;
+          }
+          setSnapshot({ scope, result });
+          setError(false);
+        },
+        onError: () => setError(true),
+        onSettled: () => {
+          fetching = false;
+        },
+      });
     };
-    void load();
-    const timer = staticDemo ? null : window.setInterval(() => void load(), pollMs);
+    load();
+    const timer = staticDemo ? null : window.setInterval(load, pollMs);
     if (!staticDemo) document.addEventListener("visibilitychange", load);
     return () => {
-      controller.abort();
+      effectScope.cancel();
       if (timer !== null) window.clearInterval(timer);
       if (!staticDemo) document.removeEventListener("visibilitychange", load);
     };

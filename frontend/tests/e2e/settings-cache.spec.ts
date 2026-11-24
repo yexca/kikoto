@@ -997,8 +997,8 @@ for (const layout of ["mobile", "@desktop"]) {
     const row = await navigation.boundingBox();
     await page.mouse.move(row!.x + 20, row!.y + row!.height / 2);
     await page.mouse.wheel(0, 40);
-    // Give a wheel scroll time to land before asserting that nothing moved.
-    await page.waitForTimeout(300);
+    // A wheel scroll lands within a frame or two; wait for those frames before asserting that nothing moved.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     expect(await navigation.evaluate((list) => list.scrollTop)).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await navigation.getByRole("tab", { name: "Library", exact: true }).click();

@@ -66,7 +66,7 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	mediaItemID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media item id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid media item id", false)
 		return
 	}
 	if eligible, err := s.demoMediaItemEligible(r.Context(), mediaItemID); err != nil || !eligible {
@@ -79,7 +79,7 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, err := decodeMediaProgressUpdate(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if payload.DurationSeconds != nil && *payload.DurationSeconds > 0 && payload.PositionSeconds > *payload.DurationSeconds {
@@ -92,7 +92,7 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, errMediaProgressLocationMismatch) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -199,7 +199,7 @@ func (s *Server) getWorkPlaybackCursor(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.requireDemoWork(w, r, workID) {
@@ -208,7 +208,7 @@ func (s *Server) getWorkPlaybackCursor(w http.ResponseWriter, r *http.Request) {
 	cursor, err := s.loadWorkPlaybackCursor(r.Context(), user.ID, workID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type LibrarySort, type ListeningStatus, type SortDirection, type Work, type WorksPage } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 import type { LibraryPageSize } from "@/lib/libraryBrowseState";
 import type { SearchClause } from "@/lib/librarySearchClauses";
 import { RECOMMENDATION_ALGORITHM_VERSION } from "@/lib/recommendationSession";
@@ -117,59 +118,61 @@ export function useLocalLibraryWorks({
       setIsLoading(false);
       return;
     }
-    const controller = new AbortController();
     const seq = ++requestSeq.current;
     setLoadError("");
     setIsLoading(true);
-    // Let synchronous effect replacement cancel before issuing its GET.
-    void Promise.resolve()
-      .then(() => {
-        controller.signal.throwIfAborted();
-        return api.listWorksPage(
-          page,
-          pageSize,
-          query,
-          scope,
-          status,
-          sort,
-          direction,
-          randomSeed,
-          badgesEnabled && sort !== "recommend",
-          controller.signal,
-          sessionId,
-        );
-      })
-      .then((result) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        loadedRequestKey.current = requestKey;
-        const context = showPage(result, { sort, randomSeed, badgesEnabled });
-        if (context) {
-          recordEvents(
-            result.works.map((work, index) => ({
-              workId: work.id,
-              eventType: "impression",
-              contextId: context.id,
-              algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
-              seed: randomSeed,
-              rank: (result.page - 1) * result.pageSize + index + 1,
-              score: work.recommendScore,
-            })),
+    return startLoad(
+      // Let synchronous effect replacement cancel before issuing its GET.
+      (signal) =>
+        Promise.resolve().then(() => {
+          signal.throwIfAborted();
+          return api.listWorksPage(
+            page,
+            pageSize,
+            query,
+            scope,
+            status,
+            sort,
+            direction,
+            randomSeed,
+            badgesEnabled && sort !== "recommend",
+            signal,
+            sessionId,
           );
-        }
-        setOptimisticSearchClauses(null);
-        onResultsShown();
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        setLoadError(loadErrorMessage(error));
-        setOptimisticSearchClauses(null);
-        onLoadFailed();
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
-      });
-    return () => controller.abort();
+        }),
+      {
+        onSuccess: (result) => {
+          if (seq !== requestSeq.current) return;
+          loadedRequestKey.current = requestKey;
+          const context = showPage(result, { sort, randomSeed, badgesEnabled });
+          if (context) {
+            recordEvents(
+              result.works.map((work, index) => ({
+                workId: work.id,
+                eventType: "impression",
+                contextId: context.id,
+                algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
+                seed: randomSeed,
+                rank: (result.page - 1) * result.pageSize + index + 1,
+                score: work.recommendScore,
+              })),
+            );
+          }
+          setOptimisticSearchClauses(null);
+          onResultsShown();
+        },
+        onError: (error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          if (seq !== requestSeq.current) return;
+          setLoadError(loadErrorMessage(error));
+          setOptimisticSearchClauses(null);
+          onLoadFailed();
+        },
+        onSettled: () => {
+          if (seq === requestSeq.current) setIsLoading(false);
+        },
+      },
+    );
   }, [
     visible,
     ready,

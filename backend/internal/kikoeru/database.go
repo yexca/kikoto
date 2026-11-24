@@ -53,7 +53,7 @@ func ReadDatabaseReviews(ctx context.Context, path, userName string, maxItems in
 	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 
-	columns, err := tableColumns(ctx, db, "t_review")
+	columns, err := lowercaseBaseTableColumns(ctx, db, "t_review")
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func checkSQLiteHeader(path string) error {
 	return nil
 }
 
-func tableColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
+func lowercaseBaseTableColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
 	var kind string
 	if err := db.QueryRowContext(ctx, `SELECT type FROM sqlite_master WHERE name = ?`, table).Scan(&kind); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -155,7 +155,7 @@ func tableColumns(ctx context.Context, db *sql.DB, table string) (map[string]boo
 // databaseUserExists distinguishes an account without reviews from a mistyped
 // name. Only the name column is read.
 func databaseUserExists(ctx context.Context, db *sql.DB, userName string) (bool, error) {
-	columns, err := tableColumns(ctx, db, "t_user")
+	columns, err := lowercaseBaseTableColumns(ctx, db, "t_user")
 	if errors.Is(err, ErrDatabaseInvalid) || (err == nil && !columns["name"]) {
 		// Without a user table the database cannot say; treat the name as valid.
 		return true, nil

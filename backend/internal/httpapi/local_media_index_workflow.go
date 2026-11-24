@@ -110,12 +110,12 @@ func (s *Server) createLocalMediaIndexRun(w http.ResponseWriter, r *http.Request
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid local media index request"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid local media index request", false)
 		return
 	}
 	mode, err := normalizeLocalMediaIndexMode(request.Mode)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	result, err := s.enqueueLocalMediaIndex(r.Context(), workflowRunTrigger{Type: "manual", Reason: "manual"}, mode)
@@ -151,6 +151,8 @@ func (s *Server) enqueueLocalMediaIndex(ctx context.Context, trigger workflowRun
 	`, localMediaIndexWorkflowCode).Scan(&existing.RunID, &existing.Status, &existingInput, &existing.JobID)
 	if err == nil {
 		var payload localMediaIndexPayload
+		// Tolerant: the mode only labels the run the request joins, which
+		// runs from its own job payload either way.
 		_ = json.Unmarshal([]byte(existingInput), &payload)
 		existing.Mode = payload.Mode
 		return existing, tx.Commit()
@@ -204,27 +206,27 @@ func (s *Server) enqueueLocalMediaIndex(ctx context.Context, trigger workflowRun
 func (s *Server) executeLocalMediaIndexJob(ctx context.Context, job workflowJobRecord) error {
 	var payload localMediaIndexPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	mode, err := normalizeLocalMediaIndexMode(payload.Mode)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "selecting", map[string]any{"mode": mode}, 0, 0)
+	s.checkpointJobOrLog(ctx, job, "selecting", map[string]any{"mode": mode}, 0, 0)
 	targets, err := s.selectLocalMediaIndexTargets(ctx, mode)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	if err := s.completeLocalMediaIndexSelection(ctx, job, nodeIDs, mode, len(targets)); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 
@@ -249,7 +251,7 @@ func (s *Server) executeLocalMediaIndexJob(ctx context.Context, job workflowJobR
 		}
 		if time.Since(lastCheckpoint) >= localMediaIndexCheckpointEvery {
 			lastCheckpoint = time.Now()
-			_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "indexing", map[string]any{
+			s.checkpointJobOrLog(ctx, job, "indexing", map[string]any{
 				"mode": mode, "indexed_works": indexed, "failed_works": failed,
 			}, index+1, len(targets))
 		}
@@ -379,8 +381,11 @@ func (s *Server) retryLocalMediaIndex(ctx context.Context, runID int64) (int64, 
 	if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
 		return 0, err
 	}
+	// A retry repeats the run's own mode, never the default in its place.
 	var payload localMediaIndexPayload
-	_ = json.Unmarshal([]byte(inputJSON), &payload)
+	if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
+		return 0, fmt.Errorf("decode local media index run %d input: %w", runID, err)
+	}
 	result, err := s.enqueueLocalMediaIndex(ctx, workflowRunTrigger{Type: "manual", Reason: "retry_run"}, payload.Mode)
 	return result.RunID, err
 }

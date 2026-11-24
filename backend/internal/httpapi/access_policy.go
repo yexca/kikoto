@@ -81,7 +81,7 @@ func (s *Server) updateAccessPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if mode := s.cfg.RuntimeMode(); mode != config.ModeProduction && mode != config.ModeDevelopment {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "anonymous access is not configurable in demo mode"})
+		writeAPIError(w, http.StatusConflict, "conflict", "anonymous access is not configurable in demo mode", false)
 		return
 	}
 	var payload struct {
@@ -89,7 +89,7 @@ func (s *Server) updateAccessPolicy(w http.ResponseWriter, r *http.Request) {
 		AnonymousRemoteBrowsingEnabled *bool `json:"anonymousRemoteBrowsingEnabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.AnonymousAccessEnabled == nil && payload.AnonymousRemoteBrowsingEnabled == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "anonymousAccessEnabled or anonymousRemoteBrowsingEnabled is required"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "anonymousAccessEnabled or anonymousRemoteBrowsingEnabled is required", false)
 		return
 	}
 	policy, err := s.accessPolicy.UpdatePolicy(r.Context(), actor.ID, accesspolicy.PolicyUpdate{

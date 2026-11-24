@@ -73,7 +73,7 @@ func (s *Server) discoverVoiceCatalogSource(ctx context.Context, runID int64, so
 	result.Status.ElapsedMS = time.Since(started).Milliseconds()
 	result.Complete = true
 	result.Full = fullSnapshot
-	_ = s.updateSourceHealth(context.WithoutCancel(ctx), source.ID, "healthy")
+	s.setSourceHealthOrLog(context.WithoutCancel(ctx), source.ID, "healthy")
 	return result
 }
 
@@ -95,7 +95,7 @@ func (s *Server) discoverVoiceCatalogQuery(sourceCtx context.Context, runID int6
 			result.Status.Status, result.Status.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
 			result.Status.ElapsedMS = time.Since(started).Milliseconds()
 			if !shutdownInterrupted(sourceCtx) {
-				_ = s.updateSourceHealth(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
+				s.setSourceHealthOrLog(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
 			}
 			return voiceCatalogQueryCursor{}, false, true
 		}
@@ -104,7 +104,7 @@ func (s *Server) discoverVoiceCatalogQuery(sourceCtx context.Context, runID int6
 		if duplicate {
 			result.Status.Status, result.Status.Error = "invalid_response", "Remote source pagination did not advance."
 			result.Status.ElapsedMS = time.Since(started).Milliseconds()
-			_ = s.updateSourceHealth(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
+			s.setSourceHealthOrLog(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
 			return voiceCatalogQueryCursor{}, false, true
 		}
 		if err := s.addVoiceCatalogPageCandidates(sourceCtx, source.ID, page.Works, projector, candidates); err != nil {
@@ -122,7 +122,7 @@ func (s *Server) discoverVoiceCatalogQuery(sourceCtx context.Context, runID int6
 		if len(page.Works) == 0 {
 			result.Status.Status, result.Status.Error = "invalid_response", "Remote source pagination ended before its reported total."
 			result.Status.ElapsedMS = time.Since(started).Milliseconds()
-			_ = s.updateSourceHealth(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
+			s.setSourceHealthOrLog(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
 			return voiceCatalogQueryCursor{}, false, true
 		}
 	}

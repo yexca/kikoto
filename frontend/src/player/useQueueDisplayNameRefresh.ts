@@ -2,6 +2,7 @@ import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "r
 
 import { api } from "@/lib/api";
 import { FILE_DISPLAY_NAMES_CHANGED_EVENT } from "@/lib/appEvents";
+import { createEffectScope } from "@/lib/effectScope";
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 
 import { resolvableQueueTrack, resolveQueueTracks, type ResolvePlaybackQueue } from "./playerQueueRestore";
@@ -55,9 +56,9 @@ export function useQueueDisplayNameRefresh(
   setQueue: Dispatch<SetStateAction<PlayerTrack[]>>,
 ) {
   useEffect(() => {
-    let disposed = false;
+    const scope = createEffectScope();
     const refresh = createQueueDisplayNameLoader(api.resolvePlaybackQueue, (titles) => {
-      if (!disposed) setQueue((items) => withQueueDisplayTitles(items, titles));
+      if (!scope.signal.aborted) setQueue((items) => withQueueDisplayTitles(items, titles));
     });
 
     const preferencesChanged = () => void refresh(queueRef.current);
@@ -68,7 +69,7 @@ export function useQueueDisplayNameRefresh(
     window.addEventListener(USER_PREFERENCES_CHANGED, preferencesChanged);
     window.addEventListener(FILE_DISPLAY_NAMES_CHANGED_EVENT, namesChanged);
     return () => {
-      disposed = true;
+      scope.cancel();
       window.removeEventListener(USER_PREFERENCES_CHANGED, preferencesChanged);
       window.removeEventListener(FILE_DISPLAY_NAMES_CHANGED_EVENT, namesChanged);
     };

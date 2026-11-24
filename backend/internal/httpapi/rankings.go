@@ -443,18 +443,18 @@ func (s *Server) createRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	var request rankingListRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	now := time.Now().UTC()
 	request, err := s.normalizeRankingListRequest(r.Context(), request, now)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	id, err := s.insertRankingList(r.Context(), request, now)
 	if errors.Is(err, errRankingListExists) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -529,17 +529,17 @@ func (s *Server) updateRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	var payload rankingListUpdate
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	current, err := s.loadRankingList(r.Context(), actor.ID, id)
 	if errors.Is(err, errRankingListNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", err.Error(), false)
 		return
 	}
 	if err != nil {
@@ -549,7 +549,7 @@ func (s *Server) updateRanking(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	next, err := applyRankingListUpdate(current, payload, now)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	if err := s.saveRankingList(r.Context(), current, next, now); err != nil {
@@ -647,7 +647,7 @@ func (s *Server) deleteRanking(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ranking id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid ranking id", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM ranking_list WHERE id = ?", id)
@@ -656,7 +656,7 @@ func (s *Server) deleteRanking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if removed, _ := result.RowsAffected(); removed == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": errRankingListNotFound.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", errRankingListNotFound.Error(), false)
 		return
 	}
 	s.refreshRankingDispatchersBestEffort(r.Context())
@@ -685,13 +685,13 @@ func (s *Server) runRankingRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.ContentLength != 0 {
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&payload); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 			return
 		}
 	}
 	runs, err := s.requestRankingPulls(r.Context(), payload.ListIDs, actor.ID, "manual_run")
 	if errors.Is(err, errRankingNothingToPull) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusConflict, "conflict", err.Error(), false)
 		return
 	}
 	if err != nil {

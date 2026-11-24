@@ -7,6 +7,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useNativePrivacySettings } from "@/hooks/useNativePrivacySettings";
+import { createEffectScope } from "@/lib/effectScope";
 import {
   APP_LOCK_TIMEOUTS_SECONDS,
   LOCK_SCREEN_MEDIA_CONTENTS,
@@ -29,17 +30,15 @@ function useNativePrivacyStatus() {
     screenshotsHidden: boolean;
   } | null>(null);
   useEffect(() => {
-    let disposed = false;
+    const scope = createEffectScope();
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
-      void nativePrivacyStatus().then((value) => {
-        if (!disposed) setStatus(value);
-      });
+      scope.load(() => nativePrivacyStatus(), { onSuccess: setStatus });
     };
     refresh();
     document.addEventListener("visibilitychange", refresh);
     return () => {
-      disposed = true;
+      scope.cancel();
       document.removeEventListener("visibilitychange", refresh);
     };
   }, []);

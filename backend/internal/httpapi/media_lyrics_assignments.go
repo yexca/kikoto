@@ -38,25 +38,25 @@ func (s *Server) setWorkLyricsAssignments(w http.ResponseWriter, r *http.Request
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	var payload struct {
 		Assignments []lyricsAssignmentChange `json:"assignments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return
 	}
 	changes, err := normalizeLyricsAssignmentChanges(payload.Assignments)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	familyWorkIDs, err := s.lyricsAssignmentFamily(r.Context(), workID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -65,7 +65,8 @@ func (s *Server) setWorkLyricsAssignments(w http.ResponseWriter, r *http.Request
 	if err := s.applyLyricsAssignmentChanges(r.Context(), user.ID, familyWorkIDs, changes); err != nil {
 		var requestErr lyricsAssignmentRequestError
 		if errors.As(err, &requestErr) {
-			writeJSON(w, requestErr.status, map[string]string{"error": requestErr.message})
+			code, retryable := defaultErrorClassification(requestErr.status)
+			writeAPIError(w, requestErr.status, code, requestErr.message, retryable)
 			return
 		}
 		writeError(w, err)

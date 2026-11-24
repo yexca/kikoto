@@ -21,6 +21,13 @@ httpapi composition -> domain packages -> shared helpers -> primitives
   independently testable. Do not add unrelated orchestration to large handler
   files; extract by cohesive behavior, not by mechanically moving a file.
 - A package with several outside consumers exposes a small explicit entry.
+- `make backend-sql-ratchet`, part of `ci-backend-static`, counts the SQL
+  statements `internal/httpapi` runs itself (`database/sql` exec, query and
+  prepare calls, and `sqlutil.InsertID`/`SelectID`) against
+  `scripts/httpapi-sql-baseline.json`. The count may only fall: put new
+  queries in a domain package and never raise the baseline. After an
+  extraction, run `make backend-sql-ratchet-lower` and commit the lower
+  baseline with it.
 - Rationale and package map:
   [Code Organization](../docs/architecture/backend/stack-and-packages.md#code-organization),
   [Main Packages](../docs/architecture/backend/stack-and-packages.md#main-packages),

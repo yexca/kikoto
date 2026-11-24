@@ -109,6 +109,7 @@ backend-format:
 	cd backend && $(GO) run ../scripts/check-go-format.go . ../scripts
 
 backend-lint:
+	cd backend && $(GO) run ../scripts/check-go-dropped-errors.go .
 	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --new-from-rev=$(GOLANGCI_LINT_BASE) --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
 
 backend-lint-full:
@@ -145,6 +146,7 @@ backend-coverage:
 
 backend-vet:
 	cd backend && $(GO) vet ./...
+	cd backend && $(GO) run ../scripts/check-api-errors.go internal/httpapi
 
 backend-race:
 	cd backend && $(GO) test -race -timeout=20m ./...
@@ -172,6 +174,8 @@ frontend-format: frontend-install
 
 frontend-lint: frontend-install
 	cd frontend && $(NPM) run lint && $(NPM) run typecheck:e2e
+	$(NODE) --test scripts/check-e2e-locators.test.mjs
+	$(NODE) scripts/check-e2e-locators.mjs
 
 frontend-docs: frontend-install
 	$(NODE) --test scripts/check-doc-links.test.mjs
@@ -180,6 +184,11 @@ frontend-docs: frontend-install
 frontend-i18n:
 	$(NODE) --test scripts/check-ui-copy.test.mjs
 	$(NODE) scripts/check-ui-copy.mjs
+
+.PHONY: duplicate-helper-check
+duplicate-helper-check:
+	$(NODE) --test scripts/check-duplicate-helpers.test.mjs
+	$(NODE) scripts/check-duplicate-helpers.mjs
 
 frontend-audit: frontend-install
 	cd frontend && $(NPM) audit --audit-level=moderate
@@ -346,10 +355,20 @@ ci-metrics:
 ci-metrics-test:
 	$(NODE) --test scripts/ci-metrics.test.mjs
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test go-test-shard-test playwright-image-check pr-description-test ci-metrics-test actionlint
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n duplicate-helper-check sensitive-check-test ci-plan-test go-test-shard-test playwright-image-check pr-description-test ci-metrics-test actionlint
+
+.PHONY: backend-sql-ratchet backend-sql-ratchet-lower
+
+# The SQL that internal/httpapi runs directly may only shrink; see
+# backend/AGENTS.md#layering. The lower target records a smaller count.
+backend-sql-ratchet:
+	cd backend && $(GO) run ../scripts/check-httpapi-sql.go
+
+backend-sql-ratchet-lower:
+	cd backend && $(GO) run ../scripts/check-httpapi-sql.go -lower
 
 # Coverage executes the full suite; retain the separate race-instrumented run.
-ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet
+ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet backend-sql-ratchet
 
 ci-backend-coverage: backend-coverage
 

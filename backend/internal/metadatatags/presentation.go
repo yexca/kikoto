@@ -8,6 +8,8 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // Presentation applies the work's overrides to an edition's genres without
@@ -209,7 +211,7 @@ func loadNamesBatch(ctx context.Context, q Querier, ids []int64) (map[int64][]Na
 			}
 			result[id] = append(result[id], n)
 		}
-		if err := closeRows(rows); err != nil {
+		if err := sqlutil.CloseRows(rows); err != nil {
 			return nil, err
 		}
 	}

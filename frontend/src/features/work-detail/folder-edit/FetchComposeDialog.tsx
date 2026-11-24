@@ -7,6 +7,7 @@ import type { FetchComposeTarget, FolderEditResource } from "@/features/work-det
 import { FolderWorkspaceView } from "@/features/work-detail/folder-edit/FolderWorkspaceView";
 import { useFetchComposeWorkspace } from "@/features/work-detail/folder-edit/useFetchComposeWorkspace";
 import type { RemoteWorkSaveResult } from "@/lib/api";
+import { openWorkflowRun } from "@/lib/workflowLinks";
 
 /**
  * Fetches an edition into a new folder and builds the folder from several
@@ -38,10 +39,7 @@ export function FetchComposeDialog({
           runId: result.runId,
         }),
         actionLabel: t("remoteFetch.activity"),
-        onAction: () => {
-          window.history.pushState({}, "", `/workflows?run=${result.runId}`);
-          window.dispatchEvent(new Event("kikoto:navigation"));
-        },
+        onAction: () => openWorkflowRun(result.runId),
       });
       await onApplied(result);
     },

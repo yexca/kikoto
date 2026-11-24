@@ -97,10 +97,3 @@ func creatorPageBounds(page int, pageSize int, total int) (int, int, int) {
 	}
 	return page, start, end
 }
-
-func minInt(left int, right int) int {
-	if left < right {
-		return left
-	}
-	return right
-}

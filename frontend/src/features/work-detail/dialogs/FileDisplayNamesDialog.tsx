@@ -37,6 +37,7 @@ import { formatList } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type FileDisplayNames } from "@/lib/api";
 import { FILE_DISPLAY_NAMES_CHANGED_EVENT } from "@/lib/appEvents";
+import { startLoad } from "@/lib/effectScope";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { interfaceLyricsLanguage } from "@/lib/translationTargets";
 import { cn } from "@/lib/tailwindClassNames";
@@ -81,31 +82,26 @@ export function FileDisplayNamesDialog({
   const wide = useMediaQuery(panelQuery);
 
   useEffect(() => {
-    const controller = new AbortController();
     setLoadFailed(false);
-    api
-      .getWorkFileDisplayNames(workId, controller.signal)
-      .then(setEntries)
-      .catch(() => {
-        if (!controller.signal.aborted) setLoadFailed(true);
-      });
-    return () => controller.abort();
+    return startLoad((signal) => api.getWorkFileDisplayNames(workId, signal), {
+      onSuccess: setEntries,
+      onError: () => setLoadFailed(true),
+    });
   }, [workId, loadAttempt]);
 
   // The editor starts on the editor's own metadata language, else the interface language.
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .getUserPreferences(controller.signal)
-      .then((preferences) => {
-        const preferred = (preferences.metadataLanguages ?? []).find((candidate) =>
-          metadataTagNameLanguages.some(([supported]) => supported === candidate),
-        );
-        if (preferred && !languageChosen.current) setLanguage(preferred);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+  useEffect(
+    () =>
+      startLoad((signal) => api.getUserPreferences(signal), {
+        onSuccess: (preferences) => {
+          const preferred = (preferences.metadataLanguages ?? []).find((candidate) =>
+            metadataTagNameLanguages.some(([supported]) => supported === candidate),
+          );
+          if (preferred && !languageChosen.current) setLanguage(preferred);
+        },
+      }),
+    [],
+  );
 
   const rows = useMemo(() => (entries ? displayNameRows(entries) : []), [entries]);
 

@@ -29,7 +29,7 @@ func (s *Server) recordWorkflowRunEvent(ctx context.Context, runID int64, level 
 func decodeWorkflowTriggerPayload(w http.ResponseWriter, r *http.Request) (workflowTriggerPayload, bool) {
 	var payload workflowTriggerPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body", false)
 		return payload, false
 	}
 	payload.DisplayName = strings.TrimSpace(payload.DisplayName)
@@ -147,6 +147,8 @@ func normalizeOptionalString(value *string) any {
 func mergeJSONObjects(raw string, patch map[string]any) map[string]any {
 	result := map[string]any{}
 	if strings.TrimSpace(raw) != "" {
+		// Tolerant: cancelling a run must not fail on its unreadable summary,
+		// which then keeps only the patch.
 		_ = json.Unmarshal([]byte(raw), &result)
 	}
 	for key, value := range patch {

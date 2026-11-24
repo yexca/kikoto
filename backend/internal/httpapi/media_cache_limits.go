@@ -131,7 +131,7 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 func (s *Server) executeMediaCacheLimitCleanupJob(ctx context.Context, job workflowJobRecord) error {
 	var payload mediaCacheLimitCleanupJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		s.failJobOrLog(ctx, job, err.Error())
 		return err
 	}
 	result, err := s.enforceRemoteCacheLimits(ctx, payload.SourceID, payload.KeepLocationID)

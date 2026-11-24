@@ -92,11 +92,11 @@ func (s *Server) getWorkManualOverrides(w http.ResponseWriter, r *http.Request) 
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.workIDExists(r.Context(), workID) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	overrides, err := s.loadWorkManualOverrides(r.Context(), workID)
@@ -114,53 +114,53 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if !s.workIDExists(r.Context(), workID) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 		return
 	}
 	var fields map[string]json.RawMessage
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&fields); err != nil || fields == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json body", false)
 		return
 	}
 	var payload workManualOverridePayload
 	encoded, err := json.Marshal(fields)
 	if err != nil || json.Unmarshal(encoded, &payload) != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override fields"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid override fields", false)
 		return
 	}
 	if _, legacy := fields["title"]; legacy {
 		if _, scoped := fields["titles"]; scoped {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use title or titles, not both"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "use title or titles, not both", false)
 			return
 		}
 	}
 	if _, present := fields["titles"]; present && payload.Titles == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "titles must be a language map"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "titles must be a language map", false)
 		return
 	}
 	for language := range payload.Titles {
 		if !validTitleLanguage(language) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid title language"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid title language", false)
 			return
 		}
 	}
 	if _, single := fields["description"]; single {
 		if _, scoped := fields["descriptions"]; scoped {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use description or descriptions, not both"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "use description or descriptions, not both", false)
 			return
 		}
 	}
 	if _, present := fields["descriptions"]; present && payload.Descriptions == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "descriptions must be a language map"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "descriptions must be a language map", false)
 		return
 	}
 	for language := range payload.Descriptions {
 		if !validTitleLanguage(language) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid description language"})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid description language", false)
 			return
 		}
 	}
@@ -261,12 +261,12 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	field := normalizeManualOverrideField(r.PathValue("field"))
 	if field == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override field"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid override field", false)
 		return
 	}
 	if field == "cover" {
@@ -275,7 +275,7 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 	}
 	language := r.URL.Query().Get("language")
 	if !validTitleLanguage(language) || (field != "title" && field != "description" && language != "") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override language"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid override language", false)
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -315,7 +315,7 @@ func (s *Server) listWorkCoverCandidates(w http.ResponseWriter, r *http.Request)
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	if err := s.ensureLocalMediaIndexed(r.Context(), workID); err != nil {
@@ -330,7 +330,7 @@ func (s *Server) listWorkCoverCandidates(w http.ResponseWriter, r *http.Request)
 	var primaryCode string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&primaryCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
 			return
 		}
 		writeError(w, err)
@@ -351,14 +351,14 @@ func (s *Server) setWorkCoverOverride(w http.ResponseWriter, r *http.Request) {
 	}
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work id", false)
 		return
 	}
 	var payload struct {
 		LocationID int64 `json:"locationId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json body", false)
 		return
 	}
 	s.manualCoverMu.Lock()

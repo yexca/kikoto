@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, type LibrarySource } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /** Uses the public capability list; metadata operators need no settings access. */
 export function useMetadataSyncSources(enabled = true) {
@@ -9,21 +10,13 @@ export function useMetadataSyncSources(enabled = true) {
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!enabled) return;
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((result) => {
-        if (active) {
-          setSources(result);
-          setFailed(false);
-        }
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      });
-    return () => {
-      active = false;
-    };
+    return startLoad((signal) => api.listLibrarySources(signal), {
+      onSuccess: (result) => {
+        setSources(result);
+        setFailed(false);
+      },
+      onError: () => setFailed(true),
+    });
   }, [enabled, revision]);
   return { sources, failed, retry: () => setRevision((value) => value + 1) };
 }

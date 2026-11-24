@@ -74,7 +74,7 @@ func bundleCodesIn(field json.RawMessage, own string) []string {
 			ProductID string `json:"product_id"`
 		}
 		if err := json.Unmarshal(entry, &object); err == nil {
-			add(firstNonEmptyText(object.WorkNo, object.ProductID))
+			add(firstNonBlank(object.WorkNo, object.ProductID))
 		}
 	}
 	return codes

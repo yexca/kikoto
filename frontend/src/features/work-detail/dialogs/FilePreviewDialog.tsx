@@ -21,8 +21,9 @@ import { WorkVideoPlayer } from "@/features/work-detail/media/WorkVideoPlayer";
 import type { VideoSubtitle } from "@/player/video/videoSubtitles";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
-import { api, assetURL, type TimedLyricsResult } from "@/lib/api";
+import { ApiError, TextTooLargeError, api, assetURL, type TimedLyricsResult } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 type FilePreviewBase = {
@@ -496,6 +497,15 @@ function Filmstrip({
   );
 }
 
+/** A text URL's failure as the viewer names it: the HTTP status or the size bound. */
+function textPreviewURLError(error: unknown) {
+  if (error instanceof ApiError) {
+    return new Error(i18n.t("libraryDetail.textPreviewHttpError", { status: error.status }));
+  }
+  if (error instanceof TextTooLargeError) return new Error(i18n.t("libraryDetail.textFileTooLarge"));
+  return error;
+}
+
 function TextReader({
   preview,
   onDetails,
@@ -511,35 +521,31 @@ function TextReader({
   const [timedLyrics, setTimedLyrics] = useState<TimedLyricsResult | null>(null);
   const lyrics = useMemo(() => lyricsView(timedLyrics), [timedLyrics]);
 
-  useEffect(() => {
-    let active = true;
-    const request = preview.url
-      ? fetch(assetURL(preview.url), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-          if (!response.ok) throw new Error(i18n.t("libraryDetail.textPreviewHttpError", { status: response.status }));
-          const length = Number(response.headers.get("content-length") ?? 0);
-          if (length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
-          const content = await response.text();
-          if (content.length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
-          return { content };
-        })
-      : api.getMediaText(preview.locationId);
-    request
-      // The server reads the text as timed lyrics; a failed read leaves it plain text.
-      .then(async (result) => ({ ...result, timed: await api.parseLyrics(result.content).catch(() => null) }))
-      .then((result) => {
-        if (!active) return;
-        setTimedLyrics(result.timed);
-        setText(result.content);
-        onContent(result.content);
-        onDetails(i18n.t("libraryDetail.lineCount", { count: countTextLines(result.content) }));
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : i18n.t("libraryDetail.textPreviewFailed"));
-      });
-    return () => {
-      active = false;
-    };
-  }, [onContent, onDetails, preview]);
+  useEffect(
+    () =>
+      startLoad(
+        async (signal) => {
+          const content = preview.url
+            ? await api.getTextPreview(preview.url, signal).catch((error: unknown) => {
+                throw textPreviewURLError(error);
+              })
+            : (await api.getMediaText(preview.locationId, signal)).content;
+          // The server reads the text as timed lyrics; a failed read leaves it plain text.
+          const timed = await api.parseLyrics(content, signal).catch(() => null);
+          return { content, timed };
+        },
+        {
+          onSuccess: (result) => {
+            setTimedLyrics(result.timed);
+            setText(result.content);
+            onContent(result.content);
+            onDetails(i18n.t("libraryDetail.lineCount", { count: countTextLines(result.content) }));
+          },
+          onError: (err) => setError(err instanceof Error ? err.message : i18n.t("libraryDetail.textPreviewFailed")),
+        },
+      ),
+    [onContent, onDetails, preview],
+  );
 
   const showLyrics = lyrics !== null && view === "lyrics";
   return (

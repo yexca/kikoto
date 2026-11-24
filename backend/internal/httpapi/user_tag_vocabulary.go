@@ -35,7 +35,7 @@ func (s *Server) listUserTagVocabulary(w http.ResponseWriter, r *http.Request) {
 	}
 	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
 	if _, known := userTagVocabularyScopes[scope]; !known {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tag scope"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid tag scope", false)
 		return
 	}
 	tags, err := s.loadUserTagVocabulary(r.Context(), user.ID, scope)

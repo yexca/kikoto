@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api, type CurrentUser, type FavoriteList } from "@/lib/api";
+import { startLoad } from "@/lib/effectScope";
 
 /**
  * The signed-in user's favorite lists, read once per user while the page is
@@ -28,27 +29,15 @@ export function useFavoriteLists({
       return;
     }
     if (!active || loadedFor.current === principalID) return;
-    const controller = new AbortController();
-    let cancelled = false;
     setIsLoading(true);
-    api
-      .listFavoriteLists(controller.signal)
-      .then((lists) => {
-        if (!cancelled) {
-          loadedFor.current = principalID;
-          setFavoriteLists(lists);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) notifyUnavailable(error);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+    return startLoad((signal) => api.listFavoriteLists(signal), {
+      onSuccess: (lists) => {
+        loadedFor.current = principalID;
+        setFavoriteLists(lists);
+      },
+      onError: notifyUnavailable,
+      onSettled: () => setIsLoading(false),
+    });
   }, [active, user, notifyUnavailable, principalID]);
 
   return {

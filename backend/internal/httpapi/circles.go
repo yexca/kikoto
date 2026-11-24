@@ -317,7 +317,7 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid circle external id", false)
 		return
 	}
 	worksQuery := parseCircleWorksQuery(r)
@@ -329,7 +329,7 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeCircleLookupError(w, err)
 		} else if errors.Is(err, errCircleNotVisible) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "circle not found", false)
 		} else {
 			writeError(w, err)
 		}
@@ -368,12 +368,12 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 	}
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid circle external id", false)
 		return
 	}
 	payload, err := decodeCircleUserStatePatch(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
 	partyID, err := s.findCircle(r.Context(), externalID)
@@ -388,7 +388,7 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !usable {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errCreatorCoverUnavailable.Error()})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", errCreatorCoverUnavailable.Error(), false)
 			return
 		}
 	}
@@ -491,14 +491,14 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 	}
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid circle external id", false)
 		return
 	}
 	var payload struct {
 		Tags []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid json", false)
 		return
 	}
 	partyID, err := s.findCircle(r.Context(), externalID)
@@ -523,7 +523,7 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	}
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid circle external id", false)
 		return
 	}
 	// A detail refresh targets a known circle; an unknown maker id is added by
@@ -539,12 +539,12 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !visible {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "circle not found", false)
 		return
 	}
 	var request creatorRefreshRequest
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&request)
+	if !decodeOptionalJSONBody(w, r, &request) {
+		return
 	}
 	request = request.normalized()
 	inputs := presetWorkflowInputs{CircleID: externalID, CatalogRefresh: request.CatalogRefresh, Metadata: request.MetadataRefresh != "off"}
@@ -571,12 +571,12 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 	}
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid circle external id", false)
 		return
 	}
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
 	if !dlsiteProductCodePattern.MatchString(code) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid work code", false)
 		return
 	}
 	providerID, err := s.metadataProviderID(r.Context(), "dlsite", "DLsite")
@@ -595,7 +595,7 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !visible {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+		writeAPIError(w, http.StatusNotFound, "not_found", "circle not found", false)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), `
@@ -623,7 +623,7 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 // so the UI can offer an explicit metadata fetch.
 func writeCircleLookupError(w http.ResponseWriter, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found", "code": "circle_not_in_database"})
+		writeAPIError(w, http.StatusNotFound, "circle_not_in_database", "circle not found", false)
 		return
 	}
 	writeError(w, err)
