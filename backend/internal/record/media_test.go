@@ -529,6 +529,13 @@ func TestProbePassesWaitForTheRootAndKeepToTheirFiles(t *testing.T) {
 	if state, _, _ := probeState(t, db, "b.mp4"); state != "pending" {
 		t.Fatalf("a file on another disk = %s", state)
 	}
+	// A thumbnail that opens the file first reads nothing from the other disk either.
+	if asset, err := store.ProbeIfPending(ctx, assetID(t, db, "b.mp4")); err != nil || !asset.ProbePending || calls.Load() != 1 {
+		t.Fatalf("opened file on another disk = %+v, %v; probe calls %d", asset, err, calls.Load())
+	}
+	if state, _, _ := probeState(t, db, "b.mp4"); state != "pending" {
+		t.Fatalf("an opened file on another disk = %s", state)
+	}
 }
 
 func TestAudioFilesAreIndexedAndProbedForTheirLengthAndCover(t *testing.T) {

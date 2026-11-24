@@ -400,13 +400,19 @@ func idsJSON(ids []int64) string {
 // ProbeIfPending reads the length, and an audio file's cover art, of one
 // available video or audio file whose probe is pending, as a thumbnail that
 // needs the length does before the background pass reaches the file. It
-// returns the asset as it stands afterwards. A file that is not pending, and
-// a prober that cannot run, leave the asset as it is.
+// returns the asset as it stands afterwards. A file that is not pending, a
+// prober that cannot run, and a root that is not online, as when another disk
+// is mounted at its path, leave the asset as it is, still pending.
 func (s *Store) ProbeIfPending(ctx context.Context, id int64) (Asset, error) {
 	var candidate probeCandidate
 	err := s.db.QueryRowContext(ctx, `SELECT id, relative_path, kind, size_bytes, mtime_ns FROM record_asset WHERE id=? AND root_id=1 AND availability='available' AND kind IN `+probeKinds+` AND probe_state='pending'`, id).
 		Scan(&candidate.id, &candidate.relativePath, &candidate.kind, &candidate.sizeBytes, &candidate.mtimeNs)
 	if err == nil && s.probe != nil {
+		if err := s.requireReadableRoot(ctx); errors.Is(err, ErrRootOffline) {
+			return s.Asset(ctx, id)
+		} else if err != nil {
+			return Asset{}, err
+		}
 		outcome := s.probeOne(ctx, s.probe, candidate)
 		switch {
 		case outcome.err == nil:
