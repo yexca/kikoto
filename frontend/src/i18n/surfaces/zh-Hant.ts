@@ -2590,7 +2590,6 @@ export const surfaceHant = {
     voiceActorSummary: "聲優概要",
     view: "檢視",
     viewSelecting: "檢視（正在選取作品）",
-    workCount: "{{value}} 個作品",
     workPage: "第 {{page}}/{{totalPages}} 頁",
   },
 

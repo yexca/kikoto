@@ -789,13 +789,13 @@ test("voice detail keeps quiet actions, statistics, and the View sheet on mobile
   await actions.getByRole("button", { name: "Refresh" }).click();
   expect((await refreshRequest).postDataJSON()).toEqual({ catalogRefresh: "incremental", metadataRefresh: "missing" });
 
-  // Search, the order, the filter, and View share the caption row; Search opens its field above it.
+  // Search, the order, the filter, and View share one row; Search opens its field above it.
   await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeHidden();
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Sort: Release date" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Voice work availability:/ })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: /works$/ })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /works$/ })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "View", exact: true }).click();
@@ -839,8 +839,8 @@ test("@desktop voice detail keeps labeled quiet actions and inline work controls
   await expect(page.getByRole("textbox", { name: "Search voice works" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Voice work availability:/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "View", exact: true })).toBeVisible();
-  // Results that fit one page state their count instead of a page bar.
-  await expect(page.getByRole("status").filter({ hasText: /^\d+ works$/ })).toBeVisible();
+  // The summary states the work count, and results that fit one page show no caption or page bar.
+  await expect(page.getByRole("status").filter({ hasText: /^\d+ works$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Next page" })).toHaveCount(0);
 });
 
@@ -1232,12 +1232,12 @@ test("@desktop circle detail keeps a frameless summary, one-line statistics, and
   expect(actionsBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
   expect(actionsBox!.y).toBeLessThan(headingBox!.y + headingBox!.height);
 
-  // The toolbar holds the view tabs, search, order, filter, and View; one page states its count.
+  // The toolbar holds the view tabs, search, order, filter, and View; the Works tab states the count.
   await expect(page.getByRole("textbox", { name: "Search catalog works" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Release date" })).toBeVisible();
   await expect(page.getByRole("button", { name: "View", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: /^\d+ works$/ })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^\d+ works$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Next page" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Catalog availability filter" }).click();

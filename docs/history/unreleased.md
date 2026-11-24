@@ -60,9 +60,10 @@
 </details>
 
 <details>
-<summary><strong>Circles</strong></summary>
+<summary><strong>Circles and voice actors</strong></summary>
 
-- A circle's works toolbar leaves the work count to the **Works** tab; its
+- The works toolbar of a circle or voice actor leaves the work count to the
+  circle's **Works** tab or the voice actor summary's **Works** count; its
   caption shows only the page, from tablet width, when the works span more
   than one.
 

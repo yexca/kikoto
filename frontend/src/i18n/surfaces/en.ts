@@ -2706,7 +2706,6 @@ export const surfaceEnglish = {
     voiceActorSummary: "Voice actor summary",
     view: "View",
     viewSelecting: "View, selecting works",
-    workCount: "{{value}} works",
     workPage: "Page {{page}} of {{totalPages}}",
   },
   creator: {

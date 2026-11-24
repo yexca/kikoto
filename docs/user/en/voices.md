@@ -89,11 +89,12 @@ Voice pages present persisted person and credit data.
   **Cards** choice of **Full**, **Simple**, **Compact**, and **Mini** shared
   with the Library, the columns, the page size, and **Select works**; a newly
   chosen card mode starts from its [preset](library.md#current-behavior).
-  A caption before the sort button states how many works match and, from
-  tablet width, the page; more pages add the shared pagination below the
-  grid. On a phone the work count comes
-  with **Search**, the sort button, the filter, and **View**, which opens as a
-  sheet; **Search** opens the search field above that row.
+  The summary's **Works** count states how many works there are; from tablet
+  width a caption before the sort button names the page when the works span
+  more than one, and more pages add the shared pagination below the grid. On
+  a phone **Search**, the sort button, the filter, and **View**, which opens
+  as a sheet, share one row; **Search** opens the search field above that
+  row.
 - Treats the mobile detail back control as Up to the last
   server-and-user-scoped Voice Actors list location, including when the detail
   was opened from Library or Favorites. Wide layouts keep the source-aware

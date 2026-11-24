@@ -2586,7 +2586,6 @@ export const surfaceHans = {
     voiceActorSummary: "声优概要",
     view: "视图",
     viewSelecting: "视图（正在选择作品）",
-    workCount: "{{value}} 个作品",
     workPage: "第 {{page}}/{{totalPages}} 页",
   },
 

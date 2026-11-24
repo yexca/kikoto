@@ -2715,7 +2715,6 @@ export const surfaceJapanese = {
     voiceActorSummary: "声優の概要",
     view: "表示",
     viewSelecting: "表示（作品を選択中）",
-    workCount: "{{value}} 作品",
     workPage: "{{page}}/{{totalPages}} ページ",
   },
 

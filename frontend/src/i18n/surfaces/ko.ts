@@ -2699,7 +2699,6 @@ export const surfaceKorean = {
     voiceActorSummary: "성우 요약",
     view: "보기",
     viewSelecting: "보기(작품 선택 중)",
-    workCount: "작품 {{value}}개",
     workPage: "{{page}}/{{totalPages}} 페이지",
   },
 

@@ -808,7 +808,8 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           defaultFilter="all"
           filterOptions={voiceWorkFilterOptions(t)}
           onFilterChange={changeWorkFilter}
-          caption={<CreatorWorkCaption page={currentPage} total={totalWorks} totalPages={totalPages} />}
+          // The summary's Works count states the size, so the caption keeps only the page.
+          caption={<CreatorWorkCaption page={currentPage} totalPages={totalPages} />}
           view={
             <CreatorWorkViewMenu
               display={{
