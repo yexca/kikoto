@@ -71,11 +71,16 @@ Discovery records file size and modification time. A file whose size,
 modification time, or kind changed returns to the pending probe state and loses
 its earlier duration and dimensions.
 
-What a folder listing shows of a file's contents is read by a separate durable
-workflow, `record_media_probe`. A scan that leaves available videos or audio
-files pending queues it as a follow-up, or joins the probe run already queued
-or running, and records which on its own run. The Media details card on the
-Workflows page queues it by hand the same way. The probe reads, with `ffprobe`,
+What a folder listing shows of a file's contents is read apart from the scan,
+when it is needed. A scan queues no reading. Listing a folder, or a page of
+one of its sections, queues the listed videos and audio files whose details
+are pending, and the response's `mediaDetailsPending` says how many are
+waiting. At most 512 files wait at a time, and a background pass reads up to
+64 of them at once behind the response. The Record page lists the folder once
+more a few seconds later. The durable `record_media_probe` workflow reads
+every pending file of the library at once. The Media details card on the
+Workflows page queues it by hand, and a startup or interval trigger queues it
+on its own. The probe reads, with `ffprobe`,
 only the container header of each pending video and audio file: a video's
 duration, and the dimensions and codecs the header declares; an audio file's
 duration, its audio codec, and whether it embeds cover art (a video stream
@@ -88,7 +93,10 @@ the run selected it with, so a file a scan saw change stays pending for its
 new revision. A file the probe cannot read is marked failed, and it is probed
 again only after it changes. A file whose probe timed out, as on a disk
 spinning up, stays pending and the run does not try it again; every pending
-file stays pending when `ffprobe` is missing, which fails the run.
+file stays pending when `ffprobe` is missing, which fails the run. A pass
+reads nothing while the root is neither online nor only missing its marker,
+so the files of an unmounted or replaced disk stay pending, and the run fails
+saying the library is not mounted.
 
 The probe run selects pending files as it goes, so it also reads files a scan
 found while it ran. Between groups of files it gives the single workflow
@@ -98,11 +106,13 @@ from there. Cancelling it keeps what it read. Its progress counts the files
 read against those read and still pending, and its summary reports how many
 were probed, failed, timed out, and remain.
 
-A file the run has not reached is read when it is opened. Playback info reads
-the whole file's details for its own decision and keeps them for a pending
-asset of the same revision. A video thumbnail made while the video's duration
-is unknown probes the video first, inside the thumbnail generation slots, and
-keeps the result.
+A file is also read when it is opened. Playback info reads the whole file's
+details for its own decision and keeps them for a pending asset of the same
+revision. A thumbnail made while a video's duration, or whether an audio file
+embeds cover art, is unknown probes the file first, inside the thumbnail
+generation slots, and keeps the result. The listing links a thumbnail for an
+audio file whose details are pending, and one the probe finds without cover
+art answers that it has none without running `ffmpeg`.
 
 Thumbnails are made on first request rather than during the scan: a scan stays
 a walk, and only folders someone opens pay for `ffmpeg`. A video's

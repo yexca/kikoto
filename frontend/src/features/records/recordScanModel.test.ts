@@ -25,7 +25,7 @@ describe("recordScanState", () => {
     expect(recordScanState(following(8), activity({ scan: run(8, "failed") }))).toEqual({ status: "failed" });
   });
 
-  it("shows the media details run that follows a finished scan, then the finished scan", () => {
+  it("shows a media details run active after a finished scan, then the finished scan", () => {
     const finished = run(8, "succeeded", 1775, 1775);
     expect(recordScanState(following(8), activity({ scan: finished, probe: run(9, "running", 40, 1775) }))).toEqual({
       status: "probing",

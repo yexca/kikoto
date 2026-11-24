@@ -172,7 +172,7 @@ func (s *Server) enqueueLocalMediaIndex(ctx context.Context, trigger workflowRun
 		return localMediaIndexQueuedResult{}, err
 	}
 	if trigger.ID > 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", trigger.ID, runID); err != nil {
+		if err := workflow.SetRunTrigger(ctx, tx, runID, trigger.ID); err != nil {
 			return localMediaIndexQueuedResult{}, err
 		}
 	}

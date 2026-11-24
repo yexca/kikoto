@@ -240,18 +240,41 @@ type probeOutcome struct {
 // Between each group the pass calls options.Between, which may stop it; a
 // cancelled context stops it too. Either way finished files keep their result
 // and the rest stay pending; a cancelled pass also reports how many remain.
+//
+// A root that is not mounted, or that holds another disk, refuses the pass
+// with ErrRootOffline before any file is read, so the files it cannot see are
+// not marked failed.
 func (s *Store) ProbePending(ctx context.Context, options ProbeOptions) (ProbeResult, error) {
+	return s.probePass(ctx, options, nil)
+}
+
+// ProbeAssets is ProbePending limited to the pending files among ids, such as
+// those of a folder being opened; the files it does not name stay pending.
+// Remaining still counts every pending file.
+func (s *Store) ProbeAssets(ctx context.Context, ids []int64, options ProbeOptions) (ProbeResult, error) {
+	if len(ids) == 0 {
+		return ProbeResult{}, nil
+	}
+	return s.probePass(ctx, options, ids)
+}
+
+// probePass reads the pending files, or only those among only when it is not
+// nil, in groups of the pass's concurrency.
+func (s *Store) probePass(ctx context.Context, options ProbeOptions, only []int64) (ProbeResult, error) {
 	result := ProbeResult{TimedOutIDs: append([]int64(nil), options.Skip...)}
 	if s.probe == nil {
 		result.Unavailable = true
 		return result, s.countPendingProbes(ctx, &result)
+	}
+	if err := s.requireReadableRoot(ctx); err != nil {
+		return result, err
 	}
 	concurrency := options.Concurrency
 	if concurrency <= 0 {
 		concurrency = DefaultProbeConcurrency
 	}
 	for {
-		candidates, err := s.pendingProbes(ctx, result.TimedOutIDs, concurrency)
+		candidates, err := s.pendingProbes(ctx, result.TimedOutIDs, only, concurrency)
 		if err != nil {
 			return result, err
 		}
@@ -317,6 +340,19 @@ func (s *Store) ProbePending(ctx context.Context, options ProbeOptions) (ProbeRe
 	return result, s.countPendingProbes(context.WithoutCancel(ctx), &result)
 }
 
+// requireReadableRoot refuses a probe pass unless the root is online or only
+// lacks its marker, the states in which its files are browsed and played.
+func (s *Store) requireReadableRoot(ctx context.Context) error {
+	root, err := s.EnsureRoot(ctx)
+	if err != nil {
+		return err
+	}
+	if root.State != "online" && root.State != RootStateMarkerMissing {
+		return ErrRootOffline
+	}
+	return nil
+}
+
 // PendingProbes counts the files a probe pass would read, leaving out skip.
 func (s *Store) PendingProbes(ctx context.Context, skip []int64) (int, error) {
 	var count int
@@ -330,8 +366,14 @@ func (s *Store) countPendingProbes(ctx context.Context, result *ProbeResult) err
 	return err
 }
 
-func (s *Store) pendingProbes(ctx context.Context, skip []int64, limit int) ([]probeCandidate, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, relative_path, kind, size_bytes, mtime_ns FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN `+probeKinds+` AND probe_state='pending' AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY id LIMIT ?`, idsJSON(skip), limit)
+// pendingProbes selects up to limit pending files, leaving out skip and, when
+// only is not nil, every file only does not name.
+func (s *Store) pendingProbes(ctx context.Context, skip, only []int64, limit int) ([]probeCandidate, error) {
+	scoped := 0
+	if only != nil {
+		scoped = 1
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, relative_path, kind, size_bytes, mtime_ns FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN `+probeKinds+` AND probe_state='pending' AND id NOT IN (SELECT value FROM json_each(?)) AND (?=0 OR id IN (SELECT value FROM json_each(?))) ORDER BY id LIMIT ?`, idsJSON(skip), scoped, idsJSON(only), limit)
 	if err != nil {
 		return nil, err
 	}

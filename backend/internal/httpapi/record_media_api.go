@@ -34,18 +34,23 @@ func (s *Server) newRecordThumbnailer(run record.FFmpegFunc) *record.Thumbnailer
 	dir := filepath.Join(s.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir)
 	return record.NewThumbnailer(dir, run, recordThumbnailConcurrency,
 		record.WithThumbnailWorkDir(s.cfg.TempDir), record.WithThumbnailGuard(s.guardRecordThumbnailWrite),
-		record.WithThumbnailDuration(s.recordThumbnailDuration))
+		record.WithThumbnailProbe(s.recordThumbnailProbe))
 }
 
-// recordThumbnailDuration reads the length of a video the probe workflow has
-// not reached yet, and keeps it, so its thumbnail is taken a tenth of the way
-// in and its listing shows the length.
-func (s *Server) recordThumbnailDuration(ctx context.Context, assetID int64) float64 {
+// recordThumbnailProbe reads the media details of a file whose details are
+// still pending, and keeps them, so a video's thumbnail is taken a tenth of
+// the way in, an audio file without cover art is known to have no thumbnail,
+// and the listing shows the length.
+func (s *Server) recordThumbnailProbe(ctx context.Context, assetID int64) record.ThumbnailDetails {
 	asset, err := s.recordStore.ProbeIfPending(ctx, assetID)
-	if err != nil || asset.DurationSeconds == nil {
-		return 0
+	if err != nil || asset.ProbePending {
+		return record.ThumbnailDetails{}
 	}
-	return *asset.DurationSeconds
+	details := record.ThumbnailDetails{Read: true, HasCover: asset.HasCover}
+	if asset.DurationSeconds != nil {
+		details.DurationSeconds = *asset.DurationSeconds
+	}
+	return details
 }
 
 // guardRecordThumbnailWrite holds the transcode cache open and reserves bytes
@@ -81,13 +86,14 @@ func (s *Server) pruneRecordThumbnails(ctx context.Context) (int, error) {
 }
 
 // hasRecordThumbnail reports the assets a thumbnail is made of: videos,
-// images, and audio files with embedded cover art.
+// images, and audio files with embedded cover art, or whose media details are
+// still to be read, as a thumbnail request reads them first.
 func hasRecordThumbnail(a record.Asset) bool {
-	return a.Kind == "video" || a.Kind == "image" || (a.Kind == "audio" && a.HasCover)
+	return a.Kind == "video" || a.Kind == "image" || (a.Kind == "audio" && (a.HasCover || a.ProbePending))
 }
 
 func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
-	source := record.ThumbnailSource{AssetID: a.ID, Kind: a.Kind}
+	source := record.ThumbnailSource{AssetID: a.ID, Kind: a.Kind, CoverUnknown: a.Kind == "audio" && a.ProbePending}
 	if a.SizeBytes != nil {
 		source.SizeBytes = *a.SizeBytes
 	}
@@ -103,7 +109,8 @@ func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
 // decorateRecordAsset sets the authenticated URLs an asset is read through:
 // the download of any file, the stream and a revision-keyed thumbnail for
 // videos and images, the stream of audio files and the thumbnail of their
-// embedded cover art, and the WebVTT route for WebVTT and SubRip sidecars.
+// embedded cover art, offered while it is unknown whether they have any, and
+// the WebVTT route for WebVTT and SubRip sidecars.
 func decorateRecordAsset(a *record.Asset) {
 	if a.Availability != "available" {
 		return
@@ -116,7 +123,7 @@ func decorateRecordAsset(a *record.Asset) {
 		a.ThumbnailURL = "/api/records/assets/" + id + "/thumbnail?v=" + recordThumbnailSource(*a).Revision()
 	case "audio":
 		a.StreamURL = "/api/records/assets/" + id + "/stream"
-		if a.HasCover {
+		if hasRecordThumbnail(*a) {
 			a.ThumbnailURL = "/api/records/assets/" + id + "/thumbnail?v=" + recordThumbnailSource(*a).Revision()
 		}
 	case "subtitle":

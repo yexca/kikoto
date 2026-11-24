@@ -17,10 +17,11 @@ const probePollMs = 5_000;
 
 /**
  * Queues a record scan and follows the record workflows through the root
- * reading: the scan run until it ends, then the run that reads media details
- * after it. While either is queued or running the root is read again, and the
- * folder is listed again when a scan or a media details run ends. A scan or a
- * run started elsewhere, or before the page opened, is followed the same way.
+ * reading: the scan run until it ends, and a media details run started by hand
+ * or by a trigger. While either is queued or running the root is read again,
+ * and the folder is listed again when a scan or a media details run ends. A
+ * scan or a run started elsewhere, or before the page opened, is followed the
+ * same way.
  */
 export function useRecordScan({
   activity,

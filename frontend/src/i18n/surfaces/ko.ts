@@ -1989,7 +1989,6 @@ export const surfaceKorean = {
         metadata_sync: "누락되거나 오래된 메타데이터뿐 아니라 모든 작품의 메타데이터를 새로 고칩니다.",
       },
       scanAlwaysFull: "매번 모든 폴더를 확인합니다",
-      followsRecordScan: "기록을 스캔할 때마다 실행",
       metadataOptions: "메타데이터 옵션",
       metadataOptionsDescription:
         "메타데이터 카드의 실행과 새 메타데이터 트리거가 사용하는 설정입니다. 이 브라우저에 저장됩니다.",

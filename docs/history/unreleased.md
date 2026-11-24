@@ -6,11 +6,14 @@
 - **Scan** finishes as soon as it has walked the Record folder, so new files
   can be browsed right away, and its status shows how many files it has found.
 - The length of new or changed videos and audio files, and whether an audio
-  file carries cover art, is read afterwards by **Read Record media details**,
-  a workflow of its own whose progress shows beside **Scan**. It reads only
-  each file's header, skips photos, and pauses between files whenever other
-  work is waiting. A video whose thumbnail a folder shows, and a file you
-  play, is read then if the run has not reached it yet.
+  file carries cover art, is read when you open its folder, and appears a few
+  seconds later; a file you play, or whose thumbnail a folder shows, is read
+  then too. Each read covers only the file's header and skips photos, and
+  nothing is read while the Record folder is not mounted.
+- **Read Record media details** reads every file still waiting at once, by
+  hand or at startup or on a schedule from its trigger, as a workflow of its
+  own whose progress shows beside **Scan**. It pauses between files whenever
+  other work is waiting.
 - The Record page keeps following a scan or a media details run until it
   ends, including one started elsewhere, and a failed scan says so.
 
@@ -28,7 +31,8 @@
   rankings has a pull planned, with when it is due.
 - Operations adds a **Record** section while Record is on: **Record scan**
   and **Media details**, which reads every file still waiting, including
-  files an earlier run gave up on after a timeout.
+  files an earlier run gave up on after a timeout, and takes Startup and
+  interval triggers.
 - Links and Quick actions that open the runs needing attention open the
   Needs attention tab.
 - A run opens beside its list only from Needs attention or History, stays in

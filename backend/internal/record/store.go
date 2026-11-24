@@ -118,6 +118,9 @@ type Asset struct {
 	// HasCover reports cover art embedded in an audio file, which becomes its
 	// thumbnail.
 	HasCover bool `json:"-"`
+	// ProbePending marks a video or audio file whose media details are still
+	// to be read, so its length and, for audio, its cover art are unknown.
+	ProbePending bool `json:"-"`
 	// Subtitle is a video's same-name WebVTT or SubRip sidecar, when the
 	// listing pairs one.
 	Subtitle *Asset `json:"subtitle,omitempty"`
@@ -759,16 +762,18 @@ func mimeFor(name string) string {
 }
 
 // assetColumns are the record_asset columns scanAsset reads, aliased as a.
-const assetColumns = `a.id, a.folder_id, a.name, a.relative_path, a.kind, a.mime_type, a.size_bytes, a.mtime_ns, a.duration_seconds, a.width, a.height, a.availability, a.has_cover`
+const assetColumns = `a.id, a.folder_id, a.name, a.relative_path, a.kind, a.mime_type, a.size_bytes, a.mtime_ns, a.duration_seconds, a.width, a.height, a.availability, a.has_cover, a.probe_state`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanAsset(row rowScanner, extra ...any) (Asset, error) {
 	var a Asset
 	var hasCover sql.NullInt64
-	dest := append([]any{&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.MtimeNs, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability, &hasCover}, extra...)
+	var probeState string
+	dest := append([]any{&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.MtimeNs, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability, &hasCover, &probeState}, extra...)
 	err := row.Scan(dest...)
 	a.HasCover = hasCover.Valid && hasCover.Int64 == 1
+	a.ProbePending = probeState == "pending" && (a.Kind == "video" || a.Kind == "audio")
 	return a, err
 }
 

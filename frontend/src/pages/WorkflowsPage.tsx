@@ -217,6 +217,9 @@ export function WorkflowsPage({
   /** The Record operations change what Record shows, as Scan on the Record page does. */
   const recordPermitted = !readOnly && auth.hasPermission("library:write");
   const runPermitted = (operation: Operation) => (operation.group === "record" ? recordPermitted : permitted);
+  /** Automating an operation also needs `workflows:run`, which every trigger runs under. */
+  const triggerPermitted = (operation: Operation) =>
+    operation.group === "record" ? recordPermitted && canRun : permitted;
 
   const toggleTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
@@ -314,13 +317,12 @@ export function WorkflowsPage({
             ? {
                 label: t("workflowPage.triggers.title", { name: cardName(operation) }),
                 onOpen:
-                  permitted || readOnly
+                  triggerPermitted(operation) || readOnly
                     ? () => setTriggerDialog({ definitionId: definition.id, editing: null })
                     : undefined,
               }
             : undefined
         }
-        follows={operation.kind === "record_probe" ? t("workflowPage.cards.followsRecordScan") : undefined}
         options={
           operation.kind === "metadata_sync"
             ? {
@@ -500,7 +502,7 @@ export function WorkflowsPage({
           operation={{ definition: dialogOperation.definition, name: cardName(dialogOperation) }}
           triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === dialogOperation.definition.id)}
           editing={triggerDialog?.editing}
-          canManage={permitted}
+          canManage={triggerPermitted(dialogOperation)}
           readOnly={readOnly}
           metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
           onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}

@@ -1888,7 +1888,6 @@ export const surfaceHans = {
         metadata_sync: "刷新所有作品的元数据，而不只是缺失或过期的部分。",
       },
       scanAlwaysFull: "每次都检查所有文件夹",
-      followsRecordScan: "每次扫描记录后运行",
       metadataOptions: "元数据选项",
       metadataOptionsDescription: "元数据卡片的运行和新的元数据触发器会使用这些设置。保存在此浏览器中。",
       fallbackSummary: "远程回退：{{sources}}",

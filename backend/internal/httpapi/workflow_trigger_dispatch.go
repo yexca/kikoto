@@ -115,6 +115,12 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		}
 		prepared.ConfigJSON = mustJSON(config)
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
+	case recordProbeWorkflowCode:
+		if err := normalizeRecordProbeTriggerConfig(payload.ConfigJSON); err != nil {
+			return preparedWorkflowTrigger{}, nil, err
+		}
+		prepared.ConfigJSON = "{}"
+		requiredPermissions = append(requiredPermissions, "library:write")
 	case sourcePresenceCheckWorkflowCode:
 		config, err := normalizeSourcePresenceCheckTriggerConfig(payload.ConfigJSON)
 		if err != nil {
@@ -158,6 +164,8 @@ func (s *Server) storedWorkflowTriggerPermissions(ctx context.Context, definitio
 		return append(permissions, "metadata:sync")
 	case sourcePresenceCheckWorkflowCode:
 		return append(permissions, "sources:write")
+	case recordProbeWorkflowCode:
+		return append(permissions, "library:write")
 	}
 	return permissions
 }
@@ -182,7 +190,7 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	switch code {
-	case "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync":
+	case "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync", recordProbeWorkflowCode:
 		return true
 	default:
 		return false
@@ -195,7 +203,7 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 func scheduledSystemWorkflowCodes() []string {
 	return []string{
 		creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"metadata_sync", dlsiteRankingWorkflowCode, remoteRankingWorkflowCode,
+		"metadata_sync", dlsiteRankingWorkflowCode, remoteRankingWorkflowCode, recordProbeWorkflowCode,
 	}
 }
 
@@ -470,6 +478,8 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case localMediaIndexWorkflowCode:
 		return s.executeLocalMediaIndexSystemTrigger(ctx, trigger, triggerType, triggerReason)
+	case recordProbeWorkflowCode:
+		return s.executeRecordProbeSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case sourcePresenceCheckWorkflowCode:
 		return s.executeSourcePresenceCheckSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "metadata_sync":
@@ -513,7 +523,8 @@ func (s *Server) executeMetadataSystemTrigger(ctx context.Context, trigger workf
 
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
-	case creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync":
+	case creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync",
+		recordProbeWorkflowCode:
 		return true
 	default:
 		return false
@@ -552,7 +563,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 }
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
-	startupCodes := []string{"local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode}
+	startupCodes := []string{"local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, recordProbeWorkflowCode}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id
 		FROM workflow_trigger AS trigger

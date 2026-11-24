@@ -1998,7 +1998,6 @@ export const surfaceJapanese = {
         metadata_sync: "不足または古いメタデータだけでなく、すべての作品のメタデータを更新します。",
       },
       scanAlwaysFull: "毎回すべてのフォルダーを確認します",
-      followsRecordScan: "記録のスキャンのたびに実行",
       metadataOptions: "メタデータのオプション",
       metadataOptionsDescription:
         "メタデータカードの実行と新しいメタデータのトリガーが使う設定です。このブラウザーに保存されます。",

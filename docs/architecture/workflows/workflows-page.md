@@ -32,7 +32,7 @@ on its card until a later run replaces it and leads to its details. The line
 below lists its enabled triggers (at startup, watching folders, each interval
 schedule) with the soonest next scheduled run, says automatic runs are paused
 when every trigger is off, and is absent for an operation that runs only by
-hand; Media details states instead that it runs after each Record scan. The
+hand. The
 cards sit three across where the tab is at least 42rem wide (a container
 query) and stack below. Operations never shares the page with a run: a run its
 cards open takes the page until Back.
@@ -64,10 +64,10 @@ repeat of the same metadata scope joins the active run on the backend.
 The Record operations need `library:write`, as the Record page's Scan does,
 and are exclusive. Record scan posts `/api/records/scans`; Media details
 posts `/api/records/probes`, which queues a `manual` probe run, or returns the
-probe run already queued or running, as the follow-up after each Record scan
-does. A new probe run reads every file still pending, including those an
-earlier run timed out on. Neither has Full, and the backend takes no
-triggers for them, so their cards have no trigger button.
+probe run already queued or running. A new probe run reads every file still
+pending, including those an earlier run timed out on. Neither has Full. Record
+scan takes no triggers, so its card has no trigger button; Media details takes
+Startup and interval triggers.
 
 `GET /api/workflow-status` states each card's status from every run the
 viewer may see, so it holds however many runs are active. It takes the
@@ -85,19 +85,22 @@ another browser shows on its card and, for an exclusive operation, holds its
 run control the same way. Demo reads both once. A hidden tab skips the poll
 and catches up when shown again.
 
-Each Library card's trigger button, at the end of its name row, opens that
-operation's triggers; the icon uses the primary color while any of them is
-enabled. The dialog lists the triggers with their switch and edit action and
+Each Library card's trigger button, and that of Media details, at the end of
+its name row, opens that operation's triggers; the icon uses the primary color
+while any of them is enabled. The dialog lists the triggers with their switch and edit action and
 offers **Add trigger**; an operation without triggers opens straight to the
 add form, and a trigger edited from Next opens straight to its form. A form
-returns to where it was opened from. A viewer without `metadata:sync` sees the
-icon's state without opening it. A trigger takes Startup
-or an interval of 1, 6, or 12 hours, 1 day, or 7 days, and Full. Metadata
+returns to where it was opened from. A viewer without the operation's
+permission (`metadata:sync` for a Library operation, `library:write` for
+Media details) sees the icon's state without opening it. A trigger takes
+Startup or an interval of 1, 6, or 12 hours, 1 day, or 7 days, and Full where
+the operation has it. Metadata
 sync offers only an interval, and an operation that already has a Startup
 trigger cannot add another, as the backend enforces. A new trigger stores the
 same options as Run: `{"followUpRun": false}` for the scan, `{"mode": …}`
-for the file index, and the metadata sync options above, the card's options included, with the
-chosen mode.
+for the file index, the metadata sync options above, the card's options
+included, with the chosen mode, and `{}` for Media details. While Record is
+off, a Media details trigger queues nothing and records why.
 Editing a trigger changes its interval and Full and keeps every other option
 it stores, such as a metadata sync's scope, source, or fallback, so a trigger
 created through the API keeps them. The scan's fixed folder watcher edits only

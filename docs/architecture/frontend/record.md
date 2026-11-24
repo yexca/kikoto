@@ -32,7 +32,9 @@ The page follows the record workflows through the root's `activity`: while a
 scan or a media details run is queued or running, including one started
 elsewhere or before the page opened, it reads the root again, and the inline
 status shows the files a scan has found and the media details read so far.
-The open folder is listed again when a scan or a media details run ends.
+The open folder is listed again when a scan or a media details run ends, and
+once, four seconds after it opens, when its listing reports media details
+pending, so the lengths and covers the server read meanwhile appear.
 Tiles show the server's thumbnails,
 falling back to an icon for a video and to the full image for a photo, and the
 folder's artwork images stay out of the photos. Group headings appear only when

@@ -120,6 +120,8 @@ func decorateRecordFolder(folder *record.Folder) {
 // listRecordTree lists a folder, the root without folderId. Without section
 // it answers the folder's trail and the first page of every section; with
 // section it answers the page of that section after the cursor in after.
+// Either queues the listed files whose media details are pending and, while
+// any are, says how many in mediaDetailsPending.
 func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "library:read")
 	if !ok {
@@ -146,14 +148,19 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 			decorateRecordFolder(&view.Trail[i])
 		}
 		sections := map[string]any{}
-		var videos []record.Asset
+		var videos, listed []record.Asset
 		for _, page := range view.Sections {
 			sections[page.Section] = recordSectionJSON(page)
 			if page.Section == record.SectionVideos {
 				videos = page.Assets
 			}
+			listed = append(listed, page.Assets...)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"folderId": parent, "trail": view.Trail, "sections": sections})
+		response := map[string]any{"folderId": parent, "trail": view.Trail, "sections": sections}
+		if pending := s.queueRecordMediaDetails(listed); pending > 0 {
+			response["mediaDetailsPending"] = pending
+		}
+		writeJSON(w, http.StatusOK, response)
 		s.prefetchRecordVideoKeyframes(videos)
 		return
 	}
@@ -172,6 +179,9 @@ func (s *Server) listRecordTree(w http.ResponseWriter, r *http.Request) {
 	response := recordSectionJSON(page)
 	response["folderId"] = parent
 	response["section"] = section
+	if pending := s.queueRecordMediaDetails(page.Assets); pending > 0 {
+		response["mediaDetailsPending"] = pending
+	}
 	writeJSON(w, http.StatusOK, response)
 	if section == record.SectionVideos {
 		s.prefetchRecordVideoKeyframes(page.Assets)

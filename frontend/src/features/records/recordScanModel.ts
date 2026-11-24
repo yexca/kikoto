@@ -9,7 +9,7 @@ export type RecordScanState =
   | { status: "running"; found: number }
   | { status: "finished" }
   | { status: "failed" }
-  /** Media details are read after a scan; `total` is zero until the run counts them. */
+  /** A media details run reads the library; `total` is zero until the run counts them. */
   | { status: "probing"; done: number; total: number };
 
 /** What the page asked for: nothing, a scan being queued, a scan it could not queue, or the scan run it follows. */

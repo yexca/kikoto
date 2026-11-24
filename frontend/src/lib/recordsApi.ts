@@ -80,6 +80,8 @@ export type RecordTree = {
   /** The listed folder and the folders above it, below the root; empty at the root. */
   trail: RecordFolder[];
   sections: RecordSectionPages;
+  /** Listed videos and audio files whose length or cover art the server is reading now. */
+  mediaDetailsPending?: number;
 };
 
 /** Where a video, photo, or audio file sits in its section of its folder. */

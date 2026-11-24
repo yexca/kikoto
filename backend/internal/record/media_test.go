@@ -360,9 +360,9 @@ func TestThumbnailerReadsAnUnknownVideoLength(t *testing.T) {
 			}
 		}
 		return os.WriteFile(strings.TrimPrefix(args[len(args)-1], "file:"), tinyJPEG, 0o644)
-	}, 1, WithThumbnailDuration(func(_ context.Context, assetID int64) float64 {
+	}, 1, WithThumbnailProbe(func(_ context.Context, assetID int64) ThumbnailDetails {
 		reads.Add(1)
-		return 300
+		return ThumbnailDetails{Read: true, DurationSeconds: 300}
 	}))
 	file, err := thumbs.Thumbnail(context.Background(), input, ThumbnailSource{AssetID: 7, Kind: "video", SizeBytes: 5, MtimeNs: 1})
 	if err != nil || seek != "30.000" || reads.Load() != 1 {
@@ -469,6 +469,65 @@ func TestThumbnailerTakesAnAudioFilesCoverArt(t *testing.T) {
 	joined := strings.Join(seen, " ")
 	if !strings.Contains(joined, "-map 0:v:0") || strings.Contains(joined, "-ss") {
 		t.Fatalf("audio cover args = %v", seen)
+	}
+}
+
+// An audio file whose details are unread has them read first; one without
+// cover art has no thumbnail and runs no ffmpeg, and one whose read could not
+// finish is tried with ffmpeg.
+func TestThumbnailerReadsWhetherAnUnreadAudioFileHasCoverArt(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "talk.mp3")
+	if err := os.WriteFile(input, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	details := map[int64]ThumbnailDetails{1: {Read: true}, 2: {Read: true, HasCover: true}, 3: {}}
+	thumbs := NewThumbnailer(t.TempDir(), fakeFFmpeg(&calls, tinyJPEG, nil), 1, WithThumbnailProbe(func(_ context.Context, assetID int64) ThumbnailDetails {
+		return details[assetID]
+	}))
+	source := func(id int64) ThumbnailSource {
+		return ThumbnailSource{AssetID: id, Kind: "audio", SizeBytes: 5, MtimeNs: 1, CoverUnknown: true}
+	}
+	if _, err := thumbs.Thumbnail(context.Background(), input, source(1)); !errors.Is(err, ErrThumbnailUnavailable) || calls.Load() != 0 {
+		t.Fatalf("audio without cover = %v, ffmpeg calls %d", err, calls.Load())
+	}
+	for _, id := range []int64{2, 3} {
+		file, err := thumbs.Thumbnail(context.Background(), input, source(id))
+		if err != nil {
+			t.Fatalf("audio %d thumbnail = %v", id, err)
+		}
+		_ = file.Close()
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("ffmpeg calls = %d, want 2", calls.Load())
+	}
+}
+
+// A pass over a root that is not online, such as another disk mounted at its
+// path, is refused before any file is read, so its files stay pending; a pass
+// limited to some files reads only those.
+func TestProbePassesWaitForTheRootAndKeepToTheirFiles(t *testing.T) {
+	var calls atomic.Int32
+	store, db, root := scannedStore(t, map[string]string{"a.mp4": "a", "b.mp4": "b"}, WithProber(func(context.Context, string) ([]byte, error) {
+		calls.Add(1)
+		return []byte(videoProbeJSON), nil
+	}))
+	ctx := context.Background()
+	result, err := store.ProbeAssets(ctx, []int64{assetID(t, db, "a.mp4")}, ProbeOptions{})
+	if err != nil || result.Probed != 1 || result.Remaining != 1 || calls.Load() != 1 {
+		t.Fatalf("limited pass = %+v, %v; probe calls %d", result, err, calls.Load())
+	}
+	if state, _, _ := probeState(t, db, "b.mp4"); state != "pending" {
+		t.Fatalf("a file the pass did not name = %s", state)
+	}
+	if err := writeMarker(root, "00000000000000000000000000000001"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ProbePending(ctx, ProbeOptions{}); !errors.Is(err, ErrRootOffline) || calls.Load() != 1 {
+		t.Fatalf("pass on another disk = %v; probe calls %d", err, calls.Load())
+	}
+	if state, _, _ := probeState(t, db, "b.mp4"); state != "pending" {
+		t.Fatalf("a file on another disk = %s", state)
 	}
 }
 

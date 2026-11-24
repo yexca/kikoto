@@ -42,11 +42,11 @@ func (s recordTestServer) runStatus(t *testing.T, runID int64) string {
 	return status
 }
 
-// A record scan ends once its walk does and queues the reading of the files it
-// left pending as a workflow of its own. That workflow gives the executor to
-// work queued meanwhile and continues afterwards, and the Records page reads
-// both runs from the root.
-func TestRecordScanQueuesTheProbeAsItsOwnWorkflowThatYieldsToQueuedWork(t *testing.T) {
+// A record scan ends once its walk does and leaves the files it found pending
+// without queueing their media details. A media details run started by hand
+// is a workflow of its own: it gives the executor to work queued meanwhile and
+// continues afterwards, and the Records page reads both runs from the root.
+func TestRecordScanLeavesMediaDetailsToARunOfTheirOwnThatYieldsToQueuedWork(t *testing.T) {
 	ctx := context.Background()
 	srv := newRecordTestServer(t)
 	s := srv.server
@@ -74,15 +74,21 @@ func TestRecordScanQueuesTheProbeAsItsOwnWorkflowThatYieldsToQueuedWork(t *testi
 	}
 	activity := srv.activity(t).Activity
 	if activity.Scan == nil || activity.Scan.RunID != scan.RunID || activity.Scan.Status != "succeeded" ||
-		activity.Probe == nil || activity.Probe.Status != "queued" || activity.PendingFiles != 2 {
+		activity.Probe != nil || activity.PendingFiles != 2 {
 		t.Fatalf("activity after the scan = %+v scan %+v probe %+v", activity, activity.Scan, activity.Probe)
 	}
-	probeRunID := activity.Probe.RunID
-	// The scan run names the probe it queued as it finished.
-	var queuedEvents int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'record_library_scan.follow_up_queued'
-		AND json_extract(detail_json, '$.probe_run_id') = ?`, scan.RunID, probeRunID).Scan(&queuedEvents); err != nil || queuedEvents != 1 {
-		t.Fatalf("follow-up events on the scan run = %d, %v", queuedEvents, err)
+	var probeRuns int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?`, recordProbeWorkflowCode).Scan(&probeRuns); err != nil || probeRuns != 0 {
+		t.Fatalf("media details runs after the scan = %d, %v", probeRuns, err)
+	}
+
+	probe, err := s.enqueueRecordProbe(ctx, workflowRunTrigger{Type: "manual", Reason: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeRunID := probe.RunID
+	if activity := srv.activity(t).Activity; activity.Probe == nil || activity.Probe.RunID != probeRunID || activity.Probe.Status != "queued" {
+		t.Fatalf("activity with the queued run = %+v probe %+v", activity, activity.Probe)
 	}
 
 	// The probe yields once the scan queued during it waits.

@@ -110,6 +110,13 @@ func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string,
 	return runID, nil
 }
 
+// SetRunTrigger names the trigger that queued a run, so the trigger records
+// how the run ends.
+func SetRunTrigger(ctx context.Context, tx *sql.Tx, runID, triggerID int64) error {
+	_, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", triggerID, runID)
+	return err
+}
+
 func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpec) (int64, error) {
 	inputJSON, err := marshal(spec.Input)
 	if err != nil {

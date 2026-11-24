@@ -74,6 +74,7 @@ type Server struct {
 	hlsSessions                    hlsSessions
 	videoKeyframeIndexes           videoKeyframeIndexes
 	videoKeyframePrefetch          videoKeyframePrefetch
+	recordMediaDetails             recordMediaDetails
 	videoHardware                  videoHardwareState
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot

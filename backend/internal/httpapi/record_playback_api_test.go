@@ -150,7 +150,7 @@ func TestRecordTreeClassifiesAudioAndOffersDownloads(t *testing.T) {
 		return body.Asset
 	}
 	audio := asset("Narration.flac")
-	if audio.Kind != "audio" || audio.MimeType != "audio/flac" || audio.StreamURL == "" || audio.ThumbnailURL != "" || audio.DownloadURL == "" {
+	if audio.Kind != "audio" || audio.MimeType != "audio/flac" || audio.StreamURL == "" || audio.DownloadURL == "" {
 		t.Fatalf("audio asset = %+v", audio)
 	}
 	other := asset("notes.ass")

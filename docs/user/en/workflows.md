@@ -25,8 +25,7 @@ Workflows make backend actions inspectable.
   wait for a decision. Select the state to open that run. The line below
   lists its automatic starts, such as **At startup**, **Watching folders**, or
   **Every 6 hours**, with when the next scheduled run is due, or says
-  **Automatic runs paused** when every trigger is off; on Media details it
-  reads **After each Record scan**. Phones stack the cards.
+  **Automatic runs paused** when every trigger is off. Phones stack the cards.
 - **Run** starts the operation, and the card shows the run at once. Metadata
   and Index run incrementally: Metadata refreshes missing or outdated
   metadata of every work from DLsite, and Index indexes only local works whose
@@ -40,9 +39,10 @@ Workflows make backend actions inspectable.
   schedule, at startup, or in another browser shows on its card the same way.
 - Record scan runs as **Scan** on the Record page does. Media details reads
   every file still waiting, including files an earlier run gave up on after a
-  timeout, and also runs on its own after each Record scan. Neither has Full
-  or triggers, and each has one run queued or running at a time; starting
-  another returns that run.
+  timeout; opening a folder on the Record page reads that folder's files on
+  its own. Neither has Full, and each has one run queued or running at a time;
+  starting another returns that run. Media details can also run at startup or
+  on a schedule from its trigger button; Record scan has no triggers.
 - **Metadata options**, the button beside the Metadata card's name, sets
   the [remote metadata fallback](settings.md#remote-metadata-fallback) (off by
   default; on, it asks up to 16 chosen sources in the order you set when
@@ -53,11 +53,12 @@ Workflows make backend actions inspectable.
   Remote B → Example Remote A**. They are saved in this browser; a source
   that is switched off or no longer provides metadata drops out of the
   fallback.
-- The calendar button at the end of a Library card's name row opens what
-  makes that operation run on its own, and is lit while any of it is on. It lists the
+- The calendar button at the end of the name row of a Library card, or of the
+  Media details card, opens what makes that operation run on its own, and is
+  lit while any of it is on. It lists the
   operation's triggers, each with a switch and an edit button, and **Add
   trigger** adds one: **At startup** or **On a schedule** with an interval of
-  1, 6, or 12 hours, 1 day, or 7 days, and Full. An operation without
+  1, 6, or 12 hours, 1 day, or 7 days, and Full where the operation has it. An operation without
   triggers opens straight to adding one. An operation runs at startup once at
   most, and Metadata runs only on a schedule.
 - Running and Next each show five entries, and **Show all** shows the rest.

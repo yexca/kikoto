@@ -421,12 +421,20 @@ func TestRecordCompleteScanRemovesThumbnailsOfMissingAssets(t *testing.T) {
 	}
 }
 
-func TestRecordAudioLinksAThumbnailOnlyForEmbeddedCoverArt(t *testing.T) {
+// An audio file links a thumbnail while it has cover art or its details are
+// still to be read, as the thumbnail request reads them first; one read
+// without cover art links none.
+func TestRecordAudioLinksAThumbnailForCoverArtOrUnreadDetails(t *testing.T) {
 	size, mtime := int64(10), int64(20)
 	withCover := record.Asset{ID: 7, Kind: "audio", Availability: "available", SizeBytes: &size, MtimeNs: &mtime, HasCover: true}
 	decorateRecordAsset(&withCover)
 	if withCover.StreamURL != "/api/records/assets/7/stream" || !strings.HasPrefix(withCover.ThumbnailURL, "/api/records/assets/7/thumbnail?v=") {
 		t.Fatalf("audio with cover = %+v", withCover)
+	}
+	unread := record.Asset{ID: 9, Kind: "audio", Availability: "available", SizeBytes: &size, MtimeNs: &mtime, ProbePending: true}
+	decorateRecordAsset(&unread)
+	if !strings.HasPrefix(unread.ThumbnailURL, "/api/records/assets/9/thumbnail?v=") || !recordThumbnailSource(unread).CoverUnknown {
+		t.Fatalf("audio with unread details = %+v", unread)
 	}
 	plain := record.Asset{ID: 8, Kind: "audio", Availability: "available"}
 	decorateRecordAsset(&plain)

@@ -68,6 +68,9 @@ type ThumbnailSource struct {
 	SizeBytes       int64
 	MtimeNs         int64
 	DurationSeconds float64
+	// CoverUnknown marks an audio file whose media details are pending, so
+	// whether it carries cover art is still to be read.
+	CoverUnknown bool
 }
 
 // Revision names the source's revision in thumbnail URLs and cache keys, so a
@@ -100,14 +103,24 @@ func WithThumbnailGuard(guard ThumbnailGuard) ThumbnailOption {
 	}
 }
 
-// ThumbnailDuration reads the length of a video whose length is not yet known,
-// or reports zero.
-type ThumbnailDuration func(ctx context.Context, assetID int64) float64
+// ThumbnailDetails is what reading a file's pending media details found:
+// Read reports that they were read, which a missing prober or a timeout
+// prevents, and then DurationSeconds and HasCover hold what was read.
+type ThumbnailDetails struct {
+	Read            bool
+	DurationSeconds float64
+	HasCover        bool
+}
 
-// WithThumbnailDuration reads a video's unknown length before its frame is
-// chosen, inside the bounded generation slots.
-func WithThumbnailDuration(read ThumbnailDuration) ThumbnailOption {
-	return func(t *Thumbnailer) { t.duration = read }
+// ThumbnailProbe reads the pending media details of an asset.
+type ThumbnailProbe func(ctx context.Context, assetID int64) ThumbnailDetails
+
+// WithThumbnailProbe reads what a thumbnail needs and the catalog does not
+// know yet, inside the bounded generation slots: a video's length, so its
+// frame is taken a tenth of the way in, and whether an audio file carries
+// cover art at all.
+func WithThumbnailProbe(read ThumbnailProbe) ThumbnailOption {
+	return func(t *Thumbnailer) { t.probe = read }
 }
 
 // Thumbnailer makes and caches JPEG thumbnails of record videos, images, and
@@ -118,15 +131,15 @@ func WithThumbnailDuration(read ThumbnailDuration) ThumbnailOption {
 // outside the cache directory; only a finished thumbnail is stored there,
 // under the guard, and every read marks the thumbnail as recently used.
 type Thumbnailer struct {
-	dir      string
-	workDir  string
-	run      FFmpegFunc
-	guard    ThumbnailGuard
-	duration ThumbnailDuration
-	slots    chan struct{}
-	waiting  atomic.Int32
-	mu       sync.Mutex
-	pending  map[string]*thumbnailCall
+	dir     string
+	workDir string
+	run     FFmpegFunc
+	guard   ThumbnailGuard
+	probe   ThumbnailProbe
+	slots   chan struct{}
+	waiting atomic.Int32
+	mu      sync.Mutex
+	pending map[string]*thumbnailCall
 }
 
 type thumbnailCall struct {
@@ -247,8 +260,16 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 	defer func() { <-t.slots }()
 
 	dir, prefix, final, failed := t.paths(source)
-	if source.Kind == "video" && source.DurationSeconds <= 0 && t.duration != nil {
-		source.DurationSeconds = t.duration(ctx, source.AssetID)
+	switch {
+	case t.probe == nil:
+	case source.Kind == "video" && source.DurationSeconds <= 0:
+		source.DurationSeconds = t.probe(ctx, source.AssetID).DurationSeconds
+	case source.Kind == "audio" && source.CoverUnknown:
+		// An audio file without cover art has no thumbnail; the catalog now
+		// says so, and its listing stops offering one.
+		if details := t.probe(ctx, source.AssetID); details.Read && !details.HasCover {
+			return ErrThumbnailUnavailable
+		}
 	}
 	content, err := t.render(ctx, input, source)
 	if ctx.Err() != nil {

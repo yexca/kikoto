@@ -18,8 +18,7 @@ import { OperationStatus } from "./OperationStatus";
  * on its own and is lit while any of that is on. An operation that runs incrementally offers Full beside Run,
  * which applies to the next run only. An operation with options of its own
  * opens them from the button beside its name and names them while they differ
- * from the defaults. An operation no trigger starts has no trigger button; one
- * that follows another run says so where the schedule would be.
+ * from the defaults. An operation no trigger starts has no trigger button.
  */
 export function OperationCard({
   code,
@@ -35,7 +34,6 @@ export function OperationCard({
   full,
   options,
   triggers,
-  follows,
   onRun,
   onOpenRun,
 }: {
@@ -58,8 +56,6 @@ export function OperationCard({
   options?: { label: string; summary: string | null; onOpen: () => void };
   /** The trigger button; without onOpen it only shows whether a trigger is on. Absent where no trigger can start the operation. */
   triggers?: { label: string; onOpen?: () => void };
-  /** What the operation runs after on its own, such as each Record scan, in place of a schedule. */
-  follows?: string;
   onRun: () => void;
   onOpenRun: (run: WorkflowRun) => void;
 }) {
@@ -125,11 +121,7 @@ export function OperationCard({
       </div>
       <div className="min-w-0 pl-8">
         <OperationStatus state={state} moreActive={moreActive} stageCount={stageCount} onOpenRun={onOpenRun} />
-        {follows ? (
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{follows}</p>
-        ) : (
-          <OperationSchedule summary={schedule} />
-        )}
+        <OperationSchedule summary={schedule} />
         {options?.summary && <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{options.summary}</p>}
       </div>
       <div className="mt-auto flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">

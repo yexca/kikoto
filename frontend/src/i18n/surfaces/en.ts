@@ -2046,7 +2046,6 @@ export const surfaceEnglish = {
         metadata_sync: "Refreshes the metadata of every work, not only missing or stale metadata.",
       },
       scanAlwaysFull: "Checks every folder each time",
-      followsRecordScan: "After each Record scan",
       metadataOptions: "Metadata options",
       metadataOptionsDescription: "What the Metadata card's runs and new Metadata triggers use. Saved in this browser.",
       fallbackSummary: "Remote fallback: {{sources}}",

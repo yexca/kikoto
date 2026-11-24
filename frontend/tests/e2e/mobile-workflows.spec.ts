@@ -919,10 +919,10 @@ test("Operations holds the Library and Record cards above what runs next", async
     "Media details",
   ]);
   await expect(operation(page, "Scan")).toContainText("At startup·Watching folders");
-  // No trigger starts a Record operation; Media details follows each Record scan and runs by hand.
+  // A Record scan runs by hand; Media details runs by hand or from a trigger.
   await expect(operation(page, "Record scan").getByRole("button", { name: /triggers$/ })).toHaveCount(0);
   await expect(operation(page, "Record scan").getByRole("img", { name: /triggers$/ })).toHaveCount(0);
-  await expect(operation(page, "Media details")).toContainText("After each Record scan");
+  await expect(operation(page, "Media details").getByRole("button", { name: /triggers$/ })).toBeVisible();
   await expect(operation(page, "Media details").getByRole("switch", { name: "Full", exact: true })).toHaveCount(0);
   await operation(page, "Media details").getByRole("button", { name: "Run", exact: true }).click();
   await expect.poll(() => probes).toEqual(["POST"]);

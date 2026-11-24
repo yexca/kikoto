@@ -18,8 +18,9 @@ import (
 const TrashDir = ".kikoto-trash/records"
 
 var (
-	// ErrRootOffline refuses a deletion while the record root is not online,
-	// where the path may be an empty mount point or another disk.
+	// ErrRootOffline refuses a deletion, or a media details pass, while the
+	// record root is not online, where the path may be an empty mount point or
+	// another disk.
 	ErrRootOffline = errors.New("record root is not online")
 	// ErrAssetNotDeletable refuses a file that is missing, is not a regular
 	// file, or is reached through a link.

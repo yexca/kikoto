@@ -37,6 +37,13 @@ type AnySection = RecordSectionState<{ id: number }>;
 
 const sectionNames: readonly RecordSectionName[] = ["folders", "videos", "photos", "audio", "files"];
 
+/**
+ * How long after opening a folder whose listing left media details pending it
+ * is listed once more, so the lengths and covers the server read meanwhile
+ * appear. Files it has not read by then show theirs on the next visit.
+ */
+const mediaDetailsRefreshMs = 4_000;
+
 /** The root state, read once and again on Retry or while a record workflow runs. */
 export function useRecordRoot(enabled: boolean) {
   const [state, setState] = useState<RecordRootState>({ status: "loading" });
@@ -84,12 +91,15 @@ function sectionsFromPages(pages: RecordSectionPages): RecordSections {
  * `readWhole` the rest of it. A refresh reads each section again as far as it
  * was read, keeping the current listing until the new one is whole. The
  * listing names the folder's trail; until it arrives, the trail the history
- * entry carries stands in.
+ * entry carries stands in. A visit whose listing has media details pending is
+ * refreshed once, a few seconds later.
  */
 export function useRecordTree(folderId: number, historyState: unknown, enabled: boolean) {
   const [tree, setTree] = useState<RecordTreeState>({ status: "idle" });
   const [reloadToken, setReloadToken] = useState(0);
   const [pending, setPending] = useState(false);
+  // The folder whose visit left media details pending, refreshed once.
+  const [detailsRefreshFolder, setDetailsRefreshFolder] = useState<number | null>(null);
   const treeRef = useRef(tree);
   useLayoutEffect(() => {
     treeRef.current = tree;
@@ -109,8 +119,10 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
     const readSoFar = refreshing ? current.sections : null;
     setPending(true);
     if (!refreshing) setTree({ status: "loading", folderId });
+    let detailsPending = false;
     const load = async (signal: AbortSignal): Promise<RecordTreeState> => {
       const result = await api.listRecordTree(folderId || undefined, signal);
+      detailsPending = (result.mediaDetailsPending ?? 0) > 0;
       const sections = sectionsFromPages(result.sections) as unknown as Record<RecordSectionName, AnySection>;
       if (readSoFar) {
         for (const name of sectionNames) {
@@ -131,11 +143,23 @@ export function useRecordTree(folderId: number, historyState: unknown, enabled: 
       };
     };
     return startLoad(load, {
-      onSuccess: setTree,
+      onSuccess: (state) => {
+        setTree(state);
+        if (!refreshing) setDetailsRefreshFolder(detailsPending ? folderId : null);
+      },
       onError: () => setTree({ status: "error", folderId }),
       onSettled: () => setPending(false),
     });
   }, [enabled, folderId, reloadToken]);
+
+  useEffect(() => {
+    if (!enabled || detailsRefreshFolder !== folderId) return;
+    const timer = window.setTimeout(() => {
+      setDetailsRefreshFolder(null);
+      setReloadToken((value) => value + 1);
+    }, mediaDetailsRefreshMs);
+    return () => window.clearTimeout(timer);
+  }, [enabled, detailsRefreshFolder, folderId]);
 
   const updateSection = useCallback(
     (name: RecordSectionName, generation: number, change: (section: AnySection) => AnySection) => {

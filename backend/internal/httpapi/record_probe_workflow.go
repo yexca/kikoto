@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/record"
@@ -11,10 +13,12 @@ import (
 )
 
 // The record media probe reads what a folder listing shows of the files a
-// record scan found new or changed: the length of videos and audio files, and
-// whether an audio file carries cover art. It runs apart from the scan, so a
-// scan ends once its walk does, and it gives the executor to other queued work
-// between files, so a large library does not hold the queue.
+// record scan found new or changed, for the whole library at once: the length
+// of videos and audio files, and whether an audio file carries cover art. A
+// folder's files are read when it opens; this run is for the files nobody
+// opened yet, started by hand or by a startup or interval trigger. It gives
+// the executor to other queued work between files, so a large library does
+// not hold the queue.
 const (
 	recordProbeWorkflowCode      = "record_media_probe"
 	recordProbeWorkerType        = "record_media_probe"
@@ -84,21 +88,8 @@ func (s *Server) enqueueRecordProbe(ctx context.Context, trigger workflowRunTrig
 		return recordProbeQueuedResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := enqueueRecordProbeTx(ctx, tx, trigger)
-	if err != nil {
-		return recordProbeQueuedResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return recordProbeQueuedResult{}, err
-	}
-	return result, nil
-}
-
-// enqueueRecordProbeTx is enqueueRecordProbe inside tx, which the caller
-// commits, so a finished scan and the probe after it become visible together.
-func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTrigger) (recordProbeQueuedResult, error) {
 	existing := recordProbeQueuedResult{Existing: true}
-	err := tx.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT run.id, run.status, COALESCE((
 			SELECT job.id FROM workflow_job AS job WHERE job.workflow_run_id = run.id ORDER BY job.id DESC LIMIT 1
 		), 0)
@@ -107,7 +98,7 @@ func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTr
 		ORDER BY run.id DESC LIMIT 1
 	`, recordProbeWorkflowCode).Scan(&existing.RunID, &existing.Status, &existing.JobID)
 	if err == nil {
-		return existing, nil
+		return existing, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return recordProbeQueuedResult{}, err
@@ -121,6 +112,11 @@ func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTr
 		"queued", trigger.Type, trigger.Reason, map[string]any{}, map[string]any{})
 	if err != nil {
 		return recordProbeQueuedResult{}, err
+	}
+	if trigger.ID > 0 {
+		if err := workflow.SetRunTrigger(ctx, tx, runID, trigger.ID); err != nil {
+			return recordProbeQueuedResult{}, err
+		}
 	}
 	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: recordProbeSelectNodeID, NodeType: recordProbeSelectNodeType, DisplayName: recordProbeSelectDisplayName,
@@ -141,6 +137,9 @@ func enqueueRecordProbeTx(ctx context.Context, tx *sql.Tx, trigger workflowRunTr
 		Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 2,
 	})
 	if err != nil {
+		return recordProbeQueuedResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return recordProbeQueuedResult{}, err
 	}
 	return recordProbeQueuedResult{RunID: runID, JobID: jobID, Status: "queued"}, nil
@@ -204,6 +203,9 @@ func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecor
 			left = result.Remaining
 		}
 		s.checkpointJobOrLog(settleCtx, job, "stopped", current, current.done(), current.done()+left)
+		return err
+	case errors.Is(err, record.ErrRootOffline):
+		s.failJobOrLog(settleCtx, job, "the record library is not mounted")
 		return err
 	case err != nil:
 		s.failJobOrLog(settleCtx, job, "record media probe failed")
@@ -280,7 +282,40 @@ func (s *Server) finishRecordProbeJob(ctx context.Context, job workflowJobRecord
 	}); err != nil {
 		return err
 	}
+	var failures []string
+	if message != "" {
+		failures = []string{message}
+	}
+	if err := updateTriggerForQueuedSystemRun(ctx, tx, job.RunID, status, failures); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// normalizeRecordProbeTriggerConfig accepts the empty configuration, the
+// only one a media details trigger has.
+func normalizeRecordProbeTriggerConfig(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	if err := decodeStrictJSON(raw, &struct{}{}); err != nil {
+		return fmt.Errorf("record media details trigger config is invalid")
+	}
+	return nil
+}
+
+// executeRecordProbeSystemTrigger queues the whole-library media details run
+// for a startup or interval trigger. While Record is off the trigger queues
+// nothing and says why.
+func (s *Server) executeRecordProbeSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
+	if !s.recordLibraryEnabled(ctx) {
+		s.execBestEffort(ctx, "record skipped record media details trigger",
+			"UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+			"Record is turned off", trigger.ID)
+		return "", nil, nil
+	}
+	result, err := s.enqueueRecordProbe(ctx, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
+	return result.Status, nil, err
 }
 
 func (s *Server) retryRecordProbe(ctx context.Context) (int64, error) {

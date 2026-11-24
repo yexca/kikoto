@@ -160,7 +160,8 @@ export function nextTriggerOrder(triggers: WorkflowTrigger[]): WorkflowTrigger[]
 /** The kinds Add offers for an operation; metadata sync runs only on a schedule. */
 export function operationTriggerKinds(code: string): OperationTriggerKind[] {
   if (code === "metadata_sync") return ["schedule"];
-  if (code === "local_library_scan" || code === "local_media_index") return ["startup", "schedule"];
+  if (code === "local_library_scan" || code === "local_media_index" || code === "record_media_probe")
+    return ["startup", "schedule"];
   return [];
 }
 

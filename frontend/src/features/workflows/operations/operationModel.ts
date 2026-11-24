@@ -52,7 +52,8 @@ const builtInOperations: Record<string, OperationSpec> = {
     schedulable: true,
     defaults: () => ({ metadataSync: metadataSyncPayload(metadataSyncDefaultValues()) }),
   },
-  // A Record scan queues Media details after it; each has one run active at a time.
+  // Each Record operation has one run active at a time. Media details reads the
+  // whole library by hand or from a trigger; opening a folder reads its own files.
   record_library_scan: {
     kind: "record_scan",
     group: "record",
@@ -62,6 +63,7 @@ const builtInOperations: Record<string, OperationSpec> = {
   record_media_probe: {
     kind: "record_probe",
     group: "record",
+    schedulable: true,
     exclusive: true,
     defaults: () => ({}),
   },

@@ -1892,7 +1892,6 @@ export const surfaceHant = {
         metadata_sync: "重新整理所有作品的中繼資料，而不只是缺少或過期的部分。",
       },
       scanAlwaysFull: "每次都檢查所有資料夾",
-      followsRecordScan: "每次掃描記錄後執行",
       metadataOptions: "中繼資料選項",
       metadataOptionsDescription: "中繼資料卡片的執行與新的中繼資料觸發器會使用這些設定。儲存在此瀏覽器中。",
       fallbackSummary: "遠端備援：{{sources}}",

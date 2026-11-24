@@ -5,7 +5,9 @@ import type { WorkflowTrigger } from "@/lib/api";
 import {
   nextTriggerOrder,
   operationTriggerConfig,
+  operationTriggerKinds,
   triggerIntervalChoices,
+  triggerOffersFull,
   triggerRunsFull,
   triggerRunsOnItsOwn,
   workflowTriggerCondition,
@@ -118,6 +120,12 @@ describe("triggerRunsOnItsOwn", () => {
 });
 
 describe("operation trigger config", () => {
+  it("starts Record media details at startup or on a schedule, with nothing to choose", () => {
+    expect(operationTriggerKinds("record_media_probe")).toEqual(["startup", "schedule"]);
+    expect(triggerOffersFull("record_media_probe", "schedule")).toBe(false);
+    expect(operationTriggerConfig("record_media_probe", "startup", false)).toEqual({});
+  });
+
   it("stores the mode Full chooses for file indexing and metadata sync", () => {
     expect(operationTriggerConfig("local_media_index", "schedule", true)).toEqual({ mode: "full" });
     expect(operationTriggerConfig("metadata_sync", "schedule", false)).toMatchObject({ scope: "all", mode: "missing" });

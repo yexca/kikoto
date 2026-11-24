@@ -90,16 +90,21 @@ rows when the root is offline or a scan is partial. Only a complete walk marks
 removed folders and files as missing. New files can be browsed as soon as the
 scan finishes.
 
-After the scan, **Read Record media details** runs as its own workflow and
-reads each new or changed video's length and each new or changed audio file's
-length and whether it carries cover art. The **Record** cards on
-[Workflows](workflows.md#user-surfaces) also start the scan and this
-workflow by hand. The status beside **Scan** counts
-the files read so far, and the folder shows the lengths when it ends. It
-pauses between files whenever other work is waiting, so a large library does
-not hold up other workflows. A video whose thumbnail a folder shows, and a
-file you play, is read then if the run has not reached it yet. A file that
-cannot be read keeps no length and is read again once it changes.
+A scan only finds files. Each new or changed video's length, and each new or
+changed audio file's length and whether it carries cover art, is read when
+you open its folder: the lengths and covers appear a few seconds later. A
+file you play, and a file whose thumbnail a folder shows, is read then too.
+An audio file shows its cover once it is read, or an icon when it has none.
+
+To read every file at once, run **Read Record media details** from the
+**Media details** card on [Workflows](workflows.md#user-surfaces), or give
+that card a trigger to run it at startup or on a schedule. The **Record scan**
+card starts a scan by hand. While the run reads files, the status beside
+**Scan** counts the files read so far, and the folder shows the lengths when
+it ends. It pauses between files whenever other work is waiting, so a large
+library does not hold up other workflows. Nothing is read while the Record
+folder is not mounted. A file that cannot be read keeps no length and is read
+again once it changes.
 
 Folder artwork uses these image names: `folder`, `poster`, or `cover` for a
 poster, and `backdrop`, `fanart`, or `background` for a backdrop. Supported

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -129,10 +128,6 @@ func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord
 	return s.finishRecordScanJob(context.WithoutCancel(ctx), job, payload, result)
 }
 
-// errRecordProbeFollowUp marks a failure to queue the probe after a scan, as
-// opposed to a failure to record the scan itself.
-var errRecordProbeFollowUp = errors.New("queue record media probe follow-up")
-
 // runRecordScan scans the record root and, when the walk was complete, removes
 // the cached thumbnails of assets it no longer finds as videos, images, or
 // audio files with cover art. A
@@ -153,28 +148,10 @@ func (s *Server) runRecordScan(ctx context.Context, progress record.ScanProgress
 	return result, nil
 }
 
-// finishRecordScanJob records the scan as finished and, when it left files
-// pending, queues the probe of them, or joins the probe run already queued or
-// running, in the same transaction: a reader never sees the scan ended without
-// the probe that follows it. A probe that cannot be queued leaves the scan
-// finished with a warning.
+// finishRecordScanJob records the scan as finished. The files it left pending
+// are read when their folder opens, or by a media details run started by hand
+// or by a trigger; a scan queues none.
 func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord, _ recordScanPayload, result record.ScanResult) error {
-	if result.PendingProbes == 0 {
-		return s.commitRecordScanJob(ctx, job, result, false)
-	}
-	err := s.commitRecordScanJob(ctx, job, result, true)
-	if !errors.Is(err, errRecordProbeFollowUp) {
-		return err
-	}
-	slog.Error("queue record media probe follow-up", "source_run_id", job.RunID, "error", err)
-	if err := s.commitRecordScanJob(ctx, job, result, false); err != nil {
-		return err
-	}
-	s.recordRunEventOrLog(ctx, job.RunID, "warning", "record_library_scan.follow_up_failed", "Record media details could not be queued.", map[string]any{})
-	return nil
-}
-
-func (s *Server) commitRecordScanJob(ctx context.Context, job workflowJobRecord, result record.ScanResult, queueProbe bool) error {
 	output := mustJSON(result)
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
@@ -191,19 +168,6 @@ func (s *Server) commitRecordScanJob(ctx context.Context, job workflowJobRecord,
 	} {
 		if _, err := tx.ExecContext(ctx, step.query, step.args...); err != nil {
 			return err
-		}
-	}
-	if queueProbe {
-		probe, err := enqueueRecordProbeTx(ctx, tx, workflowRunTrigger{Type: "follow_up", Reason: "record_scan_follow_up"})
-		if err == nil {
-			err = workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-				NodeRunID: job.NodeRunID, JobID: job.ID, Level: "info",
-				Type: "record_library_scan.follow_up_queued", Message: "Record media details queued.",
-				Detail: map[string]any{"probe_run_id": probe.RunID, "coalesced": probe.Existing},
-			})
-		}
-		if err != nil {
-			return fmt.Errorf("%w: %w", errRecordProbeFollowUp, err)
 		}
 	}
 	return tx.Commit()
