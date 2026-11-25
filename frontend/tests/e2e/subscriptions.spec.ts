@@ -1378,6 +1378,21 @@ test("@desktop For you keeps its draw across pages and reloads until a column is
   expect(server.forYouDraws?.[2]).toMatchObject({ temperature: 5 });
 });
 
+test("For you opens again on the column last chosen on a narrow screen", async ({ page }) => {
+  const server: SubscriptionServer = { requests: [], feedQueries: [], forYouDraws: [] };
+  await mockSubscriptions(page, server);
+  await page.goto("/for-you");
+  const columns = page.getByRole("tablist", { name: "For you column" });
+  await expect(columns.getByRole("tab", { name: "Maybe like" })).toHaveAttribute("aria-selected", "true");
+  await columns.getByRole("tab", { name: "Try new" }).click();
+  await expect(page.getByText("Example Work 2 from draw 1")).toBeVisible();
+
+  await page.goto("/discover");
+  await page.goto("/for-you");
+  await expect(columns.getByRole("tab", { name: "Try new" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Example Work 2 from draw 1")).toBeVisible();
+});
+
 test("Demo shows a sample feed without actions", async ({ page }) => {
   const server: SubscriptionServer = {
     requests: [],

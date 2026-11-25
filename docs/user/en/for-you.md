@@ -21,7 +21,8 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
   Library. Works you rated one or two stars are never offered.
 - A work appears in one column only. Every column holds works with local
   files; works only on a remote source or only in a catalog are not drawn.
-- Above each card is why it was drawn, such as **A circle you like: …**,
+- Above each card is why it was drawn, after an icon for what it rests on (a
+  circle, voice, tag, rating, or past play), such as **A circle you like: …**,
   **A tag you rarely hear: …**, or **4 months since last played, rated 5**.
 - The temperature, from 1 to 5, sets how far the draws stray. At 1 the draws
   keep to the best matches and **Try new** stays near what you know; at 5 they
@@ -42,7 +43,8 @@ account menu behind your avatar. Links to `/discover?view=for-you` open it.
 - Before you have rated, favorited, or marked anything, **Maybe like** follows
   the DLsite rating and sales, and **Listen again** waits for works you play.
 - On a narrow window or a phone, the switch under the temperature chooses the
-  column to show, with that column's shuffle button beside it.
+  column to show, with that column's shuffle button beside it. For you opens
+  on the column you chose last on that device.
 - In the demo, For you is a random sample of the demo works, labelled as
   sample data, with example reasons taken from a work's DLsite rating or
   circle. Nothing learns from what you open, and the temperature applies only

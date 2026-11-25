@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { FOR_YOU_TEMPERATURES, type ForYouTemperature } from "@/lib/forYouApi";
+import { cn } from "@/lib/tailwindClassNames";
 
 /** The For you temperature: its name followed by the steps 1 to 5 in one row. */
 export function ForYouTemperaturePicker({
@@ -30,7 +31,10 @@ export function ForYouTemperaturePicker({
               role="radio"
               aria-checked={checked}
               disabled={value === null}
-              className={segmentedItemClassName(checked, "w-7 justify-center px-0 tabular-nums")}
+              className={segmentedItemClassName(
+                checked,
+                cn("w-7 justify-center px-0 tabular-nums", checked && "font-semibold text-primary"),
+              )}
               onClick={() => {
                 if (!checked) onChange(item);
               }}

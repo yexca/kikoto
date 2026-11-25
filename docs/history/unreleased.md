@@ -60,6 +60,18 @@
 </details>
 
 <details>
+<summary><strong>For You</strong></summary>
+
+- The reason above each card starts with an icon in the accent color for what
+  it rests on, such as a circle, voice, tag, rating, or past play, and reads in
+  darker text, so it stands out on a phone.
+- The chosen temperature step is shown in the accent color.
+- On a narrow window or a phone, For you opens on the column you chose last on
+  that device.
+
+</details>
+
+<details>
 <summary><strong>Circles and voice actors</strong></summary>
 
 - The works toolbar of a circle or voice actor leaves the work count to the

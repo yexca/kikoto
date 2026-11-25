@@ -1,4 +1,19 @@
-import { Compass, Repeat, Shuffle, Sparkles, type LucideIcon } from "lucide-react";
+import {
+  Bookmark,
+  CirclePause,
+  Compass,
+  Headphones,
+  History,
+  MicVocal,
+  Repeat,
+  Shuffle,
+  Sparkles,
+  Star,
+  Tag,
+  TrendingUp,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -28,11 +43,12 @@ import {
 import { WorkSectionHeading } from "@/components/work-collection/WorkSectionHeading";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type Work } from "@/lib/api";
-import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouItem } from "@/lib/forYouApi";
+import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouItem, type ForYouReason } from "@/lib/forYouApi";
 import { openCircleRoute } from "@/lib/circleNavigationState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { cn } from "@/lib/tailwindClassNames";
 
+import { readForYouColumnPreference, writeForYouColumnPreference } from "./forYouColumnPreference";
 import { forYouReasonText, type ForYouColumnState } from "./forYouModel";
 import { ForYouTemperaturePicker } from "./ForYouTemperaturePicker";
 import { useForYou } from "./useForYou";
@@ -41,6 +57,22 @@ const COLUMN_ICONS: Record<ForYouColumn, LucideIcon> = {
   maybe_like: Sparkles,
   try_new: Compass,
   listen_again: Repeat,
+};
+
+// What a reason rests on: the circle, voice, or tag it names, a rating, or a past play.
+const REASON_ICONS: Record<ForYouReason["kind"], LucideIcon> = {
+  liked_circle: Users,
+  new_circle: Users,
+  liked_voice: MicVocal,
+  new_voice: MicVocal,
+  liked_tag: Tag,
+  rare_tag: Tag,
+  want: Bookmark,
+  dlsite_rating: Star,
+  popular: TrendingUp,
+  unexplored: Headphones,
+  since_played: History,
+  unfinished: CirclePause,
 };
 
 // Side by side, each column is a single track of row cards.
@@ -87,7 +119,11 @@ function ForYouDraws({
   const { t } = useTranslation();
   const { demoMode } = useAuth();
   const forYou = useForYou(storageScope);
-  const [shown, setShown] = useState<ForYouColumn>("maybe_like");
+  const [shown, setShown] = useState<ForYouColumn>(() => readForYouColumnPreference(storageScope));
+  const show = (column: ForYouColumn) => {
+    setShown(column);
+    writeForYouColumnPreference(storageScope, column);
+  };
   const sideBySide = cardLayout === "row";
 
   const open = (column: ForYouColumn, item: ForYouItem, rank: number) => {
@@ -148,7 +184,7 @@ function ForYouDraws({
                     aria-selected={shown === column}
                     aria-controls={`for-you-${column}`}
                     className={segmentedItemClassName(shown === column)}
-                    onClick={() => setShown(column)}
+                    onClick={() => show(column)}
                   >
                     <Icon className="h-4 w-4" aria-hidden="true" />
                     {t(`subscriptions.forYou.columns.${column}`)}
@@ -313,8 +349,21 @@ function ForYouCard({
   const { resolvedLocale } = useLocale();
   const work = item.work;
   const reason = forYouReasonText(item.reason, t, (value) => formatRating(value, resolvedLocale));
+  // An unknown kind from a newer server still shows its sentence, under the column's own mark.
+  const ReasonIcon = REASON_ICONS[item.reason.kind] ?? Sparkles;
   return (
-    <WorkCardContextItem label={work.title} context={<WorkCardContextStrip detail={reason} />}>
+    <WorkCardContextItem
+      label={work.title}
+      context={
+        <WorkCardContextStrip>
+          {/* The reason is what the card is here for, so it reads at body weight with its mark in the accent. */}
+          <span className="flex min-w-0 items-center gap-1.5 font-medium text-foreground/85" title={reason}>
+            <ReasonIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <span className="truncate">{reason}</span>
+          </span>
+        </WorkCardContextStrip>
+      }
+    >
       <LayoutWorkCard
         layout={cardLayout}
         work={forYouCardView(work, t("workCard.unknownCircle"))}
