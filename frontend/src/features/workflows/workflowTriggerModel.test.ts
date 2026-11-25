@@ -6,10 +6,13 @@ import {
   nextTriggerOrder,
   operationTriggerConfig,
   operationTriggerKinds,
+  operationTriggerSlots,
   triggerIntervalChoices,
   triggerOffersFull,
   triggerRunsFull,
   triggerRunsOnItsOwn,
+  triggerScheduleJson,
+  triggerTakesMetadataOptions,
   workflowTriggerCondition,
   workflowTriggerSummary,
 } from "./workflowTriggerModel";
@@ -46,6 +49,7 @@ describe("workflowTriggerSummary", () => {
       workflowTriggerSummary(
         [
           { ...trigger("{}"), triggerType: "startup" },
+          { ...trigger("{}"), triggerType: "after_workflow", scheduleJson: '{"after":"local_library_scan"}' },
           { ...trigger("{}"), triggerType: "filesystem_event", enabled: false },
           scheduled(1440, "2026-07-15T00:00:00Z"),
           scheduled(360, "2026-07-14T06:00:00Z"),
@@ -55,6 +59,7 @@ describe("workflowTriggerSummary", () => {
       ),
     ).toEqual({
       startup: true,
+      after: "metadata_sync",
       watching: false,
       intervals: [
         { unit: "hours", count: 6 },
@@ -120,10 +125,22 @@ describe("triggerRunsOnItsOwn", () => {
 });
 
 describe("operation trigger config", () => {
-  it("starts Record media details at startup or on a schedule, with nothing to choose", () => {
-    expect(operationTriggerKinds("record_media_probe")).toEqual(["startup", "schedule"]);
+  it("runs the scans at startup and the operations that work on what a scan found after it", () => {
+    expect(operationTriggerKinds("local_library_scan")).toEqual(["startup", "filesystem_event", "schedule"]);
+    expect(operationTriggerKinds("record_library_scan")).toEqual(["startup", "schedule"]);
+    for (const code of ["metadata_sync", "local_media_index", "record_media_probe"])
+      expect(operationTriggerKinds(code)).toEqual(["after_workflow", "schedule"]);
+    expect(triggerScheduleJson("record_media_probe", "after_workflow", 60)).toBe('{"after":"record_library_scan"}');
+    expect(triggerScheduleJson("metadata_sync", "after_workflow", 60)).toBe('{"after":"local_library_scan"}');
+    expect(triggerScheduleJson("record_library_scan", "startup", 60)).toBe('{"type":"startup"}');
+  });
+
+  it("works only on what the scan found new after a scan", () => {
+    expect(triggerOffersFull("local_media_index", "after_workflow")).toBe(false);
+    expect(triggerOffersFull("metadata_sync", "after_workflow")).toBe(false);
     expect(triggerOffersFull("record_media_probe", "schedule")).toBe(false);
-    expect(operationTriggerConfig("record_media_probe", "startup", false)).toEqual({});
+    expect(operationTriggerConfig("local_media_index", "after_workflow", false)).toEqual({ mode: "incremental" });
+    expect(operationTriggerConfig("record_media_probe", "after_workflow", false)).toEqual({});
   });
 
   it("stores the mode Full chooses for file indexing and metadata sync", () => {
@@ -139,16 +156,57 @@ describe("operation trigger config", () => {
       circleId: "RG00000001",
       mode: "full",
     });
-    expect(operationTriggerConfig("local_library_scan", "startup", false, '{"followUpRun":true}')).toEqual({
-      followUpRun: true,
+    expect(operationTriggerConfig("local_library_scan", "startup", false, '{"scanMode":"full"}')).toEqual({});
+  });
+
+  it("replaces a Metadata trigger's fallback and bonus options only when given", () => {
+    const stored = JSON.stringify({
+      scope: "all",
+      mode: "missing",
+      remoteMetadataFallback: { enabled: true, sourceIds: [2] },
+      purchaseBonusAutoLink: true,
     });
+    expect(operationTriggerConfig("metadata_sync", "after_workflow", false, stored)).toEqual(JSON.parse(stored));
+    expect(
+      operationTriggerConfig("metadata_sync", "after_workflow", false, stored, {
+        remoteMetadataFallback: { enabled: true, sourceIds: [] },
+        purchaseBonusAutoLink: false,
+      }),
+    ).toEqual({
+      scope: "all",
+      mode: "missing",
+      remoteMetadataFallback: { enabled: false, sourceIds: [] },
+      purchaseBonusAutoLink: false,
+    });
+    // A trigger that reads one named source asks no fallback, so it has no options to show.
+    expect(triggerTakesMetadataOptions("metadata_sync", stored)).toBe(true);
+    expect(triggerTakesMetadataOptions("metadata_sync", '{"scope":"voice","personId":3,"sourceId":4}')).toBe(false);
+    expect(triggerTakesMetadataOptions("local_media_index", "{}")).toBe(false);
+  });
+
+  it("switches one trigger of each kind, the enabled one first, and lists the rest apart", () => {
+    const at = (id: number, triggerType: string, enabled: boolean): WorkflowTrigger => ({
+      ...trigger("{}"),
+      id,
+      triggerType,
+      enabled,
+    });
+    const { slots, others } = operationTriggerSlots("local_media_index", [
+      at(5, "schedule", false),
+      at(6, "schedule", true),
+      at(7, "after_workflow", false),
+      at(8, "startup", true),
+    ]);
+    expect([...slots].map(([kind, item]) => [kind, item.id])).toEqual([
+      ["schedule", 6],
+      ["after_workflow", 7],
+    ]);
+    // A second schedule, and a kind Index does not take, stay listed apart.
+    expect(others.map((item) => item.id)).toEqual([5, 8]);
   });
 
   it("scans in full only when watching folders asks for it", () => {
-    expect(operationTriggerConfig("local_library_scan", "filesystem_event", true, "{}")).toEqual({
-      followUpRun: false,
-      scanMode: "full",
-    });
+    expect(operationTriggerConfig("local_library_scan", "filesystem_event", true, "{}")).toEqual({ scanMode: "full" });
     expect(triggerRunsFull("local_library_scan", { triggerType: "schedule", configJson: '{"scanMode":"full"}' })).toBe(
       false,
     );

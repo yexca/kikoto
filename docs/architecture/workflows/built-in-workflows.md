@@ -14,6 +14,42 @@ workflow_definition
       -> workflow_run_review
 ```
 
+## Automatic Triggers
+
+What starts a built-in operation on its own depends on what it works on:
+
+| Operation | Triggers |
+| --- | --- |
+| `local_library_scan` | Startup, folder watching (fixed), interval |
+| `record_library_scan` | Startup, interval |
+| `metadata_sync` | After `local_library_scan`, interval |
+| `local_media_index` | After `local_library_scan`, interval |
+| `record_media_probe` | After `record_library_scan`, interval |
+| `source_presence_check` | Startup and interval, per source |
+
+Startup and folder watching belong to the scans: only a scan finds what
+changed on disk, including while Kikoto was stopped. The operations that work
+on what a scan found follow it with an After trigger (`trigger_type`
+`after_workflow`, schedule `{"after": "<scan code>"}`). The scan dispatches
+it once it has finished, and only when it left that operation work:
+
+- Metadata sync, when the scan, complete or incremental, added works
+  (`new_work_codes`). It runs with the trigger's own options; `{}` is every
+  work missing metadata, from DLsite, and joins a queued or running run with
+  the same options.
+- The file index, after a complete scan that leaves available local folders
+  unindexed. An incremental scan indexes every work it touches, so it never
+  starts the index. The After trigger always runs incrementally.
+- Media details, when a Record scan found videos or audio files new or
+  changed (`newPendingProbes`); a scan that found nothing new reads no file.
+
+The run it queues records trigger type `after_workflow` and reason
+`after_run:<scan run id>`. A failure to queue it is recorded on its trigger and
+leaves the scan's result as it was, and Demo dispatches none. An operation
+holds at most one Startup and one After trigger. A fresh install has no
+trigger on: library onboarding chooses whether the scan's Startup and folder
+triggers run, and every other trigger runs only once someone adds it.
+
 ## Built-In Workflows
 
 Every `workflow_definition` is a system definition: one of the built-in
@@ -28,8 +64,8 @@ Library and metadata:
   files without changing audio works (see [Record library](../record-library.md)).
 - `record_media_probe`: read the length of every pending record video and
   audio file, and whether audio files carry cover art, yielding to other
-  queued jobs between files; queued by hand or by a startup or interval
-  trigger, while opening a folder reads its own files (see
+  queued jobs between files; queued by hand, by an interval trigger, or by
+  its After trigger, while opening a folder reads its own files (see
   [Record library](../record-library.md)).
 - `local_media_index`: index the media files of discovered local work folders
   (see [Local Work File Refresh](local-folder-trigger.md#local-work-file-refresh)).

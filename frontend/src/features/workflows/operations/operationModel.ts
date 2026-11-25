@@ -35,7 +35,7 @@ const builtInOperations: Record<string, OperationSpec> = {
     group: "library",
     schedulable: true,
     exclusive: true,
-    defaults: () => ({ followUpRun: false }),
+    defaults: () => ({}),
   },
   local_media_index: {
     kind: "local_media_index",
@@ -53,10 +53,12 @@ const builtInOperations: Record<string, OperationSpec> = {
     defaults: () => ({ metadataSync: metadataSyncPayload(metadataSyncDefaultValues()) }),
   },
   // Each Record operation has one run active at a time. Media details reads the
-  // whole library by hand or from a trigger; opening a folder reads its own files.
+  // whole library by hand, on an interval, or after a Record scan finds new
+  // files; opening a folder reads its own files.
   record_library_scan: {
     kind: "record_scan",
     group: "record",
+    schedulable: true,
     exclusive: true,
     defaults: () => ({}),
   },

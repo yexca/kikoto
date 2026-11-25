@@ -111,7 +111,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'local_library_scan'").Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{\"followUpRun\":true}"}`, definitionID)
+	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
@@ -131,11 +131,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := db.QueryRow("SELECT id, config_json FROM workflow_trigger WHERE workflow_definition_id = ? AND trigger_type = 'schedule'", definitionID).Scan(&scheduleTriggerID, &scheduleConfigJSON); err != nil {
 		t.Fatal(err)
 	}
-	var scheduleConfig localScanTriggerConfig
-	if err := json.Unmarshal([]byte(scheduleConfigJSON), &scheduleConfig); err != nil {
-		t.Fatal(err)
-	}
-	if !scheduleConfig.FollowUpRun {
+	if scheduleConfigJSON != `{"scanMode":"full"}` {
 		t.Fatalf("local scan schedule config = %s", scheduleConfigJSON)
 	}
 	trigger, err := server.loadWorkflowTrigger(context.Background(), scheduleTriggerID)
@@ -157,7 +153,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := json.Unmarshal([]byte(runInputJSON), &runInput); err != nil {
 		t.Fatal(err)
 	}
-	if !runInput.FollowUpRun || runInput.ScanMode != localScanModeFull {
+	if runInput.ScanMode != localScanModeFull {
 		t.Fatalf("triggered local scan input = %s", runInputJSON)
 	}
 }

@@ -141,6 +141,9 @@ type ScanResult struct {
 	// PendingProbes counts the available videos and audio files whose length
 	// is still to be read after the scan.
 	PendingProbes int `json:"pendingProbes"`
+	// NewPendingProbes counts the videos and audio files this scan found new
+	// or changed, whose length it left to be read.
+	NewPendingProbes int `json:"newPendingProbes"`
 	// ThumbnailsRemoved counts the cached thumbnails removed after a complete
 	// scan because their assets are no longer available videos or images.
 	ThumbnailsRemoved int `json:"thumbnailsRemoved,omitempty"`
@@ -549,7 +552,7 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 		return ScanResult{}, err
 	}
 	ids := map[string]int64{".": rootFolder}
-	folders, assets := 1, 0
+	folders, assets, newPending := 1, 0, 0
 	unreadable := 0
 	walkErr := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
@@ -614,8 +617,12 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 			return nil
 		}
 		kind, mime := classify(name)
-		if _, err := s.upsertAsset(ctx, parentID, name, rel, kind, mime, info, generation); err != nil {
+		stale, err := s.upsertAsset(ctx, parentID, name, rel, kind, mime, info, generation)
+		if err != nil {
 			return err
+		}
+		if stale && (kind == "video" || kind == "audio") {
+			newPending++
 		}
 		assets++
 		if progress != nil {
@@ -663,7 +670,7 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 	if !complete {
 		state = "partial"
 	}
-	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: markMissing}, nil
+	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, NewPendingProbes: newPending, Unreadable: unreadable, MissingMarked: markMissing}, nil
 }
 
 // markerStillNamesCatalog reports whether the root's marker still carries the
@@ -704,23 +711,26 @@ func nullableInt64Pointer(value *int64) any {
 	return *value
 }
 
-func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind, mime string, info fs.FileInfo, generation int64) (int64, error) {
+// upsertAsset records a file the walk found and reports whether its media
+// details became stale: the file is new, or its size, modification time, or
+// kind changed.
+func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind, mime string, info fs.FileInfo, generation int64) (bool, error) {
 	var id int64
+	var storedSize, storedMtime sql.NullInt64
+	var storedKind string
 	key := pathKey(rel)
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND path_key=?`, key).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT id, size_bytes, mtime_ns, kind FROM record_asset WHERE root_id=1 AND path_key=?`, key).Scan(&id, &storedSize, &storedMtime, &storedKind)
 	if errors.Is(err, sql.ErrNoRows) {
-		res, err := s.db.ExecContext(ctx, `INSERT INTO record_asset(root_id,folder_id,name,sort_key,relative_path,path_key,kind,extension,mime_type,size_bytes,mtime_ns,availability,last_seen_generation) VALUES(1,?,?,?,?,?,?,?,?,?,?,'available',?)`, folderID, name, naturalorder.Key(name), rel, key, kind, strings.ToLower(filepath.Ext(name)), mime, info.Size(), info.ModTime().UnixNano(), generation)
-		if err != nil {
-			return 0, err
-		}
-		return res.LastInsertId()
+		_, err := s.db.ExecContext(ctx, `INSERT INTO record_asset(root_id,folder_id,name,sort_key,relative_path,path_key,kind,extension,mime_type,size_bytes,mtime_ns,availability,last_seen_generation) VALUES(1,?,?,?,?,?,?,?,?,?,?,'available',?)`, folderID, name, naturalorder.Key(name), rel, key, kind, strings.ToLower(filepath.Ext(name)), mime, info.Size(), info.ModTime().UnixNano(), generation)
+		return err == nil, err
 	}
 	if err != nil {
-		return 0, err
+		return false, err
 	}
 	// A changed size, modification time, or kind makes the earlier probe stale.
 	// SQLite evaluates every SET expression against the row before the update.
 	size, mtime := info.Size(), info.ModTime().UnixNano()
+	stale := !storedSize.Valid || storedSize.Int64 != size || !storedMtime.Valid || storedMtime.Int64 != mtime || storedKind != kind
 	_, err = s.db.ExecContext(ctx, `UPDATE record_asset SET
 		probe_state=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN probe_state ELSE 'pending' END,
 		duration_seconds=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN duration_seconds ELSE NULL END,
@@ -730,7 +740,7 @@ func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind
 		folder_id=?, name=?, sort_key=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind,
 		folderID, name, naturalorder.Key(name), rel, kind, strings.ToLower(filepath.Ext(name)), mime, size, mtime, generation, id)
-	return id, err
+	return stale && err == nil, err
 }
 
 func pathKey(rel string) string {

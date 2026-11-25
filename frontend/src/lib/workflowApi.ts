@@ -435,7 +435,6 @@ export type LocalScanResult = {
   scannedFiles: number;
   updatedLocations: number;
   skippedLocations: number;
-  followUpRun: boolean;
   newWorkCodes: string[];
   failures: string[];
 };
@@ -641,8 +640,7 @@ export const workflowApi = {
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
-  runLocalScan: (payload: { followUpRun: boolean } = { followUpRun: false }) =>
-    postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
+  runLocalScan: () => postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", {}),
   runLocalMediaIndex: (payload: { mode: LocalMediaIndexMode }) =>
     postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
   runSourcePresenceCheck: (payload: SourcePresenceCheckOptions) =>

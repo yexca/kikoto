@@ -23,8 +23,8 @@ Workflows make backend actions inspectable.
   **Running** with its progress, or how the latest run ended and when, such as
   **Succeeded** or **Failed**; **Needs review** marks a run with items that
   wait for a decision. Select the state to open that run. The line below
-  lists its automatic starts, such as **At startup**, **Watching folders**, or
-  **Every 6 hours**, with when the next scheduled run is due, or says
+  lists its automatic starts, such as **At startup**, **After a scan adds
+  works**, **Watching folders**, or **Every 6 hours**, with when the next scheduled run is due, or says
   **Automatic runs paused** when every trigger is off. Phones stack the cards.
 - **Run** starts the operation, and the card shows the run at once. Metadata
   and Index run incrementally: Metadata refreshes missing or outdated
@@ -36,45 +36,52 @@ Workflows make backend actions inspectable.
   be started again until their run ends. Metadata runs per scope and can start
   another while one runs: its card follows the running run and counts the
   others, and a new run that waits behind another says so. A run started by a
-  schedule, at startup, or in another browser shows on its card the same way.
+  trigger or in another browser shows on its card the same way.
 - Record scan runs as **Scan** on the Record page does. Media details reads
   every file still waiting, including files an earlier run gave up on after a
   timeout; opening a folder on the Record page reads that folder's files on
   its own. Neither has Full, and each has one run queued or running at a time;
-  starting another returns that run. Media details can also run at startup or
-  on a schedule from its trigger button; Record scan has no triggers.
+  starting another returns that run. Record scan can also run at startup or
+  on a schedule, and Media details on a schedule or after a Record scan finds
+  new files, from their trigger buttons.
 - **Metadata options**, the button beside the Metadata card's name, sets
   the [remote metadata fallback](settings.md#remote-metadata-fallback) (off by
   default; on, it asks up to 16 chosen sources in the order you set when
   DLsite reports a work as not found) and
   [purchase bonus linking](settings.md#purchase-bonuses) (on by default). The
-  card's runs and new Metadata triggers use them, and the card names them
+  card's runs and Metadata's triggers use them, and the card names them
   while they differ from the defaults, such as **Remote fallback: Example
-  Remote B → Example Remote A**. They are saved in this browser; a source
+  Remote B → Example Remote A**. They are saved in this browser and in
+  Metadata's triggers; a source
   that is switched off or no longer provides metadata drops out of the
   fallback.
-- The calendar button at the end of the name row of a Library card, or of the
-  Media details card, opens what makes that operation run on its own, and is
-  lit while any of it is on. It lists the
-  operation's triggers, each with a switch and an edit button, and **Add
-  trigger** adds one: **At startup** or **On a schedule** with an interval of
-  1, 6, or 12 hours, 1 day, or 7 days, and Full where the operation has it. An operation without
-  triggers opens straight to adding one. An operation runs at startup once at
-  most, and Metadata runs only on a schedule.
+- The calendar button at the end of a card's name row opens what makes that
+  operation run on its own, and is lit while any of it is on. It holds one
+  switch for each way the operation can start, and each change saves at once.
+  Scan and Record scan can run **At startup**, and Scan also watches folders
+  (**When local library folders change**). Metadata, Index, and Media details
+  instead run once the scan they follow has found something for them: **After
+  a scan adds works**, **After a scan finds new folders**, and **After a
+  Record scan finds new files**, each working only on what the scan found.
+  Every operation can run **On a schedule** with an interval of 1, 6, or 12
+  hours, 1 day, or 7 days. While on, a Metadata or Index schedule and the
+  folder watcher choose **Incremental** or **Full**. Switching one off pauses
+  it and keeps its interval and mode. A new install runs nothing on its own
+  until library setup or you turn a trigger on.
 - Running and Next each show five entries, and **Show all** shows the rest.
   **Needs attention** lists the runs that wait for a decision, 20 to a page,
   and its tab counts them while there are any. **History** lists the runs
   that ended, newest first; it narrows to failed runs or to one workflow, and
   the search field finds runs by workflow name, work code, circle, or source.
 - **Next** lists the triggers that are on: interval schedules by their next
-  run, then startup and folder triggers, each with when it runs and whether
+  run, then startup, after-scan, and folder triggers, each with when it runs and whether
   it runs in full. A paused trigger runs nothing, so Next leaves it out; its
   card's trigger list, or the page where it is set up, still shows it. A
   ranking pull shows only while one of its rankings has a pull planned, with
   when that pull is due; the rankings' own schedules on Discover turn it on
   and off. The
   operations' triggers have a switch that pauses them and an edit button that
-  changes the interval and Full or deletes the trigger. Another workflow's triggers, such as a ranking pull or
+  opens their card's triggers. Another workflow's triggers, such as a ranking pull or
   a source's library work check, lead to where they are set up.
 - Each run shows the status, run number, trigger, and elapsed time. Selecting
   one opens its details: start and finish times, duration, trigger, steps,
@@ -164,9 +171,10 @@ administrators.
   issues stay in Metadata. This acknowledgement is per user. History keeps the
   original outcome, including failed, partial, and cancelled runs.
 - Metadata owns pending-work recovery and the DLsite proxy shortcut.
-- Local scan does not check remote availability or synchronize metadata. A
-  scan run by hand queues no metadata run after it. Metadata sync has no
-  Startup trigger, so it cannot compete with a scan at startup.
+- Local scan does not check remote availability or synchronize metadata.
+  Metadata sync follows a scan only through its own **After a scan adds
+  works** trigger, which starts it once the scan has finished; it has no
+  Startup trigger, so it never competes with a scan at startup.
 - Local scan has one Startup trigger and one fixed folder watcher. On a new
   install both start off, and library setup offers to turn them on. The
   watcher can be paused,
@@ -180,9 +188,9 @@ administrators.
   records are retained. Watcher errors, oversized event batches, root
   invalidation, and duplicate roots automatically use a full scan. Fetch
   registers its own published locations directly; manual, startup, and interval
-  scans always inspect the complete data tree. The watcher's edit button, in
-  Scan's trigger list or in **Next** while it is on, switches it between
-  Incremental and Full. Changes during an active run
+  scans always inspect the complete data tree. In Scan's triggers, the
+  watcher's switch pauses it, and while it is on, **Incremental** and **Full**
+  beside it choose how it scans. Changes during an active run
   produce at most one follow-up scan. Paused events are discarded; offline
   changes rely on the Startup scan.
 - **Index** (Refresh local work files) indexes the media files inside local
@@ -190,8 +198,8 @@ administrators.
   index a large folder on demand. Incremental covers only folders whose files
   were never indexed; Full re-indexes every available local work. One run is
   queued or running at a time, and starting another returns the active run.
-  It supports Startup and interval triggers that store Full, and ships without
-  a default trigger.
+  It runs after a complete scan that leaves folders unindexed, or on an
+  interval that can store Full, and ships without a default trigger.
 - **Check works on a source** asks one remote source whether library works
   exist there and records the answer on each work, as checking availability
   on a work does; it never adds works. It runs and is scheduled from the

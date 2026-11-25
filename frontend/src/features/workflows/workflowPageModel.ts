@@ -18,7 +18,6 @@ export type WorkflowNode = {
 export type SystemRunKind = "local_scan" | "local_media_index" | "metadata_sync";
 
 export type SystemRunOptions = {
-  followUpRun?: boolean;
   localMediaIndexMode?: LocalScanMode;
   metadataSync?: MetadataSyncOptions;
 };
@@ -30,7 +29,6 @@ export const SOURCE_PRESENCE_MAX_LIMIT = 1000;
 export type LocalScanMode = "incremental" | "full";
 
 export type SystemWorkflowTriggerConfig = {
-  followUpRun: boolean;
   scanMode: LocalScanMode;
   sourceId: number;
   limit: number;

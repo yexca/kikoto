@@ -29,8 +29,8 @@ workflow's stages), or how and when the latest run ended. A run that still
 waits for a candidate decision or a retryable metadata failure reads as
 needing review. Every state that has a run opens that run, so a failure stays
 on its card until a later run replaces it and leads to its details. The line
-below lists its enabled triggers (at startup, watching folders, each interval
-schedule) with the soonest next scheduled run, says automatic runs are paused
+below lists its enabled triggers (at startup, after a scan, watching folders,
+each interval schedule) with the soonest next scheduled run, says automatic runs are paused
 when every trigger is off, and is absent for an operation that runs only by
 hand. The
 cards sit three across where the tab is at least 42rem wide (a container
@@ -45,8 +45,8 @@ card's options button sets the remote metadata fallback (off by default, 1 to
 by default). They are a per-device convenience in local storage, scoped to the
 server; sources no longer enabled or metadata-capable drop out when the page
 reads them, and a fallback left without a source is off. The card names
-options that differ from the defaults, and new Metadata triggers start from
-them. **Full** beside Run sends mode `full`
+options that differ from the defaults, and Metadata's triggers run with them,
+as the trigger dialog below describes. **Full** beside Run sends mode `full`
 instead and turns off once the run is requested, so it applies to one run.
 A manual scan always walks the complete data tree, so Scan has no Full and
 requests no follow-up metadata run. The run control follows the uniqueness
@@ -66,8 +66,8 @@ and are exclusive. Record scan posts `/api/records/scans`; Media details
 posts `/api/records/probes`, which queues a `manual` probe run, or returns the
 probe run already queued or running. A new probe run reads every file still
 pending, including those an earlier run timed out on. Neither has Full. Record
-scan takes no triggers, so its card has no trigger button; Media details takes
-Startup and interval triggers.
+scan takes Startup and interval triggers; Media details takes an After
+trigger, which follows a Record scan, and interval triggers.
 
 `GET /api/workflow-status` states each card's status from every run the
 viewer may see, so it holds however many runs are active. It takes the
@@ -85,26 +85,39 @@ another browser shows on its card and, for an exclusive operation, holds its
 run control the same way. Demo reads both once. A hidden tab skips the poll
 and catches up when shown again.
 
-Each Library card's trigger button, and that of Media details, at the end of
-its name row, opens that operation's triggers; the icon uses the primary color
-while any of them is enabled. The dialog lists the triggers with their switch and edit action and
-offers **Add trigger**; an operation without triggers opens straight to the
-add form, and a trigger edited from Next opens straight to its form. A form
-returns to where it was opened from. A viewer without the operation's
-permission (`metadata:sync` for a Library operation, `library:write` for
-Media details) sees the icon's state without opening it. A trigger takes
-Startup or an interval of 1, 6, or 12 hours, 1 day, or 7 days, and Full where
-the operation has it. Metadata
-sync offers only an interval, and an operation that already has a Startup
-trigger cannot add another, as the backend enforces. A new trigger stores the
-same options as Run: `{"followUpRun": false}` for the scan, `{"mode": …}`
-for the file index, the metadata sync options above, the card's options
-included, with the chosen mode, and `{}` for Media details. While Record is
-off, a Media details trigger queues nothing and records why.
-Editing a trigger changes its interval and Full and keeps every other option
-it stores, such as a metadata sync's scope, source, or fallback, so a trigger
-created through the API keeps them. The scan's fixed folder watcher edits only
-Full, which it stores as `scanMode`, and cannot be deleted.
+Each card's trigger button, at the end of its name row, opens that
+operation's triggers; the icon uses the primary color
+while any of them is enabled. The dialog holds one switch for each kind of
+[Automatic Triggers](built-in-workflows.md#automatic-triggers) the operation
+takes, each named for when it runs: **At startup** for Scan and Record scan;
+**After a scan adds works**, **After a scan finds new folders**, and **After a
+Record scan finds new files** for Metadata, Index, and Media details; Scan's
+fixed folder watcher, **When local library folders change**; and **On a
+schedule** for every operation. A Next trigger's edit action opens the same
+dialog. A viewer without the operation's permission (`metadata:sync` for a
+Library operation, `library:write` for a Record operation) sees the icon's
+state without opening it.
+
+Every change saves at once. A switch turned on the first time creates its
+trigger; after that the switch pauses and resumes it, so its interval and mode
+stay. While on, a schedule shows its interval (1, 6, or 12 hours, 1 day, or 7
+days, keeping a stored interval the list lacks), and a trigger that can run in
+full shows **Incremental** and **Full**: the Metadata and Index schedules, and
+the folder watcher, which stores it as `scanMode`. Each switch stands for the
+operation's enabled trigger of its kind, else its oldest; another trigger of
+the same kind, such as a second schedule created through the API, is listed
+below the switches with its own switch and a delete button that deletes on a
+second press and disarms after a few seconds or on Escape.
+
+A new trigger stores the same options as Run: `{}` for the scan, Record scan,
+and Media details, `{"mode": …}` for the file index (`incremental` for After),
+and the metadata sync options above with the chosen mode (`missing` for
+After). While Record is off, a Record trigger queues nothing and records why.
+A change keeps every other option a trigger stores, such as a metadata sync's
+scope or source, so a trigger created through the API keeps them. A Metadata
+trigger that asks DLsite runs with the card's options: saving one from the
+dialog stores them, and saving the card's options updates every such trigger
+whose stored options differ.
 
 Below the cards, Operations ends with Next, every workflow's enabled triggers; the
 run lists are described in [Run Lists](run-lists.md#run-lists). The page's

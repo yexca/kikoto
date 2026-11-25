@@ -292,20 +292,20 @@ func (s *Server) finishRecordProbeJob(ctx context.Context, job workflowJobRecord
 	return tx.Commit()
 }
 
-// normalizeRecordProbeTriggerConfig accepts the empty configuration, the
-// only one a media details trigger has.
-func normalizeRecordProbeTriggerConfig(raw string) error {
+// normalizeRecordTriggerConfig accepts the empty configuration, the only one
+// a Record scan or media details trigger has.
+func normalizeRecordTriggerConfig(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	if err := decodeStrictJSON(raw, &struct{}{}); err != nil {
-		return fmt.Errorf("record media details trigger config is invalid")
+		return fmt.Errorf("record trigger config is invalid")
 	}
 	return nil
 }
 
 // executeRecordProbeSystemTrigger queues the whole-library media details run
-// for a startup or interval trigger. While Record is off the trigger queues
+// for an After or interval trigger. While Record is off the trigger queues
 // nothing and says why.
 func (s *Server) executeRecordProbeSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
 	if !s.recordLibraryEnabled(ctx) {

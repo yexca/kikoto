@@ -159,7 +159,7 @@ const workflowTriggers: WorkflowTrigger[] = [
     displayName: "Startup local library scan",
     triggerType: "startup",
     scheduleJson: '{"type":"startup"}',
-    configJson: '{"followUpRun":false}',
+    configJson: "{}",
   }),
   workflowTriggerFixture({
     id: 72,
@@ -168,7 +168,7 @@ const workflowTriggers: WorkflowTrigger[] = [
     displayName: "Watch data folders",
     triggerType: "filesystem_event",
     scheduleJson: '{"type":"filesystem_event"}',
-    configJson: '{"followUpRun":false,"scanMode":"incremental"}',
+    configJson: '{"scanMode":"incremental"}',
   }),
 ];
 
@@ -542,6 +542,25 @@ async function mockWorkflows(
           failures: [],
         } satisfies AvailabilityWatchRunResult,
       });
+      return;
+    }
+    const triggerPath = /^\/api\/workflow-triggers\/(\d+)$/.exec(url.pathname);
+    if (triggerPath) {
+      const id = Number(triggerPath[1]);
+      if (route.request().method() === "DELETE") {
+        activeTriggers = activeTriggers.filter((trigger) => trigger.id !== id);
+        await route.fulfill({ json: { ok: true } });
+        return;
+      }
+      const payload = route.request().postDataJSON() as Partial<WorkflowTrigger>;
+      const saved: WorkflowTrigger = {
+        ...activeTriggers.find((trigger) => trigger.id === id)!,
+        ...payload,
+        id,
+        nextRunAt: payload.enabled && payload.triggerType === "schedule" ? "2026-07-27T03:00:00Z" : null,
+      };
+      activeTriggers = activeTriggers.map((trigger) => (trigger.id === id ? saved : trigger));
+      await route.fulfill({ json: saved });
       return;
     }
     if (url.pathname === "/api/workflow-triggers") {
@@ -919,9 +938,8 @@ test("Operations holds the Library and Record cards above what runs next", async
     "Media details",
   ]);
   await expect(operation(page, "Scan")).toContainText("At startup·Watching folders");
-  // A Record scan runs by hand; Media details runs by hand or from a trigger.
-  await expect(operation(page, "Record scan").getByRole("button", { name: /triggers$/ })).toHaveCount(0);
-  await expect(operation(page, "Record scan").getByRole("img", { name: /triggers$/ })).toHaveCount(0);
+  // Both Record operations run by hand or from a trigger.
+  await expect(operation(page, "Record scan").getByRole("button", { name: /triggers$/ })).toBeVisible();
   await expect(operation(page, "Media details").getByRole("button", { name: /triggers$/ })).toBeVisible();
   await expect(operation(page, "Media details").getByRole("switch", { name: "Full", exact: true })).toHaveCount(0);
   await operation(page, "Media details").getByRole("button", { name: "Run", exact: true }).click();
@@ -994,7 +1012,6 @@ test("Full applies to the next Metadata or Index run, and Scan always scans ever
         scannedFiles: 0,
         updatedLocations: 0,
         skippedLocations: 0,
-        followUpRun: false,
         newWorkCodes: [],
         failures: [],
       } satisfies LocalScanResult,
@@ -1028,7 +1045,7 @@ test("Full applies to the next Metadata or Index run, and Scan always scans ever
   const scan = operation(page, "Scan");
   await expect(scan.getByRole("switch")).toHaveCount(0);
   await scan.getByRole("button", { name: "Run", exact: true }).click();
-  await expect.poll(() => scanRuns).toEqual([{ followUpRun: false }]);
+  await expect.poll(() => scanRuns).toEqual([{}]);
 });
 
 test("Metadata options set the remote fallback and bonus linking for its runs and new triggers", async ({ page }) => {
@@ -1074,20 +1091,49 @@ test("Metadata options set the remote fallback and bonus linking for its runs an
       },
     ]);
 
-  // A new Metadata trigger starts from the same options; without a trigger, the card opens straight to adding one.
+  // Metadata's triggers are two switches, and each one saved runs with the card's options.
   await metadata.getByRole("button", { name: "Metadata triggers", exact: true }).click();
-  const add = page.getByRole("dialog", { name: "Add trigger", exact: true });
-  await expect(add.getByRole("group", { name: "When", exact: true })).toHaveCount(0);
-  await expect(add).toContainText("On a schedule");
+  const triggers = page.getByRole("dialog", { name: "Metadata triggers", exact: true });
+  const after = triggers.getByRole("switch", { name: "After a scan adds works", exact: true });
+  const schedule = triggers.getByRole("switch", { name: "On a schedule", exact: true });
+  await expect(after).toHaveAttribute("aria-checked", "false");
+  await expect(schedule).toHaveAttribute("aria-checked", "false");
+  await expect(triggers.getByRole("switch", { name: "At startup", exact: true })).toHaveCount(0);
   const created = page.waitForRequest(
     (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
   );
-  await add.getByRole("button", { name: "Add", exact: true }).click();
-  expect(JSON.parse((await created).postDataJSON().configJson)).toEqual({
+  await after.click();
+  const request = (await created).postDataJSON();
+  expect(request).toMatchObject({
+    triggerType: "after_workflow",
+    scheduleJson: '{"after":"local_library_scan"}',
+    enabled: true,
+  });
+  expect(JSON.parse(request.configJson)).toEqual({
     scope: "all",
     mode: "missing",
     remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] },
     purchaseBonusAutoLink: false,
+  });
+  await expect(after).toHaveAttribute("aria-checked", "true");
+  // An After trigger works only on what the scan found, so it has no mode to choose.
+  await expect(triggers.getByRole("group", { name: "After a scan adds works mode", exact: true })).toHaveCount(0);
+  await triggers.getByRole("button", { name: "Close", exact: true }).last().click();
+
+  // Changing the card's options changes them for its triggers too.
+  const updated = page.waitForRequest(
+    (request) => request.method() === "PATCH" && /\/api\/workflow-triggers\/\d+$/.test(request.url()),
+  );
+  await metadata.getByRole("button", { name: "Metadata options", exact: true }).click();
+  await dialog.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  const update = (await updated).postDataJSON();
+  expect(update).toMatchObject({ triggerType: "after_workflow", enabled: true });
+  expect(JSON.parse(update.configJson)).toEqual({
+    scope: "all",
+    mode: "missing",
+    remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] },
+    purchaseBonusAutoLink: true,
   });
 
   // The options stay in this browser.
@@ -1095,89 +1141,156 @@ test("Metadata options set the remote fallback and bonus linking for its runs an
   await expect(operation(page, "Metadata")).toContainText("Remote fallback: Example Remote B → Example Remote A");
 });
 
-test("a card lists and adds its triggers, and Next edits them", async ({ page }) => {
+/** The writes the Workflows page sends for its triggers, as method, trigger id (0 for a new one), and body. */
+function recordTriggerWrites(page: Page) {
+  const writes: Array<{ method: string; id: number; body: Record<string, unknown> | null }> = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    const match = /^\/api\/workflow-triggers(?:\/(\d+))?$/.exec(path);
+    if (!match || request.method() === "GET") return;
+    writes.push({
+      method: request.method(),
+      id: Number(match[1] ?? 0),
+      body: request.postDataJSON() as Record<string, unknown> | null,
+    });
+  });
+  return writes;
+}
+
+test("a card's triggers are one switch per kind, saved at once, and Next opens them", async ({ page }) => {
   await mockWorkflows(page);
-  const updates: Array<Record<string, unknown>> = [];
-  await page.route(/\/api\/workflow-triggers\/\d+$/, async (route) => {
-    const payload = route.request().postDataJSON() as Omit<WorkflowTrigger, "id">;
-    const id = Number(new URL(route.request().url()).pathname.split("/").at(-1));
-    updates.push({ ...payload, id });
-    await route.fulfill({ json: { ...workflowTriggers[1], ...payload, id } satisfies WorkflowTrigger });
+  const writes = recordTriggerWrites(page);
+  await page.goto("/workflows");
+
+  // Scan runs at startup, watches folders, and can run on a schedule.
+  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
+  const scan = page.getByRole("dialog", { name: "Scan triggers", exact: true });
+  await expect(scan.getByRole("switch")).toHaveCount(3);
+  await expect(scan.getByRole("switch", { name: "At startup", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(scan.getByRole("switch", { name: "On a schedule", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  // Watching folders chooses Incremental or Full; it is the scan's one fixed trigger, so nothing deletes it.
+  const watchMode = scan.getByRole("group", { name: "When local library folders change mode", exact: true });
+  await expect(watchMode.getByRole("button", { name: "Incremental", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await watchMode.getByRole("button", { name: "Full", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0]).toMatchObject({
+    method: "PATCH",
+    id: 72,
+    body: { triggerType: "filesystem_event", displayName: "Watch data folders", enabled: true },
+  });
+  expect(JSON.parse(String(writes[0].body?.configJson))).toEqual({ scanMode: "full" });
+  await expect(watchMode.getByRole("button", { name: "Full", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(scan.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
+
+  // Switching startup off pauses it and keeps its row.
+  await scan.getByRole("switch", { name: "At startup", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1]).toMatchObject({ method: "PATCH", id: 71, body: { triggerType: "startup", enabled: false } });
+  await expect(scan.getByRole("switch", { name: "At startup", exact: true })).toHaveAttribute("aria-checked", "false");
+
+  // A scan always checks every folder, so its schedule has an interval and no mode.
+  await scan.getByRole("switch", { name: "On a schedule", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(3);
+  expect(writes[2]).toMatchObject({
+    method: "POST",
+    body: { workflowDefinitionId: 7, triggerType: "schedule", scheduleJson: '{"intervalMinutes":1440}', enabled: true },
+  });
+  await expect(scan.getByRole("combobox", { name: "Interval", exact: true })).toHaveValue("1440");
+  await expect(scan.getByRole("group", { name: "On a schedule mode", exact: true })).toHaveCount(0);
+  await scan.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expect(scan).toHaveCount(0);
+
+  // Index follows the scan rather than running at startup; its schedule chooses an interval and a mode.
+  await operation(page, "Index").getByRole("button", { name: "Index triggers", exact: true }).click();
+  const index = page.getByRole("dialog", { name: "Index triggers", exact: true });
+  await expect(index.getByRole("switch", { name: "After a scan finds new folders", exact: true })).toBeVisible();
+  await expect(index.getByRole("switch", { name: "At startup", exact: true })).toHaveCount(0);
+  await index.getByRole("switch", { name: "On a schedule", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(4);
+  expect(writes[3]).toMatchObject({ method: "POST", body: { workflowDefinitionId: 8, triggerType: "schedule" } });
+  expect(JSON.parse(String(writes[3].body?.configJson))).toEqual({ mode: "incremental" });
+  // The mock numbers new triggers from 73, and the scan's schedule took it.
+  const id = 74;
+  await index.getByRole("combobox", { name: "Interval", exact: true }).selectOption({ label: "Every 6 hours" });
+  await expect.poll(() => writes.length).toBe(5);
+  expect(writes[4]).toMatchObject({ method: "PATCH", id, body: { scheduleJson: '{"intervalMinutes":360}' } });
+  await index
+    .getByRole("group", { name: "On a schedule mode", exact: true })
+    .getByRole("button", { name: "Full", exact: true })
+    .click();
+  await expect.poll(() => writes.length).toBe(6);
+  expect(JSON.parse(String(writes[5].body?.configJson))).toEqual({ mode: "full" });
+  expect(writes[5].body).toMatchObject({ scheduleJson: '{"intervalMinutes":360}' });
+  await index.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expect(operation(page, "Index")).toContainText("Every 6 hours");
+  await expect(
+    nextTriggers(page)
+      .getByRole("listitem")
+      .filter({ hasText: /^Index/ }),
+  ).toContainText("Every 6 hours·Full");
+
+  // Next pauses a trigger at once and opens its operation's switches.
+  await nextTriggers(page).getByRole("button", { name: "Edit trigger Index", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Index triggers", exact: true })).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "Index triggers", exact: true })
+    .getByRole("button", { name: "Close" })
+    .last()
+    .click();
+  await nextTriggers(page).getByRole("switch", { name: "Pause Index", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(7);
+  expect(writes[6]).toMatchObject({ method: "PATCH", id, body: { enabled: false } });
+});
+
+test("another trigger of a kind already switched is listed apart to pause or delete", async ({ page }) => {
+  await mockWorkflows(page);
+  const writes = recordTriggerWrites(page);
+  let extra: WorkflowTrigger[] = [
+    workflowTriggerFixture({
+      id: 81,
+      workflowDefinitionId: 8,
+      workflowCode: "local_media_index",
+      displayName: "Index every 6 hours",
+      triggerType: "schedule",
+      scheduleJson: '{"intervalMinutes":360}',
+      configJson: '{"mode":"incremental"}',
+    }),
+    workflowTriggerFixture({
+      id: 82,
+      workflowDefinitionId: 8,
+      workflowCode: "local_media_index",
+      displayName: "Index every week",
+      triggerType: "schedule",
+      scheduleJson: '{"intervalMinutes":10080}',
+      configJson: '{"mode":"full"}',
+    }),
+  ];
+  await page.route("**/api/workflow-triggers", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: [...workflowTriggers, ...extra] });
+  });
+  await page.route("**/api/workflow-triggers/82", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    extra = extra.filter((trigger) => trigger.id !== 82);
+    await route.fulfill({ json: { ok: true } });
   });
   await page.goto("/workflows");
 
-  // A card with triggers lists them, and the scan already runs at startup.
-  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
-  const list = page.getByRole("dialog", { name: "Scan triggers", exact: true });
-  await expect(list.getByRole("listitem")).toHaveText([/^At startup/, /^When local library folders change/]);
-  await list.getByRole("button", { name: "Add trigger", exact: true }).click();
-  const addScan = page.getByRole("dialog", { name: "Add trigger", exact: true });
-  const scanWhen = addScan.getByRole("group", { name: "When", exact: true });
-  await expect(scanWhen.getByRole("button", { name: "At startup", exact: true })).toBeDisabled();
-  await expect(addScan).toContainText("This already runs at startup.");
-  // Cancel returns to the list it was opened from.
-  await addScan.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(list.getByRole("listitem")).toHaveCount(2);
-  await list.getByRole("button", { name: "Close", exact: true }).last().click();
-  await expect(list).toHaveCount(0);
-
-  // A card without triggers opens straight to adding one.
   await operation(page, "Index").getByRole("button", { name: "Index triggers", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Add trigger", exact: true });
-  await expect(dialog).toContainText("Index");
-  await dialog
-    .getByRole("group", { name: "When", exact: true })
-    .getByRole("button", { name: "On a schedule", exact: true })
-    .click();
-  await dialog.getByRole("combobox", { name: "Interval", exact: true }).selectOption({ label: "Every 6 hours" });
-  await dialog.getByRole("switch", { name: "Full", exact: true }).click();
-  const created = page.waitForRequest(
-    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
-  );
-  await dialog.getByRole("button", { name: "Add", exact: true }).click();
-  const payload = (await created).postDataJSON();
-  expect(payload).toMatchObject({
-    workflowDefinitionId: 8,
-    triggerType: "schedule",
-    scheduleJson: '{"intervalMinutes":360}',
-    enabled: true,
-  });
-  expect(JSON.parse(payload.configJson)).toEqual({ mode: "full" });
-  await expect(dialog).toHaveCount(0);
-  await expect(operation(page, "Index")).toContainText("Every 6 hours");
-  await expect(nextTriggers(page).getByRole("listitem").first()).toContainText("Every 6 hours·Full");
-
-  // The folder trigger is fixed: it changes only Full and cannot be deleted.
-  await nextTriggers(page).getByRole("button", { name: "Edit trigger Scan", exact: true }).nth(1).click();
-  const edit = page.getByRole("dialog", { name: "Edit trigger", exact: true });
-  await expect(edit).toContainText("When local library folders change");
-  await expect(edit.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
-  await edit.getByRole("switch", { name: "Full", exact: true }).click();
-  await edit.getByRole("button", { name: "Save", exact: true }).click();
-  await expect.poll(() => updates).toHaveLength(1);
-  expect(updates[0]).toMatchObject({ id: 72, triggerType: "filesystem_event", displayName: "Watch data folders" });
-  expect(JSON.parse(String(updates[0].configJson))).toEqual({ followUpRun: false, scanMode: "full" });
-
-  // Pausing a trigger saves at once, and Next leaves out what no longer runs.
-  await nextTriggers(page).getByRole("switch", { name: "Pause Scan" }).first().click();
-  await expect.poll(() => updates).toHaveLength(2);
-  expect(updates[1]).toMatchObject({ id: 71, enabled: false });
-  await expect(nextTriggers(page).getByRole("listitem")).toHaveText([
-    /^Index.*Every 6 hours/,
-    /^Scan.*When local library folders change/,
-  ]);
-
-  // Its card's list keeps it, and pausing one there saves at once too.
-  await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Scan triggers", exact: true }).getByRole("switch", { name: "Enable At startup" }),
-  ).toBeVisible();
-  await page
-    .getByRole("dialog", { name: "Scan triggers", exact: true })
-    .getByRole("switch", { name: "Pause When local library folders change", exact: true })
-    .click();
-  await expect.poll(() => updates).toHaveLength(3);
-  expect(updates[2]).toMatchObject({ id: 72, enabled: false });
+  const index = page.getByRole("dialog", { name: "Index triggers", exact: true });
+  // The oldest schedule is the switch; the other is listed below it.
+  await expect(index.getByRole("combobox", { name: "Interval", exact: true })).toHaveValue("360");
+  await index.getByRole("button", { name: "Delete Every 7 days", exact: true }).click();
+  expect(writes).toEqual([]);
+  await index.getByRole("button", { name: "Confirm delete Every 7 days", exact: true }).click();
+  await expect.poll(() => writes).toEqual([{ method: "DELETE", id: 82, body: null }]);
+  await expect(index.getByRole("button", { name: /Every 7 days/ })).toHaveCount(0);
 });
 
 test("availability watch keeps only its source in settings and acts on works from the Watch view on mobile", async ({
@@ -2327,14 +2440,12 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   await operation(page, "Scan").getByRole("button", { name: "Scan triggers", exact: true }).click();
   const triggerList = page.getByRole("dialog", { name: "Scan triggers", exact: true });
-  await expect(triggerList.getByRole("button", { name: "Add trigger", exact: true })).toBeDisabled();
-  await expect(triggerList.getByRole("switch").first()).toBeDisabled();
+  for (const toggle of await triggerList.getByRole("switch").all()) await expect(toggle).toBeDisabled();
   await triggerList.getByRole("button", { name: "Close", exact: true }).last().click();
   await expect(operation(page, "Metadata").getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+  // Next opens the same switches for inspection.
   await nextTriggers(page).getByRole("button", { name: "View Scan", exact: true }).first().click();
-  const triggerDialog = page.getByRole("dialog", { name: "Edit trigger", exact: true });
-  await expect(triggerDialog.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
-  await expect(triggerDialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await expect(triggerList.getByRole("switch").first()).toBeDisabled();
 });
 
 test("the mobile Workflows page stacks the cards above the runs without scrolling sideways", async ({ page }) => {
@@ -2398,7 +2509,6 @@ test("an operation runs from its card, shows the run, and cannot start again unt
         scannedFiles: 0,
         updatedLocations: 0,
         skippedLocations: 0,
-        followUpRun: false,
         newWorkCodes: [],
         failures: [],
       } satisfies LocalScanResult,
@@ -2415,7 +2525,7 @@ test("an operation runs from its card, shows the run, and cannot start again unt
   await row.getByRole("button", { name: "Run", exact: true }).click();
   // The row answers at once and holds the run control while the run is queued and running.
   await expect(row.getByRole("button", { name: "Queued", exact: true })).toBeDisabled();
-  expect(requests).toEqual([{ followUpRun: false }]);
+  expect(requests).toEqual([{}]);
   await expect(row.getByRole("button", { name: "Run", exact: true })).toHaveCount(0);
 
   scan = scanRun({ status: "running", completedNodeRuns: 1 });

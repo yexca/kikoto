@@ -35,7 +35,11 @@ Important tables:
 Workflow records make scans, metadata sync, source checks, remote fetches, and
 review actions inspectable. `workflow_job.priority` is durable queue-ordering
 metadata; higher values claim first, with creation time and id as FIFO
-tie-breakers. `workflow_event` is a run's event log (level, type, message and
+tie-breakers. `workflow_trigger.trigger_type` is `startup`, `schedule`,
+`filesystem_event`, `source_poll`, or `after_workflow`, whose schedule names
+the workflow it follows (see
+[Automatic Triggers](../workflows/built-in-workflows.md#automatic-triggers)).
+`workflow_event` is a run's event log (level, type, message and
 detail), optionally tied to a node run or job. `workflow_notification` holds at
 most one notification per user, run and type, such as ready Availability Watch
 works, new subscription releases, or the first metadata prompt; database

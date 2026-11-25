@@ -239,7 +239,7 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		if !userHasPermission(actor, "metadata:sync") {
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 		}
-		newRunID, err := s.retryLocalLibraryScan(ctx, runID)
+		newRunID, err := s.retryLocalLibraryScan(ctx)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
 	case localMediaIndexWorkflowCode:
 		if !userHasPermission(actor, "metadata:sync") {
@@ -285,16 +285,10 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 	}
 }
 
-func (s *Server) retryLocalLibraryScan(ctx context.Context, runID int64) (int64, error) {
-	var payload localScanJobPayload
-	var inputJSON string
-	if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
-		return 0, err
-	}
-	if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
-		return 0, err
-	}
-	result, err := s.enqueueLocalScanWithOptions(ctx, "manual", "retry_run", 0, payload.FollowUpRun)
+// retryLocalLibraryScan queues a new complete scan; a failed scan's input
+// holds nothing a retry repeats.
+func (s *Server) retryLocalLibraryScan(ctx context.Context) (int64, error) {
+	result, err := s.enqueueLocalScanWithOptions(ctx, "manual", "retry_run", 0)
 	return result.RunID, err
 }
 

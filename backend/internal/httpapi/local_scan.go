@@ -31,7 +31,7 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid local scan request", false)
 		return
 	}
-	result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "manual", 0, request.FollowUpRun)
+	result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "manual", 0)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -40,9 +40,9 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
-type localScanRunRequest struct {
-	FollowUpRun bool `json:"followUpRun"`
-}
+// localScanRunRequest takes no options: a manual scan always walks the whole
+// library, and what follows it is up to the other operations' After triggers.
+type localScanRunRequest struct{}
 
 type localScanResult struct {
 	RunID            int64    `json:"runId"`
@@ -53,7 +53,6 @@ type localScanResult struct {
 	ScannedFiles     int      `json:"scannedFiles"`
 	UpdatedLocations int      `json:"updatedLocations"`
 	SkippedLocations int      `json:"skippedLocations"`
-	FollowUpRun      bool     `json:"followUpRun"`
 	NewWorkCodes     []string `json:"newWorkCodes"`
 	Failures         []string `json:"failures"`
 }

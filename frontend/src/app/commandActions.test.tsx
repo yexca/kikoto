@@ -74,7 +74,6 @@ describe("commandActions", () => {
       scannedFiles: 0,
       updatedLocations: 0,
       skippedLocations: 0,
-      followUpRun: false,
       newWorkCodes: [],
       failures: [],
     });
@@ -98,7 +97,7 @@ describe("commandActions", () => {
 
     await actions[0].run();
 
-    expect(api.runLocalScan).toHaveBeenCalledWith({ followUpRun: false });
+    expect(api.runLocalScan).toHaveBeenCalledWith();
     expect(onOpenPath).toHaveBeenCalledWith("/workflows?run=1");
   });
 });

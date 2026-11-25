@@ -23,7 +23,6 @@ type localScanJobPayload struct {
 	FullFallbackReason  string   `json:"full_fallback_reason,omitempty"`
 	DirectoryEventAt    string   `json:"directory_event_at,omitempty"`
 	ObservedDirectories int      `json:"observed_directories,omitempty"`
-	FollowUpRun         bool     `json:"follow_up_run,omitempty"`
 	// JoinedTriggerIDs are the triggers whose complete-scan request joined
 	// this queued run; the run's result is recorded on each of them too.
 	JoinedTriggerIDs []int64 `json:"joined_trigger_ids,omitempty"`
@@ -35,18 +34,17 @@ const (
 )
 
 type metadataSyncRunInput struct {
-	SourceRunID int64 `json:"source_run_id,omitempty"`
 	metadataSyncOptions
 }
 
 func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
-	return s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, 0, false)
+	return s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, 0)
 }
 
-func (s *Server) enqueueLocalScanWithOptions(ctx context.Context, triggerType string, triggerReason string, triggerID int64, followUpRun bool) (localScanResult, error) {
+func (s *Server) enqueueLocalScanWithOptions(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (localScanResult, error) {
 	scanDepth := s.effectiveLocalScanDepth(ctx)
 	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{
-		Root: s.cfg.DataRoot, ScanDepth: scanDepth, ScanMode: localScanModeFull, FollowUpRun: followUpRun,
+		Root: s.cfg.DataRoot, ScanDepth: scanDepth, ScanMode: localScanModeFull,
 	})
 }
 
@@ -71,10 +69,9 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 			return localScanResult{}, err
 		}
 		if found {
-			if err := joinQueuedLocalScanTx(ctx, tx, existing, triggerID, payload.FollowUpRun); err != nil {
+			if err := joinQueuedLocalScanTx(ctx, tx, existing, triggerID); err != nil {
 				return localScanResult{}, err
 			}
-			existing.FollowUpRun = existing.FollowUpRun || payload.FollowUpRun
 			return existing, tx.Commit()
 		}
 	}
@@ -131,7 +128,7 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 		return localScanResult{}, err
 	}
 	return localScanResult{
-		RunID: runID, JobID: jobID, Status: "queued", FollowUpRun: payload.FollowUpRun,
+		RunID: runID, JobID: jobID, Status: "queued",
 		NewWorkCodes: []string{}, Failures: []string{},
 	}, nil
 }
@@ -143,9 +140,8 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 // so it never stands in for a complete scan.
 func queuedFullLocalScanTx(ctx context.Context, tx *sql.Tx) (localScanResult, bool, error) {
 	var result localScanResult
-	var inputJSON string
 	err := tx.QueryRowContext(ctx, `
-		SELECT run.id, run.status, run.input_json, COALESCE((
+		SELECT run.id, run.status, COALESCE((
 			SELECT job.id FROM workflow_job AS job WHERE job.workflow_run_id = run.id ORDER BY job.id DESC LIMIT 1
 		), 0)
 		FROM workflow_run AS run
@@ -156,18 +152,13 @@ func queuedFullLocalScanTx(ctx context.Context, tx *sql.Tx) (localScanResult, bo
 			)
 		ORDER BY run.id DESC
 		LIMIT 1
-	`, localScanModeFull, localScanModeFull).Scan(&result.RunID, &result.Status, &inputJSON, &result.JobID)
+	`, localScanModeFull, localScanModeFull).Scan(&result.RunID, &result.Status, &result.JobID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return localScanResult{}, false, nil
 	}
 	if err != nil {
 		return localScanResult{}, false, err
 	}
-	var payload localScanJobPayload
-	// Tolerant: the flag only labels the run a request joins;
-	// joinQueuedLocalScanTx records the request's own follow-up on it.
-	_ = json.Unmarshal([]byte(inputJSON), &payload)
-	result.FollowUpRun = payload.FollowUpRun
 	result.NewWorkCodes, result.Failures = []string{}, []string{}
 	return result, true, nil
 }
@@ -219,9 +210,7 @@ func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRec
 		return err
 	}
 	s.refreshQueryPlannerStatistics(ctx)
-	if payload.FollowUpRun {
-		s.queueLocalScanMetadataFollowUp(ctx, job.RunID)
-	}
+	s.dispatchLocalScanAfterTriggers(ctx, job.RunID, result.NewWorkCodes, true)
 	return nil
 }
 
@@ -327,18 +316,17 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		state.missingLocations += missing
 	}
 	runSummary := map[string]any{
-		"candidate_folders":   scanSummary.CandidateFolders,
-		"detected_works":      scanSummary.DetectedWorks,
-		"scanned_files":       scanSummary.ScannedFiles,
-		"ambiguous_folders":   scanSummary.AmbiguousFolders,
-		"duplicate_groups":    localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
-		"updated_locations":   state.updatedLocations,
-		"skipped_locations":   state.skippedLocations,
-		"missing_locations":   state.missingLocations,
-		"new_work_codes":      state.newWorkCodes,
-		"follow_up_requested": payload.FollowUpRun,
-		"scan_mode":           localScanModeFull,
-		"scan_depth":          scope.depth,
+		"candidate_folders": scanSummary.CandidateFolders,
+		"detected_works":    scanSummary.DetectedWorks,
+		"scanned_files":     scanSummary.ScannedFiles,
+		"ambiguous_folders": scanSummary.AmbiguousFolders,
+		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
+		"updated_locations": state.updatedLocations,
+		"skipped_locations": state.skippedLocations,
+		"missing_locations": state.missingLocations,
+		"new_work_codes":    state.newWorkCodes,
+		"scan_mode":         localScanModeFull,
+		"scan_depth":        scope.depth,
 	}
 	if payload.FullFallbackReason != "" {
 		runSummary["full_fallback_reason"] = payload.FullFallbackReason
@@ -362,7 +350,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
 		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,
 		UpdatedLocations: state.updatedLocations, SkippedLocations: state.skippedLocations,
-		FollowUpRun: payload.FollowUpRun, NewWorkCodes: state.newWorkCodes, Failures: []string{},
+		NewWorkCodes: state.newWorkCodes, Failures: []string{},
 	}
 	scope.applyOfflineResult(&result)
 	scope.applyUnreadableResult(&result)
@@ -580,21 +568,6 @@ func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRe
 	return tx.Commit()
 }
 
-func (s *Server) queueLocalScanMetadataFollowUp(ctx context.Context, sourceRunID int64) {
-	result, coalesced, err := s.enqueueDLsiteMetadataSyncFollowUp(ctx, sourceRunID)
-	if err != nil {
-		slog.Error("queue local scan metadata follow-up", "source_run_id", sourceRunID, "error", err)
-		s.recordRunEventOrLog(ctx, sourceRunID, "warning", "local_library_scan.follow_up_failed", "Metadata sync follow-up could not be queued.", map[string]any{
-			"follow_up_requested": true,
-		})
-		return
-	}
-	s.recordRunEventOrLog(ctx, sourceRunID, "info", "local_library_scan.follow_up_queued", "Metadata sync follow-up queued.", map[string]any{
-		"metadata_run_id": result.RunID,
-		"coalesced":       coalesced,
-	})
-}
-
 func (s *Server) enqueueDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string) (metasync.DLsiteSyncResult, error) {
 	return s.enqueueDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, 0)
 }
@@ -606,37 +579,6 @@ func (s *Server) enqueueDLsiteMetadataSyncWithTrigger(ctx context.Context, trigg
 // enqueueScopedDLsiteMetadataSync queues a metadata sync for normalized options.
 func (s *Server) enqueueScopedDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string, triggerID int64, options metadataSyncOptions) (metasync.DLsiteSyncResult, error) {
 	return s.enqueueDLsiteMetadataSyncWithInput(ctx, triggerType, triggerReason, triggerID, metadataSyncRunInput{metadataSyncOptions: options})
-}
-
-func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRunID int64) (metasync.DLsiteSyncResult, bool, error) {
-	var result metasync.DLsiteSyncResult
-	err := s.db.QueryRowContext(ctx, `
-		SELECT run.id, job.id
-		FROM workflow_run AS run
-		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
-		WHERE run.workflow_code = 'metadata_sync'
-			AND run.status = 'queued'
-			AND job.worker_type = 'metadata_sync'
-			AND job.status = 'queued'
-			AND COALESCE(json_extract(run.input_json, '$.scope'), 'all') = 'all'
-			AND COALESCE(json_extract(run.input_json, '$.mode'), 'missing') = 'missing'
-			AND COALESCE(json_extract(run.input_json, '$.sourceId'), 0) = 0
-			AND COALESCE(json_extract(run.input_json, '$.remoteMetadataFallback.enabled'), 0) = 0
-			AND COALESCE(json_extract(run.input_json, '$.purchaseBonusAutoLink'), 1) = 1
-		ORDER BY run.id ASC
-		LIMIT 1
-	`).Scan(&result.RunID, &result.JobID)
-	if err == nil {
-		result.Status = "queued"
-		result.ReviewCandidates = []metasync.DLsiteReviewCandidate{}
-		result.Failures = []string{}
-		return result, true, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return metasync.DLsiteSyncResult{}, false, err
-	}
-	result, err = s.enqueueDLsiteMetadataSyncWithInput(ctx, "follow_up", "local_scan_follow_up", 0, metadataSyncRunInput{SourceRunID: sourceRunID})
-	return result, false, err
 }
 
 func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, triggerType string, triggerReason string, triggerID int64, input metadataSyncRunInput) (metasync.DLsiteSyncResult, error) {
@@ -910,9 +852,9 @@ func updateTriggerForQueuedSystemRun(ctx context.Context, tx *sql.Tx, runID int6
 	return err
 }
 
-// joinQueuedLocalScanTx adds a joining request to a queued complete scan: its
-// trigger, so the result is recorded there too, and its follow-up metadata run.
-func joinQueuedLocalScanTx(ctx context.Context, tx *sql.Tx, run localScanResult, triggerID int64, followUpRun bool) error {
+// joinQueuedLocalScanTx adds a joining request's trigger to a queued complete
+// scan, so the result is recorded there too.
+func joinQueuedLocalScanTx(ctx context.Context, tx *sql.Tx, run localScanResult, triggerID int64) error {
 	var inputJSON string
 	if err := tx.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", run.RunID).Scan(&inputJSON); err != nil {
 		return err
@@ -922,9 +864,6 @@ func joinQueuedLocalScanTx(ctx context.Context, tx *sql.Tx, run localScanResult,
 		return err
 	}
 	changed := false
-	if followUpRun && !payload.FollowUpRun {
-		payload.FollowUpRun, changed = true, true
-	}
 	var queuedBy sql.NullInt64
 	if err := tx.QueryRowContext(ctx, "SELECT trigger_id FROM workflow_run WHERE id = ?", run.RunID).Scan(&queuedBy); err != nil {
 		return err

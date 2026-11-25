@@ -11,7 +11,7 @@
   then too. Each read covers only the file's header and skips photos, and
   nothing is read while the Record folder is not mounted.
 - **Read Record media details** reads every file still waiting at once, by
-  hand or at startup or on a schedule from its trigger, as a workflow of its
+  hand, on a schedule, or after a Record scan finds new files, as a workflow of its
   own whose progress shows beside **Scan**. It pauses between files whenever
   other work is waiting.
 - The Record page keeps following a scan or a media details run until it
@@ -31,8 +31,22 @@
   rankings has a pull planned, with when it is due.
 - Operations adds a **Record** section while Record is on: **Record scan**
   and **Media details**, which reads every file still waiting, including
-  files an earlier run gave up on after a timeout, and takes Startup and
-  interval triggers.
+  files an earlier run gave up on after a timeout.
+- Triggers follow what each operation works on. **Scan** and **Record scan**
+  run at startup or on a schedule. **Metadata**, **Index**, and **Media
+  details** no longer run at startup: they run on a schedule, or after the
+  scan they follow has finished and found something for them, as **After a
+  scan adds works**, **After a scan finds new folders**, and **After a Record
+  scan finds new files**. A new install runs nothing on its own until library
+  setup or you turn a trigger on.
+- A scan run by hand takes no **Follow-up run**: give Metadata its **After a
+  scan adds works** trigger instead.
+- A card's triggers are one switch for each way the operation can start, and
+  every change saves at once; **Add trigger** is gone. Turning a switch off
+  pauses that trigger and keeps its interval and mode, and a Metadata or Index
+  schedule and the folder watcher choose **Incremental** or **Full** beside it.
+- Metadata's triggers run with the card's **Metadata options**: saving the
+  options updates them too.
 - Links and Quick actions that open the runs needing attention open the
   Needs attention tab.
 - A run opens beside its list only from Needs attention or History, stays in
@@ -129,5 +143,9 @@
   per-work LLM translation that Translate with AI replaced, and the
   per-track progress that Resume replaced. Translate with AI history, Resume
   positions, and listening history stay.
+- Upgrading moves automatic runs onto the new triggers: a scan trigger that
+  asked for a follow-up metadata sync becomes Metadata's **After a scan adds
+  works**, and an Index or Media details startup trigger becomes its after-scan
+  trigger, each staying on or off as it was.
 
 </details>

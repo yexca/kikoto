@@ -11,8 +11,10 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { metadataSyncSources } from "@/features/workflows/metadataSyncModel";
 import { MetadataOptionsDialog } from "@/features/workflows/operations/MetadataOptionsDialog";
 import {
-  metadataRunOptionsChanged,
+  metadataRunOptionsFromConfig,
+  metadataRunOptionsSummary,
   metadataRunPayload,
+  sameMetadataRunOptions,
   readMetadataRunOptions,
   usableMetadataRunOptions,
   writeMetadataRunOptions,
@@ -36,7 +38,13 @@ import { useWorkflowsLocation } from "@/features/workflows/useWorkflowsLocation"
 import { openWorkflowPath } from "@/lib/workflowLinks";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import { pageManagedWorkflows, workflowTriggerSummary } from "@/features/workflows/workflowTriggerModel";
+import {
+  operationTriggerConfig,
+  pageManagedWorkflows,
+  triggerRunsFull,
+  triggerTakesMetadataOptions,
+  workflowTriggerSummary,
+} from "@/features/workflows/workflowTriggerModel";
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
 import { useLatestLoad } from "@/hooks/useLatestLoad";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
@@ -53,7 +61,7 @@ type PendingRun = { runId: number | null };
 const pendingRunTimeoutMs = 20_000;
 
 /** Whose triggers the dialog shows, and a trigger to open straight to. */
-type TriggerDialogState = { definitionId: number; editing: WorkflowTrigger | null } | null;
+type TriggerDialogState = { definitionId: number } | null;
 
 /** The sections of Operations, in order. */
 const operationGroups: OperationGroup[] = ["library", "record"];
@@ -198,7 +206,7 @@ export function WorkflowsPage({
     if (operation.kind === "record_probe")
       return startRun(operation, () => api.queueRecordProbe(), workflowCopy("recordProbeCreateFailed"));
     if (operation.kind === "local_scan")
-      return startRun(operation, () => api.runLocalScan({ followUpRun: false }), workflowCopy("localScanCreateFailed"));
+      return startRun(operation, () => api.runLocalScan(), workflowCopy("localScanCreateFailed"));
     if (operation.kind === "local_media_index")
       return startRun(
         operation,
@@ -247,6 +255,49 @@ export function WorkflowsPage({
     }
   };
 
+  /**
+   * The Metadata card's options are what Metadata's triggers run with too, so
+   * saving them updates every Metadata trigger that asks DLsite and stores
+   * other options.
+   */
+  const applyMetadataOptionsToTriggers = async (options: MetadataRunOptions) => {
+    if (!permitted) return;
+    const stale = triggers.filter(
+      (trigger) =>
+        trigger.workflowCode === "metadata_sync" &&
+        triggerTakesMetadataOptions(trigger.workflowCode, trigger.configJson) &&
+        !sameMetadataRunOptions(metadataRunOptionsFromConfig(trigger.configJson), options),
+    );
+    if (stale.length === 0) return;
+    try {
+      await Promise.all(
+        stale.map((trigger) =>
+          api.updateWorkflowTrigger(trigger.id, {
+            workflowDefinitionId: trigger.workflowDefinitionId,
+            displayName: trigger.displayName,
+            triggerType: trigger.triggerType,
+            enabled: trigger.enabled,
+            scheduleJson: trigger.scheduleJson,
+            configJson: JSON.stringify(
+              operationTriggerConfig(
+                trigger.workflowCode,
+                trigger.triggerType,
+                triggerRunsFull(trigger.workflowCode, trigger),
+                trigger.configJson,
+                options,
+              ),
+            ),
+            nextRunAt: null,
+          }),
+        ),
+      );
+    } catch (error) {
+      toast.notify(toastFromError(error, workflowCopy("saveFailed")));
+    } finally {
+      refresh();
+    }
+  };
+
   const cardName = (operation: Operation) =>
     t(`workflowPage.cards.names.${operation.definition.code}`, { defaultValue: operation.definition.displayName });
   const workflowName = (code: string, fallback: string) =>
@@ -270,6 +321,11 @@ export function WorkflowsPage({
   const dialogOperation = triggerDialog
     ? operations.find((operation) => operation.definition.id === triggerDialog.definitionId)
     : undefined;
+  const dialogDefinitionId = dialogOperation?.definition.id;
+  const dialogTriggers = useMemo(
+    () => triggers.filter((trigger) => trigger.workflowDefinitionId === dialogDefinitionId),
+    [triggers, dialogDefinitionId],
+  );
 
   const workflowOptions = definitions
     .map((definition) => ({ code: definition.code, name: workflowName(definition.code, definition.displayName) }))
@@ -318,7 +374,7 @@ export function WorkflowsPage({
                 label: t("workflowPage.triggers.title", { name: cardName(operation) }),
                 onOpen:
                   triggerPermitted(operation) || readOnly
-                    ? () => setTriggerDialog({ definitionId: definition.id, editing: null })
+                    ? () => setTriggerDialog({ definitionId: definition.id })
                     : undefined,
               }
             : undefined
@@ -339,21 +395,7 @@ export function WorkflowsPage({
   };
 
   /** What the Metadata card's runs change from the defaults, in one line. */
-  const metadataOptionsSummary = () => {
-    if (!metadataRunOptionsChanged(metadataRun)) return null;
-    const names = new Map((capableSources ?? []).map((source) => [source.id, source.displayName]));
-    const fallback = metadataRun.remoteMetadataFallback;
-    return [
-      fallback.enabled
-        ? t("workflowPage.cards.fallbackSummary", {
-            sources: fallback.sourceIds.map((id) => names.get(id) ?? `#${id}`).join(" → "),
-          })
-        : null,
-      metadataRun.purchaseBonusAutoLink ? null : t("workflowPage.cards.bonusOff"),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  };
+  const metadataOptionsSummary = () => metadataRunOptionsSummary(metadataRun, capableSources);
 
   const operationsTab = (
     // Cards sit three to a row where the tab is wide, and one to a row on a phone.
@@ -382,7 +424,7 @@ export function WorkflowsPage({
         readOnly={readOnly}
         loading={!hasSnapshot && isLoading}
         onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
-        onEdit={(trigger) => setTriggerDialog({ definitionId: trigger.workflowDefinitionId, editing: trigger })}
+        onEdit={(trigger) => setTriggerDialog({ definitionId: trigger.workflowDefinitionId })}
         onOpenPath={openWorkflowPath}
       />
     </div>
@@ -493,6 +535,7 @@ export function WorkflowsPage({
             setMetadataOptions(next);
             writeMetadataRunOptions(next);
             setMetadataOptionsOpen(false);
+            void applyMetadataOptionsToTriggers(next);
           }}
           onClose={() => setMetadataOptionsOpen(false)}
         />
@@ -500,12 +543,11 @@ export function WorkflowsPage({
       {dialogOperation && (
         <OperationTriggersDialog
           operation={{ definition: dialogOperation.definition, name: cardName(dialogOperation) }}
-          triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === dialogOperation.definition.id)}
-          editing={triggerDialog?.editing}
+          triggers={dialogTriggers}
           canManage={triggerPermitted(dialogOperation)}
           readOnly={readOnly}
           metadataConfigJson={JSON.stringify(metadataRunPayload(metadataRun, false))}
-          onToggle={(trigger, enabled) => void toggleTrigger(trigger, enabled)}
+          metadataOptions={metadataRun}
           onChanged={() => {
             refresh();
             setRevision((value) => value + 1);

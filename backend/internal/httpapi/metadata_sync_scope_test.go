@@ -82,13 +82,13 @@ func TestMetadataSyncDeduplicatesPerScope(t *testing.T) {
 	if first.RunID == all.RunID || first.Deduplicated || second.RunID != first.RunID || !second.Deduplicated {
 		t.Fatalf("scoped runs = all %d, first %+v, second %+v", all.RunID, first, second)
 	}
-	// A local scan follow-up joins only the unscoped queued run.
-	followUp, coalesced, err := server.enqueueDLsiteMetadataSyncFollowUp(ctx, 1)
+	// A metadata After trigger's default options join the unscoped queued run.
+	after, err := server.enqueueScopedDLsiteMetadataSync(ctx, "after_workflow", "after_run:1", 0, metadataSyncOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !coalesced || followUp.RunID != all.RunID {
-		t.Fatalf("follow-up = %+v coalesced %t, want run %d", followUp, coalesced, all.RunID)
+	if after.RunID != all.RunID || !after.Deduplicated {
+		t.Fatalf("after-scan sync = %+v, want run %d", after, all.RunID)
 	}
 }
 

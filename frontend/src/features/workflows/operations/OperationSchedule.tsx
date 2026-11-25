@@ -12,7 +12,8 @@ const intervalKey = {
 
 /**
  * What starts an operation on its own, in one line under its name: at
- * startup, while watching folders, or on an interval with its next run.
+ * startup, after a scan, while watching folders, or on an interval with its
+ * next run.
  * Nothing shows for an operation that runs only by hand.
  */
 export function OperationSchedule({ summary }: { summary: TriggerSummary | null }) {
@@ -24,6 +25,7 @@ export function OperationSchedule({ summary }: { summary: TriggerSummary | null 
     );
   const parts = [
     summary.startup ? t("workflowPage.operations.schedule.startup") : null,
+    summary.after ? t(`workflowPage.operations.schedule.after.${summary.after}`) : null,
     summary.watching ? t("workflowPage.operations.schedule.watching") : null,
     ...summary.intervals.map((interval) => t(intervalKey[interval.unit], { count: interval.count })),
   ].filter((part): part is string => part !== null);

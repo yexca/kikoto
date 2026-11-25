@@ -33,13 +33,13 @@ show five entries and **Show all** the rest. **Needs attention**
 (`?tab=attention`, `view=attention`) lists the runs waiting for a decision in
 server pages of twenty, with an empty state, and its tab counts them. Next
 lists only enabled triggers: interval triggers by their next run, then those
-still waiting for one, then Startup and folder triggers. A paused trigger is
+still waiting for one, then Startup, After, and folder triggers. A paused trigger is
 left out, since it runs nothing; an operation's trigger dialog still lists it
 for resuming. A ranking pull's dispatcher is always enabled and stores no
 interval, since the ranking lists plan its `next_run_at`; Next treats a
 schedule trigger without an interval as planned by the server, lists it only
 while it has a next run, and shows that time in place of a condition. The operations' triggers carry a switch that pauses them and
-an edit button that opens the trigger dialog; another
+an edit button that opens their operation's trigger dialog; another
 workflow's triggers name the trigger and link to where it is configured: the
 Discover panel of a ranking pull, Availability Watch, or the subscription
 refresh, and System → Library for a source presence check. **History**

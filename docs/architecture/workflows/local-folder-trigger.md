@@ -48,8 +48,8 @@ missing marker.
 Startup, interval, and manual workflows always run the complete local scan. A
 request for a complete scan, from Run, Startup, an interval, a retry, a library
 layout change, or the folder watcher, while a complete scan is queued and not
-yet running returns that run; the run takes on the request's follow-up
-metadata run, and its result is recorded on the request's trigger too. While
+yet running returns that run, and its result is recorded on the request's
+trigger too. While
 a complete scan runs, a request queues its own, because the running scan may
 already have passed the folders that changed. Folder changes and a new custom
 work queue their own incremental scan. If a filesystem
@@ -92,12 +92,12 @@ Neither mode rewrites `managed_fetch` ownership records.
 
 Local scan and metadata sync have separate definitions, jobs, resource labels,
 statuses, failures, review candidates, and retry histories. A local scan never
-calls a metadata provider as part of its own run. Manual, Startup, and interval
-scan configuration exposes `Follow-up run`; it defaults off and, when enabled,
-queues a separate `metadata_sync` run only after the scan reaches a terminal
-state. The fixed filesystem trigger keeps this option off. Queued automatic
-metadata follow-ups are coalesced so a burst of scans does not create redundant
-provider work.
+calls a metadata provider as part of its own run, and a scan takes no options.
+A metadata sync follows a scan only through its own After trigger, which a scan
+that added works dispatches once it has finished (see
+[Automatic Triggers](built-in-workflows.md#automatic-triggers)). A repeated
+dispatch joins the metadata sync already queued or running with the same
+options, so a burst of scans does not create redundant provider work.
 
 ## Local Work File Refresh
 
@@ -123,8 +123,9 @@ run continues; the run is `partial` when some folders fail and `failed` when
 none succeed. Cancellation stops before the next folder.
 
 One run is queued or running at a time: a manual start, retry, or trigger
-dispatch while one is active returns that run. Manual runs, Startup triggers,
-and interval triggers store `{"mode": ...}`; retry repeats the failed run's
+dispatch while one is active returns that run. Manual runs and interval triggers
+store `{"mode": ...}`; the After trigger, which follows a complete scan that
+leaves folders unindexed, stores `incremental`; retry repeats the failed run's
 mode. Starting a run requires `workflows:run` and `metadata:sync`, like the
 local scan. No trigger is seeded.
 

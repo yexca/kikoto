@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const (
@@ -35,8 +37,7 @@ type workflowRunTrigger struct {
 }
 
 type localScanTriggerConfig struct {
-	FollowUpRun bool   `json:"followUpRun"`
-	ScanMode    string `json:"scanMode,omitempty"`
+	ScanMode string `json:"scanMode,omitempty"`
 }
 
 var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
@@ -61,11 +62,18 @@ func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, 
 
 func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
 	prepared := preparedWorkflowTrigger{ConfigJSON: "{}"}
-	if definition.Code == "metadata_sync" && payload.TriggerType != "schedule" {
-		return preparedWorkflowTrigger{}, fmt.Errorf("metadata sync supports interval schedules only")
+	if payload.TriggerType == "filesystem_event" && (definition.Code != "local_library_scan" || existing == nil || existing.TriggerType != "filesystem_event") {
+		return preparedWorkflowTrigger{}, fmt.Errorf("filesystem watching is a fixed trigger for the local library scan")
+	}
+	if !systemWorkflowTakesTrigger(definition.Code, payload.TriggerType) {
+		return preparedWorkflowTrigger{}, fmt.Errorf("this workflow does not take %s triggers", payload.TriggerType)
 	}
 	switch payload.TriggerType {
-	case "startup":
+	case "startup", "filesystem_event":
+	case workflow.AfterWorkflowTriggerType:
+		if err := validateAfterWorkflowSchedule(definition.Code, payload.ScheduleJSON); err != nil {
+			return preparedWorkflowTrigger{}, err
+		}
 	case "schedule":
 		schedule, err := validateWorkflowIntervalSchedule(payload.ScheduleJSON)
 		if err != nil {
@@ -75,10 +83,6 @@ func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, pay
 			break
 		}
 		prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
-	case "filesystem_event":
-		if definition.Code != "local_library_scan" || existing == nil || existing.TriggerType != "filesystem_event" {
-			return preparedWorkflowTrigger{}, fmt.Errorf("filesystem watching is a fixed trigger for the local library scan")
-		}
 	default:
 		return preparedWorkflowTrigger{}, fmt.Errorf("unsupported built-in workflow trigger")
 	}
@@ -101,9 +105,7 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		if err != nil {
 			return preparedWorkflowTrigger{}, nil, err
 		}
-		if payload.TriggerType == "filesystem_event" {
-			config.FollowUpRun = false
-		} else {
+		if payload.TriggerType != "filesystem_event" {
 			config.ScanMode = localScanModeFull
 		}
 		prepared.ConfigJSON = mustJSON(config)
@@ -113,10 +115,14 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		if err != nil {
 			return preparedWorkflowTrigger{}, nil, err
 		}
+		if payload.TriggerType == workflow.AfterWorkflowTriggerType {
+			// After a scan only the folders it left unindexed need indexing.
+			config.Mode = localMediaIndexModeIncremental
+		}
 		prepared.ConfigJSON = mustJSON(config)
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
-	case recordProbeWorkflowCode:
-		if err := normalizeRecordProbeTriggerConfig(payload.ConfigJSON); err != nil {
+	case recordScanWorkflowCode, recordProbeWorkflowCode:
+		if err := normalizeRecordTriggerConfig(payload.ConfigJSON); err != nil {
 			return preparedWorkflowTrigger{}, nil, err
 		}
 		prepared.ConfigJSON = "{}"
@@ -164,7 +170,7 @@ func (s *Server) storedWorkflowTriggerPermissions(ctx context.Context, definitio
 		return append(permissions, "metadata:sync")
 	case sourcePresenceCheckWorkflowCode:
 		return append(permissions, "sources:write")
-	case recordProbeWorkflowCode:
+	case recordScanWorkflowCode, recordProbeWorkflowCode:
 		return append(permissions, "library:write")
 	}
 	return permissions
@@ -189,12 +195,8 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 }
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
-	switch code {
-	case "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync", recordProbeWorkflowCode:
-		return true
-	default:
-		return false
-	}
+	_, ok := systemWorkflowTriggerKinds[code]
+	return ok
 }
 
 // scheduledSystemWorkflowCodes lists the system definitions whose interval
@@ -203,7 +205,7 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 func scheduledSystemWorkflowCodes() []string {
 	return []string{
 		creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"metadata_sync", dlsiteRankingWorkflowCode, remoteRankingWorkflowCode, recordProbeWorkflowCode,
+		"metadata_sync", dlsiteRankingWorkflowCode, remoteRankingWorkflowCode, recordScanWorkflowCode, recordProbeWorkflowCode,
 	}
 }
 
@@ -478,6 +480,8 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case localMediaIndexWorkflowCode:
 		return s.executeLocalMediaIndexSystemTrigger(ctx, trigger, triggerType, triggerReason)
+	case recordScanWorkflowCode:
+		return s.executeRecordScanSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case recordProbeWorkflowCode:
 		return s.executeRecordProbeSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case sourcePresenceCheckWorkflowCode:
@@ -490,11 +494,10 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 }
 
 func (s *Server) executeLocalLibrarySystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
-	config, err := normalizeLocalScanTriggerConfig(trigger.ConfigJSON)
-	if err != nil {
+	if _, err := normalizeLocalScanTriggerConfig(trigger.ConfigJSON); err != nil {
 		return "", nil, err
 	}
-	result, err := s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, trigger.ID, config.FollowUpRun)
+	result, err := s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, trigger.ID)
 	return result.Status, result.Failures, err
 }
 
@@ -524,7 +527,7 @@ func (s *Server) executeMetadataSystemTrigger(ctx context.Context, trigger workf
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
 	case creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync",
-		recordProbeWorkflowCode:
+		recordScanWorkflowCode, recordProbeWorkflowCode:
 		return true
 	default:
 		return false
@@ -563,7 +566,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 }
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
-	startupCodes := []string{"local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, recordProbeWorkflowCode}
+	startupCodes := []string{"local_library_scan", recordScanWorkflowCode, sourcePresenceCheckWorkflowCode}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id
 		FROM workflow_trigger AS trigger

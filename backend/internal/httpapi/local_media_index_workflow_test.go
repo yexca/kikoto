@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -199,7 +198,11 @@ func TestCreateLocalMediaIndexRunValidatesMode(t *testing.T) {
 	}
 }
 
-func TestLocalMediaIndexStartupTriggerRunsConfiguredMode(t *testing.T) {
+// The file index takes an After trigger, which indexes only the folders a scan
+// left unindexed whatever mode it is sent, and an interval trigger that keeps
+// Full; Startup belongs to the scans, and an After trigger follows only the
+// local scan.
+func TestLocalMediaIndexTriggerKinds(t *testing.T) {
 	fixture := newLocalMediaIndexFixture(t)
 	ownerID := insertWorkflowGraphAPIUser(t, fixture.db, "local-media-index-owner")
 	if err := fixture.server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
@@ -209,22 +212,42 @@ func TestLocalMediaIndexStartupTriggerRunsConfiguredMode(t *testing.T) {
 	if err := fixture.db.QueryRow("SELECT id FROM workflow_definition WHERE code = ?", localMediaIndexWorkflowCode).Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Refresh on startup","triggerType":"startup","enabled":true,"configJson":"{\"mode\":\"full\"}"}`, definitionID)
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
-	response := httptest.NewRecorder()
-	fixture.server.createWorkflowTrigger(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("startup trigger response = %d, %s", response.Code, response.Body.String())
+	create := func(triggerType, schedule string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{
+			"workflowDefinitionId": definitionID, "displayName": "Index trigger", "triggerType": triggerType,
+			"enabled": true, "scheduleJson": schedule, "configJson": `{"mode":"full"}`,
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(string(body)))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
+		response := httptest.NewRecorder()
+		fixture.server.createWorkflowTrigger(response, request)
+		return response
 	}
-	if err := fixture.server.dispatchStartupSystemWorkflowTriggers(context.Background()); err != nil {
-		t.Fatal(err)
+	for _, rejected := range []struct{ triggerType, schedule string }{
+		{"startup", `{"type":"startup"}`},
+		{"after_workflow", `{"after":"record_library_scan"}`},
+	} {
+		if response := create(rejected.triggerType, rejected.schedule); response.Code != http.StatusBadRequest {
+			t.Fatalf("%s trigger following %s = %d %s", rejected.triggerType, rejected.schedule, response.Code, response.Body.String())
+		}
 	}
-	var inputJSON string
-	if err := fixture.db.QueryRow("SELECT input_json FROM workflow_run WHERE workflow_code = ? AND trigger_id IS NOT NULL", localMediaIndexWorkflowCode).Scan(&inputJSON); err != nil {
-		t.Fatal(err)
+	for _, accepted := range []struct{ triggerType, schedule, config string }{
+		{"after_workflow", `{"after":"local_library_scan"}`, `{"mode":"incremental"}`},
+		{"schedule", `{"intervalMinutes":1440}`, `{"mode":"full"}`},
+	} {
+		response := create(accepted.triggerType, accepted.schedule)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("%s trigger = %d %s", accepted.triggerType, response.Code, response.Body.String())
+		}
+		var trigger workflowTriggerRecord
+		if err := json.Unmarshal(response.Body.Bytes(), &trigger); err != nil {
+			t.Fatal(err)
+		}
+		if trigger.ConfigJSON != accepted.config {
+			t.Fatalf("%s trigger config = %s, want %s", accepted.triggerType, trigger.ConfigJSON, accepted.config)
+		}
 	}
-	if !strings.Contains(inputJSON, `"mode":"full"`) {
-		t.Fatalf("startup run input = %s, want full mode", inputJSON)
+	if response := create("after_workflow", `{"after":"local_library_scan"}`); response.Code != http.StatusConflict {
+		t.Fatalf("a second After trigger = %d %s", response.Code, response.Body.String())
 	}
 }

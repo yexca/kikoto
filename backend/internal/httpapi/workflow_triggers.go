@@ -21,6 +21,7 @@ var allowedScheduledTriggerTypes = map[string]bool{
 	"schedule":         true,
 	"filesystem_event": true,
 	"source_poll":      true,
+	"after_workflow":   true,
 }
 
 func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {

@@ -49,7 +49,7 @@ export function commandActions({
             icon: <ScanLine className="h-4 w-4" />,
             closeOnRun: false,
             run: async () => {
-              const result = await api.runLocalScan({ followUpRun: false });
+              const result = await api.runLocalScan();
               onOpenPath(workflowRunPath(result.runId));
             },
           },

@@ -40,8 +40,8 @@
 ## Metadata Is Missing
 
 - Confirm local scan detected the work code.
-- Run the independent metadata sync workflow, or explicitly enable
-  `Follow-up run` when starting or scheduling a local scan.
+- Run the independent metadata sync workflow, or give Metadata the
+  **After a scan adds works** trigger on Workflows.
 - Check Workflows for `metadata_sync` failures.
 - Some provider products may be removed or unavailable; those should appear as
   reviewable workflow candidates rather than fatal scan failures.

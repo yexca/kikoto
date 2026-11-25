@@ -1,4 +1,5 @@
 import { metadataSyncDefaultValues, metadataSyncPayload } from "@/features/workflows/metadataSyncModel";
+import { parseJSONRecord, workflowCopy } from "@/features/workflows/workflowPageModel";
 import type { LibrarySource, MetadataSyncOptions, RemoteMetadataFallbackSettings } from "@/lib/api";
 import { currentServerScopedStorageKey } from "@/lib/clientStorageScope";
 
@@ -85,4 +86,36 @@ export function metadataRunPayload(options: MetadataRunOptions, full: boolean): 
 /** Whether the options differ from the defaults, so the card names them. */
 export function metadataRunOptionsChanged(options: MetadataRunOptions) {
   return options.remoteMetadataFallback.enabled || !options.purchaseBonusAutoLink;
+}
+
+/** Whether two sets of options ask the same fallback, in the same order, and the same bonus linking. */
+export function sameMetadataRunOptions(left: MetadataRunOptions, right: MetadataRunOptions) {
+  const fallback = (options: MetadataRunOptions) =>
+    options.remoteMetadataFallback.enabled ? options.remoteMetadataFallback.sourceIds.join(",") : "";
+  return fallback(left) === fallback(right) && left.purchaseBonusAutoLink === right.purchaseBonusAutoLink;
+}
+
+/** A Metadata trigger's stored fallback and bonus options. */
+export function metadataRunOptionsFromConfig(configJson: string | undefined): MetadataRunOptions {
+  return decodeMetadataRunOptions(parseJSONRecord(configJson ?? ""));
+}
+
+/**
+ * What the options change from the defaults, in one line, as "Remote
+ * fallback: A → B · Purchase bonus linking off"; null when they change nothing.
+ */
+export function metadataRunOptionsSummary(options: MetadataRunOptions, sources: LibrarySource[] | null) {
+  if (!metadataRunOptionsChanged(options)) return null;
+  const names = new Map((sources ?? []).map((source) => [source.id, source.displayName]));
+  const fallback = options.remoteMetadataFallback;
+  return [
+    fallback.enabled
+      ? workflowCopy("cards.fallbackSummary", {
+          sources: fallback.sourceIds.map((id) => names.get(id) ?? `#${id}`).join(" → "),
+        })
+      : null,
+    options.purchaseBonusAutoLink ? null : workflowCopy("cards.bonusOff"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

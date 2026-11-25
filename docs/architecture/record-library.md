@@ -61,7 +61,10 @@ metadata, and other files by a bounded extension allowlist. It does not follow l
 junctions and skips Kikoto transaction directories and operating-system
 metadata directories.
 
-Record scans run as the durable `record_library_scan` workflow. A scan only
+Record scans run as the durable `record_library_scan` workflow, queued by
+Scan on the Record page, by the Record scan card, or by a Startup or interval
+trigger. While Record is off or its folder is not mounted, a trigger queues
+nothing and records why. A scan only
 walks the root: it reads no file's contents, reports the folders and files it
 has found as its progress, and records its last-scanned time when the walk
 ends. Only a complete
@@ -79,8 +82,10 @@ waiting. At most 512 files wait at a time, and a background pass reads up to
 64 of them at once behind the response. The Record page lists the folder once
 more a few seconds later. The durable `record_media_probe` workflow reads
 every pending file of the library at once. The Media details card on the
-Workflows page queues it by hand, and a startup or interval trigger queues it
-on its own. The probe reads, with `ffprobe`,
+Workflows page queues it by hand, an interval trigger queues it on its own,
+and its After trigger queues it when a Record scan found videos or audio
+files new or changed (see
+[Automatic Triggers](workflows/built-in-workflows.md#automatic-triggers)). The probe reads, with `ffprobe`,
 only the container header of each pending video and audio file: a video's
 duration, and the dimensions and codecs the header declares; an audio file's
 duration, its audio codec, and whether it embeds cover art (a video stream

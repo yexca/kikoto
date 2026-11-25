@@ -251,6 +251,27 @@ func (s *Store) ListTriggers(ctx context.Context) ([]TriggerRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	return scanTriggers(rows)
+}
+
+// AfterWorkflowTriggerType starts an operation after the upstream run its
+// schedule names, {"after": "<workflow code>"}, finishes.
+const AfterWorkflowTriggerType = "after_workflow"
+
+// ListEnabledAfterTriggers returns the enabled system After triggers that
+// follow the upstream workflow, in creation order.
+func (s *Store) ListEnabledAfterTriggers(ctx context.Context, upstream string) ([]TriggerRecord, error) {
+	rows, err := s.db.QueryContext(ctx, triggerSelectSQL()+`
+		WHERE trigger.enabled = 1 AND trigger.trigger_type = ? AND definition.scope = 'system'
+			AND json_valid(trigger.schedule_json) AND json_extract(trigger.schedule_json, '$.after') = ?
+		ORDER BY trigger.id`, AfterWorkflowTriggerType, upstream)
+	if err != nil {
+		return nil, err
+	}
+	return scanTriggers(rows)
+}
+
+func scanTriggers(rows *sql.Rows) ([]TriggerRecord, error) {
 	defer rows.Close()
 	triggers := []TriggerRecord{}
 	for rows.Next() {

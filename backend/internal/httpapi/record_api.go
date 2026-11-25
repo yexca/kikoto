@@ -415,7 +415,7 @@ func (s *Server) scanRecords(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusConflict, "record_root_unavailable", "Initialize and mount the record library before scanning.", false)
 		return
 	}
-	result, err := s.enqueueRecordScan(r.Context(), user.ID)
+	result, err := s.enqueueRecordScan(r.Context(), user.ID, workflowRunTrigger{Type: "manual", Reason: "record_library_scan"})
 	if err != nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "record_scan_failed", "The record library scan could not be queued.", true)
 		return

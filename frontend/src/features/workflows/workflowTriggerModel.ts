@@ -3,6 +3,7 @@ import {
   metadataSyncPayload,
   metadataSyncTriggerValues,
 } from "@/features/workflows/metadataSyncModel";
+import type { MetadataRunOptions } from "@/features/workflows/operations/metadataRunOptions";
 import { parseJSONRecord, workflowCopy } from "@/features/workflows/workflowPageModel";
 import type { WorkflowTrigger } from "@/lib/api";
 
@@ -12,8 +13,8 @@ import type { WorkflowTrigger } from "@/lib/api";
  * Add dialog saves stores.
  */
 
-/** The trigger kinds the Add dialog creates. Watching folders is the scan's one fixed trigger. */
-export type OperationTriggerKind = "startup" | "schedule";
+/** The trigger kinds an operation's dialog switches. Watching folders is the scan's one fixed trigger. */
+export type OperationTriggerKind = "startup" | "schedule" | "after_workflow" | "filesystem_event";
 
 /**
  * Workflows run and configured on Discover, with where each is managed there.
@@ -91,13 +92,19 @@ export function triggerRunsOnItsOwn(trigger: WorkflowTrigger) {
   return trigger.enabled && (!serverPlannedTrigger(trigger) || Boolean(trigger.nextRunAt));
 }
 
+/** When an operation's After trigger starts it, as "After a scan adds works". */
+export function afterTriggerLabel(code: string) {
+  return workflowCopy(`operations.schedule.after.${code}`);
+}
+
 /**
- * When a trigger starts its workflow, as "At startup", "When folders change",
- * or "Every 6 hours"; null for a trigger the server plans, which says only
- * when it runs next.
+ * When a trigger starts its workflow, as "At startup", "After a scan adds
+ * works", "When folders change", or "Every 6 hours"; null for a trigger the
+ * server plans, which says only when it runs next.
  */
 export function workflowTriggerCondition(trigger: WorkflowTrigger): string | null {
   if (trigger.triggerType === "startup") return workflowCopy("operations.schedule.startup");
+  if (trigger.triggerType === "after_workflow") return afterTriggerLabel(trigger.workflowCode);
   if (trigger.triggerType === "filesystem_event") return workflowCopy("whenFoldersChange");
   if (serverPlannedTrigger(trigger)) return null;
   if (trigger.triggerType === "schedule") return intervalLabel(triggerInterval(trigger));
@@ -107,6 +114,8 @@ export function workflowTriggerCondition(trigger: WorkflowTrigger): string | nul
 /** How an operation starts on its own, in the words its card uses. */
 export type TriggerSummary = {
   startup: boolean;
+  /** The operation whose enabled After trigger follows a scan, or null. */
+  after: string | null;
   watching: boolean;
   /** Interval schedules, as a count of days, hours, or minutes, shortest first. */
   intervals: IntervalParts[];
@@ -133,6 +142,7 @@ export function workflowTriggerSummary(triggers: WorkflowTrigger[], nextRunAt: s
   ].sort((left, right) => left - right);
   return {
     startup: enabled.some((trigger) => trigger.triggerType === "startup"),
+    after: enabled.find((trigger) => trigger.triggerType === "after_workflow")?.workflowCode ?? null,
     watching: enabled.some((trigger) => trigger.triggerType === "filesystem_event"),
     intervals: minutes.map(intervalParts),
     nextRunAt,
@@ -142,13 +152,14 @@ export function workflowTriggerSummary(triggers: WorkflowTrigger[], nextRunAt: s
 
 /**
  * Next's order: interval schedules by their next run, then those still
- * waiting for one, then startup and folder triggers, and paused triggers last.
+ * waiting for one, then startup and After triggers, folder triggers, and
+ * paused triggers last.
  */
 export function nextTriggerOrder(triggers: WorkflowTrigger[]): WorkflowTrigger[] {
   const rank = (trigger: WorkflowTrigger) => {
     if (!trigger.enabled) return 4;
     if (trigger.triggerType === "schedule") return trigger.nextRunAt ? 0 : 1;
-    return trigger.triggerType === "startup" ? 2 : 3;
+    return trigger.triggerType === "startup" || trigger.triggerType === "after_workflow" ? 2 : 3;
   };
   const time = (trigger: WorkflowTrigger) => (trigger.nextRunAt ? Date.parse(trigger.nextRunAt) : 0) || 0;
   return [...triggers].sort(
@@ -157,21 +168,64 @@ export function nextTriggerOrder(triggers: WorkflowTrigger[]): WorkflowTrigger[]
   );
 }
 
-/** The kinds Add offers for an operation; metadata sync runs only on a schedule. */
+/**
+ * The scan each operation that works on what a scan found follows with its
+ * After trigger.
+ */
+export const afterTriggerUpstreams: Record<string, string> = {
+  metadata_sync: "local_library_scan",
+  local_media_index: "local_library_scan",
+  record_media_probe: "record_library_scan",
+};
+
+/**
+ * The triggers an operation's dialog switches, one of each kind, in order.
+ * The scans run at startup, and Scan also watches folders; the operations that
+ * work on what a scan found follow it instead; and every one takes an interval.
+ */
 export function operationTriggerKinds(code: string): OperationTriggerKind[] {
-  if (code === "metadata_sync") return ["schedule"];
-  if (code === "local_library_scan" || code === "local_media_index" || code === "record_media_probe")
-    return ["startup", "schedule"];
+  if (code === "local_library_scan") return ["startup", "filesystem_event", "schedule"];
+  if (code === "record_library_scan") return ["startup", "schedule"];
+  if (afterTriggerUpstreams[code]) return ["after_workflow", "schedule"];
   return [];
+}
+
+/**
+ * Splits an operation's triggers into the one each switch stands for, the
+ * enabled one first and then the oldest, and the others of the same kind, such
+ * as a second schedule created through the API.
+ */
+export function operationTriggerSlots(code: string, triggers: WorkflowTrigger[]) {
+  const kinds = operationTriggerKinds(code);
+  const ordered = [...triggers].sort(
+    (left, right) => Number(right.enabled) - Number(left.enabled) || left.id - right.id,
+  );
+  const slots = new Map<OperationTriggerKind, WorkflowTrigger>();
+  const others: WorkflowTrigger[] = [];
+  for (const trigger of ordered) {
+    const kind = trigger.triggerType as OperationTriggerKind;
+    if (kinds.includes(kind) && !slots.has(kind)) slots.set(kind, trigger);
+    else others.push(trigger);
+  }
+  return { slots, others: others.sort((left, right) => left.id - right.id) };
+}
+
+/** What a trigger of this kind stores as its schedule. */
+export function triggerScheduleJson(code: string, kind: string, intervalMinutes: number) {
+  if (kind === "schedule") return JSON.stringify({ intervalMinutes });
+  if (kind === "after_workflow") return JSON.stringify({ after: afterTriggerUpstreams[code] });
+  return JSON.stringify({ type: kind });
 }
 
 /**
  * Whether a trigger can run its operation in full rather than incrementally.
  * A scan at startup or on a schedule always looks at every folder; only
- * watching folders scans just the folders that changed.
+ * watching folders scans just the folders that changed. An After trigger
+ * works only on what the scan found new.
  */
 export function triggerOffersFull(code: string, triggerType: string) {
   if (code === "local_library_scan") return triggerType === "filesystem_event";
+  if (triggerType === "after_workflow") return false;
   return code === "local_media_index" || code === "metadata_sync";
 }
 
@@ -184,25 +238,46 @@ export function triggerRunsFull(code: string, trigger: Pick<WorkflowTrigger, "tr
 }
 
 /**
+ * Whether a Metadata trigger runs with the Metadata card's fallback and bonus
+ * options. A trigger that reads one named source asks no fallback.
+ */
+export function triggerTakesMetadataOptions(code: string, storedConfigJson?: string) {
+  if (code !== "metadata_sync") return false;
+  const sourceId = parseJSONRecord(storedConfigJson ?? "").sourceId;
+  return !(typeof sourceId === "number" && sourceId > 0);
+}
+
+/**
  * What a trigger stores for its operation. An edited trigger keeps the
- * options Workflows does not show, such as a metadata sync's scope.
+ * options Workflows does not show, such as a metadata sync's scope; a
+ * Metadata trigger's fallback and bonus options become the card's when given.
  */
 export function operationTriggerConfig(
   code: string,
   triggerType: string,
   full: boolean,
   storedConfigJson?: string,
+  metadataOptions?: MetadataRunOptions,
 ): Record<string, unknown> {
   const stored = storedConfigJson === undefined ? null : parseJSONRecord(storedConfigJson);
   if (code === "local_library_scan")
-    return triggerType === "filesystem_event"
-      ? { followUpRun: false, scanMode: full ? "full" : "incremental" }
-      : { followUpRun: stored?.followUpRun === true };
+    return triggerType === "filesystem_event" ? { scanMode: full ? "full" : "incremental" } : {};
   if (code === "local_media_index") return { mode: full ? "full" : "incremental" };
-  if (code === "metadata_sync")
+  if (code === "metadata_sync") {
+    const fallback = metadataOptions?.remoteMetadataFallback;
     return {
       ...(stored ?? metadataSyncPayload(metadataSyncTriggerValues(metadataSyncDefaultValues()))),
+      ...(metadataOptions && fallback
+        ? {
+            remoteMetadataFallback:
+              fallback.enabled && fallback.sourceIds.length > 0
+                ? { enabled: true, sourceIds: [...fallback.sourceIds] }
+                : { enabled: false, sourceIds: [] },
+            purchaseBonusAutoLink: metadataOptions.purchaseBonusAutoLink,
+          }
+        : {}),
       mode: full ? "full" : "missing",
     };
+  }
   return stored ?? {};
 }

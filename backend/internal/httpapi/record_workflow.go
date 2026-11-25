@@ -40,7 +40,7 @@ type recordScanQueuedResult struct {
 	Existing bool   `json:"existing"`
 }
 
-func (s *Server) enqueueRecordScan(ctx context.Context, actorUserID int64) (recordScanQueuedResult, error) {
+func (s *Server) enqueueRecordScan(ctx context.Context, actorUserID int64, trigger workflowRunTrigger) (recordScanQueuedResult, error) {
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return recordScanQueuedResult{}, err
@@ -71,9 +71,14 @@ func (s *Server) enqueueRecordScan(ctx context.Context, actorUserID int64) (reco
 	}
 	payload := recordScanPayload{RequestedByUserID: actorUserID}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, recordScanWorkflowCode, recordScanDisplayName,
-		"queued", "manual", "record_library_scan", payload, map[string]any{})
+		"queued", trigger.Type, trigger.Reason, payload, map[string]any{})
 	if err != nil {
 		return recordScanQueuedResult{}, err
+	}
+	if trigger.ID > 0 {
+		if err := workflow.SetRunTrigger(ctx, tx, runID, trigger.ID); err != nil {
+			return recordScanQueuedResult{}, err
+		}
 	}
 	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "scan", NodeType: recordScanWorkerType, DisplayName: recordScanDisplayName,
@@ -84,7 +89,7 @@ func (s *Server) enqueueRecordScan(ctx context.Context, actorUserID int64) (reco
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: nodeID, WorkerType: recordScanWorkerType, Status: "queued",
-		Priority: workflow.JobPriorityUserInitiated, ResourceKey: "record:scan", Payload: payload,
+		Priority: workflowJobPriorityForTrigger(trigger.Type), ResourceKey: "record:scan", Payload: payload,
 		Checkpoint: map[string]any{}, Recoverable: false, MaxRetries: 2, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -148,9 +153,10 @@ func (s *Server) runRecordScan(ctx context.Context, progress record.ScanProgress
 	return result, nil
 }
 
-// finishRecordScanJob records the scan as finished. The files it left pending
-// are read when their folder opens, or by a media details run started by hand
-// or by a trigger; a scan queues none.
+// finishRecordScanJob records the scan as finished, on its triggers too. The
+// files it left pending are read when their folder opens, by a media details
+// run started by hand or on an interval, or by the media details After
+// trigger when the scan found files new or changed.
 func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord, _ recordScanPayload, result record.ScanResult) error {
 	output := mustJSON(result)
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
@@ -170,5 +176,33 @@ func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord,
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := updateTriggerForQueuedSystemRun(ctx, tx, job.RunID, "succeeded", nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.dispatchRecordScanAfterTriggers(ctx, job.RunID, result.NewPendingProbes)
+	return nil
+}
+
+// executeRecordScanSystemTrigger queues a Record scan for a startup or
+// interval trigger. While Record is off, or its library is not mounted, the
+// trigger queues nothing and says why.
+func (s *Server) executeRecordScanSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
+	reason := ""
+	if !s.recordLibraryEnabled(ctx) {
+		reason = "Record is turned off"
+	} else if root, err := s.recordStore.EnsureRoot(ctx); err != nil {
+		return "", nil, err
+	} else if root.State != "online" && root.State != record.RootStateMarkerMissing {
+		reason = "The record library is not mounted"
+	}
+	if reason != "" {
+		s.execBestEffort(ctx, "record skipped record scan trigger",
+			"UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", reason, trigger.ID)
+		return "", nil, nil
+	}
+	result, err := s.enqueueRecordScan(ctx, 0, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
+	return result.Status, nil, err
 }

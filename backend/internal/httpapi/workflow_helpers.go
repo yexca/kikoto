@@ -65,9 +65,9 @@ func validateWorkflowTriggerPayload(payload workflowTriggerPayload) error {
 }
 
 // ensureUniqueWorkflowTrigger enforces how many automatic triggers a workflow
-// holds: one startup trigger per definition, except the source presence
-// check, which holds one startup and one interval trigger per source. It reads
-// the source from the prepared, normalized config.
+// holds: one startup and one After trigger per definition, except the source
+// presence check, which holds one startup and one interval trigger per source.
+// It reads the source from the prepared, normalized config.
 func (s *Server) ensureUniqueWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, excludeTriggerID int64, triggerType string, preparedConfigJSON string) error {
 	if definition.Code == sourcePresenceCheckWorkflowCode {
 		if triggerType != "startup" && triggerType != "schedule" {
@@ -93,20 +93,23 @@ func (s *Server) ensureUniqueWorkflowTrigger(ctx context.Context, definition wor
 		}
 		return fmt.Errorf("source already has an interval check")
 	}
-	if triggerType != "startup" {
+	if triggerType != "startup" && triggerType != workflow.AfterWorkflowTriggerType {
 		return nil
 	}
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM workflow_trigger
-		WHERE workflow_definition_id = ? AND trigger_type = 'startup' AND id != ?
-	`, definition.ID, excludeTriggerID).Scan(&count); err != nil {
+		WHERE workflow_definition_id = ? AND trigger_type = ? AND id != ?
+	`, definition.ID, triggerType, excludeTriggerID).Scan(&count); err != nil {
 		return err
 	}
-	if count > 0 {
+	if count == 0 {
+		return nil
+	}
+	if triggerType == "startup" {
 		return fmt.Errorf("workflow already has a startup trigger")
 	}
-	return nil
+	return fmt.Errorf("workflow already has an after trigger")
 }
 
 func allowedCandidateReviewStatus(status string) bool {

@@ -14,8 +14,8 @@ import { maxFallbackSources, type MetadataRunOptions } from "./metadataRunOption
 /**
  * The Metadata card's options: the remote metadata fallback, which asks the
  * chosen sources in order when DLsite reports a work as not found, and
- * purchase bonus linking. Save keeps them for the card's runs and for new
- * Metadata triggers.
+ * purchase bonus linking. Save keeps them for the card's runs, and the page
+ * stores them in Metadata's triggers too.
  */
 export function MetadataOptionsDialog({
   value,

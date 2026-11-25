@@ -106,6 +106,9 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 	if scanSummary.ScannedFiles > 0 {
 		s.requestLocalMediaProbe()
 	}
+	// The incremental scan indexes every work it touched, so it leaves the
+	// file index nothing to follow.
+	s.dispatchLocalScanAfterTriggers(ctx, job.RunID, result.NewWorkCodes, false)
 	return nil
 }
 
@@ -354,7 +357,7 @@ func incrementalLocalScanRunSummary(payload localScanJobPayload, scanSummary loc
 		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
 		"updated_locations": persistence.state.updatedLocations, "skipped_locations": persistence.state.skippedLocations,
 		"missing_locations": persistence.state.missingLocations, "new_work_codes": persistence.state.newWorkCodes,
-		"follow_up_requested": false, "scan_mode": localScanModeIncremental,
+		"scan_mode":          localScanModeIncremental,
 		"changed_path_count": len(payload.ChangedPaths), "affected_works": len(persistence.affectedWorkIDs),
 	}
 }

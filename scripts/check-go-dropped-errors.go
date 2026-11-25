@@ -57,7 +57,6 @@ var tolerated = map[string]int{
 	"internal/httpapi/local_media_index_workflow.go|enqueueLocalMediaIndex":      1,
 	"internal/httpapi/remote_fetch_files.go|remoteFetchFiles":                    1,
 	"internal/httpapi/source_presence_check_settings.go|loadSourcePresenceCheck": 1,
-	"internal/httpapi/system_workflow_jobs.go|queuedFullLocalScanTx":             1,
 	"internal/httpapi/voice_catalog_read.go|decodeVoiceCatalogStrings":           1,
 	"internal/httpapi/voice_read_model.go|loadVoiceCatalogSyncProjections":       1,
 	"internal/httpapi/workflow_helpers.go|mergeJSONObjects":                      1,

@@ -3,9 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -106,56 +107,104 @@ func TestOpeningARecordFolderReadsItsPendingMediaDetails(t *testing.T) {
 	}
 }
 
-// A startup trigger queues the whole-library media details run, which records
-// its outcome on the trigger. Automating it needs library:write, and while
-// Record is off the trigger queues nothing.
-func TestRecordMediaDetailsStartupTriggerQueuesARunAndRecordsItsOutcome(t *testing.T) {
+// A Record scan Startup trigger scans at startup, and the media details After
+// trigger reads the files that scan found new; a scan that finds nothing new
+// starts no read. Automating either needs library:write, media details takes
+// no Startup trigger, and while Record is off the scan trigger queues nothing.
+func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
 	ctx := context.Background()
 	srv := newRecordTestServer(t)
 	s := srv.server
 	srv.withRecordProber()
-	ownerID := insertWorkflowGraphAPIUser(t, s.db, "record-details-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, s.db, "record-trigger-owner")
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var definitionID int64
-	if err := s.db.QueryRow("SELECT id FROM workflow_definition WHERE code = ?", recordProbeWorkflowCode).Scan(&definitionID); err != nil {
-		t.Fatal(err)
+	definitionID := func(code string) int64 {
+		var id int64
+		if err := s.db.QueryRow("SELECT id FROM workflow_definition WHERE code = ?", code).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
 	}
-	create := func(permissions ...string) *httptest.ResponseRecorder {
-		body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Media details on startup","triggerType":"startup","enabled":true,"configJson":"{}"}`, definitionID)
-		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
+	scanDefinition, detailsDefinition := definitionID(recordScanWorkflowCode), definitionID(recordProbeWorkflowCode)
+	create := func(definition int64, triggerType, schedule string, permissions ...string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{
+			"workflowDefinitionId": definition, "displayName": "Record trigger", "triggerType": triggerType,
+			"enabled": true, "scheduleJson": schedule, "configJson": "{}",
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(string(body)))
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: permissions}))
 		response := httptest.NewRecorder()
 		s.createWorkflowTrigger(response, request)
 		return response
 	}
-	if response := create("workflows:run", "metadata:sync"); response.Code == http.StatusCreated {
-		t.Fatalf("a trigger without library:write was created: %s", response.Body.String())
+	const afterScan = `{"after":"record_library_scan"}`
+	if response := create(scanDefinition, "startup", "{}", "workflows:run", "metadata:sync"); response.Code == http.StatusCreated {
+		t.Fatalf("a Record scan trigger without library:write was created: %s", response.Body.String())
 	}
-	if response := create("workflows:run", "library:write"); response.Code != http.StatusCreated {
-		t.Fatalf("startup trigger = %d %s", response.Code, response.Body.String())
+	if response := create(detailsDefinition, "startup", "{}", "workflows:run", "library:write"); response.Code == http.StatusCreated {
+		t.Fatalf("media details took a Startup trigger: %s", response.Body.String())
 	}
-	// Only this trigger starts anything, so the next queued job is its run.
-	if _, err := s.db.Exec("DELETE FROM workflow_trigger WHERE workflow_definition_id <> ?", definitionID); err != nil {
+	if response := create(scanDefinition, "startup", "{}", "workflows:run", "library:write"); response.Code != http.StatusCreated {
+		t.Fatalf("Record scan Startup trigger = %d %s", response.Code, response.Body.String())
+	}
+	if response := create(detailsDefinition, "after_workflow", afterScan, "workflows:run", "library:write"); response.Code != http.StatusCreated {
+		t.Fatalf("media details After trigger = %d %s", response.Code, response.Body.String())
+	}
+	// Only these triggers start anything, so each queued job is one of theirs.
+	if _, err := s.db.Exec("DELETE FROM workflow_trigger WHERE workflow_definition_id NOT IN (?, ?)", scanDefinition, detailsDefinition); err != nil {
 		t.Fatal(err)
 	}
+	// The fixture's own scan read nothing, so the media details are read once
+	// by hand; the next scan then finds only the new file pending.
+	if _, err := s.recordStore.ProbePending(ctx, record.ProbeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srv.root, "trip", "Day 3.mp4"), []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	countRuns := func(code string) int {
+		var runs int
+		if err := s.db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", code).Scan(&runs); err != nil {
+			t.Fatal(err)
+		}
+		return runs
+	}
+
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
 		t.Fatal(err)
-	}
-	var runID int64
-	if err := s.db.QueryRow("SELECT id FROM workflow_run WHERE workflow_code = ? AND trigger_id IS NOT NULL", recordProbeWorkflowCode).Scan(&runID); err != nil {
-		t.Fatalf("startup run: %v", err)
 	}
 	if err := s.runNextQueuedWorkflowJob(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if status := srv.runStatus(t, runID); status != "succeeded" {
-		t.Fatalf("startup run = %s", status)
+	var detailsRunID int64
+	var detailsTriggerType string
+	if err := s.db.QueryRow("SELECT id, trigger_type FROM workflow_run WHERE workflow_code = ? AND trigger_id IS NOT NULL", recordProbeWorkflowCode).
+		Scan(&detailsRunID, &detailsTriggerType); err != nil || detailsTriggerType != "after_workflow" {
+		t.Fatalf("media details after the scan = %s, %v", detailsTriggerType, err)
 	}
-	var lastSuccess *string
-	if err := s.db.QueryRow("SELECT last_success_at FROM workflow_trigger WHERE workflow_definition_id = ?", definitionID).Scan(&lastSuccess); err != nil || lastSuccess == nil {
-		t.Fatalf("trigger last success = %v, %v", lastSuccess, err)
+	if err := s.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if status := srv.runStatus(t, detailsRunID); status != "succeeded" {
+		t.Fatalf("media details run = %s", status)
+	}
+	for _, definition := range []int64{scanDefinition, detailsDefinition} {
+		var lastSuccess *string
+		if err := s.db.QueryRow("SELECT last_success_at FROM workflow_trigger WHERE workflow_definition_id = ?", definition).Scan(&lastSuccess); err != nil || lastSuccess == nil {
+			t.Fatalf("trigger of definition %d last success = %v, %v", definition, lastSuccess, err)
+		}
+	}
+
+	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if scans, details := countRuns(recordScanWorkflowCode), countRuns(recordProbeWorkflowCode); scans != 2 || details != 1 {
+		t.Fatalf("after a scan that found nothing new: scans %d, media details runs %d", scans, details)
 	}
 
 	if _, err := s.db.Exec(`UPDATE app_setting SET value_json = 'false' WHERE key = ?`, recordLibraryEnabledSetting); err != nil {
@@ -164,12 +213,11 @@ func TestRecordMediaDetailsStartupTriggerQueuesARunAndRecordsItsOutcome(t *testi
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var runs int
 	var message string
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", recordProbeWorkflowCode).Scan(&runs); err != nil || runs != 1 {
-		t.Fatalf("runs while Record is off = %d, %v", runs, err)
+	if scans := countRuns(recordScanWorkflowCode); scans != 2 {
+		t.Fatalf("scans while Record is off = %d", scans)
 	}
-	if err := s.db.QueryRow("SELECT last_error_message FROM workflow_trigger WHERE workflow_definition_id = ?", definitionID).Scan(&message); err != nil || message == "" {
+	if err := s.db.QueryRow("SELECT last_error_message FROM workflow_trigger WHERE workflow_definition_id = ?", scanDefinition).Scan(&message); err != nil || message == "" {
 		t.Fatalf("trigger message while Record is off = %q, %v", message, err)
 	}
 }

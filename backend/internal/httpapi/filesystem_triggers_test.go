@@ -61,14 +61,11 @@ func TestFilesystemTriggerQueuesDebouncedDirectoryEvent(t *testing.T) {
 	if triggerType != "filesystem_event" || triggerReason != "data_directories_changed" || !strings.Contains(inputJSON, `"directory_event_at"`) || !strings.Contains(inputJSON, `"observed_directories":7`) || !strings.Contains(inputJSON, `"scan_mode":"incremental"`) || !strings.Contains(inputJSON, `"changed_paths":["RJ00000000/cover.jpg","RJ00000000/track.flac"]`) {
 		t.Fatalf("filesystem run = type %q reason %q input %s", triggerType, triggerReason, inputJSON)
 	}
-	if strings.Contains(inputJSON, `"follow_up_run":true`) {
-		t.Fatalf("filesystem run unexpectedly enabled metadata follow-up: %s", inputJSON)
-	}
 }
 
 func TestFilesystemTriggerConfiguredFullOmitsChangedPathBatch(t *testing.T) {
 	db := openMigratedTestDB(t)
-	if _, err := db.Exec(`UPDATE workflow_trigger SET config_json = '{"followUpRun":false,"scanMode":"full"}' WHERE trigger_type = 'filesystem_event'`); err != nil {
+	if _, err := db.Exec(`UPDATE workflow_trigger SET config_json = '{"scanMode":"full"}' WHERE trigger_type = 'filesystem_event'`); err != nil {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 3})
@@ -392,7 +389,7 @@ func TestFixedFilesystemTriggerCanBeToggledAndChangeScanMode(t *testing.T) {
 	}
 	modePayload := mustJSON(map[string]any{
 		"workflowDefinitionId": definitionID, "displayName": displayName, "triggerType": "filesystem_event", "enabled": true,
-		"scheduleJson": scheduleJSON, "configJson": `{"followUpRun":false,"scanMode":"full"}`,
+		"scheduleJson": scheduleJSON, "configJson": `{"scanMode":"full"}`,
 	})
 	modeResponse := requestWorkflowTriggerUpdate(t, server, actor, triggerID, modePayload)
 	if modeResponse.Code != http.StatusOK {

@@ -98,8 +98,9 @@ An audio file shows its cover once it is read, or an icon when it has none.
 
 To read every file at once, run **Read Record media details** from the
 **Media details** card on [Workflows](workflows.md#user-surfaces), or give
-that card a trigger to run it at startup or on a schedule. The **Record scan**
-card starts a scan by hand. While the run reads files, the status beside
+that card a trigger to run it on a schedule or after each Record scan that
+finds new files. The **Record scan** card starts a scan by hand, and its
+trigger runs one at startup or on a schedule. While the run reads files, the status beside
 **Scan** counts the files read so far, and the folder shows the lengths when
 it ends. It pauses between files whenever other work is waiting, so a large
 library does not hold up other workflows. Nothing is read while the Record

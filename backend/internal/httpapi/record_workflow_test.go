@@ -55,14 +55,14 @@ func TestRecordScanLeavesMediaDetailsToARunOfTheirOwnThatYieldsToQueuedWork(t *t
 	s.recordStore = record.NewStore(s.db, srv.root, record.WithProber(func(context.Context, string) ([]byte, error) {
 		if calls.Add(1) == 1 {
 			var err error
-			if laterScan, err = s.enqueueRecordScan(ctx, 1); err != nil {
+			if laterScan, err = s.enqueueRecordScan(ctx, 1, workflowRunTrigger{Type: "manual"}); err != nil {
 				t.Error(err)
 			}
 		}
 		return []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","width":640,"height":360}],"format":{"duration":"12"}}`), nil
 	}))
 
-	scan, err := s.enqueueRecordScan(ctx, 1)
+	scan, err := s.enqueueRecordScan(ctx, 1, workflowRunTrigger{Type: "manual"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestRecordScanDefinitionExistsBeforeTheFirstScan(t *testing.T) {
 		t.Fatalf("record scan definition scope = %q, want system", scope)
 	}
 
-	queued, err := server.enqueueRecordScan(ctx, 1)
+	queued, err := server.enqueueRecordScan(ctx, 1, workflowRunTrigger{Type: "manual"})
 	if err != nil {
 		t.Fatal(err)
 	}

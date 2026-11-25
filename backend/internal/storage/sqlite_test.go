@@ -573,7 +573,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if localScanDefinitionCount != 1 || startupRefreshDefinitionCount != 0 || localScanStartupCount != 1 || localScanFilesystemCount != 1 {
 		t.Fatalf("merged local scan definitions/triggers = %d/%d/%d/%d", localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount)
 	}
-	var localScanNodeCount, localScanMetadataNodeCount, disabledFollowUpConfigCount int
+	var localScanNodeCount, localScanMetadataNodeCount, followUpConfigCount, afterTriggerCount int
 	if err := db.QueryRow(`
 		SELECT json_array_length(definition_json, '$.nodes'),
 			(SELECT COUNT(*) FROM json_each(definition_json, '$.nodes') WHERE json_extract(value, '$.id') = 'metadata')
@@ -587,12 +587,16 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		FROM workflow_trigger AS trigger
 		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
 		WHERE definition.code = 'local_library_scan'
-			AND json_extract(trigger.config_json, '$.followUpRun') = 0
-	`).Scan(&disabledFollowUpConfigCount); err != nil {
+			AND json_type(trigger.config_json, '$.followUpRun') IS NOT NULL
+	`).Scan(&followUpConfigCount); err != nil {
 		t.Fatal(err)
 	}
-	if localScanNodeCount != 4 || localScanMetadataNodeCount != 0 || disabledFollowUpConfigCount != 2 {
-		t.Fatalf("decoupled local scan = nodes %d metadata nodes %d disabled follow-up configs %d", localScanNodeCount, localScanMetadataNodeCount, disabledFollowUpConfigCount)
+	// The upgraded scan asked for no follow-up, so no metadata sync follows it.
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_trigger WHERE trigger_type = 'after_workflow'`).Scan(&afterTriggerCount); err != nil {
+		t.Fatal(err)
+	}
+	if localScanNodeCount != 4 || localScanMetadataNodeCount != 0 || followUpConfigCount != 0 || afterTriggerCount != 0 {
+		t.Fatalf("decoupled local scan = nodes %d metadata nodes %d follow-up configs %d after triggers %d", localScanNodeCount, localScanMetadataNodeCount, followUpConfigCount, afterTriggerCount)
 	}
 	var filesystemStateTableCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'filesystem_trigger_state'").Scan(&filesystemStateTableCount); err != nil {
