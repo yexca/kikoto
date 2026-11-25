@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { compare, findDuplicates } from "./check-duplicate-helpers.mjs";
 
@@ -54,6 +57,18 @@ test("counts a TypeScript local function that hides an exported one", (t) => {
     fileIcon: 2,
     storageKey: 2,
   });
+});
+
+test("refuses to run without its baseline rather than recording one", (t) => {
+  const baseline = path.join(fixture(t, {}), "duplicate-helpers-baseline.json");
+
+  const run = spawnSync(process.execPath, [
+    fileURLToPath(new URL("./check-duplicate-helpers.mjs", import.meta.url)),
+    `--baseline=${baseline}`,
+  ]);
+  assert.equal(run.status, 1);
+  assert.match(String(run.stderr), /baseline\.json is missing/u);
+  assert.equal(fs.existsSync(baseline), false);
 });
 
 test("fails only on duplicates the baseline does not allow", () => {

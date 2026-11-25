@@ -18,7 +18,7 @@
   helper that several consumers share lives in the lowest layer they have in
   common, and a copy that differs on purpose is named for the difference.
   `make duplicate-helper-check` reports a function name that a second file
-  defines.
+  defines, and a baseline entry that allows more copies than remain.
 
 ## Async Effects
 
@@ -57,9 +57,12 @@ remote source's text preview (`getTextPreview`), so they share the session
 fencing in [Failure Boundaries](../architecture/frontend/structure.md#failure-boundaries).
 
 Oxlint enforces this: `kikoto/no-effect-cancel-flag` and
-`kikoto/no-effect-abort-controller` report the hand-rolled forms, and
-`kikoto/no-hook-deps-suppression` reports a disabled hook dependency rule. The
-rules live in `frontend/oxlint-plugin-kikoto.mjs`.
+`kikoto/no-effect-abort-controller` report the hand-rolled forms. The rules
+live in `frontend/oxlint-plugin-kikoto.mjs`. `make frontend-lint` also runs
+`scripts/check-hook-deps-suppressions.mjs`, which rejects any directive in
+`frontend/src` that disables every rule, a hook rule, or a `kikoto` rule,
+whatever its form. It reads the raw source because a lint rule cannot see a
+directive that also disables it.
 
 ## Styling
 

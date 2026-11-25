@@ -3,8 +3,6 @@
 // the shared way that replaces it.
 
 const effectHooks = new Set(["useEffect", "useLayoutEffect", "useInsertionEffect"]);
-const hookRules = /\b(?:react-hooks|react)\/(?:exhaustive-deps|rules-of-hooks)\b/;
-const disableDirective = /^\s*(?:eslint|oxlint)-disable(?:-next-line|-line)?\b(.*)$/s;
 
 function isFunction(node) {
   return node?.type === "ArrowFunctionExpression" || node?.type === "FunctionExpression";
@@ -87,30 +85,6 @@ function cleanupFunctions(effect) {
   });
 }
 
-const noHookDepsSuppression = {
-  meta: {
-    type: "problem",
-    docs: { description: "Hook dependency rules are never disabled." },
-  },
-  create(context) {
-    return {
-      Program() {
-        for (const comment of context.sourceCode.getAllComments()) {
-          const directive = disableDirective.exec(comment.value);
-          if (!directive) continue;
-          const rules = directive[1].split("--")[0].trim();
-          if (rules !== "" && !hookRules.test(rules)) continue;
-          context.report({
-            loc: comment.loc,
-            message:
-              "Keep hook dependency lists complete instead of disabling the rule. Read a value that must not re-run the effect through useStableCallback or a ref (docs/development/frontend-guidelines.md#async-effects).",
-          });
-        }
-      },
-    };
-  },
-};
-
 const noEffectCancelFlag = {
   meta: {
     type: "problem",
@@ -182,7 +156,6 @@ const noEffectAbortController = {
 export default {
   meta: { name: "kikoto" },
   rules: {
-    "no-hook-deps-suppression": noHookDepsSuppression,
     "no-effect-cancel-flag": noEffectCancelFlag,
     "no-effect-abort-controller": noEffectAbortController,
   },

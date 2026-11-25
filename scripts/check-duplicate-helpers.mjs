@@ -14,11 +14,11 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = path.resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
-const baselinePath = path.join(
-  repositoryRoot,
-  "scripts",
-  "duplicate-helpers-baseline.json",
-);
+const baselinePath =
+  process.argv
+    .find((argument) => argument.startsWith("--baseline="))
+    ?.slice("--baseline=".length) ??
+  path.join(repositoryRoot, "scripts", "duplicate-helpers-baseline.json");
 
 // The built-in min and max, which every Go helper of these names redefines.
 const goBuiltinLookalike =
@@ -144,11 +144,13 @@ export function compare(actual, baseline) {
         );
       }
     }
+    // A baseline entry above the current count would let that many copies
+    // come back unreported, so the baseline only moves down with the code.
     for (const [name, allowed] of Object.entries(approved)) {
       const count = actual[language][name] ?? 1;
       if (count < allowed)
         stale.push(
-          `${language}: ${name} is now defined ${count} time(s); lower or remove its baseline entry`,
+          `${language}: ${name} is now defined ${count} time(s), baseline allows ${allowed}`,
         );
     }
   }
@@ -157,7 +159,13 @@ export function compare(actual, baseline) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const actual = findDuplicates();
-  if (process.argv.includes("--update") || !fs.existsSync(baselinePath)) {
+  if (!process.argv.includes("--update") && !fs.existsSync(baselinePath)) {
+    console.error(
+      "scripts/duplicate-helpers-baseline.json is missing. Restore it from git; record a new one with node scripts/check-duplicate-helpers.mjs --update only after review.",
+    );
+    process.exit(1);
+  }
+  if (process.argv.includes("--update")) {
     if (actual.builtinLookalikes.length > 0) {
       console.error(
         `Remove the Go helpers that redefine min or max first: ${actual.builtinLookalikes.join(", ")}`,
@@ -176,7 +184,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     actual,
     JSON.parse(fs.readFileSync(baselinePath, "utf8")),
   );
-  for (const note of stale) console.log(`Note: ${note}`);
   if (failures.length > 0) {
     console.error(
       `Found ${failures.length} duplicate helper${failures.length === 1 ? "" : "s"}.`,
@@ -186,7 +193,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       "Reuse the existing helper or move it to a shared home. If the copies differ on purpose, name each for how it differs. Update scripts/duplicate-helpers-baseline.json only after review.",
     );
     process.exitCode = 1;
-  } else {
+  }
+  if (stale.length > 0) {
+    console.error(
+      `Found ${stale.length} baseline entr${stale.length === 1 ? "y" : "ies"} above the current count.`,
+    );
+    for (const entry of stale) console.error(`- ${entry}`);
+    console.error(
+      "Lower or remove each entry in scripts/duplicate-helpers-baseline.json and commit it with the change that removed the copies.",
+    );
+    process.exitCode = 1;
+  }
+  if (failures.length === 0 && stale.length === 0) {
     console.log(
       `Checked ${Object.keys(actual.go).length} Go and ${Object.keys(actual.typescript).length} TypeScript baseline duplicate helper names.`,
     );

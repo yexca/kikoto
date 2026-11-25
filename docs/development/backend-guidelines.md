@@ -21,7 +21,8 @@
 - Reuse a helper that already exists: the built-in `min` and `max`, the
   standard library, or a shared package such as `internal/sqlutil`. A copy that
   differs on purpose is named for the difference. `make duplicate-helper-check`
-  reports an unexported function name that a second package defines.
+  reports an unexported function name that a second package defines, and a
+  baseline entry that allows more copies than remain.
 
 ## Validation
 

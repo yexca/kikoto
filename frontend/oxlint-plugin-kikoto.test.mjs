@@ -17,7 +17,6 @@ writeFileSync(
     plugins: ["react"],
     jsPlugins: [path.join(frontend, "oxlint-plugin-kikoto.mjs").replaceAll("\\", "/")],
     rules: {
-      "kikoto/no-hook-deps-suppression": "error",
       "kikoto/no-effect-cancel-flag": "error",
       "kikoto/no-effect-abort-controller": "error",
     },
@@ -68,21 +67,6 @@ describe("kikoto Oxlint rules", () => {
   }, [load]);
 }`),
     ).toEqual(["kikoto(no-effect-abort-controller)"]);
-  });
-
-  it("reports a disabled hook dependency rule, named or blanket", () => {
-    expect(
-      lint(`export function A({ value }) {
-  useEffect(() => {
-    console.log(value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    console.log(value);
-    // oxlint-disable-next-line
-  }, []);
-}`),
-    ).toEqual(["kikoto(no-hook-deps-suppression)", "kikoto(no-hook-deps-suppression)"]);
   });
 
   it("accepts the shared helpers and a request a user action starts", () => {

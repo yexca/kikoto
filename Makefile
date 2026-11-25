@@ -176,6 +176,8 @@ frontend-lint: frontend-install
 	cd frontend && $(NPM) run lint && $(NPM) run typecheck:e2e
 	$(NODE) --test scripts/check-e2e-locators.test.mjs
 	$(NODE) scripts/check-e2e-locators.mjs
+	$(NODE) --test scripts/check-hook-deps-suppressions.test.mjs
+	$(NODE) scripts/check-hook-deps-suppressions.mjs
 
 frontend-docs: frontend-install
 	$(NODE) --test scripts/check-doc-links.test.mjs
@@ -362,6 +364,7 @@ ci-style: frontend-format frontend-lint frontend-docs frontend-i18n duplicate-he
 # The SQL that internal/httpapi runs directly may only shrink; see
 # backend/AGENTS.md#layering. The lower target records a smaller count.
 backend-sql-ratchet:
+	cd backend && $(GO) test ../scripts/check-httpapi-sql.go ../scripts/check-httpapi-sql_test.go
 	cd backend && $(GO) run ../scripts/check-httpapi-sql.go
 
 backend-sql-ratchet-lower:

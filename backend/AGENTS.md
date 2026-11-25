@@ -24,7 +24,10 @@ httpapi composition -> domain packages -> shared helpers -> primitives
 - `make backend-sql-ratchet`, part of `ci-backend-static`, counts the SQL
   statements `internal/httpapi` runs itself (`database/sql` exec, query and
   prepare calls, and `sqlutil.InsertID`/`SelectID`) against
-  `scripts/httpapi-sql-baseline.json`. The count may only fall: put new
+  `scripts/httpapi-sql-baseline.json`. A package function or named closure
+  that passes one of its string parameters into a statement, such as
+  `execBestEffort`, counts once per call instead, so a wrapper hides no
+  statement. `-helpers` lists the wrappers it found. The count may only fall: put new
   queries in a domain package and never raise the baseline. After an
   extraction, run `make backend-sql-ratchet-lower` and commit the lower
   baseline with it.

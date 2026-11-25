@@ -70,7 +70,6 @@
     "valid-typeof": "error",
     "react/exhaustive-deps": "error",
     "react/rules-of-hooks": "error",
-    "kikoto/no-hook-deps-suppression": "error",
     "kikoto/no-effect-cancel-flag": "error",
     "kikoto/no-effect-abort-controller": "error",
     "typescript/ban-ts-comment": "error",
