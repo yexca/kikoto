@@ -76,10 +76,20 @@ func (s *Server) dispatchLocalScanAfterTriggers(ctx context.Context, runID int64
 }
 
 // dispatchRecordScanAfterTriggers follows a finished Record scan with media
-// details when it left files newly waiting for theirs.
-func (s *Server) dispatchRecordScanAfterTriggers(ctx context.Context, runID int64, newPending int) {
+// details when files are left waiting for theirs and the root is online, the
+// only state a media details pass reads. Files a scan did not change count
+// too, such as those an earlier pass left pending while the disk was away.
+func (s *Server) dispatchRecordScanAfterTriggers(ctx context.Context, runID int64, pending int) {
 	s.dispatchAfterWorkflowTriggers(ctx, recordScanWorkflowCode, runID, func(code string) bool {
-		return code == recordProbeWorkflowCode && newPending > 0
+		if code != recordProbeWorkflowCode || pending == 0 {
+			return false
+		}
+		root, err := s.recordStore.EnsureRoot(ctx)
+		if err != nil {
+			slog.Error("read the record root for the after-scan media details", "run_id", runID, "error", err)
+			return false
+		}
+		return root.State == "online"
 	})
 }
 

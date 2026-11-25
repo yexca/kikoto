@@ -33,7 +33,11 @@ export type LoadHandlers<T> = {
    * never reports one. Without it a failure keeps what the caller already shows.
    */
   onError?: (error: unknown) => void;
-  /** Runs after `onSuccess` or `onError`, only for a load that is still current. */
+  /**
+   * Runs after `onSuccess` or `onError`, only for a load that is still
+   * current, also when one of them throws. A throw from `onSuccess` reaches
+   * `onError` instead.
+   */
   onSettled?: () => void;
 };
 
@@ -73,10 +77,15 @@ export function createEffectScope(): EffectScope {
     signal,
     load<T>(load: Load<T>, handlers: LoadHandlers<T> = {}, { delayMs }: LoadOptions = {}) {
       if (signal.aborted) return Promise.resolve();
+      // onSettled runs even when a handler throws, so a loading or polling
+      // flag it resets is never left set.
       const settle = (report: () => void) => {
         if (signal.aborted) return;
-        report();
-        handlers.onSettled?.();
+        try {
+          report();
+        } finally {
+          handlers.onSettled?.();
+        }
       };
       const start = () => {
         if (signal.aborted) return Promise.resolve();
@@ -87,7 +96,17 @@ export function createEffectScope(): EffectScope {
           pending = Promise.reject(error);
         }
         return pending.then(
-          (value) => settle(() => handlers.onSuccess?.(value)),
+          (value) =>
+            settle(() => {
+              try {
+                handlers.onSuccess?.(value);
+              } catch (error) {
+                // A result the handler cannot apply, such as an unexpected
+                // payload, fails the load the caller shows.
+                if (!handlers.onError) throw error;
+                handlers.onError(error);
+              }
+            }),
           (error: unknown) => settle(() => handlers.onError?.(error)),
         );
       };

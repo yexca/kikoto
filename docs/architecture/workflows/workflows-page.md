@@ -115,9 +115,11 @@ and the metadata sync options above with the chosen mode (`missing` for
 After). While Record is off, a Record trigger queues nothing and records why.
 A change keeps every other option a trigger stores, such as a metadata sync's
 scope or source, so a trigger created through the API keeps them. A Metadata
-trigger that asks DLsite runs with the card's options: saving one from the
+trigger that asks DLsite runs with the card's options: creating one from the
 dialog stores them, and saving the card's options updates every such trigger
-whose stored options differ.
+whose stored options differ. A switch, interval, or mode change keeps the
+options the trigger stores, because the card's options belong to the device
+that saved them.
 
 Below the cards, Operations ends with Next, every workflow's enabled triggers; the
 run lists are described in [Run Lists](run-lists.md#run-lists). The page's

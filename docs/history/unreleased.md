@@ -145,7 +145,7 @@
   positions, and listening history stay.
 - Upgrading moves automatic runs onto the new triggers: a scan trigger that
   asked for a follow-up metadata sync becomes Metadata's **After a scan adds
-  works**, and an Index or Media details startup trigger becomes its after-scan
-  trigger, each staying on or off as it was.
+  works**, and an Index startup trigger becomes its after-scan trigger, each
+  staying on or off as it was.
 
 </details>

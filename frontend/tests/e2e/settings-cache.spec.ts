@@ -1847,3 +1847,60 @@ test("@desktop cleanup works searches only when asked and keeps its pages while 
   await expect(section.getByText("Example Work RJ00000001", { exact: true })).toBeVisible();
   expect(searches).toHaveLength(2);
 });
+
+test("@desktop cleanup works keeps the previous rows unselectable while a new search loads", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockCacheSettings(page, () => undefined);
+  let release: (() => void) | undefined;
+  let searches = 0;
+  await page.route("**/api/maintenance/local-works/cleanup?*", async (route) => {
+    searches += 1;
+    // The first search shows RJ00000001; the next one answers only once
+    // released, and its list no longer holds that work.
+    if (searches > 1) await new Promise<void>((resolve) => (release = resolve));
+    const workId = searches > 1 ? 2 : 1;
+    const code = `RJ0000000${workId}`;
+    await route.fulfill({
+      json: {
+        works: [
+          {
+            workId,
+            primaryCode: code,
+            title: `Example Work ${code}`,
+            coverUrl: "",
+            rating: 1,
+            listeningStatus: "none" as const,
+            sizeBytes: 1024 ** 2,
+            fileCount: 1,
+            unknownSizeFiles: 0,
+            folders: [{ id: workId, path: code, online: true }],
+            offline: false,
+            sourceAvailable: false,
+          },
+        ],
+        total: 1,
+        matched: 1,
+        limit: 50,
+        page: 1,
+        pageSize: 20,
+        pools: [],
+      } satisfies LocalWorkCleanupPage,
+    });
+  });
+  await page.goto("/cleanup?tab=works");
+
+  const section = page.getByRole("region", { name: "Local works" });
+  await section.getByRole("button", { name: "Search", exact: true }).click();
+  const previous = section.getByRole("checkbox", { name: "Select RJ00000001", exact: true });
+  await expect(previous).toBeEnabled();
+
+  await section.getByRole("button", { name: "Search again", exact: true }).click();
+  await expect.poll(() => release !== undefined).toBe(true);
+  await expect(section.getByText("Example Work RJ00000001", { exact: true })).toBeVisible();
+  await expect(previous).toBeDisabled();
+  await expect(section.getByRole("checkbox", { name: "Select this page", exact: true })).toBeDisabled();
+
+  release?.();
+  await expect(section.getByRole("checkbox", { name: "Select RJ00000002", exact: true })).toBeEnabled();
+  await expect(section.getByText("Example Work RJ00000001", { exact: true })).toHaveCount(0);
+});

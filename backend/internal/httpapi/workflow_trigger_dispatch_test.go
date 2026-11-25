@@ -2,9 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
@@ -120,4 +124,43 @@ func TestScheduledOccurrenceSurvivesAnUnqueuedRun(t *testing.T) {
 			t.Fatalf("trigger after a failed enqueue = %+v, want a retry after the delay", state)
 		}
 	})
+}
+
+// An edit that keeps a running interval as it was, as saving the Metadata
+// options does, keeps the run it planned. A new interval, and switching the
+// trigger on, plan from now.
+func TestEditingARunningIntervalKeepsItsPlannedRun(t *testing.T) {
+	server, db := newScheduledDispatchServer(t)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "interval-edit-owner")
+	actor := account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}
+	const planned = "2099-01-01 00:00:00"
+	triggerID := insertScheduledDispatchTrigger(t, db, "metadata_sync", "{}", planned)
+	var definitionID int64
+	if err := db.QueryRow("SELECT workflow_definition_id FROM workflow_trigger WHERE id = ?", triggerID).Scan(&definitionID); err != nil {
+		t.Fatal(err)
+	}
+	update := func(enabled bool, intervalMinutes int, configJSON string) scheduledDispatchTriggerState {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"workflowDefinitionId": definitionID, "displayName": "Example schedule", "triggerType": "schedule",
+			"enabled": enabled, "scheduleJson": fmt.Sprintf(`{"intervalMinutes":%d}`, intervalMinutes), "configJson": configJSON,
+		})
+		if response := requestWorkflowTriggerUpdate(t, server, actor, triggerID, string(body)); response.Code != http.StatusOK {
+			t.Fatalf("update trigger = %d %s", response.Code, response.Body.String())
+		}
+		return loadScheduledDispatchTrigger(t, db, triggerID)
+	}
+
+	if state := update(true, 60, `{"purchaseBonusAutoLink":false}`); state.nextRunAt != planned {
+		t.Fatalf("new options on the same interval moved the planned run to %q", state.nextRunAt)
+	}
+	if state := update(true, 1440, `{"purchaseBonusAutoLink":false}`); state.nextRunAt == planned || state.nextRunAt == "" {
+		t.Fatalf("a new interval kept the planned run: %q", state.nextRunAt)
+	}
+	if state := update(false, 1440, `{"purchaseBonusAutoLink":false}`); state.enabled || state.nextRunAt != "" {
+		t.Fatalf("paused trigger = %+v", state)
+	}
+	if state := update(true, 1440, `{"purchaseBonusAutoLink":false}`); state.nextRunAt == "" || state.nextRunAt == planned {
+		t.Fatalf("a trigger switched on again planned %q", state.nextRunAt)
+	}
 }

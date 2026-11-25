@@ -34,7 +34,10 @@ func (s *Server) newRecordThumbnailer(run record.FFmpegFunc) *record.Thumbnailer
 	dir := filepath.Join(s.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir)
 	return record.NewThumbnailer(dir, run, recordThumbnailConcurrency,
 		record.WithThumbnailWorkDir(s.cfg.TempDir), record.WithThumbnailGuard(s.guardRecordThumbnailWrite),
-		record.WithThumbnailProbe(s.recordThumbnailProbe))
+		record.WithThumbnailProbe(s.recordThumbnailProbe),
+		// A thumbnail is made only from an online root, whose files are the
+		// catalog's; the store is read on each request, as tests replace it.
+		record.WithThumbnailSourceCheck(func(ctx context.Context) error { return s.recordStore.RequireOnline(ctx) }))
 }
 
 // recordThumbnailProbe reads the media details of a file whose details are
@@ -172,6 +175,13 @@ func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
 	file, err := s.recordThumbnails.Thumbnail(ctx, path, source)
 	switch {
 	case errors.Is(err, record.ErrThumbnailUnavailable):
+		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
+		return
+	case errors.Is(err, record.ErrRootOffline):
+		// Nothing is made while another disk or an empty mount point may sit
+		// at the root's path; the answer is not kept, so the thumbnail loads
+		// once the disk is back.
+		w.Header().Set("Cache-Control", "no-store")
 		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
 		return
 	case err != nil:

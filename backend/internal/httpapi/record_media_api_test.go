@@ -405,6 +405,44 @@ func TestRecordThumbnailsAreEvictedLeastRecentlyUsedUnderTheTranscodeQuota(t *te
 	}
 }
 
+// While the root is not online, as when an empty mount point or another disk
+// sits at its path, a cached thumbnail is still served, but none is made: no
+// frame of another disk and no failure marker is stored under the catalog's
+// revision, and the refusal is not kept, so the thumbnail loads once the disk
+// is back.
+func TestRecordThumbnailsAreMadeOnlyFromAnOnlineRoot(t *testing.T) {
+	server := newRecordTestServer(t)
+	server.getThumbnail(t, "Day 1.mp4")
+	calls := server.ffmpegCalls.Load()
+	marker := filepath.Join(server.root, ".kikoto-record")
+	saved, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+
+	server.getThumbnail(t, "Day 1.mp4")
+	response := server.get("/api/records/assets/"+strconv.FormatInt(server.ids["Day 2.mp4"], 10)+"/thumbnail", true)
+	if response.Code != http.StatusNotFound || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("thumbnail without the marker = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	failures, err := filepath.Glob(filepath.Join(server.server.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir, "*", "*.failed"))
+	if err != nil || len(failures) != 0 || server.thumbnailPath(t, "Day 2.mp4") != "" || server.ffmpegCalls.Load() != calls {
+		t.Fatalf("without the marker: failure markers %v, %v; thumbnail %q; ffmpeg calls %d -> %d",
+			failures, err, server.thumbnailPath(t, "Day 2.mp4"), calls, server.ffmpegCalls.Load())
+	}
+
+	if err := os.WriteFile(marker, saved, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server.getThumbnail(t, "Day 2.mp4")
+	if server.thumbnailPath(t, "Day 2.mp4") == "" || server.ffmpegCalls.Load() != calls+1 {
+		t.Fatalf("thumbnail once the disk is back = %q; ffmpeg calls %d -> %d", server.thumbnailPath(t, "Day 2.mp4"), calls, server.ffmpegCalls.Load())
+	}
+}
+
 func TestRecordCompleteScanRemovesThumbnailsOfMissingAssets(t *testing.T) {
 	server := newRecordTestServer(t)
 	server.getThumbnail(t, "Day 1.mp4")

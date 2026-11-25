@@ -538,6 +538,68 @@ func TestProbePassesWaitForTheRootAndKeepToTheirFiles(t *testing.T) {
 	}
 }
 
+// An unmounted disk leaves an empty mount point without the marker. Its files
+// cannot be read, and none may be marked failed for it: a remounted file of the
+// same size and time keeps its probe state, so failed would stick.
+func TestProbeLeavesTheFilesOfAnUnmountedDiskPending(t *testing.T) {
+	var calls atomic.Int32
+	var unmount func()
+	store, db, root := scannedStore(t, map[string]string{"a.mp4": "a", "b.mp4": "b"}, WithProber(func(context.Context, string) ([]byte, error) {
+		calls.Add(1)
+		if unmount != nil {
+			unmount()
+			return nil, errors.New("synthetic read failure")
+		}
+		return []byte(videoProbeJSON), nil
+	}))
+	ctx := context.Background()
+	empty := func() {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if err := os.RemoveAll(filepath.Join(root, entry.Name())); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	// The disk goes away while the pass reads its first file.
+	unmount = empty
+	if _, err := store.ProbePending(ctx, ProbeOptions{Concurrency: 1}); !errors.Is(err, ErrRootOffline) || calls.Load() != 1 {
+		t.Fatalf("pass that loses its disk = %v; probe calls %d", err, calls.Load())
+	}
+	unmount = nil
+	for _, name := range []string{"a.mp4", "b.mp4"} {
+		if state, _, _ := probeState(t, db, name); state != "pending" {
+			t.Fatalf("%s after its disk went away mid-pass = %s", name, state)
+		}
+	}
+
+	// Later passes and opened files find only the empty mount point.
+	if state, err := store.EnsureRoot(ctx); err != nil || state.State != RootStateMarkerMissing {
+		t.Fatalf("empty mount point = %+v, %v", state, err)
+	}
+	if _, err := store.ProbePending(ctx, ProbeOptions{}); !errors.Is(err, ErrRootOffline) {
+		t.Fatalf("pass on an empty mount point = %v", err)
+	}
+	if asset, err := store.ProbeIfPending(ctx, assetID(t, db, "b.mp4")); err != nil || !asset.ProbePending {
+		t.Fatalf("opened file on an empty mount point = %+v, %v", asset, err)
+	}
+	if _, err := store.ProbeAssets(ctx, []int64{assetID(t, db, "a.mp4")}, ProbeOptions{}); !errors.Is(err, ErrRootOffline) {
+		t.Fatalf("folder pass on an empty mount point = %v", err)
+	}
+	for _, name := range []string{"a.mp4", "b.mp4"} {
+		if state, _, _ := probeState(t, db, name); state != "pending" {
+			t.Fatalf("%s on an empty mount point = %s", name, state)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("probe calls on an empty mount point = %d", calls.Load())
+	}
+}
+
 func TestAudioFilesAreIndexedAndProbedForTheirLengthAndCover(t *testing.T) {
 	probe := func(_ context.Context, path string) ([]byte, error) {
 		if strings.HasSuffix(path, "Episode 2.flac") {

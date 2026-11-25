@@ -90,6 +90,37 @@ func TestMetadataSyncDeduplicatesPerScope(t *testing.T) {
 	if after.RunID != all.RunID || !after.Deduplicated {
 		t.Fatalf("after-scan sync = %+v, want run %d", after, all.RunID)
 	}
+
+	// Once that run has started it has chosen its works. A click still joins
+	// it, but a sync after a scan queues its own run so the works the scan
+	// added are read, and the next scan joins that queued run.
+	if _, err := db.Exec(`UPDATE workflow_job SET status = 'running' WHERE workflow_run_id = ?`, all.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE workflow_run SET status = 'running' WHERE id = ?`, all.RunID); err != nil {
+		t.Fatal(err)
+	}
+	clicked, err := server.enqueueDLsiteMetadataSync(ctx, "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clicked.RunID != all.RunID || !clicked.Deduplicated {
+		t.Fatalf("click during the running sync = %+v, want run %d", clicked, all.RunID)
+	}
+	afterStart, err := server.enqueueScopedDLsiteMetadataSync(ctx, "after_workflow", "after_run:2", 0, metadataSyncOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterStart.RunID == all.RunID || afterStart.Deduplicated || afterStart.Status != "queued" {
+		t.Fatalf("after-scan sync during the running sync = %+v, want a queued run of its own", afterStart)
+	}
+	next, err := server.enqueueScopedDLsiteMetadataSync(ctx, "after_workflow", "after_run:3", 0, metadataSyncOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.RunID != afterStart.RunID || !next.Deduplicated {
+		t.Fatalf("next after-scan sync = %+v, want run %d", next, afterStart.RunID)
+	}
 }
 
 func TestCreateMetadataSyncRunValidatesScope(t *testing.T) {

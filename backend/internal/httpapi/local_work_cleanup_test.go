@@ -157,6 +157,21 @@ func TestLocalWorkCleanupListsFamiliesByAdministratorRatingAndSize(t *testing.T)
 		t.Fatalf("rated at most 2 = %v total %d", codes, result.Total)
 	}
 
+	// A client from before the rating filter sends maxRating and unrated, or
+	// nothing, and still lists only what its screen says: at most two stars,
+	// and unrated works only when it asks for them.
+	for query, want := range map[string]string{
+		"":                             "RJ00000002,RJ00000001",
+		"maxRating=2&unrated=false":    "RJ00000002,RJ00000001",
+		"maxRating=1":                  "RJ00000001",
+		"maxRating=2&unrated=true":     "RJ00000004,RJ00000002,RJ00000001",
+		"page=1&pageSize=20&unrated=1": "RJ00000004,RJ00000002,RJ00000001",
+	} {
+		if codes := localWorkCleanupCodes(f.list(query)); codes != want {
+			t.Fatalf("earlier client query %q = %s, want %s", query, codes, want)
+		}
+	}
+
 	result = f.list("rating=any")
 	if result.Total != 4 || result.Works[0].PrimaryCode != "RJ00000004" || result.Works[0].Rating != nil {
 		t.Fatalf("all works = %#v", result.Works)

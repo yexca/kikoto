@@ -28,7 +28,7 @@ database keeps an identity, a missing path is offline, and a path that exists
 without a marker is `marker_missing`:
 the catalog is never re-initialized or forgotten for it. Users browse and play
 it as usual, a scan adds and updates the files it finds without marking any
-missing, and deletions are refused. `POST /api/records/root/restore-marker`
+missing, and deletions and media details reads are refused. `POST /api/records/root/restore-marker`
 writes the marker again with the identity the database keeps and brings the
 root online with its catalog. It needs at least one recorded folder or file
 on the root, so an empty mount point of an unmounted disk is refused with
@@ -83,8 +83,8 @@ waiting. At most 512 files wait at a time, and a background pass reads up to
 more a few seconds later. The durable `record_media_probe` workflow reads
 every pending file of the library at once. The Media details card on the
 Workflows page queues it by hand, an interval trigger queues it on its own,
-and its After trigger queues it when a Record scan found videos or audio
-files new or changed (see
+and its After trigger queues it when a Record scan of an online root leaves
+videos or audio files pending, including files the scan did not change (see
 [Automatic Triggers](workflows/built-in-workflows.md#automatic-triggers)). The probe reads, with `ffprobe`,
 only the container header of each pending video and audio file: a video's
 duration, and the dimensions and codecs the header declares; an audio file's
@@ -99,9 +99,12 @@ new revision. A file the probe cannot read is marked failed, and it is probed
 again only after it changes. A file whose probe timed out, as on a disk
 spinning up, stays pending and the run does not try it again; every pending
 file stays pending when `ffprobe` is missing, which fails the run. A pass
-reads nothing while the root is neither online nor only missing its marker,
-so the files of an unmounted or replaced disk stay pending, and the run fails
-saying the library is not mounted.
+reads only an online root. One that is offline or `marker_missing`, as the
+empty mount point an unmounted disk leaves is, reads nothing, and a group with
+a file the probe could not read checks the root again before marking it
+failed, so a disk unmounted during the pass stops it too. The files of an
+unmounted or replaced disk therefore stay pending, the run fails saying the
+library is not online, and an opened folder or thumbnail reads none of them.
 
 The probe run selects pending files as it goes, so it also reads files a scan
 found while it ran. Between groups of files it gives the single workflow
@@ -142,7 +145,12 @@ it is written. A file `ffmpeg` cannot read leaves an empty failure marker for
 that revision, so it is not tried again until it changes or the cache is
 cleared. A render that times out, or whose own work file cannot be written,
 leaves no marker and answers `record_thumbnail_busy`, so a later request
-tries again. After a complete scan, the thumbnails and failure markers of assets
+tries again. A thumbnail is made only while the root is online: an offline or
+`marker_missing` root may hold an empty mount point or another disk, so a
+thumbnail not cached yet answers `record_thumbnail_unavailable` with
+`Cache-Control: no-store`, leaves no marker, and is made on a request once the
+root is online again; a cached one is still served. After a complete scan, the
+thumbnails and failure markers of assets
 that are no longer available videos, images, or audio files with cover art are
 removed, and the run summary
 counts them; a partial scan leaves them in place. An evicted or cleared

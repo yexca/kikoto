@@ -123,6 +123,15 @@ func WithThumbnailProbe(read ThumbnailProbe) ThumbnailOption {
 	return func(t *Thumbnailer) { t.probe = read }
 }
 
+// WithThumbnailSourceCheck refuses to make a thumbnail that is not cached yet
+// while check returns an error, which Thumbnail returns as it is. A cached
+// thumbnail is still served. It keeps the frame of another disk mounted at the
+// root's path from being stored, or a failure marker from being left, under a
+// revision of the catalog's file.
+func WithThumbnailSourceCheck(check func(context.Context) error) ThumbnailOption {
+	return func(t *Thumbnailer) { t.readable = check }
+}
+
 // Thumbnailer makes and caches JPEG thumbnails of record videos, images, and
 // the cover art embedded in audio files on first request. A video's frame is
 // taken a tenth of the way in. Generation
@@ -131,15 +140,16 @@ func WithThumbnailProbe(read ThumbnailProbe) ThumbnailOption {
 // outside the cache directory; only a finished thumbnail is stored there,
 // under the guard, and every read marks the thumbnail as recently used.
 type Thumbnailer struct {
-	dir     string
-	workDir string
-	run     FFmpegFunc
-	guard   ThumbnailGuard
-	probe   ThumbnailProbe
-	slots   chan struct{}
-	waiting atomic.Int32
-	mu      sync.Mutex
-	pending map[string]*thumbnailCall
+	dir      string
+	workDir  string
+	run      FFmpegFunc
+	guard    ThumbnailGuard
+	probe    ThumbnailProbe
+	readable func(context.Context) error
+	slots    chan struct{}
+	waiting  atomic.Int32
+	mu       sync.Mutex
+	pending  map[string]*thumbnailCall
 }
 
 type thumbnailCall struct {
@@ -199,6 +209,11 @@ func (t *Thumbnailer) Thumbnail(ctx context.Context, input string, source Thumbn
 	}
 	if _, err := os.Stat(failed); err == nil {
 		return nil, ErrThumbnailUnavailable
+	}
+	if t.readable != nil {
+		if err := t.readable(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if t.waiting.Add(1) > thumbnailMaxWaiters {
 		t.waiting.Add(-1)

@@ -35,13 +35,16 @@ it once it has finished, and only when it left that operation work:
 
 - Metadata sync, when the scan, complete or incremental, added works
   (`new_work_codes`). It runs with the trigger's own options; `{}` is every
-  work missing metadata, from DLsite, and joins a queued or running run with
-  the same options.
+  work missing metadata, from DLsite, and joins a queued run with the same
+  options. It never joins a running one, which chose its works when it
+  started, so it queues a run of its own behind it.
 - The file index, after a complete scan that leaves available local folders
   unindexed. An incremental scan indexes every work it touches, so it never
   starts the index. The After trigger always runs incrementally.
-- Media details, when a Record scan found videos or audio files new or
-  changed (`newPendingProbes`); a scan that found nothing new reads no file.
+- Media details, when a Record scan of an online root leaves videos or audio
+  files pending (`pendingProbes`), including files the scan did not change,
+  such as those an earlier run left while the disk was away; a scan that
+  leaves none pending, or whose root lacks its marker, starts none.
 
 The run it queues records trigger type `after_workflow` and reason
 `after_run:<scan run id>`. A failure to queue it is recorded on its trigger and

@@ -37,6 +37,29 @@ describe("effect loads", () => {
     expect(reported.onSettled).toHaveBeenCalledOnce();
   });
 
+  it("fails a load whose result the success handler cannot apply, and still settles", async () => {
+    const reported = handlers();
+    const unexpected = new Error("unexpected payload");
+    reported.onSuccess.mockImplementation(() => {
+      throw unexpected;
+    });
+    await createEffectScope().load(() => Promise.resolve("loaded"), reported);
+    expect(reported.onError).toHaveBeenCalledWith(unexpected);
+    expect(reported.onSettled).toHaveBeenCalledOnce();
+
+    // Without a failure handler the throw is the caller's, after settling.
+    const settled = vi.fn();
+    await expect(
+      createEffectScope().load(() => Promise.resolve("loaded"), {
+        onSuccess: () => {
+          throw unexpected;
+        },
+        onSettled: settled,
+      }),
+    ).rejects.toBe(unexpected);
+    expect(settled).toHaveBeenCalledOnce();
+  });
+
   it.each(["result", "failure"] as const)("drops the %s of a cancelled load and aborts its signal", async (outcome) => {
     const pending = deferred<string>();
     const signals: AbortSignal[] = [];

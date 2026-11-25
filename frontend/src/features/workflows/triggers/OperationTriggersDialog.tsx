@@ -14,15 +14,14 @@ import {
   afterTriggerLabel,
   defaultTriggerInterval,
   intervalLabel,
-  operationTriggerConfig,
   operationTriggerKinds,
   operationTriggerSlots,
+  switchedOperationTriggerConfig,
   triggerInterval,
   triggerIntervalChoices,
   triggerOffersFull,
   triggerRunsFull,
   triggerScheduleJson,
-  triggerTakesMetadataOptions,
   workflowTriggerCondition,
   type OperationTriggerKind,
 } from "@/features/workflows/workflowTriggerModel";
@@ -104,7 +103,6 @@ export function OperationTriggersDialog({
     const enabled = change.enabled ?? current?.enabled ?? false;
     const intervalMinutes = change.intervalMinutes ?? (current ? triggerInterval(current) : defaultTriggerInterval);
     const full = triggerOffersFull(code, kind) && (change.full ?? (current ? triggerRunsFull(code, current) : false));
-    const storedConfigJson = current?.configJson ?? (code === "metadata_sync" ? metadataConfigJson : undefined);
     const payload = {
       workflowDefinitionId: operation.definition.id,
       displayName: current?.displayName ?? `${operation.name} · ${kindLabel(kind)}`,
@@ -113,13 +111,7 @@ export function OperationTriggersDialog({
       scheduleJson:
         kind === "schedule" || !current ? triggerScheduleJson(code, kind, intervalMinutes) : current.scheduleJson,
       configJson: JSON.stringify(
-        operationTriggerConfig(
-          code,
-          kind,
-          full,
-          storedConfigJson,
-          triggerTakesMetadataOptions(code, storedConfigJson) ? metadataOptions : undefined,
-        ),
+        switchedOperationTriggerConfig(code, kind, full, current, metadataConfigJson, metadataOptions),
       ),
       nextRunAt: null,
     };

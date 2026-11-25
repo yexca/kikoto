@@ -7,6 +7,7 @@ import {
   operationTriggerConfig,
   operationTriggerKinds,
   operationTriggerSlots,
+  switchedOperationTriggerConfig,
   triggerIntervalChoices,
   triggerOffersFull,
   triggerRunsFull,
@@ -173,6 +174,19 @@ describe("operation trigger config", () => {
         purchaseBonusAutoLink: false,
       }),
     ).toEqual({
+      scope: "all",
+      mode: "missing",
+      remoteMetadataFallback: { enabled: false, sourceIds: [] },
+      purchaseBonusAutoLink: false,
+    });
+    // A switch on an existing trigger keeps the options it stores, even when
+    // this device's card shows others; a new trigger starts with the card's.
+    const card = { remoteMetadataFallback: { enabled: false, sourceIds: [] }, purchaseBonusAutoLink: false };
+    const cardConfig = JSON.stringify({ scope: "all", mode: "missing" });
+    expect(
+      switchedOperationTriggerConfig("metadata_sync", "schedule", false, { configJson: stored }, cardConfig, card),
+    ).toEqual(JSON.parse(stored));
+    expect(switchedOperationTriggerConfig("metadata_sync", "after_workflow", false, null, cardConfig, card)).toEqual({
       scope: "all",
       mode: "missing",
       remoteMetadataFallback: { enabled: false, sourceIds: [] },

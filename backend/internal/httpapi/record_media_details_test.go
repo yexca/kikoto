@@ -108,7 +108,8 @@ func TestOpeningARecordFolderReadsItsPendingMediaDetails(t *testing.T) {
 }
 
 // A Record scan Startup trigger scans at startup, and the media details After
-// trigger reads the files that scan found new; a scan that finds nothing new
+// trigger reads the files that scan leaves pending, including files it did not
+// change; a scan that leaves none pending, or whose root lacks its marker,
 // starts no read. Automating either needs library:write, media details takes
 // no Startup trigger, and while Record is off the scan trigger queues nothing.
 func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
@@ -156,14 +157,8 @@ func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
 	if _, err := s.db.Exec("DELETE FROM workflow_trigger WHERE workflow_definition_id NOT IN (?, ?)", scanDefinition, detailsDefinition); err != nil {
 		t.Fatal(err)
 	}
-	// The fixture's own scan read nothing, so the media details are read once
-	// by hand; the next scan then finds only the new file pending.
-	if _, err := s.recordStore.ProbePending(ctx, record.ProbeOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(srv.root, "trip", "Day 3.mp4"), []byte("video"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// The fixture's own scan read nothing, so its videos wait for their media
+	// details; the startup scan finds nothing new but leaves them pending.
 	countRuns := func(code string) int {
 		var runs int
 		if err := s.db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", code).Scan(&runs); err != nil {
@@ -190,6 +185,9 @@ func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
 	if status := srv.runStatus(t, detailsRunID); status != "succeeded" {
 		t.Fatalf("media details run = %s", status)
 	}
+	if pending, err := s.recordStore.PendingProbes(ctx, nil); err != nil || pending != 0 {
+		t.Fatalf("files pending after the media details run = %d, %v", pending, err)
+	}
 	for _, definition := range []int64{scanDefinition, detailsDefinition} {
 		var lastSuccess *string
 		if err := s.db.QueryRow("SELECT last_success_at FROM workflow_trigger WHERE workflow_definition_id = ?", definition).Scan(&lastSuccess); err != nil || lastSuccess == nil {
@@ -204,7 +202,28 @@ func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if scans, details := countRuns(recordScanWorkflowCode), countRuns(recordProbeWorkflowCode); scans != 2 || details != 1 {
-		t.Fatalf("after a scan that found nothing new: scans %d, media details runs %d", scans, details)
+		t.Fatalf("after a scan that left nothing pending: scans %d, media details runs %d", scans, details)
+	}
+
+	// Without its marker the root is scanned, and the new file waits, but media
+	// details read only an online root, so none follows.
+	if err := os.WriteFile(filepath.Join(srv.root, "trip", "Day 3.mp4"), []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(srv.root, ".kikoto-record")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := s.recordStore.PendingProbes(ctx, nil); err != nil || pending != 1 {
+		t.Fatalf("files pending after the scan without the marker = %d, %v", pending, err)
+	}
+	if scans, details := countRuns(recordScanWorkflowCode), countRuns(recordProbeWorkflowCode); scans != 3 || details != 1 {
+		t.Fatalf("after a scan without the marker: scans %d, media details runs %d", scans, details)
 	}
 
 	if _, err := s.db.Exec(`UPDATE app_setting SET value_json = 'false' WHERE key = ?`, recordLibraryEnabledSetting); err != nil {
@@ -214,7 +233,7 @@ func TestRecordScanStartupAndMediaDetailsAfterTriggers(t *testing.T) {
 		t.Fatal(err)
 	}
 	var message string
-	if scans := countRuns(recordScanWorkflowCode); scans != 2 {
+	if scans := countRuns(recordScanWorkflowCode); scans != 3 {
 		t.Fatalf("scans while Record is off = %d", scans)
 	}
 	if err := s.db.QueryRow("SELECT last_error_message FROM workflow_trigger WHERE workflow_definition_id = ?", scanDefinition).Scan(&message); err != nil || message == "" {

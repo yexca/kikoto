@@ -241,9 +241,12 @@ type probeOutcome struct {
 // cancelled context stops it too. Either way finished files keep their result
 // and the rest stay pending; a cancelled pass also reports how many remain.
 //
-// A root that is not mounted, or that holds another disk, refuses the pass
-// with ErrRootOffline before any file is read, so the files it cannot see are
-// not marked failed.
+// Only an online root is read. A root that is not mounted, that holds another
+// disk, or that lacks its marker, as the empty mount point of an unmounted
+// disk does, refuses the pass with ErrRootOffline before any file is read. A
+// group with a file the prober could not read checks the root again before
+// marking it failed, and a root that went offline in the meantime stops the
+// pass the same way, so no file it cannot see is marked failed.
 func (s *Store) ProbePending(ctx context.Context, options ProbeOptions) (ProbeResult, error) {
 	return s.probePass(ctx, options, nil)
 }
@@ -266,7 +269,7 @@ func (s *Store) probePass(ctx context.Context, options ProbeOptions, only []int6
 		result.Unavailable = true
 		return result, s.countPendingProbes(ctx, &result)
 	}
-	if err := s.requireReadableRoot(ctx); err != nil {
+	if err := s.RequireOnline(ctx); err != nil {
 		return result, err
 	}
 	concurrency := options.Concurrency
@@ -309,6 +312,27 @@ func (s *Store) probePass(ctx context.Context, options ProbeOptions, only []int6
 			}
 			return result, err
 		}
+		if probeFailuresIn(outcomes) {
+			// A disk unmounted during the group fails its reads the way an
+			// unreadable file does; its files stay pending for the next pass.
+			if err := s.RequireOnline(ctx); errors.Is(err, ErrRootOffline) {
+				for _, outcome := range outcomes {
+					if outcome.err != nil {
+						continue
+					}
+					if saveErr := s.saveProbe(ctx, outcome.candidate, outcome.info); saveErr != nil {
+						return result, saveErr
+					}
+					result.Probed++
+				}
+				if countErr := s.countPendingProbes(ctx, &result); countErr != nil {
+					return result, countErr
+				}
+				return result, err
+			} else if err != nil {
+				return result, err
+			}
+		}
 		for _, outcome := range outcomes {
 			switch {
 			case outcome.err == nil:
@@ -340,17 +364,21 @@ func (s *Store) probePass(ctx context.Context, options ProbeOptions, only []int6
 	return result, s.countPendingProbes(context.WithoutCancel(ctx), &result)
 }
 
-// requireReadableRoot refuses a probe pass unless the root is online or only
-// lacks its marker, the states in which its files are browsed and played.
-func (s *Store) requireReadableRoot(ctx context.Context) error {
-	root, err := s.EnsureRoot(ctx)
-	if err != nil {
-		return err
+// probeFailuresIn reports whether a group holds an outcome the pass would
+// mark failed.
+func probeFailuresIn(outcomes []probeOutcome) bool {
+	for _, outcome := range outcomes {
+		if probeOutcomeFails(outcome.err) {
+			return true
+		}
 	}
-	if root.State != "online" && root.State != RootStateMarkerMissing {
-		return ErrRootOffline
-	}
-	return nil
+	return false
+}
+
+// probeOutcomeFails reports whether a probe's error marks its file failed:
+// any error but a prober that cannot run and a timeout.
+func probeOutcomeFails(err error) bool {
+	return err != nil && !errors.Is(err, ErrProbeUnavailable) && !errors.Is(err, ErrMediaToolTimedOut)
 }
 
 // PendingProbes counts the files a probe pass would read, leaving out skip.
@@ -402,13 +430,14 @@ func idsJSON(ids []int64) string {
 // needs the length does before the background pass reaches the file. It
 // returns the asset as it stands afterwards. A file that is not pending, a
 // prober that cannot run, and a root that is not online, as when another disk
-// is mounted at its path, leave the asset as it is, still pending.
+// or an empty mount point is at its path, leave the asset as it is, still
+// pending. A read that fails checks the root again, as a pass does.
 func (s *Store) ProbeIfPending(ctx context.Context, id int64) (Asset, error) {
 	var candidate probeCandidate
 	err := s.db.QueryRowContext(ctx, `SELECT id, relative_path, kind, size_bytes, mtime_ns FROM record_asset WHERE id=? AND root_id=1 AND availability='available' AND kind IN `+probeKinds+` AND probe_state='pending'`, id).
 		Scan(&candidate.id, &candidate.relativePath, &candidate.kind, &candidate.sizeBytes, &candidate.mtimeNs)
 	if err == nil && s.probe != nil {
-		if err := s.requireReadableRoot(ctx); errors.Is(err, ErrRootOffline) {
+		if err := s.RequireOnline(ctx); errors.Is(err, ErrRootOffline) {
 			return s.Asset(ctx, id)
 		} else if err != nil {
 			return Asset{}, err
@@ -421,8 +450,13 @@ func (s *Store) ProbeIfPending(ctx context.Context, id int64) (Asset, error) {
 			}
 		case ctx.Err() != nil:
 			return Asset{}, ctx.Err()
-		case errors.Is(outcome.err, ErrProbeUnavailable), errors.Is(outcome.err, ErrMediaToolTimedOut):
+		case !probeOutcomeFails(outcome.err):
 		default:
+			if err := s.RequireOnline(ctx); errors.Is(err, ErrRootOffline) {
+				return s.Asset(ctx, id)
+			} else if err != nil {
+				return Asset{}, err
+			}
 			if err := s.markProbeFailed(ctx, candidate); err != nil {
 				return Asset{}, err
 			}

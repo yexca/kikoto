@@ -365,7 +365,7 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
             <Checkbox
               checked={selectable.length > 0 && pageSelected === selectable.length}
               indeterminate={pageSelected > 0 && pageSelected < selectable.length}
-              disabled={readOnly || busy || selectable.length === 0}
+              disabled={readOnly || busy || loading || selectable.length === 0}
               onCheckedChange={togglePage}
             />
             {t("cleanup.ratedWorks.selectPage")}
@@ -375,7 +375,10 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
               key={work.workId}
               work={work}
               checked={selected.has(work.workId)}
-              disabled={readOnly || busy || work.offline}
+              // The rows of the previous search or page stay shown while the
+              // next one loads; a work checked then could leave the list yet
+              // stay selected for deletion.
+              disabled={readOnly || busy || loading || work.offline}
               onCheckedChange={(checked) => toggleWork(work, checked)}
               onNavigate={navigateWork}
             />

@@ -156,7 +156,7 @@ func (s *Server) runRecordScan(ctx context.Context, progress record.ScanProgress
 // finishRecordScanJob records the scan as finished, on its triggers too. The
 // files it left pending are read when their folder opens, by a media details
 // run started by hand or on an interval, or by the media details After
-// trigger when the scan found files new or changed.
+// trigger when files are left pending on an online root.
 func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord, _ recordScanPayload, result record.ScanResult) error {
 	output := mustJSON(result)
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
@@ -182,7 +182,7 @@ func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord,
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.dispatchRecordScanAfterTriggers(ctx, job.RunID, result.NewPendingProbes)
+	s.dispatchRecordScanAfterTriggers(ctx, job.RunID, result.PendingProbes)
 	return nil
 }
 

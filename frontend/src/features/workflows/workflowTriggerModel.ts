@@ -248,6 +248,32 @@ export function triggerTakesMetadataOptions(code: string, storedConfigJson?: str
 }
 
 /**
+ * What a switch, interval, or mode change in a card's trigger dialog saves.
+ * A new Metadata trigger starts with the card's options, read from
+ * `cardConfigJson` and `cardOptions`. An existing trigger keeps the options it
+ * stores: the card's options belong to this device, and saving them is what
+ * updates every trigger, so a switch never overwrites another device's choice.
+ */
+export function switchedOperationTriggerConfig(
+  code: string,
+  triggerType: string,
+  full: boolean,
+  current: Pick<WorkflowTrigger, "configJson"> | null,
+  cardConfigJson?: string,
+  cardOptions?: MetadataRunOptions,
+): Record<string, unknown> {
+  if (current) return operationTriggerConfig(code, triggerType, full, current.configJson);
+  const stored = code === "metadata_sync" ? cardConfigJson : undefined;
+  return operationTriggerConfig(
+    code,
+    triggerType,
+    full,
+    stored,
+    triggerTakesMetadataOptions(code, stored) ? cardOptions : undefined,
+  );
+}
+
+/**
  * What a trigger stores for its operation. An edited trigger keeps the
  * options Workflows does not show, such as a metadata sync's scope; a
  * Metadata trigger's fallback and bonus options become the card's when given.

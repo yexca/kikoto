@@ -33,7 +33,10 @@ next run one interval ahead as it queues the run. An occurrence whose run
 cannot be queued is retried five minutes later, and one whose run a service
 stop prevented stays due for the next start. A trigger whose dispatch fails
 before its next run moves waits five minutes and records the failure as its
-last error, so it never holds back the other due triggers.
+last error, so it never holds back the other due triggers. Saving an enabled
+interval trigger with the same interval, as saving the options it runs with
+does, keeps its next run; a new interval, or switching it on, plans the next
+run one interval from then.
 
 The executor is single-instance, so the process records every job lease it
 holds and that record decides whether a running job still has an executor.

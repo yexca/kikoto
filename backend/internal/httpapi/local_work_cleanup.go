@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -102,11 +103,13 @@ type localWorkCleanupListResponse struct {
 
 type localWorkCleanupFilter struct {
 	// MaxRating keeps the works rated at most that many stars; 0 keeps every
-	// work. UnratedOnly keeps only the unrated works.
-	MaxRating   int
-	UnratedOnly bool
-	Listening   string
-	MinBytes    int64
+	// work. UnratedOnly keeps only the unrated works. IncludeUnrated keeps
+	// the unrated works beside MaxRating's, as earlier clients can ask.
+	MaxRating      int
+	UnratedOnly    bool
+	IncludeUnrated bool
+	Listening      string
+	MinBytes       int64
 	// Pool keeps the works with a folder on that storage pool, when PoolSet.
 	Pool       string
 	PoolSet    bool
@@ -122,7 +125,11 @@ func (filter localWorkCleanupFilter) matches(candidate localWorkCleanupCandidate
 			return false
 		}
 	case filter.MaxRating > 0:
-		if candidate.Rating == nil || *candidate.Rating > filter.MaxRating {
+		if candidate.Rating == nil {
+			if !filter.IncludeUnrated {
+				return false
+			}
+		} else if *candidate.Rating > filter.MaxRating {
 			return false
 		}
 	}
@@ -233,6 +240,16 @@ func parseLocalWorkCleanupFilter(r *http.Request) (localWorkCleanupFilter, error
 	filter := localWorkCleanupFilter{
 		Listening: localWorkCleanupListeningAny, Sort: localWorkCleanupSortSize, Limit: localWorkCleanupDefaultLimit,
 	}
+	if !query.Has("rating") {
+		// Clients from before the rating filter, such as an installed app's
+		// bundled pages, send maxRating and unrated and mean what they always
+		// did: rated at most two stars unless asked otherwise, without unrated
+		// works unless asked. Reading them as any rating would list works their
+		// screen says are left out.
+		if err := parseLegacyLocalWorkCleanupRating(query, &filter); err != nil {
+			return filter, err
+		}
+	}
 	switch value := strings.TrimSpace(query.Get("rating")); value {
 	case "", localWorkCleanupRatingAny:
 	case localWorkCleanupRatingUnrated:
@@ -285,6 +302,29 @@ func parseLocalWorkCleanupFilter(r *http.Request) (localWorkCleanupFilter, error
 		filter.Limit = parsed
 	}
 	return filter, nil
+}
+
+// localWorkCleanupLegacyMaxRating is what a client from before the rating
+// filter lists when it sends no maxRating.
+const localWorkCleanupLegacyMaxRating = 2
+
+func parseLegacyLocalWorkCleanupRating(query url.Values, filter *localWorkCleanupFilter) error {
+	filter.MaxRating = localWorkCleanupLegacyMaxRating
+	if value := strings.TrimSpace(query.Get("maxRating")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 5 {
+			return fmt.Errorf("maxRating must be a whole number from 1 to 5")
+		}
+		filter.MaxRating = parsed
+	}
+	switch strings.TrimSpace(query.Get("unrated")) {
+	case "", "false", "0":
+	case "true", "1":
+		filter.IncludeUnrated = true
+	default:
+		return fmt.Errorf("unrated must be true or false")
+	}
+	return nil
 }
 
 // sortLocalWorkCleanupCandidates orders the works by size, or by rating with

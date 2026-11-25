@@ -595,6 +595,10 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 	// Each metadata sync scope is a singleton queue item. Repeated clicks
 	// subscribe the caller to the existing run instead of creating another
 	// scan; different scopes queue separately and share the provider resource.
+	// A sync that follows a scan joins only a run that has not started: a
+	// running sync chose its works when it started, so the works the scan just
+	// added would be left out.
+	joinQueuedOnly := triggerType == workflow.AfterWorkflowTriggerType
 	rows, err := tx.QueryContext(ctx, `
 		SELECT run.id, job.id, run.status, run.input_json
 		FROM workflow_run AS run
@@ -615,6 +619,9 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 		if err := rows.Scan(&candidate.RunID, &candidate.JobID, &candidate.Status, &raw); err != nil {
 			_ = rows.Close()
 			return metasync.DLsiteSyncResult{}, err
+		}
+		if joinQueuedOnly && candidate.Status != "queued" {
+			continue
 		}
 		var active metadataSyncRunInput
 		if json.Unmarshal([]byte(raw), &active) != nil {

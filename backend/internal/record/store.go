@@ -141,9 +141,6 @@ type ScanResult struct {
 	// PendingProbes counts the available videos and audio files whose length
 	// is still to be read after the scan.
 	PendingProbes int `json:"pendingProbes"`
-	// NewPendingProbes counts the videos and audio files this scan found new
-	// or changed, whose length it left to be read.
-	NewPendingProbes int `json:"newPendingProbes"`
 	// ThumbnailsRemoved counts the cached thumbnails removed after a complete
 	// scan because their assets are no longer available videos or images.
 	ThumbnailsRemoved int `json:"thumbnailsRemoved,omitempty"`
@@ -552,7 +549,7 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 		return ScanResult{}, err
 	}
 	ids := map[string]int64{".": rootFolder}
-	folders, assets, newPending := 1, 0, 0
+	folders, assets := 1, 0
 	unreadable := 0
 	walkErr := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
@@ -617,12 +614,8 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 			return nil
 		}
 		kind, mime := classify(name)
-		stale, err := s.upsertAsset(ctx, parentID, name, rel, kind, mime, info, generation)
-		if err != nil {
+		if _, err := s.upsertAsset(ctx, parentID, name, rel, kind, mime, info, generation); err != nil {
 			return err
-		}
-		if stale && (kind == "video" || kind == "audio") {
-			newPending++
 		}
 		assets++
 		if progress != nil {
@@ -670,7 +663,7 @@ func (s *Store) scanCatalog(ctx context.Context, progress ScanProgress) (ScanRes
 	if !complete {
 		state = "partial"
 	}
-	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, NewPendingProbes: newPending, Unreadable: unreadable, MissingMarked: markMissing}, nil
+	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: markMissing}, nil
 }
 
 // markerStillNamesCatalog reports whether the root's marker still carries the

@@ -28,7 +28,9 @@ through `lib/effectScope.ts`, never through its own flag or `AbortController`:
 - `startLoad(load, handlers)` runs one load and returns the cancel function
   for the effect to return. The load receives a signal and passes it to every
   API call. `onSuccess`, `onError`, and `onSettled` run only while the load is
-  current, so they hold no `cancelled` checks.
+  current, so they hold no `cancelled` checks. A throw from `onSuccess`
+  reaches `onError`, and `onSettled` runs even when a handler throws, so it is
+  the place to reset a loading or polling flag.
 - `createEffectScope()` holds every load and listener of an effect that
   repeats, such as a refresh on an event or a poll: `scope.load` runs a load,
   with `delayMs` for a poll interval, and `scope.listen` holds a listener

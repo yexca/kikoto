@@ -205,7 +205,9 @@ func (s *Server) executeRecordProbeJob(ctx context.Context, job workflowJobRecor
 		s.checkpointJobOrLog(settleCtx, job, "stopped", current, current.done(), current.done()+left)
 		return err
 	case errors.Is(err, record.ErrRootOffline):
-		s.failJobOrLog(settleCtx, job, "the record library is not mounted")
+		// Media details read only an online root; one without its marker waits
+		// for the marker to be restored.
+		s.failJobOrLog(settleCtx, job, "the record library is not online")
 		return err
 	case err != nil:
 		s.failJobOrLog(settleCtx, job, "record media probe failed")

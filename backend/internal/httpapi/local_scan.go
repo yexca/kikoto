@@ -42,7 +42,11 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 
 // localScanRunRequest takes no options: a manual scan always walks the whole
 // library, and what follows it is up to the other operations' After triggers.
-type localScanRunRequest struct{}
+// FollowUpRun is accepted and ignored, because clients from before the After
+// triggers, such as an installed app's bundled pages, still send it.
+type localScanRunRequest struct {
+	FollowUpRun *bool `json:"followUpRun"`
+}
 
 type localScanResult struct {
 	RunID            int64    `json:"runId"`

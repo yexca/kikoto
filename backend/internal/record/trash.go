@@ -69,7 +69,7 @@ func (s *Store) TrashAsset(ctx context.Context, id int64, expectedPath string, n
 		return TrashedAsset{}, err
 	}
 	defer unlock()
-	if err := s.requireOnline(ctx); err != nil {
+	if err := s.RequireOnline(ctx); err != nil {
 		return TrashedAsset{}, err
 	}
 	asset, err := s.Asset(ctx, id)
@@ -138,7 +138,7 @@ func (s *Store) TrashFolder(ctx context.Context, id int64, expectedPath string, 
 		return TrashedFolder{}, err
 	}
 	defer unlock()
-	if err := s.requireOnline(ctx); err != nil {
+	if err := s.RequireOnline(ctx); err != nil {
 		return TrashedFolder{}, err
 	}
 	var rel, key, state string
@@ -182,7 +182,11 @@ func subtreeBounds(key string) (string, string) {
 	return key + "/", key + "0"
 }
 
-func (s *Store) requireOnline(ctx context.Context) error {
+// RequireOnline refuses with ErrRootOffline unless the root is online, the
+// only state in which a file read at its path is the catalog's: an offline
+// root may be an empty mount point or another disk, and one without its
+// marker proves neither. Deletions, media details, and new thumbnails need it.
+func (s *Store) RequireOnline(ctx context.Context) error {
 	root, err := s.EnsureRoot(ctx)
 	if err != nil {
 		return err

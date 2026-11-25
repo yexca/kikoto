@@ -387,7 +387,14 @@ func TestCreateLocalScanRunTakesNoOptions(t *testing.T) {
 	for _, test := range []struct {
 		body string
 		want int
-	}{{"", http.StatusAccepted}, {`{"followUpRun":true}`, http.StatusBadRequest}} {
+	}{
+		{"", http.StatusAccepted},
+		// Clients from before the After triggers still send the follow-up
+		// choice; it is ignored rather than refused.
+		{`{"followUpRun":false}`, http.StatusAccepted},
+		{`{"followUpRun":true}`, http.StatusAccepted},
+		{`{"scanMode":"full"}`, http.StatusBadRequest},
+	} {
 		request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/local-scan", strings.NewReader(test.body))
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))
 		response := httptest.NewRecorder()
@@ -395,6 +402,25 @@ func TestCreateLocalScanRunTakesNoOptions(t *testing.T) {
 		if response.Code != test.want {
 			t.Fatalf("local scan %q = %d %s, want %d", test.body, response.Code, response.Body.String(), test.want)
 		}
+	}
+	var followUps int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'metadata_sync'").Scan(&followUps); err != nil || followUps != 0 {
+		t.Fatalf("metadata runs after manual scans = %d, %v", followUps, err)
+	}
+}
+
+// A Scan trigger saved by a client from before the After triggers carries the
+// follow-up choice; it is dropped from the stored options, not refused.
+func TestLocalScanTriggerConfigDropsTheOldFollowUpChoice(t *testing.T) {
+	config, err := normalizeLocalScanTriggerConfig(`{"scanMode":"full","followUpRun":true}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored := mustJSON(config); stored != `{"scanMode":"full"}` {
+		t.Fatalf("stored scan trigger options = %s", stored)
+	}
+	if _, err := normalizeLocalScanTriggerConfig(`{"scanMode":"full","other":true}`); err == nil {
+		t.Fatal("an unknown scan trigger option was accepted")
 	}
 }
 

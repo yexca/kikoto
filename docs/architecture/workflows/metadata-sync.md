@@ -77,8 +77,9 @@ default: all works in `missing` mode from DLsite, without fallback, with bonus
 detection on. Each complete option set is a separate singleton: repeating the
 same options while queued or running joins that run; different sources,
 fallback orders or bonus choices queue separate runs, and all metadata sync
-runs share the `metadata:provider` resource, so a scan that adds works joins
-the run its After trigger's options already have queued or running. A retry
+runs share the `metadata:provider` resource. A scan that adds works joins
+the run its After trigger's options already have queued, but never a running
+one, which chose its works when it started; it queues its own instead. A retry
 repeats every option of the failed run. Run choices do not write instance
 settings or reorder existing remote metadata across the library.
 

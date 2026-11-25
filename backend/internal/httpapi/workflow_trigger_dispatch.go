@@ -38,6 +38,10 @@ type workflowRunTrigger struct {
 
 type localScanTriggerConfig struct {
 	ScanMode string `json:"scanMode,omitempty"`
+	// FollowUpRun is what clients from before the After triggers still send
+	// with a Scan trigger. It is accepted and dropped: Metadata's own After
+	// trigger follows a scan now.
+	FollowUpRun *bool `json:"followUpRun,omitempty"`
 }
 
 var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
@@ -81,6 +85,15 @@ func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, pay
 		}
 		if payload.Enabled != nil && !*payload.Enabled {
 			break
+		}
+		// An edit that keeps a running interval as it was, such as saving the
+		// Metadata options its trigger runs with, keeps the run it planned;
+		// only a new interval, or switching it on, plans from now.
+		if existing != nil && existing.Enabled && existing.TriggerType == "schedule" && existing.NextRunAt != nil {
+			if previous, err := validateWorkflowIntervalSchedule(existing.ScheduleJSON); err == nil && previous.IntervalMinutes == schedule.IntervalMinutes {
+				prepared.NextRunAt = *existing.NextRunAt
+				break
+			}
 		}
 		prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
 	default:
@@ -184,6 +197,7 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 	if err := decodeStrictJSON(raw, &config); err != nil {
 		return config, fmt.Errorf("local scan trigger config is invalid")
 	}
+	config.FollowUpRun = nil
 	config.ScanMode = strings.ToLower(strings.TrimSpace(config.ScanMode))
 	if config.ScanMode == "" {
 		config.ScanMode = localScanModeIncremental

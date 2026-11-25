@@ -92,12 +92,16 @@ Neither mode rewrites `managed_fetch` ownership records.
 
 Local scan and metadata sync have separate definitions, jobs, resource labels,
 statuses, failures, review candidates, and retry histories. A local scan never
-calls a metadata provider as part of its own run, and a scan takes no options.
+calls a metadata provider as part of its own run, and a scan takes no options:
+the `followUpRun` that earlier clients send with a manual scan or a Scan
+trigger is accepted and ignored.
 A metadata sync follows a scan only through its own After trigger, which a scan
 that added works dispatches once it has finished (see
 [Automatic Triggers](built-in-workflows.md#automatic-triggers)). A repeated
-dispatch joins the metadata sync already queued or running with the same
-options, so a burst of scans does not create redundant provider work.
+dispatch joins the metadata sync already queued with the same options, so a
+burst of scans does not create redundant provider work. A running sync chose
+its works when it started, so a scan that finishes while one runs queues
+another behind it for the works it added.
 
 ## Local Work File Refresh
 
