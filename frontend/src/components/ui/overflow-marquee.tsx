@@ -1,181 +1,163 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/tailwindClassNames";
 
-type MarqueeStyle = CSSProperties & {
-  "--marquee-distance"?: string;
-  "--marquee-duration"?: string;
-};
+import { MARQUEE_GAP_PX, MARQUEE_ORIGIN_PAUSE_MS, marqueeTimeline } from "./overflowMarqueeTiming";
 
-const MARQUEE_GAP_PX = 32;
-const MARQUEE_SPEED_PX_PER_SECOND = 32;
-const MARQUEE_ORIGIN_PAUSE_MS = 2500;
-
-export function OverflowMarquee({
-  text,
-  className,
-  interactionOnly = false,
-}: {
+export type OverflowMarqueeLine = {
   text: string;
   className?: string;
-  interactionOnly?: boolean;
-}) {
-  const containerRef = useRef<HTMLSpanElement | null>(null);
-  const contentRef = useRef<HTMLSpanElement | null>(null);
-  const [marqueeDistance, setMarqueeDistance] = useState(0);
+  /** Hover hint shown even when the line fits; otherwise an overflowing line hints its own text. */
+  hint?: string;
+};
 
-  useLayoutEffect(() => {
-    const measure = () => {
-      const container = containerRef.current;
-      const content = contentRef.current;
-      if (!container || !content) return;
-      const contentWidth = Math.ceil(content.scrollWidth);
-      const nextDistance = contentWidth > container.clientWidth ? contentWidth + MARQUEE_GAP_PX : 0;
-      setMarqueeDistance((currentDistance) => (currentDistance === nextDistance ? currentDistance : nextDistance));
-    };
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    if (containerRef.current) observer?.observe(containerRef.current);
-    if (contentRef.current) observer?.observe(contentRef.current);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [text]);
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
-  const overflowing = marqueeDistance > 0;
-  const style: MarqueeStyle | undefined = overflowing
-    ? {
-        "--marquee-distance": `${marqueeDistance}px`,
-        "--marquee-duration": `${(marqueeDistance / MARQUEE_SPEED_PX_PER_SECOND).toFixed(2)}s`,
-      }
-    : undefined;
-
-  return (
-    <span
-      ref={containerRef}
-      className={cn(
-        "overflow-marquee block min-w-0 overflow-hidden whitespace-nowrap",
-        overflowing && (interactionOnly ? "overflow-marquee--interaction" : "overflow-marquee--auto"),
-        className,
-      )}
-      data-marquee={overflowing ? (interactionOnly ? "interaction" : "auto") : "static"}
-      title={overflowing ? text : undefined}
-    >
-      <span className="overflow-marquee__track inline-flex min-w-max gap-[32px]" data-marquee-track style={style}>
-        <span ref={contentRef} className="overflow-marquee__copy inline-block min-w-max" data-marquee-copy>
-          {text}
-        </span>
-        {overflowing && (
-          <span className="overflow-marquee__copy inline-block min-w-max" data-marquee-copy aria-hidden="true">
-            {text}
-          </span>
-        )}
-      </span>
-    </span>
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() =>
+    typeof window === "undefined" || typeof window.matchMedia !== "function"
+      ? false
+      : window.matchMedia(REDUCED_MOTION_QUERY).matches,
   );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(REDUCED_MOTION_QUERY);
+    const sync = () => setReduced(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return reduced;
 }
 
-export function OverflowMarqueeGroup({
-  primaryText,
-  secondaryText,
+/**
+ * Stacked single-line texts, such as a title over an artist. Only a line that
+ * cannot fit scrolls; when several do, they share one cycle so they start
+ * together. With reduced motion an overflowing line ends in an ellipsis.
+ *
+ * `running` false keeps every line at its start (an inactive queue row);
+ * `paused` freezes a running cycle in place (a gesture on the bar).
+ */
+export function OverflowMarqueeLines({
+  lines,
   className,
-  primaryClassName,
-  secondaryClassName,
+  running = true,
+  paused = false,
 }: {
-  primaryText: string;
-  secondaryText: string;
+  lines: OverflowMarqueeLine[];
   className?: string;
-  primaryClassName?: string;
-  secondaryClassName?: string;
+  running?: boolean;
+  paused?: boolean;
 }) {
-  const containerRef = useRef<HTMLSpanElement | null>(null);
-  const contentRef = useRef<HTMLSpanElement | null>(null);
-  const trackRef = useRef<HTMLSpanElement | null>(null);
-  const [marqueeDistance, setMarqueeDistance] = useState(0);
+  const lineRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const trackRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const animationsRef = useRef<Animation[]>([]);
+  const [distances, setDistances] = useState<number[]>([]);
+  const reducedMotion = usePrefersReducedMotion();
+  // Callers rebuild the lines every render; key the effects on the texts themselves.
+  const textsKey = JSON.stringify(lines.map((line) => line.text));
+  const texts = useMemo(() => JSON.parse(textsKey) as string[], [textsKey]);
+  const scrolls = !reducedMotion;
 
   useLayoutEffect(() => {
     const measure = () => {
-      const container = containerRef.current;
-      const content = contentRef.current;
-      if (!container || !content) return;
-      const contentWidth = Math.ceil(content.scrollWidth);
-      const nextDistance = contentWidth > container.clientWidth ? contentWidth + MARQUEE_GAP_PX : 0;
-      setMarqueeDistance((currentDistance) => (currentDistance === nextDistance ? currentDistance : nextDistance));
+      const next = texts.map((_, index) => {
+        const line = lineRefs.current[index];
+        if (!line) return 0;
+        // A scrolling line holds two copies; its own text is the first.
+        const copy = line.querySelector<HTMLElement>("[data-marquee-copy]");
+        const textWidth = Math.ceil(copy ? copy.scrollWidth : line.scrollWidth);
+        return textWidth > line.clientWidth ? textWidth + MARQUEE_GAP_PX : 0;
+      });
+      setDistances((current) =>
+        current.length === next.length && current.every((value, index) => value === next[index]) ? current : next,
+      );
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    if (containerRef.current) observer?.observe(containerRef.current);
-    if (contentRef.current) observer?.observe(contentRef.current);
+    texts.forEach((_, index) => {
+      const line = lineRefs.current[index];
+      if (line) observer?.observe(line);
+    });
     window.addEventListener("resize", measure);
+    // A web font that finishes loading changes the text width but not the line box.
+    document.fonts?.addEventListener("loadingdone", measure);
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", measure);
+      document.fonts?.removeEventListener("loadingdone", measure);
     };
-  }, [primaryText, secondaryText]);
+  }, [texts]);
+
+  const timeline = useMemo(() => (scrolls ? marqueeTimeline(distances) : null), [scrolls, distances]);
 
   useEffect(() => {
-    const track = trackRef.current;
-    if (!track || marqueeDistance <= 0 || typeof track.animate !== "function") return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let animation: Animation | null = null;
-    const syncAnimation = () => {
-      animation?.cancel();
-      animation = null;
-      if (reducedMotion.matches) return;
-      const travelDurationMs = (marqueeDistance / MARQUEE_SPEED_PX_PER_SECOND) * 1000;
-      const totalDurationMs = MARQUEE_ORIGIN_PAUSE_MS + travelDurationMs;
-      const pauseOffset = MARQUEE_ORIGIN_PAUSE_MS / totalDurationMs;
-      animation = track.animate(
-        [
-          { transform: "translateX(0)", offset: 0 },
-          { transform: "translateX(0)", offset: pauseOffset },
-          { transform: `translateX(-${marqueeDistance}px)`, offset: 1 },
-        ],
-        {
-          duration: totalDurationMs,
-          easing: "linear",
-          iterations: Infinity,
-        },
-      );
-    };
-    syncAnimation();
-    reducedMotion.addEventListener("change", syncAnimation);
+    animationsRef.current = [];
+    if (!timeline || !running) return;
+    const animations: Animation[] = [];
+    timeline.lines.forEach((frames, index) => {
+      const track = trackRefs.current[index];
+      if (!frames || !track || typeof track.animate !== "function") return;
+      animations.push(track.animate(frames, { duration: timeline.durationMs, easing: "linear", iterations: Infinity }));
+    });
+    animationsRef.current = animations;
     return () => {
-      reducedMotion.removeEventListener("change", syncAnimation);
-      animation?.cancel();
+      for (const animation of animations) animation.cancel();
+      animationsRef.current = [];
     };
-  }, [marqueeDistance]);
+    // A new text restarts the cycle from its start even at the same width.
+  }, [timeline, running, texts]);
 
-  const overflowing = marqueeDistance > 0;
+  useEffect(() => {
+    for (const animation of animationsRef.current) {
+      if (paused) animation.pause();
+      else if (animation.playState === "paused") animation.play();
+    }
+  }, [paused, timeline, running, texts]);
+
   return (
-    <span
-      ref={containerRef}
-      className={cn("overflow-marquee-group block min-w-0 overflow-hidden", className)}
-      data-marquee={overflowing ? "auto" : "static"}
-      title={overflowing ? `${primaryText}\n${secondaryText}` : undefined}
-    >
-      <span
-        ref={trackRef}
-        className={cn(
-          "overflow-marquee-group__track inline-flex min-w-max gap-[32px]",
-          overflowing && "will-change-transform",
-        )}
-        data-marquee-track
-        data-marquee-pause-ms={overflowing ? MARQUEE_ORIGIN_PAUSE_MS : undefined}
-      >
-        <span ref={contentRef} className="overflow-marquee-group__copy grid min-w-max" data-marquee-copy>
-          <span className={cn("block min-w-max whitespace-nowrap", primaryClassName)}>{primaryText}</span>
-          <span className={cn("block min-w-max whitespace-nowrap", secondaryClassName)}>{secondaryText}</span>
-        </span>
-        {overflowing && (
-          <span className="overflow-marquee-group__copy grid min-w-max" data-marquee-copy aria-hidden="true">
-            <span className={cn("block min-w-max whitespace-nowrap", primaryClassName)}>{primaryText}</span>
-            <span className={cn("block min-w-max whitespace-nowrap", secondaryClassName)}>{secondaryText}</span>
+    <span className={cn("block min-w-0", className)}>
+      {lines.map((line, index) => {
+        const overflowing = (distances[index] ?? 0) > 0;
+        const scrolling = overflowing && scrolls;
+        return (
+          <span
+            key={index}
+            ref={(element) => {
+              lineRefs.current[index] = element;
+            }}
+            className={cn(
+              "block min-w-0 overflow-hidden whitespace-nowrap",
+              !scrolling && "text-ellipsis",
+              scrolling && "[mask-image:linear-gradient(to_right,#000_calc(100%-1rem),transparent)]",
+              line.className,
+            )}
+            data-marquee={scrolling ? "auto" : "static"}
+            title={line.hint ?? (overflowing ? line.text : undefined)}
+          >
+            {scrolling ? (
+              <span
+                ref={(element) => {
+                  trackRefs.current[index] = element;
+                }}
+                className="inline-flex min-w-max will-change-transform"
+                style={{ gap: `${MARQUEE_GAP_PX}px` }}
+                data-marquee-track
+                data-marquee-pause-ms={MARQUEE_ORIGIN_PAUSE_MS}
+              >
+                <span className="inline-block min-w-max" data-marquee-copy>
+                  {line.text}
+                </span>
+                <span className="inline-block min-w-max" data-marquee-copy aria-hidden="true">
+                  {line.text}
+                </span>
+              </span>
+            ) : (
+              line.text
+            )}
           </span>
-        )}
-      </span>
+        );
+      })}
     </span>
   );
 }

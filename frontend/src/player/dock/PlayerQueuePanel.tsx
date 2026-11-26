@@ -3,7 +3,7 @@ import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState 
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { OverflowMarquee } from "@/components/ui/overflow-marquee";
+import { OverflowMarqueeLines } from "@/components/ui/overflow-marquee";
 import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { cn } from "@/lib/tailwindClassNames";
 import type { PlayerTrack } from "@/player/playerTypes";
@@ -330,6 +330,9 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
 }) {
   const { t } = useTranslation();
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [pointed, setPointed] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const engaged = (pointed || focused) && !dragging;
   const optionsRef = useRef<HTMLButtonElement | null>(null);
   const queueItemId = item.queueItemId;
   const subtitle = playerTrackArtist(item);
@@ -347,6 +350,13 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
       role="listitem"
       data-queue-row
       data-dragging={dragging || undefined}
+      // Rows other than the playing one scroll a long name only while pointed at or focused.
+      onPointerEnter={() => setPointed(true)}
+      onPointerLeave={() => setPointed(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      }}
       className={cn(
         "player-queue-row group relative flex min-h-[3.75rem] items-center gap-1 rounded-2xl pl-2 pr-1 transition-[background-color,box-shadow,scale] duration-150",
         active && !dragging && "bg-foreground/[0.06]",
@@ -368,12 +378,16 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <OverflowMarquee
-            text={title}
-            interactionOnly={!active}
-            className={cn("text-sm leading-snug", active ? "font-semibold text-primary" : "font-medium")}
+          <OverflowMarqueeLines
+            running={active || engaged}
+            lines={[
+              {
+                text: title,
+                className: cn("text-sm leading-snug", active ? "font-semibold text-primary" : "font-medium"),
+              },
+              ...(subtitle ? [{ text: subtitle, className: "text-xs text-muted-foreground" }] : []),
+            ]}
           />
-          {subtitle && <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>}
         </span>
       </button>
       <button

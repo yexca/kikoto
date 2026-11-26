@@ -2,7 +2,7 @@ import { Minimize2, SkipForward } from "lucide-react";
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
+import { OverflowMarqueeLines } from "@/components/ui/overflow-marquee";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
@@ -221,12 +221,13 @@ export function CompactPlayer({
             }}
           >
             <CoverImage track={track} className="h-11 w-[3.625rem] rounded-lg shadow-sm" />
-            <OverflowMarqueeGroup
-              className="min-w-0 flex-1"
-              primaryText={trackTitle(track)}
-              secondaryText={playerTrackArtist(track)}
-              primaryClassName="text-sm font-semibold"
-              secondaryClassName="text-xs text-muted-foreground"
+            <OverflowMarqueeLines
+              className="flex-1"
+              paused={Boolean(gesture?.axis)}
+              lines={[
+                { text: trackTitle(track), className: "text-sm font-semibold" },
+                { text: playerTrackArtist(track), className: "text-xs text-muted-foreground" },
+              ]}
             />
           </button>
           {/* Phones reach Mini by swiping the bar down, so the bar keeps only play and next. */}

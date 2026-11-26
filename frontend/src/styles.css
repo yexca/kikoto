@@ -76,15 +76,6 @@
   }
 }
 
-@keyframes overflow-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(calc(-1 * var(--marquee-distance)));
-  }
-}
-
 @layer base {
   :root {
     color-scheme: light;
@@ -1143,13 +1134,6 @@
     color: hsl(var(--foreground));
   }
 
-  .overflow-marquee--auto .overflow-marquee__track,
-  .group:hover .overflow-marquee--interaction .overflow-marquee__track,
-  .group:focus-within .overflow-marquee--interaction .overflow-marquee__track {
-    animation: overflow-marquee var(--marquee-duration) linear infinite;
-    will-change: transform;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -1158,12 +1142,6 @@
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
-    }
-
-    .overflow-marquee__track,
-    .overflow-marquee-group__track {
-      animation: none !important;
-      transform: none !important;
     }
 
     .player-now-playing[data-playing] > span {

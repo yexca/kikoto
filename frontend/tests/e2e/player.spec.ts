@@ -416,18 +416,33 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   );
   await page.goto("/");
 
+  // Only the line that overflows scrolls; the short artist line stays still.
+  const fullLines = page.locator("[data-player-title-block] [data-marquee]");
+  await expect(fullLines).toHaveCount(2);
+  await expect(fullLines.first()).toHaveAttribute("data-marquee", "auto");
+  await expect(fullLines.first()).toContainText(longTitle);
+  await expect(fullLines.last()).toHaveAttribute("data-marquee", "static");
+  await expect(fullLines.last()).toHaveText("Test circle");
+  await expect
+    .poll(() =>
+      fullLines
+        .first()
+        .locator("[data-marquee-track]")
+        .evaluate((element) => element.getAnimations().length),
+    )
+    .toBe(1);
+
   await page.getByRole("button", { name: "Playback queue" }).click();
-  const queueMarquee = page.locator('[data-marquee="auto"]', { hasText: longTitle });
+  const queueMarquee = page
+    .getByRole("listitem")
+    .filter({ hasText: longTitle })
+    .locator('[data-marquee="auto"]', { hasText: longTitle });
   await expect(queueMarquee).toBeVisible();
   await expect(queueMarquee.locator("[data-marquee-copy]")).toHaveCount(2);
   await expect(queueMarquee.locator("[data-marquee-copy]").nth(1)).toHaveAttribute("aria-hidden", "true");
   await expect
-    .poll(() =>
-      queueMarquee
-        .locator("[data-marquee-track]")
-        .evaluate((element) => getComputedStyle(element).animationTimingFunction),
-    )
-    .toBe("linear");
+    .poll(() => queueMarquee.locator("[data-marquee-track]").evaluate((element) => element.getAnimations().length))
+    .toBe(1);
   await page.getByRole("button", { name: `Options for ${longTitle}` }).click();
   await expect(page.getByRole("menuitem", { name: "Move down" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();
@@ -435,11 +450,16 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
 
   await page.getByRole("button", { name: "Collapse player" }).click();
-  const compactMarquee = page.locator('[data-player-surface="compact"] [data-marquee]', { hasText: longTitle });
-  await expect(compactMarquee).toBeVisible();
+  const compactLines = page.locator('[data-player-surface="compact"] [data-marquee]');
+  await expect(compactLines).toHaveCount(2);
+  const compactMarquee = compactLines.first();
+  await expect(compactMarquee).toHaveAttribute("data-marquee", "auto");
   await expect(compactMarquee.locator("[data-marquee-copy]")).toHaveCount(2);
-  await expect(compactMarquee.locator("[data-marquee-copy]").first()).toContainText("Test circle");
-  await expect(compactMarquee).not.toContainText("Tagged mobile work with an extended display name");
+  await expect(compactLines.last()).toHaveAttribute("data-marquee", "static");
+  await expect(compactLines.last()).toHaveText("Test circle");
+  await expect(page.locator('[data-player-surface="compact"]')).not.toContainText(
+    "Tagged mobile work with an extended display name",
+  );
   const compactTrack = compactMarquee.locator("[data-marquee-track]");
   await expect(compactTrack).toHaveAttribute("data-marquee-pause-ms", "2500");
   await expect.poll(() => compactTrack.evaluate((element) => element.getAnimations().length)).toBe(1);

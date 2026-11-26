@@ -25,6 +25,7 @@ import { openPlayingRecordFolder, openPlayingWorkDetail } from "@/lib/playingWor
 import { useAuth } from "@/auth/AuthProvider";
 import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
+import { OverflowMarqueeLines } from "@/components/ui/overflow-marquee";
 import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -351,14 +352,13 @@ export function FullPlayer({
               <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3 pb-2">
                 <div data-player-drag-zone className="flex min-h-[60px] shrink-0 touch-none items-center gap-3">
                   <CoverImage track={track} className="h-12 w-16 rounded-lg shadow-md" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[15px] font-semibold" title={titleHint}>
-                      {title}
-                    </div>
-                    <div className="truncate text-sm text-muted-foreground" title={subtitle}>
-                      {subtitle}
-                    </div>
-                  </div>
+                  <OverflowMarqueeLines
+                    className="flex-1"
+                    lines={[
+                      { text: title, hint: titleHint, className: "text-[15px] font-semibold" },
+                      { text: subtitle, hint: subtitle, className: "text-sm text-muted-foreground" },
+                    ]}
+                  />
                   {moreButton}
                 </div>
                 <div className="-mx-2 min-h-0 flex-1 overflow-hidden rounded-3xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
@@ -408,14 +408,17 @@ export function FullPlayer({
             {!sidePanelOpen && (
               <>
                 <div data-player-title-block className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xl font-semibold leading-tight tracking-tight" title={titleHint}>
-                      {title}
-                    </div>
-                    <div className="truncate text-base leading-snug text-muted-foreground" title={subtitle}>
-                      {subtitle}
-                    </div>
-                  </div>
+                  <OverflowMarqueeLines
+                    className="flex-1"
+                    lines={[
+                      {
+                        text: title,
+                        hint: titleHint,
+                        className: "text-xl font-semibold leading-tight tracking-tight",
+                      },
+                      { text: subtitle, hint: subtitle, className: "text-base leading-snug text-muted-foreground" },
+                    ]}
+                  />
                   {moreButton}
                 </div>
                 {parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
