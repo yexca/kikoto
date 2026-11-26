@@ -826,6 +826,8 @@ export const zhHansResource = {
       commands: {
         scanLocalLibrary: "扫描本地媒体库",
         scanLocalLibraryDescription: "扫描本地作品并刷新本地可用性",
+        scanRecordLibrary: "扫描记录库",
+        scanRecordLibraryDescription: "查找记录中新增和移除的文件",
         runDLsiteSync: "运行 DLsite 同步",
         runDLsiteSyncDescription: "排队进行元数据同步",
         recoverStaleRuns: "恢复停滞的工作流运行",

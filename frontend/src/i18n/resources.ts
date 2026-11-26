@@ -445,6 +445,8 @@ export const englishResource = {
       commands: {
         scanLocalLibrary: "Scan local library",
         scanLocalLibraryDescription: "Scan local works and refresh local presence",
+        scanRecordLibrary: "Scan Record library",
+        scanRecordLibraryDescription: "Find new and removed files in Record",
         runDLsiteSync: "Run DLsite sync",
         runDLsiteSyncDescription: "Queue metadata synchronization",
         recoverStaleRuns: "Recover stale workflow runs",

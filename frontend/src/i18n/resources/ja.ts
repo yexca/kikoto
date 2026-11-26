@@ -864,6 +864,8 @@ export const japaneseResource = {
       commands: {
         scanLocalLibrary: "ローカルライブラリをスキャン",
         scanLocalLibraryDescription: "ローカル作品をスキャンして可用性を更新",
+        scanRecordLibrary: "記録ライブラリをスキャン",
+        scanRecordLibraryDescription: "記録の追加・削除されたファイルを検出",
         runDLsiteSync: "DLsite 同期を実行",
         runDLsiteSyncDescription: "メタデータ同期をキューに追加",
         recoverStaleRuns: "停止したワークフローを復旧",

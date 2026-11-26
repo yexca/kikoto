@@ -67,6 +67,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const phone = useMobileNavigationLayout();
   const enabled = !auth.demoMode;
   const canScan = auth.hasPermission("library:write");
+  const canOpenRun = auth.hasPermission("workflows:run");
   const canDelete = auth.hasPermission("downloads:manage");
   const canSaveProgress = auth.hasPermission("playback:use");
   const { location, historyState, navigate } = useRecordsLocation();
@@ -411,12 +412,11 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
         continueAssets={continueAssets}
         phone={phone}
         refreshing={pending}
-        canScan={canScan}
+        canOpenRun={canOpenRun}
         scan={scan.state}
         onOpenCrumb={openCrumb}
         onOpenContinue={openContinue}
         onRefresh={refresh}
-        onScan={startScan}
       />
 
       {tree.status === "error" ? (

@@ -50,7 +50,7 @@ record/
 
 Record shows one folder at a time. The path bar at the top names the folder and
 leads back to any folder that contains it, with **Continue watching** and
-**Scan** (or **Refresh** when your account cannot scan) at the right end. The
+**Refresh** at the right end. The
 address keeps the open folder, so browser Back, Forward, and reload return to
 the same place; Backspace also steps up one folder.
 
@@ -80,12 +80,18 @@ folder and plays in the global audio player.
 
 ## Scanning and artwork
 
-Choose **Scan** at the top right of the path bar; it needs library write access.
-Hovering it shows when the root was last scanned, and while a scan runs it
-shows whether it is queued, running and how many files it has found, or
-finished. The scan is queued as a durable
-workflow and coalesces with an existing scan. It indexes regular files by
-extension, skips links and Kikoto transaction directories, and keeps previous
+A scan runs as the **Record scan** workflow: from its card on
+[Workflows](workflows.md#user-surfaces), from its trigger at startup or on a
+schedule, or with **Scan Record library** in the command palette (Ctrl+K or
+⌘K). Before the first scan, the empty Record page offers **Scan** too. Each
+needs library write access, and a scan coalesces with one already queued or
+running. Hovering **Refresh** shows when the root was last scanned. While a
+scan runs, the status beside **Continue watching** shows whether it is queued,
+running and how many files it has found, or finished; with access to
+Workflows, selecting it opens the run. **Refresh** lists the folder again.
+
+A scan indexes regular files by extension, skips links and Kikoto transaction
+directories, and keeps previous
 rows when the root is offline or a scan is partial. Only a complete walk marks
 removed folders and files as missing. New files can be browsed as soon as the
 scan finishes.
@@ -99,10 +105,8 @@ An audio file shows its cover once it is read, or an icon when it has none.
 To read every file at once, run **Read Record media details** from the
 **Media details** card on [Workflows](workflows.md#user-surfaces), or give
 that card a trigger to run it on a schedule or after each Record scan that
-finds new files. The **Record scan** card starts a scan by hand, and its
-trigger runs one at startup or on a schedule. While the run reads files, the status beside
-**Scan** counts the files read so far, and the folder shows the lengths when
-it ends. It pauses between files whenever other work is waiting, so a large
+finds new files. While the run reads files, the same status counts the files
+read so far, and the folder shows the lengths when it ends. It pauses between files whenever other work is waiting, so a large
 library does not hold up other workflows. Nothing is read while the Record
 folder is not mounted. A file that cannot be read keeps no length and is read
 again once it changes.

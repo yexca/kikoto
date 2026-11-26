@@ -39,6 +39,7 @@ export function commandActions({
     const translated = translate?.(key);
     return !translated || translated === key ? fallback : translated;
   };
+  const recordsItem = visibleNavItems.find((item) => item.id === "records");
   const maintenanceActions: CommandAction[] = [
     ...(canView("workflows:run") && canView("metadata:sync")
       ? [
@@ -51,6 +52,24 @@ export function commandActions({
             run: async () => {
               const result = await api.runLocalScan();
               onOpenPath(workflowRunPath(result.runId));
+            },
+          },
+        ]
+      : []),
+    // Record scans on its own workflow; the command follows the Record page,
+    // which is listed only while Record is on.
+    ...(canView("library:write") && recordsItem
+      ? [
+          {
+            id: "action:record_scan",
+            label: text("commands.scanRecordLibrary", "Scan Record library"),
+            description: text("commands.scanRecordLibraryDescription", "Find new and removed files in Record"),
+            icon: <ScanLine className="h-4 w-4" />,
+            closeOnRun: false,
+            run: async () => {
+              const result = await api.queueRecordScan();
+              if (canView("workflows:run")) onOpenPath(workflowRunPath(result.runId));
+              else onOpenPage("records");
             },
           },
         ]

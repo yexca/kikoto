@@ -37,7 +37,8 @@ Workflows make backend actions inspectable.
   another while one runs: its card follows the running run and counts the
   others, and a new run that waits behind another says so. A run started by a
   trigger or in another browser shows on its card the same way.
-- Record scan runs as **Scan** on the Record page does. Media details reads
+- Record scan finds new and removed files in the
+  [Record folder](record-library.md#scanning-and-artwork). Media details reads
   every file still waiting, including files an earlier run gave up on after a
   timeout; opening a folder on the Record page reads that folder's files on
   its own. Neither has Full, and each has one run queued or running at a time;

@@ -3,8 +3,14 @@
 <details>
 <summary><strong>Record</strong></summary>
 
-- **Scan** finishes as soon as it has walked the Record folder, so new files
-  can be browsed right away, and its status shows how many files it has found.
+- A Record scan finishes as soon as it has walked the Record folder, so new
+  files can be browsed right away, and its status shows how many files it has
+  found.
+- The Record page's path bar holds **Continue watching** and **Refresh**:
+  scans run from the **Record scan** card on Workflows, its triggers, or
+  **Scan Record library** in the command palette, and the empty page offers
+  **Scan** before the first one. Selecting the status of a running scan or
+  media details run opens that run on Workflows.
 - The length of new or changed videos and audio files, and whether an audio
   file carries cover art, is read when you open its folder, and appears a few
   seconds later; a file you play, or whose thumbnail a folder shows, is read
@@ -12,7 +18,7 @@
   nothing is read while the Record folder is not mounted.
 - **Read Record media details** reads every file still waiting at once, by
   hand, on a schedule, or after a Record scan finds new files, as a workflow of its
-  own whose progress shows beside **Scan**. It pauses between files whenever
+  own whose progress shows on the Record page. It pauses between files whenever
   other work is waiting.
 - The Record page keeps following a scan or a media details run until it
   ends, including one started elsewhere, and a failed scan says so.

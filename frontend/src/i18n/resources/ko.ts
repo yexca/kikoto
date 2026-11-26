@@ -855,6 +855,8 @@ export const koreanResource = {
       commands: {
         scanLocalLibrary: "로컬 라이브러리 스캔",
         scanLocalLibraryDescription: "로컬 작품을 스캔하고 가용성 새로 고침",
+        scanRecordLibrary: "기록 라이브러리 스캔",
+        scanRecordLibraryDescription: "기록에서 추가되거나 삭제된 파일 찾기",
         runDLsiteSync: "DLsite 동기화 실행",
         runDLsiteSyncDescription: "메타데이터 동기화 대기열에 추가",
         recoverStaleRuns: "오래된 워크플로 실행 복구",

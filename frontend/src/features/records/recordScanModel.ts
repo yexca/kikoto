@@ -1,16 +1,19 @@
 import type { RecordActivity, RecordRunActivity } from "@/lib/api";
 
-/** Inline record workflow state beside the toolbar's Scan action. */
+/**
+ * The record workflow state the toolbar shows. `runId` names the workflow run
+ * the state comes from; a scan the server refused to queue has none.
+ */
 export type RecordScanState =
   | { status: "idle" }
   | { status: "queueing" }
-  | { status: "queued" }
+  | { status: "queued"; runId: number }
   /** `found` counts the files the walk has found so far. */
-  | { status: "running"; found: number }
-  | { status: "finished" }
-  | { status: "failed" }
+  | { status: "running"; runId: number; found: number }
+  | { status: "finished"; runId: number }
+  | { status: "failed"; runId?: number }
   /** A media details run reads the library; `total` is zero until the run counts them. */
-  | { status: "probing"; done: number; total: number };
+  | { status: "probing"; runId: number; done: number; total: number };
 
 /** What the page asked for: nothing, a scan being queued, a scan it could not queue, or the scan run it follows. */
 export type RecordScanRequest =
@@ -28,14 +31,14 @@ export function recordScanState(request: RecordScanRequest, activity: RecordActi
   const followed = request.status === "following" ? request.runId : null;
   // The run this page queued, or a scan someone else started.
   const current = scan && (followed === null ? isActiveRecordRun(scan) : scan.runId >= followed) ? scan : null;
-  if (followed !== null && !current) return { status: "queued" };
-  if (current?.status === "queued") return { status: "queued" };
-  if (current?.status === "running") return { status: "running", found: current.progressCurrent };
-  if (current && !succeeded(current)) return { status: "failed" };
+  if (followed !== null && !current) return { status: "queued", runId: followed };
+  if (current?.status === "queued") return { status: "queued", runId: current.runId };
+  if (current?.status === "running") return { status: "running", runId: current.runId, found: current.progressCurrent };
+  if (current && !succeeded(current)) return { status: "failed", runId: current.runId };
   const probe = activity?.probe;
   if (probe && isActiveRecordRun(probe)) {
-    return { status: "probing", done: probe.progressCurrent, total: probe.progressTotal };
+    return { status: "probing", runId: probe.runId, done: probe.progressCurrent, total: probe.progressTotal };
   }
-  if (current) return { status: "finished" };
+  if (current) return { status: "finished", runId: current.runId };
   return { status: "idle" };
 }

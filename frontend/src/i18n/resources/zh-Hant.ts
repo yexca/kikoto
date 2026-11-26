@@ -831,6 +831,8 @@ export const zhHantResource = {
       commands: {
         scanLocalLibrary: "掃描本機媒體庫",
         scanLocalLibraryDescription: "掃描本機作品並更新本機可用性",
+        scanRecordLibrary: "掃描記錄庫",
+        scanRecordLibraryDescription: "尋找記錄中新增和移除的檔案",
         runDLsiteSync: "執行 DLsite 同步",
         runDLsiteSyncDescription: "排入元資料同步",
         recoverStaleRuns: "復原停滯的工作流程執行",
