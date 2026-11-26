@@ -1006,7 +1006,7 @@ func remoteMediaTrackURL(nodes []kikoeru.Track, targetPath string, basePath stri
 		if path != targetPath {
 			continue
 		}
-		remoteURL := firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL, node.MediaDownloadURL)
+		remoteURL := firstNonBlankTrimmed(node.MediaStreamURL, node.StreamLowQualityURL, node.MediaDownloadURL)
 		if remoteURL == "" {
 			return "", "", false
 		}

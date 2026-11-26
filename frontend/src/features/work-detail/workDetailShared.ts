@@ -3,7 +3,7 @@
 import { ApiError, type ListeningStatus, type RemoteWork, type SourcePresenceItem, type Work } from "@/lib/api";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import type { DetailSourceIntent } from "@/features/work-detail/source/sourceContextModel";
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { openWorkDetail } from "@/lib/workDetailNavigation";
 import i18n from "@/i18n";
 
 export type WorkPreview = Pick<

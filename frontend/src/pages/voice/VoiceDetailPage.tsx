@@ -11,6 +11,7 @@ import { UserTagRow } from "@/components/UserTagRow";
 import { CatalogStatStrip } from "@/components/creator/CatalogStatStrip";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import type { ActionMenuItem } from "@/components/ui/action-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
 import {
   CreatorActionRow,
@@ -36,14 +37,14 @@ import { CatalogSyncDialog } from "@/features/workflows/catalog-sync/CatalogSync
 import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
-import { NotFoundPage } from "@/app/NotFoundPage";
-import { PageHeaderBackAction, usePageHeaderBack } from "@/app/pageHeader";
+import { NotFoundPage } from "@/components/NotFoundPage";
+import { PageHeaderBackAction, usePageHeaderBack } from "@/components/pageHeader";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+} from "@/lib/remoteTrackWorkflows";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import {
@@ -94,10 +95,6 @@ function voiceWorkFilterOptions(t: TFunction): readonly { value: VoiceWorkFilter
     { value: "remote", label: t("detailActions.remote") },
     { value: "missing", label: t("detailActions.missing") },
   ];
-}
-
-function EntitySkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
 }
 
 type VoiceRouteState =
@@ -946,15 +943,15 @@ function VoiceDetailSkeleton() {
   const { t } = useTranslation();
   return (
     <div className="space-y-5">
-      <EntitySkeletonLine className="h-8 w-32" />
+      <Skeleton reveal className="h-8 w-32" />
       <section className="flex items-start gap-4 border-b pb-5">
-        <EntitySkeletonLine className="h-16 w-16 shrink-0 rounded-xl lg:h-[5.5rem] lg:w-[5.5rem]" />
+        <Skeleton reveal className="h-16 w-16 shrink-0 rounded-xl lg:h-[5.5rem] lg:w-[5.5rem]" />
         <div className="min-w-0 flex-1 space-y-2">
-          <EntitySkeletonLine className="h-4 w-24" />
-          <EntitySkeletonLine className="h-8 w-64 max-w-full" />
+          <Skeleton reveal className="h-4 w-24" />
+          <Skeleton reveal className="h-8 w-64 max-w-full" />
           <div className="flex flex-wrap gap-1.5">
             {Array.from({ length: 3 }, (_, index) => (
-              <EntitySkeletonLine key={index} className="h-5 w-16" />
+              <Skeleton reveal key={index} className="h-5 w-16" />
             ))}
           </div>
         </div>

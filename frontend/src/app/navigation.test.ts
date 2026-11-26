@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { pagePaths } from "@/lib/appPages";
+
 import {
   canAccessPage,
   navigationGroups,
@@ -10,6 +12,11 @@ import {
 } from "./navigation";
 
 describe("navigation access and labels", () => {
+  it("offers every page once, at the address lib/appPages gives it", () => {
+    expect(Object.fromEntries(navItems.map((item) => [item.id, item.path]))).toEqual(pagePaths);
+    expect(navItems).toHaveLength(Object.keys(pagePaths).length);
+  });
+
   it("orders the Manage group Workflows, Metadata, Translation, Cleanup, System", () => {
     expect(navItems.filter((item) => item.group === "manage").map((item) => item.id)).toEqual([
       "workflows",

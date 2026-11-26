@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { clientStore } from "@/lib/clientStorage";
+
 import { readFavoriteShelfListHidden, storeFavoriteShelfListHidden } from "./favoriteShelfListVisibility";
 
 function memoryStorage() {
@@ -13,26 +15,27 @@ function memoryStorage() {
 describe("favorite shelf list visibility", () => {
   it("shows the list until this device stores the hidden choice", () => {
     const storage = memoryStorage();
-    expect(readFavoriteShelfListHidden(storage)).toBe(false);
+    const store = clientStore(() => storage);
+    expect(readFavoriteShelfListHidden(store)).toBe(false);
 
-    storeFavoriteShelfListHidden(storage, true);
-    expect(readFavoriteShelfListHidden(storage)).toBe(true);
+    storeFavoriteShelfListHidden(true, store);
+    expect(readFavoriteShelfListHidden(store)).toBe(true);
 
-    storeFavoriteShelfListHidden(storage, false);
-    expect(readFavoriteShelfListHidden(storage)).toBe(false);
+    storeFavoriteShelfListHidden(false, store);
+    expect(readFavoriteShelfListHidden(store)).toBe(false);
   });
 
   it("shows the list when storage is unavailable or throws", () => {
-    expect(readFavoriteShelfListHidden(undefined)).toBe(false);
-    const throwing = {
+    expect(readFavoriteShelfListHidden(clientStore(() => null))).toBe(false);
+    const throwing = clientStore(() => ({
       getItem: () => {
         throw new Error("blocked");
       },
       setItem: () => {
         throw new Error("blocked");
       },
-    };
+    }));
     expect(readFavoriteShelfListHidden(throwing)).toBe(false);
-    expect(() => storeFavoriteShelfListHidden(throwing, true)).not.toThrow();
+    expect(() => storeFavoriteShelfListHidden(true, throwing)).not.toThrow();
   });
 });

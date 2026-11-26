@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { loadPersistedPlaybackCompatibility } from "./playerPersistence";
+import type { StorageKey } from "@/lib/clientStorage";
+
+import { loadPersistedPlaybackCompatibility, persistPlaybackCompatibility } from "./playerPersistence";
 import { supportsCompatibilityPlayback } from "./playerTrackMedia";
 import type { PlaybackCompatibilityScope, PlayerTrack } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
@@ -18,7 +20,7 @@ function compatibilityTrackKey(track: PlayerTrack | null) {
  * Compatibility (transcoded) playback for local and cached files. "track" and
  * "queue" last for one item or one queue session; only "always" is persisted.
  */
-export function usePlaybackCompatibility(storageKey: string, engine: PlaybackEngine) {
+export function usePlaybackCompatibility(storageKey: StorageKey, engine: PlaybackEngine) {
   const { refs, currentTrack, carriedPlaybackPosition, cancelPlaybackErrorCheck, updatePlayingState } = engine;
   const [scope, setScopeState] = useState<PlaybackCompatibilityScope>(() =>
     loadPersistedPlaybackCompatibility(storageKey),
@@ -92,15 +94,7 @@ export function usePlaybackCompatibility(storageKey: string, engine: PlaybackEng
       setLoadedKey(storageKey);
       return;
     }
-    try {
-      if (scope === "always") {
-        localStorage.setItem(storageKey, JSON.stringify({ version: 1, scope: "always" }));
-      } else {
-        localStorage.removeItem(storageKey);
-      }
-    } catch {
-      // Playback remains usable when browser storage is unavailable.
-    }
+    persistPlaybackCompatibility(storageKey, scope);
   }, [loadedKey, scope, storageKey]);
 
   useEffect(() => {

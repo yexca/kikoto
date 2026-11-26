@@ -17,7 +17,7 @@ func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`
 		CREATE TABLE parent (
@@ -44,7 +44,7 @@ func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
 			t.Fatalf("reader Conn(%d) error = %v", i, err)
 		}
 		conns = append(conns, conn)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 	}
 
 	for i, conn := range conns {
@@ -79,7 +79,7 @@ func TestOpenSerializesImmediateWriteTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
 		t.Fatal(err)
 	}
@@ -221,13 +221,13 @@ func TestOpenValidatesConnectionsBeforeReturningThemToThePool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	var validatorFound, connectionValid bool
 	if err := conn.Raw(func(raw any) error {
 		validator, ok := raw.(driver.Validator)
@@ -253,7 +253,7 @@ func TestCanceledStatementDoesNotLeaveWriterLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestCanceledStatementDoesNotLeaveWriterLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer contender.Close()
+	defer func() { _ = contender.Close() }()
 	contender.SetMaxOpenConns(1)
 	contender.SetMaxIdleConns(1)
 	if _, err := contender.Exec("PRAGMA busy_timeout = 250"); err != nil {
@@ -351,7 +351,7 @@ func TestOpenMemoryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(:memory:) error = %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var enabled int
 	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
@@ -367,7 +367,7 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	migrationDir := filepath.Join("..", "..", "migrations")
 	initialSQL, err := os.ReadFile(filepath.Join(migrationDir, "001_initial.sql"))
@@ -437,7 +437,7 @@ func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := Migrate(db, preAliasDir); err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := Migrate(db, v010Dir); err != nil {
 		t.Fatalf("create v0.1.0 database: %v", err)
 	}
@@ -535,7 +535,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var migrations []string
 	for rows.Next() {
 		var filename string
@@ -697,7 +697,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 
 func TestMergeStartupLibraryRefreshMigrationKeepsExistingLocalStartupTrigger(t *testing.T) {
 	db := openWorkflowMergeMigrationDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`
 		INSERT INTO workflow_trigger (
@@ -728,7 +728,7 @@ func TestMergeStartupLibraryRefreshMigrationKeepsExistingLocalStartupTrigger(t *
 
 func TestMergeStartupLibraryRefreshMigrationDoesNotRestoreDeletedStartupTrigger(t *testing.T) {
 	db := openWorkflowMergeMigrationDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`
 		DELETE FROM workflow_trigger
@@ -764,11 +764,11 @@ func openWorkflowMergeMigrationDB(t *testing.T) *sqlutil.DB {
 	}
 	initialSQL, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_initial.sql"))
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(string(initialSQL)); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	return db
@@ -790,7 +790,7 @@ func TestMigrateAddsQueryIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
 		t.Fatal(err)
 	}

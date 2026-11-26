@@ -8,7 +8,34 @@ linters:
   default: none
   enable:
     - errcheck
+    - forbidigo
     - govet
     - ineffassign
+    - nolintlint
     - staticcheck
     - unused
+  settings:
+    forbidigo:
+      forbid:
+        # Outbound requests go through the shared policy so every path gets
+        # the same destination, redirect, and response bounds. The pattern
+        # matches the written selector, so an http.Client's Transport field
+        # stays allowed.
+        - pattern: ^http\.(Get|Head|Post|PostForm|DefaultClient|DefaultTransport|Transport)$
+          msg: >-
+            Build the client from an internal/outbound Policy (policy.Client)
+            instead; see the Outbound HTTP checklist in backend/AGENTS.md.
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    rules:
+      # The outbound package owns the one transport, and tests drive
+      # httptest servers directly.
+      - path: (^|/)internal/outbound/
+        linters:
+          - forbidigo
+      - path: _test\.go$
+        linters:
+          - forbidigo

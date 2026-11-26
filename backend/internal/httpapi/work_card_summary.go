@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // workLyricsFile is one file location that takes part in a work's lyrics
@@ -40,7 +42,7 @@ func (file workLyricsFile) matchScope() int64 {
 // logical work, whose media its detail shows.
 func (s *Server) loadWorksWithLyrics(ctx context.Context, workIDs []int64) (map[int64]bool, error) {
 	result := map[int64]bool{}
-	workIDs = uniquePositiveInt64s(workIDs)
+	workIDs = sqlutil.UniquePositiveInt64s(workIDs)
 	if len(workIDs) == 0 {
 		return result, nil
 	}
@@ -71,7 +73,7 @@ func (s *Server) loadWorksWithLyrics(ctx context.Context, workIDs []int64) (map[
 			trackWorkIDs = append(trackWorkIDs, workID)
 		}
 	}
-	familyIDs = uniquePositiveInt64s(familyIDs)
+	familyIDs = sqlutil.UniquePositiveInt64s(familyIDs)
 
 	// Tracks are loaded only for works that have a file to match them against,
 	// so a library-wide list does not read every track of every work.
@@ -82,7 +84,7 @@ func (s *Server) loadWorksWithLyrics(ctx context.Context, workIDs []int64) (map[
 	for workID := range files {
 		trackWorkIDs = append(trackWorkIDs, workID)
 	}
-	if err := s.loadWorkLyricsFiles(ctx, uniquePositiveInt64s(trackWorkIDs), "'audio', 'video'", files); err != nil {
+	if err := s.loadWorkLyricsFiles(ctx, sqlutil.UniquePositiveInt64s(trackWorkIDs), "'audio', 'video'", files); err != nil {
 		return nil, err
 	}
 
@@ -181,7 +183,7 @@ func (s *Server) enrichTrackedPresenceForkState(ctx context.Context, code string
 			sourceIDs = append(sourceIDs, items[index].FileSourceID)
 		}
 	}
-	sourceIDs = uniquePositiveInt64s(sourceIDs)
+	sourceIDs = sqlutil.UniquePositiveInt64s(sourceIDs)
 	if len(sourceIDs) == 0 {
 		return
 	}
@@ -189,8 +191,8 @@ func (s *Server) enrichTrackedPresenceForkState(ctx context.Context, code string
 	if err != nil || len(familyWorkIDs) == 0 {
 		return
 	}
-	workQuery, workArgs := int64InQuery("item.work_id IN (%s)", familyWorkIDs)
-	sourceQuery, sourceArgs := int64InQuery("location.file_source_id IN (%s)", sourceIDs)
+	workQuery, workArgs := sqlutil.Int64InQuery("item.work_id IN (%s)", familyWorkIDs)
+	sourceQuery, sourceArgs := sqlutil.Int64InQuery("location.file_source_id IN (%s)", sourceIDs)
 	args := append(workArgs, sourceArgs...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT location.file_source_id
@@ -204,7 +206,7 @@ func (s *Server) enrichTrackedPresenceForkState(ctx context.Context, code string
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	forked := map[int64]bool{}
 	for rows.Next() {
 		var sourceID int64
@@ -223,20 +225,4 @@ func (s *Server) enrichTrackedPresenceForkState(ctx context.Context, code string
 		value := forked[items[index].FileSourceID]
 		items[index].Forked = &value
 	}
-}
-
-func uniquePositiveInt64s(values []int64) []int64 {
-	result := make([]int64, 0, len(values))
-	seen := map[int64]struct{}{}
-	for _, value := range values {
-		if value <= 0 {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
 }

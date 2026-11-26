@@ -281,7 +281,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 // Library projection. This allows callers to perform follow-up enrichment even
 // when SQLite is configured with a single connection.
 func ScanRows(rows *sql.Rows) ([]RawWork, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	works := []RawWork{}
 	for rows.Next() {
 		var item RawWork
@@ -402,14 +402,6 @@ func seededOrderBy(idExpression string, randomSeed int64) string {
 func seededHashExpression(idExpression string, randomSeed int64) string {
 	multiplier, offset := recommendationSeededHashParameters(randomSeed)
 	return fmt.Sprintf("(((%s %% %d) * %d + %d) %% %d)", idExpression, recommendationHashModulus, multiplier, offset, recommendationHashModulus)
-}
-
-func recommendationOrderBy(idExpression string, direction string, randomSeed int64, amplitude int) string {
-	hash := seededHashExpression(idExpression, randomSeed)
-	if amplitude <= 0 {
-		return "recommend_score " + direction + ", " + seededOrderBy(idExpression, randomSeed)
-	}
-	return fmt.Sprintf("(recommend_score + (((%s / 2147483647.0) * 2.0 - 1.0) * %d)) %s, %s ASC, %s ASC", hash, amplitude, direction, hash, idExpression)
 }
 
 func normalizeSort(sortKey string, direction string) (string, string) {
@@ -938,10 +930,6 @@ func listSelectSQLWithTitleSort(
 
 func listBaseSelectSQLWithExtra(where string, includeRecommendation bool, extraSelect string) string {
 	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, DefaultRecommendationConfig(), extraSelect)
-}
-
-func listBaseSelectSQLWithConfig(where string, includeRecommendation bool, config RecommendationConfig) string {
-	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, config, "")
 }
 
 func listBaseSelectSQLWithConfigAndExtra(where string, includeRecommendation bool, config RecommendationConfig, extraSelect string) string {

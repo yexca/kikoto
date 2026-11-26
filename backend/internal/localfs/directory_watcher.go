@@ -323,7 +323,7 @@ func fetchRootMarkerExists(root string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, fetchRootMarkerMaxBytes+1))
 	if err != nil || len(data) > fetchRootMarkerMaxBytes {
 		return false

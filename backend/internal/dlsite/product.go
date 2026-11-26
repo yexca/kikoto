@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/languageedition"
 )
 
 type Product struct {
@@ -177,7 +179,7 @@ func (editions *LanguageEditionList) UnmarshalJSON(data []byte) error {
 		}
 		indexed := make([]indexedLanguageEdition, 0, len(values))
 		for key, raw := range values {
-			index, err := parseLanguageEditionIndex(key)
+			index, err := languageedition.ParseIndex(key)
 			if err != nil {
 				return err
 			}
@@ -208,17 +210,6 @@ type indexedLanguageEdition struct {
 	index   uint64
 	key     string
 	edition LanguageEdition
-}
-
-func parseLanguageEditionIndex(key string) (uint64, error) {
-	if key == "" || strings.IndexFunc(key, func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
-		return 0, fmt.Errorf("language_editions object contains a non-numeric key")
-	}
-	index, err := strconv.ParseUint(key, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("language_editions object contains an invalid numeric key")
-	}
-	return index, nil
 }
 
 // LanguageTokens returns the provider's language values as individual tokens.

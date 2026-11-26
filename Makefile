@@ -1,4 +1,4 @@
-.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures dependency-audit frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-format backend-lint backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures dependency-audit frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: backend-race-shard backend-race-durations go-test-shard-test
 .PHONY: frontend-e2e-container frontend-e2e-linux playwright-image-check
@@ -99,21 +99,14 @@ endif
 GOTOOLCHAIN ?= $(GO_MOD_TOOLCHAIN)
 export GOTOOLCHAIN
 
-ifeq ($(CI),true)
-GOLANGCI_LINT_BASE ?= HEAD^
-else
-GOLANGCI_LINT_BASE ?= HEAD
-endif
-
 backend-format:
 	cd backend && $(GO) run ../scripts/check-go-format.go . ../scripts
 
+# The whole backend is linted, and every issue is listed rather than the first
+# few of each kind.
 backend-lint:
 	cd backend && $(GO) run ../scripts/check-go-dropped-errors.go .
-	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --new-from-rev=$(GOLANGCI_LINT_BASE) --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
-
-backend-lint-full:
-	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
+	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --max-issues-per-linter=0 --max-same-issues=0 --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
 
 backend-verify:
 	cd backend && $(GO) mod verify
@@ -191,6 +184,18 @@ frontend-i18n:
 duplicate-helper-check:
 	$(NODE) --test scripts/check-duplicate-helpers.test.mjs
 	$(NODE) scripts/check-duplicate-helpers.mjs
+
+.PHONY: file-size-ratchet file-size-ratchet-lower
+
+# Production source files stay under 800 lines unless the baseline records
+# them, and a recorded file may only shrink. The lower target records smaller
+# sizes and drops files that fell under the limit.
+file-size-ratchet:
+	$(NODE) --test scripts/check-file-size.test.mjs
+	$(NODE) scripts/check-file-size.mjs
+
+file-size-ratchet-lower:
+	$(NODE) scripts/check-file-size.mjs --lower
 
 frontend-audit: frontend-install
 	cd frontend && $(NPM) audit --audit-level=moderate
@@ -357,7 +362,7 @@ ci-metrics:
 ci-metrics-test:
 	$(NODE) --test scripts/ci-metrics.test.mjs
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n duplicate-helper-check sensitive-check-test ci-plan-test go-test-shard-test playwright-image-check pr-description-test ci-metrics-test actionlint
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n duplicate-helper-check file-size-ratchet sensitive-check-test ci-plan-test go-test-shard-test playwright-image-check pr-description-test ci-metrics-test actionlint
 
 .PHONY: backend-sql-ratchet backend-sql-ratchet-lower
 

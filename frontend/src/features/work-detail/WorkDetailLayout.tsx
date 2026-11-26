@@ -16,7 +16,7 @@ import {
   formatDateTime,
   openDetailTagSearch,
 } from "@/features/work-detail/workDetailHelpers";
-import { PageHeaderDetail, usePageHeaderBack } from "@/app/pageHeader";
+import { PageHeaderDetail, usePageHeaderBack } from "@/components/pageHeader";
 import i18n from "@/i18n";
 import {
   ChevronDown,
@@ -40,6 +40,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/tailwindClassNames";
 import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import {
@@ -57,6 +58,7 @@ import {
 } from "@/features/work-detail/WorkVersionMenus";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { copyText } from "@/lib/clipboard";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
@@ -981,7 +983,7 @@ function DetailTitleBlock({
           {versionMenu}
         </div>
         <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
-        {loading && <div className="skeleton-reveal h-2 w-40 animate-pulse rounded bg-muted" />}
+        {loading && <Skeleton reveal className="h-2 w-40" />}
       </div>
       <DetailCircleLine
         circle={circle}
@@ -1069,7 +1071,7 @@ function MobileDetailIdentity({
           {infoCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
         </Button>
       </div>
-      {loading && <div className="skeleton-reveal h-2 w-40 animate-pulse rounded bg-muted" />}
+      {loading && <Skeleton reveal className="h-2 w-40" />}
       {!infoCollapsed && (
         <>
           <DetailCircleLine
@@ -1193,25 +1195,16 @@ function DetailCircleLine({
   );
 }
 
-const detailInfoCollapsedKey = "kikoto:work-detail-info-collapsed";
+const detailInfoCollapsedKey = deviceKey("kikoto:work-detail-info-collapsed");
 
 /** Remembers whether this viewer hid the work details above the phone layout's actions. */
 function useDetailInfoCollapsed() {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(detailInfoCollapsedKey) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [collapsed, setCollapsed] = useState(() => localStore.read(detailInfoCollapsedKey) === "true");
   const toggle = () => {
     setCollapsed((current) => {
       const next = !current;
-      try {
-        localStorage.setItem(detailInfoCollapsedKey, String(next));
-      } catch {
-        // The choice still applies to this page view.
-      }
+      // Without storage the choice still applies to this page view.
+      localStore.write(detailInfoCollapsedKey, String(next));
       return next;
     });
   };
@@ -1364,12 +1357,10 @@ export function HeroActionGroups({ primary, children }: { primary: ReactNode; ch
 
 export function DetailSkeletonActions() {
   return (
-    <HeroActionGroups
-      primary={<div className="skeleton-reveal h-[var(--control-height)] w-28 animate-pulse rounded-md bg-muted" />}
-    >
-      <div className="skeleton-reveal h-8 w-8 animate-pulse rounded-md bg-muted" />
-      <div className="skeleton-reveal h-8 w-14 animate-pulse rounded-md bg-muted" />
-      <div className="skeleton-reveal h-8 w-8 animate-pulse rounded-md bg-muted" />
+    <HeroActionGroups primary={<Skeleton reveal className="h-[var(--control-height)] w-28 rounded-md" />}>
+      <Skeleton reveal className="h-8 w-8 rounded-md" />
+      <Skeleton reveal className="h-8 w-14 rounded-md" />
+      <Skeleton reveal className="h-8 w-8 rounded-md" />
     </HeroActionGroups>
   );
 }
@@ -1378,21 +1369,19 @@ export function DirectorySkeleton() {
   return (
     <div className="skeleton-reveal min-h-[22rem] space-y-3" data-testid="directory-skeleton" aria-hidden="true">
       <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3">
-        <div className="h-3 w-10 animate-pulse rounded bg-muted" />
-        <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
-        <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-3 w-10" />
+        <Skeleton className="h-3 w-3 rounded-full" />
+        <Skeleton className="h-3 w-32" />
       </div>
       <div className="space-y-2">
         {Array.from({ length: 6 }, (_, index) => (
           <div key={index} className="flex min-h-12 items-center gap-3 rounded-md border bg-background px-3 py-2">
-            <div className="h-7 w-7 shrink-0 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-7 w-7 shrink-0 rounded-md" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div
-                className={`h-3 animate-pulse rounded bg-muted ${index % 3 === 0 ? "w-2/3" : index % 3 === 1 ? "w-1/2" : "w-3/4"}`}
-              />
-              <div className="h-2.5 w-24 animate-pulse rounded bg-muted/80" />
+              <Skeleton className={cn("h-3", index % 3 === 0 ? "w-2/3" : index % 3 === 1 ? "w-1/2" : "w-3/4")} />
+              <Skeleton className="h-2.5 w-24 bg-muted/80" />
             </div>
-            <div className="h-8 w-8 shrink-0 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
           </div>
         ))}
       </div>

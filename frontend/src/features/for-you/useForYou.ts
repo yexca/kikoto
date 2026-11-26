@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { WORK_DETAIL_USER_STATE_EVENT, type WorkDetailUserStateDetail } from "@/app/workDetailEvents";
+import { WORK_DETAIL_USER_STATE_EVENT, type WorkDetailUserStateDetail } from "@/lib/workDetailEvents";
 import { useAuth } from "@/auth/AuthProvider";
 import { api, ApiError, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouTemperature } from "@/lib/forYouApi";

@@ -6,6 +6,7 @@ import { SettingsDisclosure } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useLatestLoad } from "@/hooks/useLatestLoad";
@@ -166,8 +167,7 @@ export function RemoteSourceDialog({
 
         {showDetails && (
           <div className="space-y-4">
-            <label className="grid gap-1.5 text-sm" htmlFor="remote-source-name">
-              <span className="font-medium">{t("maintenance.library.name")}</span>
+            <Field label={t("maintenance.library.name")}>
               <Input
                 id="remote-source-name"
                 ref={nameInput}
@@ -175,7 +175,7 @@ export function RemoteSourceDialog({
                 readOnly={readOnly}
                 onChange={(event) => patch({ displayName: event.target.value })}
               />
-            </label>
+            </Field>
 
             <div className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
               <div className="min-w-0">
@@ -244,15 +244,17 @@ export function RemoteSourceDialog({
               >
                 <div className="grid gap-3 px-4 py-3">
                   {legacyNumber178 && (
-                    <label className="grid gap-1 text-sm">
-                      <span className="font-medium">{t("maintenance.library.sourceType")}</span>
+                    <Field
+                      className="gap-1"
+                      label={t("maintenance.library.sourceType")}
+                      hint={t("maintenance.library.legacyAdapter")}
+                    >
                       <NativeSelect value={source.sourceType} disabled>
                         <option value={LEGACY_NUMBER178_SOURCE_TYPE}>{LEGACY_NUMBER178_SOURCE_TYPE}</option>
                       </NativeSelect>
-                      <span className="text-xs text-muted-foreground">{t("maintenance.library.legacyAdapter")}</span>
-                    </label>
+                    </Field>
                   )}
-                  <Field label={t("maintenance.library.apiUrl")} hint={t("sourceSetup.apiUrlHint")}>
+                  <Field className="gap-1" label={t("maintenance.library.apiUrl")} hint={t("sourceSetup.apiUrlHint")}>
                     <Input
                       ref={apiInput}
                       value={source.endpoint.apiUrl}
@@ -262,7 +264,7 @@ export function RemoteSourceDialog({
                       onChange={(event) => patchEndpoint({ apiUrl: event.target.value })}
                     />
                   </Field>
-                  <Field label={t("maintenance.library.publicSiteUrl")}>
+                  <Field className="gap-1" label={t("maintenance.library.publicSiteUrl")}>
                     <Input
                       value={source.endpoint.baseUrl}
                       readOnly={readOnly}
@@ -271,7 +273,7 @@ export function RemoteSourceDialog({
                     />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                    <Field label={t("maintenance.library.workUrlTemplate")}>
+                    <Field className="gap-1" label={t("maintenance.library.workUrlTemplate")}>
                       <Input
                         value={source.endpoint.workUrlTemplate}
                         readOnly={readOnly}
@@ -279,7 +281,7 @@ export function RemoteSourceDialog({
                         onChange={(event) => patchEndpoint({ workUrlTemplate: event.target.value })}
                       />
                     </Field>
-                    <Field label={t("maintenance.library.priority")}>
+                    <Field className="gap-1" label={t("maintenance.library.priority")}>
                       <Input
                         type="number"
                         min={1}
@@ -291,7 +293,7 @@ export function RemoteSourceDialog({
                       />
                     </Field>
                   </div>
-                  <Field label={t("maintenance.library.fallbackUrl")}>
+                  <Field className="gap-1" label={t("maintenance.library.fallbackUrl")}>
                     <Input
                       value={source.endpoint.fallbackUrl}
                       readOnly={readOnly}
@@ -398,16 +400,6 @@ export function RemoteSourceDialog({
         )}
       </DialogFooter>
     </Dialog>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </label>
   );
 }
 

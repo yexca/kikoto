@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import type { ForYouItem, Work } from "@/lib/api";
+import { clientStore, type StorageArea } from "@/lib/clientStorage";
 import { syntheticWorkCode } from "@/test-support/workCode";
 
 import type { ForYouSnapshot } from "./forYouModel";
 import { clearForYouSnapshot, readForYouSnapshot, writeForYouSnapshot } from "./forYouSnapshotStore";
 
-function memoryStorage() {
+function memoryArea() {
   const values = new Map<string, string>();
   return {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => void values.set(key, value),
     removeItem: (key: string) => void values.delete(key),
   };
+}
+
+function memoryStorage(area: StorageArea = memoryArea()) {
+  return clientStore(() => area);
 }
 
 function snapshot(id: number): ForYouSnapshot {
@@ -45,19 +50,19 @@ describe("For you snapshot store", () => {
   });
 
   it("keeps the draw in memory when session storage refuses it", () => {
-    const full = {
-      ...memoryStorage(),
+    const full = memoryStorage({
+      ...memoryArea(),
       setItem: () => {
         throw new Error("quota exceeded");
       },
-    };
+    });
     writeForYouSnapshot("server:user-4", snapshot(4), full);
     expect(readForYouSnapshot("server:user-4", full)?.columns.try_new.items[0].work.id).toBe(4);
   });
 
   it("ignores a stored value it cannot read", () => {
-    const storage = memoryStorage();
-    storage.setItem("kikoto:for-you-draw:v1:server:user-5", "{not json");
-    expect(readForYouSnapshot("server:user-5", storage)).toBeNull();
+    const area = memoryArea();
+    area.setItem("kikoto:for-you-draw:v1:server:user-5", "{not json");
+    expect(readForYouSnapshot("server:user-5", memoryStorage(area))).toBeNull();
   });
 });

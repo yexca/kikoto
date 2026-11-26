@@ -1,7 +1,7 @@
 import { metadataSyncDefaultValues, metadataSyncPayload } from "@/features/workflows/metadataSyncModel";
 import { parseJSONRecord, workflowCopy } from "@/features/workflows/workflowPageModel";
 import type { LibrarySource, MetadataSyncOptions, RemoteMetadataFallbackSettings } from "@/lib/api";
-import { currentServerScopedStorageKey } from "@/lib/clientStorageScope";
+import { localStore, serverKey } from "@/lib/clientStorage";
 
 /**
  * What the Metadata card's runs use besides Full: the remote metadata
@@ -22,7 +22,7 @@ export const defaultMetadataRunOptions: MetadataRunOptions = {
 /** The most sources one fallback asks, as the backend enforces. */
 export const maxFallbackSources = 16;
 
-const metadataRunOptionsStorageKey = () => currentServerScopedStorageKey("kikoto:metadata-run-options");
+const metadataRunOptionsStorageKey = () => serverKey("kikoto:metadata-run-options");
 
 export function decodeMetadataRunOptions(value: unknown): MetadataRunOptions {
   if (!value || typeof value !== "object") return defaultMetadataRunOptions;
@@ -41,19 +41,12 @@ export function decodeMetadataRunOptions(value: unknown): MetadataRunOptions {
 }
 
 export function readMetadataRunOptions(): MetadataRunOptions {
-  try {
-    return decodeMetadataRunOptions(JSON.parse(window.localStorage.getItem(metadataRunOptionsStorageKey()) ?? "null"));
-  } catch {
-    return defaultMetadataRunOptions;
-  }
+  return decodeMetadataRunOptions(localStore.readJSON(metadataRunOptionsStorageKey()));
 }
 
+// The options last for this visit when local storage is unavailable.
 export function writeMetadataRunOptions(options: MetadataRunOptions) {
-  try {
-    window.localStorage.setItem(metadataRunOptionsStorageKey(), JSON.stringify(options));
-  } catch {
-    // The options last for this visit when local storage is unavailable.
-  }
+  localStore.writeJSON(metadataRunOptionsStorageKey(), options);
 }
 
 /**

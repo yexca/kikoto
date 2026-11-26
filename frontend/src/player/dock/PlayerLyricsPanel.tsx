@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { FloatingSelect } from "@/components/ui/floating-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { lyricsLanguageLabelKey } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 import { firstReachableLyricIndex, type ParsedLyrics } from "@/lib/timedLyrics";
@@ -17,12 +18,12 @@ export function LyricsLoadingSkeleton() {
   const { t } = useTranslation();
   return (
     <div className="skeleton-reveal space-y-4 p-5" aria-label={t("player.loadingLyrics")}>
-      <div className="h-3 w-24 animate-pulse rounded-full bg-foreground/10" />
+      <Skeleton className="h-3 w-24 rounded-full bg-foreground/10" />
       <div className="space-y-3 pt-2">
-        <div className="h-5 w-4/5 animate-pulse rounded-full bg-foreground/10" />
-        <div className="h-5 w-2/3 animate-pulse rounded-full bg-foreground/10" />
-        <div className="h-5 w-5/6 animate-pulse rounded-full bg-foreground/10" />
-        <div className="h-5 w-3/5 animate-pulse rounded-full bg-foreground/10" />
+        <Skeleton className="h-5 w-4/5 rounded-full bg-foreground/10" />
+        <Skeleton className="h-5 w-2/3 rounded-full bg-foreground/10" />
+        <Skeleton className="h-5 w-5/6 rounded-full bg-foreground/10" />
+        <Skeleton className="h-5 w-3/5 rounded-full bg-foreground/10" />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { Compass } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { usePageHeaderBack } from "@/app/pageHeader";
+import { usePageHeaderBack } from "@/components/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";

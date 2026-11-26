@@ -1,4 +1,5 @@
-import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { accountKey, localStore } from "@/lib/clientStorage";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 export type PlaybackSeekPreferences = {
   seekForwardSeconds: number;
@@ -22,7 +23,7 @@ export function defaultPlaybackSeekPreferences(): PlaybackSeekPreferences {
 }
 
 export function playbackSeekPreferencesStorageKey(principalID: ClientPrincipalID) {
-  return currentScopedStorageKey(PLAYBACK_SEEK_PREFERENCES_STORAGE_BASE_KEY, principalID);
+  return accountKey(PLAYBACK_SEEK_PREFERENCES_STORAGE_BASE_KEY, principalID);
 }
 
 export function normalizeSeekSeconds(value: unknown, fallback: number) {
@@ -41,12 +42,7 @@ export function normalizePlaybackSeekPreferences(value: unknown): PlaybackSeekPr
 }
 
 export function getStoredPlaybackSeekPreferences(principalID: ClientPrincipalID): PlaybackSeekPreferences {
-  try {
-    const raw = localStorage.getItem(playbackSeekPreferencesStorageKey(principalID));
-    return normalizePlaybackSeekPreferences(raw ? JSON.parse(raw) : null);
-  } catch {
-    return defaultPlaybackSeekPreferences();
-  }
+  return normalizePlaybackSeekPreferences(localStore.readJSON(playbackSeekPreferencesStorageKey(principalID)));
 }
 
 export function storePlaybackSeekPreferences(
@@ -55,11 +51,8 @@ export function storePlaybackSeekPreferences(
 ) {
   const preferences = normalizePlaybackSeekPreferences(value);
   const storageKey = playbackSeekPreferencesStorageKey(principalID);
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(preferences));
-  } catch {
-    // Playback remains usable when browser storage is unavailable or full.
-  }
+  // Playback remains usable when browser storage is unavailable or full.
+  localStore.writeJSON(storageKey, preferences);
   window.dispatchEvent(
     new CustomEvent<PlaybackSeekPreferencesChangeDetail>(PLAYER_SEEK_PREFERENCES_CHANGE_EVENT, {
       detail: { storageKey, preferences },
@@ -90,7 +83,7 @@ export function defaultPlaybackSourcePreferences(): PlaybackSourcePreferences {
 }
 
 export function playbackSourcePreferencesStorageKey(principalID: ClientPrincipalID) {
-  return currentScopedStorageKey(PLAYBACK_SOURCE_PREFERENCES_STORAGE_BASE_KEY, principalID);
+  return accountKey(PLAYBACK_SOURCE_PREFERENCES_STORAGE_BASE_KEY, principalID);
 }
 
 export function normalizePlaybackSourcePreferences(value: unknown): PlaybackSourcePreferences {
@@ -104,22 +97,14 @@ export function normalizePlaybackSourcePreferences(value: unknown): PlaybackSour
 }
 
 export function getStoredPlaybackSourcePreferences(principalID: ClientPrincipalID): PlaybackSourcePreferences {
-  try {
-    const raw = localStorage.getItem(playbackSourcePreferencesStorageKey(principalID));
-    return normalizePlaybackSourcePreferences(raw ? JSON.parse(raw) : null);
-  } catch {
-    return defaultPlaybackSourcePreferences();
-  }
+  return normalizePlaybackSourcePreferences(localStore.readJSON(playbackSourcePreferencesStorageKey(principalID)));
 }
 
 export function storePlaybackSourcePreferences(principalID: ClientPrincipalID, value: PlaybackSourcePreferences) {
   const preferences = normalizePlaybackSourcePreferences(value);
   const storageKey = playbackSourcePreferencesStorageKey(principalID);
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(preferences));
-  } catch {
-    // The choice still applies to this page when browser storage is unavailable or full.
-  }
+  // The choice still applies to this page when browser storage is unavailable or full.
+  localStore.writeJSON(storageKey, preferences);
   window.dispatchEvent(
     new CustomEvent<PlaybackSourcePreferencesChangeDetail>(PLAYER_SOURCE_PREFERENCES_CHANGE_EVENT, {
       detail: { storageKey, preferences },

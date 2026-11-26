@@ -9,6 +9,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 const maxTitleEditions = 32
@@ -62,7 +63,7 @@ func decodeTitleVariants(remote kikoeru.Work) ([]TitleVariant, error) {
 		origin = code
 	}
 	variants := []TitleVariant{}
-	if title := strings.TrimSpace(firstNonEmpty(remote.Title, remote.Name)); title != "" && !strings.EqualFold(title, code) {
+	if title := strings.TrimSpace(textvalue.FirstNonBlankTrimmed(remote.Title, remote.Name)); title != "" && !strings.EqualFold(title, code) {
 		variants = append(variants, TitleVariant{Code: code, Language: declared[code], Title: title, Origin: code == origin})
 	}
 	for _, edition := range remote.OtherLanguageEditions {

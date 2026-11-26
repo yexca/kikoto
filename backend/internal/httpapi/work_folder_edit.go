@@ -612,7 +612,7 @@ func (s *Server) workFolderEditCandidates(ctx context.Context, family map[int64]
 			item = workFolderEditItem{RemoteCode: code}
 			item.remoteWorkSavePlanItem = remoteWorkSavePlanItem{
 				ItemKey: fmt.Sprintf("remote:%d:%s:%s", tree.source.ID, code, relative), Path: relative, Kind: file.Kind,
-				SizeBytes: file.SizeBytes, SourceKind: "remote", SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL),
+				SizeBytes: file.SizeBytes, SourceKind: "remote", SourcePath: firstNonBlankTrimmed(file.DownloadURL, file.StreamURL),
 				RemoteSourceID: tree.source.ID, RemoteSourceCode: tree.source.Code, RemoteSourceName: tree.source.DisplayName,
 				RemotePath: file.Path,
 			}

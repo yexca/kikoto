@@ -238,7 +238,7 @@ func removeFetchStagingTree(dataRoot string, root string) (removedFetchStaging, 
 		return removedFetchStaging{}, err
 	}
 	if unsafeFetchStagingEntry(info) || !info.IsDir() {
-		return removedFetchStaging{}, fmt.Errorf("Fetch staging root is not a regular directory")
+		return removedFetchStaging{}, fmt.Errorf("fetch staging root is not a regular directory")
 	}
 	if err := validateFetchStagingDirectory(root); err != nil {
 		return removedFetchStaging{}, err
@@ -264,7 +264,7 @@ func validateFetchStagingPath(dataRoot string, target string) (bool, error) {
 		return false, err
 	}
 	if relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return false, fmt.Errorf("Fetch staging path escapes the data root")
+		return false, fmt.Errorf("fetch staging path escapes the data root")
 	}
 
 	current := absRoot
@@ -281,10 +281,10 @@ func validateFetchStagingPath(dataRoot string, target string) (bool, error) {
 			return false, err
 		}
 		if unsafeFetchStagingEntry(info) {
-			return false, fmt.Errorf("Fetch staging path contains a symbolic link or reparse point")
+			return false, fmt.Errorf("fetch staging path contains a symbolic link or reparse point")
 		}
 		if !info.IsDir() {
-			return false, fmt.Errorf("Fetch staging path contains a non-directory entry")
+			return false, fmt.Errorf("fetch staging path contains a non-directory entry")
 		}
 	}
 	return true, nil
@@ -302,7 +302,7 @@ func validateFetchStagingDirectory(directory string) error {
 			return err
 		}
 		if unsafeFetchStagingEntry(info) {
-			return fmt.Errorf("Fetch staging contains a symbolic link or reparse point")
+			return fmt.Errorf("fetch staging contains a symbolic link or reparse point")
 		}
 		if info.IsDir() {
 			if err := validateFetchStagingDirectory(path); err != nil {
@@ -311,7 +311,7 @@ func validateFetchStagingDirectory(directory string) error {
 			continue
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("Fetch staging contains an unsupported file type")
+			return fmt.Errorf("fetch staging contains an unsupported file type")
 		}
 	}
 	return nil
@@ -330,7 +330,7 @@ func removeFetchStagingDirectory(directory string) (removedFetchStaging, error) 
 			return result, err
 		}
 		if unsafeFetchStagingEntry(info) {
-			return result, fmt.Errorf("Fetch staging contains a symbolic link or reparse point")
+			return result, fmt.Errorf("fetch staging contains a symbolic link or reparse point")
 		}
 		if info.IsDir() {
 			removed, err := removeFetchStagingDirectory(path)
@@ -342,7 +342,7 @@ func removeFetchStagingDirectory(directory string) (removedFetchStaging, error) 
 			continue
 		}
 		if !info.Mode().IsRegular() {
-			return result, fmt.Errorf("Fetch staging contains an unsupported file type")
+			return result, fmt.Errorf("fetch staging contains an unsupported file type")
 		}
 		if err := os.Remove(path); err != nil {
 			return result, err

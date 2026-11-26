@@ -1,6 +1,7 @@
 import { ArchiveRestore, Clock3, Play, RotateCcw, ScanLine, TriangleAlert } from "lucide-react";
 
-import { type NavigationItem, type PageID } from "@/app/navigation";
+import type { NavigationItem } from "@/app/navigation";
+import type { PageID } from "@/lib/appPages";
 import { workflowRunPath, workflowsPath } from "@/lib/workflowLinks";
 import { api } from "@/lib/api";
 import { PERSONAL_DATA_PERMISSION, YOUR_DATA_SETTINGS_PATH } from "@/pages/settingsPaths";

@@ -7,12 +7,14 @@ pages; open only the page a change needs.
 ## Dependency Direction
 
 ```text
-app and routes -> features/<domain> -> shared (components, hooks, lib) -> components/ui
+app and pages -> features/<domain>, player -> shared (components, hooks, lib) -> components/ui
 ```
 
-- App and route layers compose domains. Shared code never imports a feature;
-  sibling features talk through composition or an extracted shared contract,
-  not each other's internals.
+- App and page layers compose features and the player, which never import
+  them back; navigation a feature or the player needs lives in `lib`. Sibling
+  features talk through composition or an extracted shared contract, not each
+  other's internals. Oxlint's `kikoto/dependency-direction` fails imports
+  that break the direction; never add to its `crossFeatureAllowance`.
 - Promote a domain only once it owns a real page or flow plus several cohesive
   files. Extract incrementally; no repository-wide moves.
 - Keep UI, state models, and transport separate when that makes behavior

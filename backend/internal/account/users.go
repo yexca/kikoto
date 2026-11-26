@@ -70,7 +70,7 @@ func (s *Store) ListManagedUsers(ctx context.Context) ([]ManagedUser, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	users := []ManagedUser{}
 	for rows.Next() {
 		var user ManagedUser
@@ -102,7 +102,7 @@ func (s *Store) CreateManagedUser(ctx context.Context, input CreateUserInput) (M
 	if err != nil {
 		return ManagedUser{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `INSERT INTO user_account (username, display_name, role, enabled) VALUES (?, ?, ?, ?)`, input.Username, input.DisplayName, input.Role, input.Enabled)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") {
@@ -134,7 +134,7 @@ func (s *Store) UpdateManagedUser(ctx context.Context, input UpdateUserInput) (M
 	if err != nil {
 		return ManagedUser{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, err := loadManagedUser(ctx, tx, input.ID)
 	if err != nil {
 		return ManagedUser{}, err
@@ -183,7 +183,7 @@ func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInpu
 	if err != nil {
 		return User{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var username, currentDisplayName, currentUILocale string
 	if err := tx.QueryRowContext(ctx, `SELECT username, display_name, ui_locale FROM user_account WHERE id = ? AND enabled = 1`, input.ID).Scan(&username, &currentDisplayName, &currentUILocale); err != nil {
@@ -278,7 +278,7 @@ func (s *Store) DeleteManagedUser(ctx context.Context, actorUserID int64, userID
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, err := loadManagedUser(ctx, tx, userID)
 	if err != nil {
 		return err

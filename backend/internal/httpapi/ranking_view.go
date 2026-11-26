@@ -688,7 +688,7 @@ func (s *Server) rankingFallback(ctx context.Context, list rankingList, code str
 	if fallback.Title == "" {
 		catalog := s.releaseFeedFallback(ctx, code)
 		fallback.Title = catalog.Title
-		fallback.Circle = firstNonEmpty(fallback.Circle, catalog.Circle)
+		fallback.Circle = firstNonBlankTrimmed(fallback.Circle, catalog.Circle)
 	}
 	if fallback.CoverURL == "" && entry.coverURL != "" && list.SourceID != nil {
 		fallback.CoverURL = s.remoteImageProxyURL(*list.SourceID, entry.coverURL)

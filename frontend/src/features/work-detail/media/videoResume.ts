@@ -1,4 +1,5 @@
-import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { accountKey, type ClientStore, type StorageKey } from "@/lib/clientStorage";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 const VIDEO_RESUME_STORAGE_BASE_KEY = "kikoto:video-resume:v1";
 
@@ -12,10 +13,8 @@ const finishedRemainingShare = 0.05;
 
 type VideoResumeEntry = { position: number; updatedAt: number };
 type VideoResumeStore = Record<string, VideoResumeEntry>;
-type ResumeStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
 export function videoResumeStorageKey(principalID: ClientPrincipalID) {
-  return currentScopedStorageKey(VIDEO_RESUME_STORAGE_BASE_KEY, principalID);
+  return accountKey(VIDEO_RESUME_STORAGE_BASE_KEY, principalID);
 }
 
 /**
@@ -31,30 +30,26 @@ export function resumableVideoPosition(position: number, durationSeconds: number
   return position;
 }
 
-function readStore(storage: ResumeStorage, storageKey: string): VideoResumeStore {
-  try {
-    const parsed = JSON.parse(storage.getItem(storageKey) ?? "null") as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const store: VideoResumeStore = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      const entry = value as Partial<VideoResumeEntry> | null;
-      if (
-        /^[1-9]\d*$/.test(key) &&
-        typeof entry?.position === "number" &&
-        Number.isFinite(entry.position) &&
-        typeof entry.updatedAt === "number"
-      ) {
-        store[key] = { position: entry.position, updatedAt: entry.updatedAt };
-      }
+function readStore(storage: ClientStore, storageKey: StorageKey): VideoResumeStore {
+  const parsed = storage.readJSON(storageKey);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const store: VideoResumeStore = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const entry = value as Partial<VideoResumeEntry> | null;
+    if (
+      /^[1-9]\d*$/.test(key) &&
+      typeof entry?.position === "number" &&
+      Number.isFinite(entry.position) &&
+      typeof entry.updatedAt === "number"
+    ) {
+      store[key] = { position: entry.position, updatedAt: entry.updatedAt };
     }
-    return store;
-  } catch {
-    return {};
   }
+  return store;
 }
 
 /** The stored position of a local or cached video location, if any. */
-export function readVideoResumePosition(storage: ResumeStorage, storageKey: string, locationId: number) {
+export function readVideoResumePosition(storage: ClientStore, storageKey: StorageKey, locationId: number) {
   if (locationId <= 0) return null;
   return readStore(storage, storageKey)[String(locationId)]?.position ?? null;
 }
@@ -62,32 +57,29 @@ export function readVideoResumePosition(storage: ResumeStorage, storageKey: stri
 /**
  * Stores where a video location stopped, or forgets it when the position is
  * not worth resuming. Browser storage holds only location ids and positions.
+ * Playback stays usable when browser storage is unavailable or full.
  */
 export function writeVideoResumePosition(
-  storage: ResumeStorage,
-  storageKey: string,
+  storage: ClientStore,
+  storageKey: StorageKey,
   locationId: number,
   position: number,
   durationSeconds: number,
   now = Date.now(),
 ) {
   if (locationId <= 0) return;
-  try {
-    const store = readStore(storage, storageKey);
-    const key = String(locationId);
-    const resumable = resumableVideoPosition(position, durationSeconds);
-    if (resumable === null) {
-      if (!(key in store)) return;
-      delete store[key];
-    } else {
-      store[key] = { position: Math.round(resumable * 10) / 10, updatedAt: now };
-    }
-    const kept = Object.entries(store)
-      .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
-      .slice(0, maxVideoResumeEntries);
-    if (kept.length === 0) storage.removeItem(storageKey);
-    else storage.setItem(storageKey, JSON.stringify(Object.fromEntries(kept)));
-  } catch {
-    // Playback stays usable when browser storage is unavailable or full.
+  const store = readStore(storage, storageKey);
+  const key = String(locationId);
+  const resumable = resumableVideoPosition(position, durationSeconds);
+  if (resumable === null) {
+    if (!(key in store)) return;
+    delete store[key];
+  } else {
+    store[key] = { position: Math.round(resumable * 10) / 10, updatedAt: now };
   }
+  const kept = Object.entries(store)
+    .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+    .slice(0, maxVideoResumeEntries);
+  if (kept.length === 0) storage.remove(storageKey);
+  else storage.writeJSON(storageKey, Object.fromEntries(kept));
 }

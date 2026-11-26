@@ -584,7 +584,7 @@ func (s *Server) loadVoiceUserTagsBatch(ctx context.Context, userID int64) (map[
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := map[int64][]voiceUserTag{}
 	for rows.Next() {
 		var personID int64
@@ -676,7 +676,7 @@ func (s *Server) loadVoiceWorkRows(ctx context.Context, userID int64, personID i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// The caller's enrichment issues further queries, so the cursor releases
 	// its pooled connection before this returns.
 	workRows := []voiceWorkRow{}

@@ -131,8 +131,8 @@ func parsePartyFromDLsiteSnapshot(raw string) parsedParty {
 	if err := json.Unmarshal(rawBytes, &payload); err != nil {
 		return parsedParty{}
 	}
-	externalID := firstNonEmpty(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)
-	displayName := firstNonEmpty(payload.MakerName, payload.LabelName, externalID)
+	externalID := firstNonBlankTrimmed(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)
+	displayName := firstNonBlankTrimmed(payload.MakerName, payload.LabelName, externalID)
 	return parsedParty{ExternalID: normalizeMakerID(externalID), DisplayName: strings.TrimSpace(displayName)}
 }
 

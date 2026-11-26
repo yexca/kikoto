@@ -3,14 +3,16 @@ import { Preferences } from "@capacitor/preferences";
 
 import { clearNativeAssetTransport, configureNativeAssetTransport } from "@/lib/nativeAssetTransport";
 import { changeApiSession } from "@/lib/apiSession";
+import { deviceKey, localStore, type StorageKey } from "@/lib/clientStorage";
 import {
   clearNativeSessionCredential,
   readNativeSessionCredential,
   writeNativeSessionCredential,
 } from "@/lib/nativeSessionCredential";
 
-const SERVER_URL_STORAGE_KEY = "kikoto:mobile-server-url";
-const SESSION_TOKEN_STORAGE_KEY = "kikoto:mobile-session-token";
+// Both pick the server, so they are kept for the device rather than for one server.
+const SERVER_URL_STORAGE_KEY = deviceKey("kikoto:mobile-server-url");
+const SESSION_TOKEN_STORAGE_KEY = deviceKey("kikoto:mobile-session-token");
 
 // Native shells hold the session in memory and in their native credential
 // store, never in WebView storage, which device backups include.
@@ -53,8 +55,13 @@ export function normalizeServerURL(value: string) {
   return parsed.toString().replace(/\/+$/, "");
 }
 
+// A server address or session that cannot be kept fails the sign-in step instead of vanishing.
+function storeOrThrow(key: StorageKey, value: string) {
+  if (!localStore.write(key, value)) throw new Error("Browser storage is unavailable.");
+}
+
 export function getStoredServerURL() {
-  return localStorage.getItem(SERVER_URL_STORAGE_KEY) ?? "";
+  return localStore.read(SERVER_URL_STORAGE_KEY) ?? "";
 }
 
 export async function setStoredServerURL(value: string) {
@@ -67,7 +74,7 @@ export async function setStoredServerURL(value: string) {
     // removal was pending. Fence those too, at the point the new URL is published.
     changeApiSession();
   }
-  localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
+  storeOrThrow(SERVER_URL_STORAGE_KEY, normalized);
   if (!isNativeApp()) return;
   await Promise.all([
     Preferences.set({ key: SERVER_URL_STORAGE_KEY, value: normalized }),
@@ -77,8 +84,8 @@ export async function setStoredServerURL(value: string) {
 
 export async function clearStoredServerURL() {
   changeApiSession();
-  localStorage.removeItem(SERVER_URL_STORAGE_KEY);
-  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  localStore.remove(SERVER_URL_STORAGE_KEY);
+  localStore.remove(SESSION_TOKEN_STORAGE_KEY);
   nativeSession = "";
   if (!isNativeApp()) return;
   await Promise.all([
@@ -90,7 +97,7 @@ export async function clearStoredServerURL() {
 
 export function getStoredSessionToken() {
   if (isNativeApp()) return nativeSession;
-  return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "";
+  return localStore.read(SESSION_TOKEN_STORAGE_KEY) ?? "";
 }
 
 export async function setStoredSessionToken(value: string) {
@@ -98,7 +105,7 @@ export async function setStoredSessionToken(value: string) {
     const token = value.trim();
     if (token !== getStoredSessionToken()) changeApiSession();
     if (!isNativeApp()) {
-      localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+      storeOrThrow(SESSION_TOKEN_STORAGE_KEY, token);
       return;
     }
     nativeSession = token;
@@ -111,7 +118,7 @@ export async function setStoredSessionToken(value: string) {
 
 export async function clearStoredSessionToken() {
   changeApiSession();
-  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  localStore.remove(SESSION_TOKEN_STORAGE_KEY);
   nativeSession = "";
   if (!isNativeApp()) return;
   const serverUrl = getStoredServerURL();
@@ -130,9 +137,9 @@ export async function hydrateNativeConfig() {
   const serverUrl = server.value?.trim() ?? "";
   const credential = serverUrl ? token : "";
   if (serverUrl !== getStoredServerURL() || credential !== getStoredSessionToken()) changeApiSession();
-  if (serverUrl) localStorage.setItem(SERVER_URL_STORAGE_KEY, serverUrl);
-  else localStorage.removeItem(SERVER_URL_STORAGE_KEY);
-  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  if (serverUrl) localStore.write(SERVER_URL_STORAGE_KEY, serverUrl);
+  else localStore.remove(SERVER_URL_STORAGE_KEY);
+  localStore.remove(SESSION_TOKEN_STORAGE_KEY);
   nativeSession = credential;
   // A Keychain item outlives an app removal that cleared the server address.
   if (!serverUrl && token) await clearNativeSessionCredential();

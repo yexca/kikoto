@@ -21,8 +21,6 @@ import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/float
 import { ConfirmMediaBatchDeleteDialog } from "@/features/work-detail/dialogs/ConfirmMediaBatchDeleteDialog";
 import {
   buildFolderEditTree,
-  folderEditSelectedBytes,
-  withFolderEditPaths,
   type FolderEditFile,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
@@ -34,9 +32,17 @@ import {
   ResultNode,
   SelectionNode,
 } from "@/features/work-detail/folder-edit/FolderEditPanes";
-import type { FileWorkspacePlace } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  folderEditResourceChanges,
+  type FileWorkspacePlace,
+} from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  ResourceFilesBody,
+  SelectAllNone,
+  useResourceSelection,
+} from "@/features/work-detail/folder-edit/FileWorkspaceSelection";
 import { PlaceBadge, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
-import { lyricsEditResourceChanges, type LyricsEditResource } from "@/features/work-detail/lyrics/lyricsEditModel";
+import type { LyricsEditResource } from "@/features/work-detail/lyrics/lyricsEditModel";
 import { lyricsFileTrackCounts, managedLyricsLanguage } from "@/features/work-detail/lyrics/managedLyricsModel";
 import { useLyricsEditWorkspace, type LyricsEditWorkspace } from "@/features/work-detail/lyrics/useLyricsEditWorkspace";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
@@ -50,8 +56,6 @@ type LyricsPane = "sources" | "select" | "result";
 
 /** A select value cannot be empty, so every language has its own. */
 const allLanguagesValue = "all";
-const noFiles: FolderEditFile[] = [];
-const noSelection: ReadonlySet<string> = new Set();
 
 /**
  * Edits the lyrics Kikoto manages in one local folder of a work, in three
@@ -157,7 +161,7 @@ export function LyricsFilesWorkspace({
         className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,25rem)]"
         data-kikoto-lyrics-files=""
       >
-        <ResourceColumn
+        <LyricsSourcesColumn
           workspace={workspace}
           active={pane === "sources"}
           onSelect={(resource) => {
@@ -165,8 +169,8 @@ export function LyricsFilesWorkspace({
             setPane("select");
           }}
         />
-        <SelectionColumn workspace={workspace} active={pane === "select"} tracksByLocation={tracksByLocation} />
-        <ResultColumn
+        <LyricsFilesColumn workspace={workspace} active={pane === "select"} tracksByLocation={tracksByLocation} />
+        <ManagedLyricsColumn
           workspace={workspace}
           folder={folder}
           folders={folders}
@@ -201,7 +205,7 @@ export function LyricsFilesWorkspace({
   );
 }
 
-function resourceTitle(resource: LyricsEditResource, t: (key: string) => string) {
+function lyricsResourceTitle(resource: LyricsEditResource, t: (key: string) => string) {
   if (resource.kind === "current") return t("lyricsFiles.managed");
   if (resource.kind === "folder") return t("lyricsFiles.thisFolder");
   return languageLabel(resource.editionLanguage, t);
@@ -233,7 +237,7 @@ function managedLanguageSummary(files: readonly FolderEditFile[], t: (key: strin
     .join(" · ");
 }
 
-function ResourceColumn({
+function LyricsSourcesColumn({
   workspace,
   active,
   onSelect,
@@ -281,7 +285,7 @@ function ResourceColumn({
                   key={resource.id}
                   icon={resourceIcons[resource.kind]}
                   stripe={placeTone[lyricsResourcePlace(resource)].band}
-                  title={resourceTitle(resource, t)}
+                  title={lyricsResourceTitle(resource, t)}
                   noteTone={resource.offline ? "warning" : "muted"}
                   note={
                     resource.offline
@@ -294,7 +298,7 @@ function ResourceColumn({
                   detail={languages || (resource.kind === "remote" ? resource.sourceName : resource.rootPath)}
                   removes={resource.kind === "current"}
                   selected={workspace.activeResource.id === resource.id}
-                  changes={lyricsEditResourceChanges(
+                  changes={folderEditResourceChanges(
                     resource,
                     state?.status === "ready" ? state.files : undefined,
                     workspace.selection[resource.id],
@@ -328,7 +332,7 @@ function ResourceColumn({
   );
 }
 
-function SelectionColumn({
+function LyricsFilesColumn({
   workspace,
   active,
   tracksByLocation,
@@ -339,20 +343,14 @@ function SelectionColumn({
 }) {
   const { t } = useTranslation();
   const resource = workspace.activeResource;
-  const state = workspace.files[resource.id];
-  const files = state?.status === "ready" ? state.files : noFiles;
-  const selected = workspace.selection[resource.id] ?? noSelection;
+  const selection = useResourceSelection(workspace, resource.id);
+  const { files, selected, selectedCount, bytes, setIncluded } = selection;
   const tree = useMemo(() => buildFolderEditTree(files), [files]);
-  const allPaths = useMemo(() => files.map((file) => file.path), [files]);
-  const selectedCount = files.filter((file) => selected.has(file.path)).length;
-  const bytes = folderEditSelectedBytes(files, selected);
   const language = workspace.language(resource);
   const place = lyricsResourcePlace(resource);
   const PlaceIcon = resourceIcons[resource.kind];
   // Selected lyrics wait for their language before anything is planned.
   const needsLanguage = language === null && selectedCount > 0;
-  const setIncluded = (paths: readonly string[], included: boolean) =>
-    workspace.setSelected(resource.id, withFolderEditPaths(selected, paths, included));
   const hint =
     resource.kind === "current"
       ? t("lyricsFiles.managedHint")
@@ -377,7 +375,7 @@ function SelectionColumn({
             <PlaceIcon className={cn("mt-0.5 h-4 w-4 shrink-0", placeTone[place].text)} aria-hidden="true" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium">{resourceTitle(resource, t)}</span>
+                <span className="truncate text-sm font-medium">{lyricsResourceTitle(resource, t)}</span>
                 {(resource.kind === "local" || resource.kind === "remote") && (
                   <span className="shrink-0 font-mono text-xs text-muted-foreground">{resource.editionCode}</span>
                 )}
@@ -389,24 +387,7 @@ function SelectionColumn({
               </div>
             </div>
           </div>
-          <div className="-mr-2 flex shrink-0 gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={workspace.applying || files.length === 0}
-              onClick={() => setIncluded(allPaths, true)}
-            >
-              {t("remoteFetch.all")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={workspace.applying || files.length === 0}
-              onClick={() => setIncluded(allPaths, false)}
-            >
-              {t("remoteFetch.none")}
-            </Button>
-          </div>
+          <SelectAllNone selection={selection} applying={workspace.applying} />
         </div>
         <p className="px-3 pb-2.5 text-xs text-muted-foreground lg:px-4">{hint}</p>
         {resource.kind !== "current" && (
@@ -492,50 +473,40 @@ function SelectionColumn({
           </div>
         )}
       </div>
-      <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
-        {!state || state.status === "loading" ? (
-          <PaneNote>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t("folderEdit.loadingFiles")}
-          </PaneNote>
-        ) : state.status === "error" ? (
-          <PaneNote>
-            {t("folderEdit.filesFailed")}
-            <Button variant="outline" size="sm" onClick={() => workspace.retryResource(resource)}>
-              {t("folderEdit.retry")}
-            </Button>
-          </PaneNote>
-        ) : files.length === 0 ? (
-          <PaneNote>
+      <ResourceFilesBody
+        state={selection.state}
+        empty={
+          <>
             <PlaceIcon className="h-5 w-5" aria-hidden="true" />
             {t(resource.kind === "current" ? "lyricsFiles.emptyResult" : "lyricsFiles.noLyricsFiles")}
-          </PaneNote>
-        ) : (
-          <SelectionNode
-            // Folder open state belongs to the resource it was opened in.
-            key={resource.id}
-            node={tree}
-            depth={0}
-            selected={selected}
-            disabled={workspace.applying}
-            onToggle={setIncluded}
-            meta={(file) => {
-              const tracks = file.locationId === null ? 0 : (tracksByLocation.get(file.locationId) ?? 0);
-              return tracks > 0 ? (
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {t("lyricsManager.usedByTracks", { count: tracks })}
-                </span>
-              ) : null;
-            }}
-            isRoot
-          />
-        )}
-      </div>
+          </>
+        }
+        onRetry={() => workspace.retryResource(resource)}
+      >
+        <SelectionNode
+          // Folder open state belongs to the resource it was opened in.
+          key={resource.id}
+          node={tree}
+          depth={0}
+          selected={selected}
+          disabled={workspace.applying}
+          onToggle={setIncluded}
+          meta={(file) => {
+            const tracks = file.locationId === null ? 0 : (tracksByLocation.get(file.locationId) ?? 0);
+            return tracks > 0 ? (
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {t("lyricsManager.usedByTracks", { count: tracks })}
+              </span>
+            ) : null;
+          }}
+          isRoot
+        />
+      </ResourceFilesBody>
     </section>
   );
 }
 
-function ResultColumn({
+function ManagedLyricsColumn({
   workspace,
   folder,
   folders,

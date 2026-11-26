@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { openPlayingRecordFolder, openPlayingWorkDetail } from "@/app/playingWorkNavigation";
+import { openPlayingRecordFolder, openPlayingWorkDetail } from "@/lib/playingWorkNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { NATIVE_BACK_EVENT } from "@/lib/appEvents";

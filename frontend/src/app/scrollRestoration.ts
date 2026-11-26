@@ -1,6 +1,6 @@
 import { useLayoutEffect } from "react";
 
-import { historyStateForNavigation } from "@/app/appRoutes";
+import { historyStateForNavigation } from "@/lib/appRoutes";
 import { changesWorkspace, replacesWorkspaceList } from "@/app/workspaceNavigation";
 import {
   HISTORY_ENTRY_UPDATED_EVENT,

@@ -511,7 +511,7 @@ func loadUnlinkedWorkFamilyMembers(ctx context.Context, queryer unlinkedWorkQuer
 	if err != nil {
 		return members, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var memberID int64
 		var memberCode string

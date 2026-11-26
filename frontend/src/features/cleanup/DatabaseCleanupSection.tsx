@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/i18n/format";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -300,7 +301,7 @@ function TaskCount({
   label: string;
 }) {
   const { t } = useTranslation();
-  if (loading) return <span className="skeleton-reveal h-5 w-8 shrink-0 animate-pulse rounded-full bg-muted" />;
+  if (loading) return <Skeleton as="span" reveal className="h-5 w-8 shrink-0 rounded-full" />;
   if (!available)
     return (
       <Badge variant="outline" className="shrink-0 text-muted-foreground">

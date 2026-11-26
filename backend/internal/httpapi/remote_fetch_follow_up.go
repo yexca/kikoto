@@ -56,7 +56,7 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 	if len(followUp.Additions) > maxWorkFolderEditAdditions {
 		return workFolderEditPlan{}, invalidRequestError(fmt.Sprintf("at most %d files can be added at once", maxWorkFolderEditAdditions))
 	}
-	code := firstNonEmpty(plan.EditionCode, plan.PrimaryCode)
+	code := firstNonBlankTrimmed(plan.EditionCode, plan.PrimaryCode)
 	var workID int64
 	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

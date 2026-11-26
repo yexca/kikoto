@@ -17,6 +17,7 @@ import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import type { FileSource, LibraryLayout, LibraryPool } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
@@ -432,20 +433,19 @@ function ReconnectPoolButton({
 
 /** A loading placeholder with the footprint of the Libraries section: its heading and two card groups. */
 export function LibrarySourceListSkeleton() {
-  const bar = "animate-pulse rounded bg-muted";
   const card = (footer: boolean, key: number) => (
     <Card key={key} className="flex min-w-0 flex-col gap-3 p-3.5">
       <div className="flex min-w-0 items-start gap-2.5">
-        <div className="mt-1.5 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-muted" />
+        <Skeleton className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" />
         <div className="min-w-0 flex-1 space-y-2">
-          <div className={cn(bar, "h-4 w-1/2")} />
-          <div className={cn(bar, "h-3 w-2/3")} />
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-3 w-2/3" />
         </div>
       </div>
       {footer && (
         <div className="flex items-center justify-end gap-0.5 border-t pt-2">
           {Array.from({ length: 3 }, (_, index) => (
-            <div key={index} className={cn(bar, "h-8 w-8 rounded-md")} />
+            <Skeleton key={index} className="h-8 w-8 rounded-md" />
           ))}
         </div>
       )}
@@ -454,17 +454,17 @@ export function LibrarySourceListSkeleton() {
   return (
     <div className="skeleton-reveal min-w-0" aria-hidden="true">
       <div className="border-b pb-2.5">
-        <div className={cn(bar, "h-4 w-24")} />
+        <Skeleton className="h-4 w-24" />
       </div>
       <div className="pb-2">
         <div className="pb-2 pt-3">
-          <div className={cn(bar, "h-3 w-16")} />
+          <Skeleton className="h-3 w-16" />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{card(false, 0)}</div>
       </div>
       <div>
         <div className="pb-2 pt-3">
-          <div className={cn(bar, "h-3 w-20")} />
+          <Skeleton className="h-3 w-20" />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[1, 2].map((key) => card(true, key))}</div>
       </div>

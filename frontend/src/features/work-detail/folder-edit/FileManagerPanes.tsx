@@ -16,12 +16,12 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import {
   fileWorkspacePlace,
+  folderEditResourceChanges,
   type FileWorkspacePlace,
   type PendingDeletions,
 } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import {
   CURRENT_FOLDER_RESOURCE,
-  folderEditResourceChanges,
   withFolderEditPaths,
   type FolderEditResource,
 } from "@/features/work-detail/folder-edit/folderEditModel";

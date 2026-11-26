@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { Skeleton } from "@/components/ui/skeleton";
 import { type ImageZoom, ZoomableImage } from "@/components/zoomable-image";
 import { countTextLines, formatLyricsTime, lyricsView } from "@/features/work-detail/dialogs/textPreviewModel";
 import { WorkVideoPlayer } from "@/features/work-detail/media/WorkVideoPlayer";
@@ -620,13 +621,13 @@ function TextReader({
 function TextPreviewSkeleton() {
   return (
     <div className="skeleton-reveal space-y-3" aria-label={i18n.t("libraryDetail.loadingTextPreview")}>
-      <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+      <Skeleton className="h-4 w-40" />
       <div className="space-y-2">
-        <div className="h-4 w-full animate-pulse rounded bg-muted" />
-        <div className="h-4 w-11/12 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-10/12 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-10/12" />
+        <Skeleton className="h-4 w-2/3" />
       </div>
     </div>
   );

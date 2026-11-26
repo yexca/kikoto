@@ -101,9 +101,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		return metadata
 	}
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
-	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)))
-	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
-	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
+	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonBlankTrimmed(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)))
+	metadata.BaseCode = normalizeDLsiteCode(firstNonBlankTrimmed(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
+	currentCode := normalizeDLsiteCode(firstNonBlankTrimmed(payload.WorkNo, payload.ProductID))
 	originCode, currentLanguage := dlsiteEditionSummary(payload.LanguageEditions, currentCode)
 	metadata.LanguageEditions = buildDLsiteLanguageEditions(payload.LanguageEditions, originCode, currentCode)
 	if metadata.BaseCode == "" && originCode != "" && !strings.EqualFold(originCode, currentCode) {
@@ -112,20 +112,20 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	if metadata.BaseCode == currentCode {
 		metadata.BaseCode = ""
 	}
-	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(
+	metadata.MetadataLanguage = strings.TrimSpace(firstNonBlankTrimmed(
 		envelope.Kikoto.EditionLanguage, payload.Kikoto.EditionLanguage, currentLanguage,
 		envelope.Kikoto.Language, payload.Kikoto.Language, payload.Language, payload.Locale,
 		payload.TranslationInfo.Lang,
 	))
 	metadata.ReleaseDate = trimmedSnapshotPointer(payload.ReleaseDate)
-	metadata.DLsiteUpdatedAt = trimmedSnapshotPointer(firstNonEmpty(payload.UpdateDate, payload.ModifyDate))
+	metadata.DLsiteUpdatedAt = trimmedSnapshotPointer(firstNonBlankTrimmed(payload.UpdateDate, payload.ModifyDate))
 	if payload.RateCount != nil {
 		metadata.RatingCount = payload.RateCount
 	} else {
 		metadata.RatingCount = payload.ReviewCount
 	}
 	metadata.Series = dlsiteSnapshotSeries(payload)
-	metadata.SeriesID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.TitleID, payload.SeriesID)))
+	metadata.SeriesID = strings.ToUpper(strings.TrimSpace(firstNonBlankTrimmed(payload.TitleID, payload.SeriesID)))
 	metadata.Tags = uniqueDLsiteSnapshotTags(payload.Genres)
 	metadata.VoiceActorIdentities = uniqueDLsiteSnapshotActors(payload.Creators)
 	for _, actor := range metadata.VoiceActorIdentities {
@@ -187,7 +187,7 @@ func dlsiteEditionSummary(editions []dlsiteSnapshotEdition, currentCode string) 
 			originCode, originOrder = code, order
 		}
 		if strings.EqualFold(code, currentCode) {
-			currentLanguage = strings.TrimSpace(firstNonEmpty(edition.Lang, edition.Label))
+			currentLanguage = strings.TrimSpace(firstNonBlankTrimmed(edition.Lang, edition.Label))
 		}
 	}
 	return originCode, currentLanguage
@@ -202,7 +202,7 @@ func buildDLsiteLanguageEditions(editions []dlsiteSnapshotEdition, originCode, c
 		}
 		isOrigin := strings.EqualFold(code, originCode)
 		translations = append(translations, workTranslation{
-			PrimaryCode: code, MetadataLanguage: firstNonEmpty(edition.Lang, edition.Label),
+			PrimaryCode: code, MetadataLanguage: firstNonBlankTrimmed(edition.Lang, edition.Label),
 			EditionLabel: strings.TrimSpace(edition.Label), Origin: isOrigin, Official: false,
 			TranslationKind: map[bool]string{true: "origin", false: "unknown"}[isOrigin],
 			Current:         strings.EqualFold(code, currentCode),
@@ -220,12 +220,12 @@ func trimmedSnapshotPointer(value string) *string {
 }
 
 func dlsiteSnapshotSeries(payload dlsiteSnapshotPayload) string {
-	series := strings.TrimSpace(firstNonEmpty(payload.SeriesName, payload.Series))
+	series := strings.TrimSpace(firstNonBlankTrimmed(payload.SeriesName, payload.Series))
 	if series != "" {
 		return series
 	}
 	for _, item := range payload.SeriesWork {
-		if series = strings.TrimSpace(firstNonEmpty(item.Title, item.Name)); series != "" {
+		if series = strings.TrimSpace(firstNonBlankTrimmed(item.Title, item.Name)); series != "" {
 			return series
 		}
 	}

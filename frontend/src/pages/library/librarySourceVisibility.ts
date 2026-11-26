@@ -5,8 +5,9 @@ import {
   type SourceVisibilityPreferences,
 } from "@/components/source-visibility/sourceVisibility";
 import type { LibrarySource } from "@/lib/api";
+import { accountScopeKey } from "@/lib/clientStorage";
 
-const storagePrefix = "kikoto:library-source-visibility:";
+const storageName = "kikoto:library-source-visibility";
 
 /**
  * Automatic visibility: Local is always shown, Tracked is shown once any tracked
@@ -22,9 +23,9 @@ export function autoLibrarySourceVisible(
 }
 
 export function readLibrarySourceVisibility(scope: string): SourceVisibilityPreferences {
-  return readSourceVisibility(`${storagePrefix}${scope}`);
+  return readSourceVisibility(accountScopeKey(storageName, scope));
 }
 
 export function writeLibrarySourceVisibility(scope: string, preferences: SourceVisibilityPreferences) {
-  writeSourceVisibility(`${storagePrefix}${scope}`, preferences);
+  writeSourceVisibility(accountScopeKey(storageName, scope), preferences);
 }

@@ -30,7 +30,7 @@ func TestRecommendationSeededHashMatchesSQLiteExpression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	for _, test := range []struct {
 		workID int64

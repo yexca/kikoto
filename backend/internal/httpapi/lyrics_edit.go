@@ -468,7 +468,7 @@ func (s *Server) lyricsEditCandidates(ctx context.Context, family map[int64]bool
 			if !ok {
 				return nil, lyricsFetchRequestError{status: http.StatusNotFound, message: "a selected lyrics file is no longer on the source"}
 			}
-			address, err := lyricsDownloadAddress(firstNonEmpty(file.DownloadURL, file.StreamURL), tree.source)
+			address, err := lyricsDownloadAddress(firstNonBlankTrimmed(file.DownloadURL, file.StreamURL), tree.source)
 			if err != nil {
 				return nil, err
 			}

@@ -1,3 +1,5 @@
+import { deviceKey, localStore, type ClientStore, type StorageKey } from "@/lib/clientStorage";
+
 import type { DockMode, PlaybackCompatibilityScope, PlayerTrack, PlayMode, SleepTimerState } from "./playerTypes";
 import { withQueueIdentity } from "./playbackIdentity";
 
@@ -5,11 +7,12 @@ export const PLAYER_QUEUE_STORAGE_BASE_KEY = "kikoto:player-queue:v2";
 
 export const OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY = "kikoto:player-progress:v2";
 
-const LEGACY_PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
+// The first queue and progress shapes were kept for the whole device.
+const LEGACY_PLAYER_QUEUE_STORAGE_KEY = deviceKey("kikoto:player-queue:v1");
 
-const LEGACY_PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
+const LEGACY_PLAYER_PROGRESS_STORAGE_KEY = deviceKey("kikoto:player-progress:v1");
 
-const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
+const DOCK_MODE_STORAGE_KEY = deviceKey("kikoto:player-dock-mode:v1");
 
 export const PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY = "kikoto:player-compatibility:v1";
 
@@ -17,27 +20,21 @@ export function isPlaybackCompatibilityScope(value: unknown): value is PlaybackC
   return value === "off" || value === "track" || value === "queue" || value === "always";
 }
 
-export function loadPersistedPlaybackCompatibility(storageKey: string): PlaybackCompatibilityScope {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
-      version?: number;
-      scope?: unknown;
-    } | null;
-    return isPlaybackCompatibilityScope(parsed?.scope) && parsed.scope === "always" ? "always" : "off";
-  } catch {
-    return "off";
-  }
+export function loadPersistedPlaybackCompatibility(storageKey: StorageKey): PlaybackCompatibilityScope {
+  const parsed = localStore.readJSON(storageKey) as { version?: number; scope?: unknown } | null;
+  return isPlaybackCompatibilityScope(parsed?.scope) && parsed.scope === "always" ? "always" : "off";
 }
 
-export function discardObsoletePlayerState(scopedProgressStorageKey: string, storage?: Pick<Storage, "removeItem">) {
-  try {
-    const target = storage ?? localStorage;
-    target.removeItem(LEGACY_PLAYER_QUEUE_STORAGE_KEY);
-    target.removeItem(LEGACY_PLAYER_PROGRESS_STORAGE_KEY);
-    target.removeItem(scopedProgressStorageKey);
-  } catch {
-    // Playback remains usable when browser storage is unavailable.
-  }
+// Playback remains usable when browser storage is unavailable.
+export function persistPlaybackCompatibility(storageKey: StorageKey, scope: PlaybackCompatibilityScope) {
+  if (scope === "always") localStore.writeJSON(storageKey, { version: 1, scope: "always" });
+  else localStore.remove(storageKey);
+}
+
+export function discardObsoletePlayerState(scopedProgressStorageKey: StorageKey, store: ClientStore = localStore) {
+  store.remove(LEGACY_PLAYER_QUEUE_STORAGE_KEY);
+  store.remove(LEGACY_PLAYER_PROGRESS_STORAGE_KEY);
+  store.remove(scopedProgressStorageKey);
 }
 
 function isDockMode(value: unknown): value is DockMode {
@@ -48,42 +45,32 @@ function defaultDockMode(isMobile: boolean): DockMode {
   return isMobile ? "compact" : "full";
 }
 
+type StoredDockModes = { desktop?: DockMode; mobile?: DockMode } | null;
+
 export function restoreDockMode(isMobile: boolean): DockMode {
-  try {
-    const stored = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
-      desktop?: DockMode;
-      mobile?: DockMode;
-    } | null;
-    const mode = isMobile ? stored?.mobile : stored?.desktop;
-    return isDockMode(mode) ? mode : defaultDockMode(isMobile);
-  } catch {
-    return defaultDockMode(isMobile);
-  }
+  const stored = localStore.readJSON(DOCK_MODE_STORAGE_KEY) as StoredDockModes;
+  const mode = isMobile ? stored?.mobile : stored?.desktop;
+  return isDockMode(mode) ? mode : defaultDockMode(isMobile);
 }
 
+// Malformed local preferences are replaced with the next valid selection.
 export function persistDockMode(isMobile: boolean, mode: DockMode) {
   const stored: { version: 1; desktop?: DockMode; mobile?: DockMode } = { version: 1 };
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
-      desktop?: DockMode;
-      mobile?: DockMode;
-    } | null;
-    if (isDockMode(parsed?.desktop)) stored.desktop = parsed.desktop;
-    if (isDockMode(parsed?.mobile)) stored.mobile = parsed.mobile;
-  } catch {
-    // Replace malformed local preferences with the next valid selection.
-  }
+  const parsed = localStore.readJSON(DOCK_MODE_STORAGE_KEY) as StoredDockModes;
+  if (isDockMode(parsed?.desktop)) stored.desktop = parsed.desktop;
+  if (isDockMode(parsed?.mobile)) stored.mobile = parsed.mobile;
   if (isMobile) stored.mobile = mode;
   else stored.desktop = mode;
-  localStorage.setItem(DOCK_MODE_STORAGE_KEY, JSON.stringify(stored));
+  localStore.writeJSON(DOCK_MODE_STORAGE_KEY, stored);
 }
 
-export function loadPersistedQueue(queueStorageKey: string, storage?: Pick<Storage, "getItem">) {
-  try {
-    return parsePersistedQueue((storage ?? localStorage).getItem(queueStorageKey));
-  } catch {
-    return parsePersistedQueue(null);
-  }
+export function loadPersistedQueue(queueStorageKey: StorageKey, store: ClientStore = localStore) {
+  return parsePersistedQueue(store.read(queueStorageKey));
+}
+
+// Playback continues when browser storage is unavailable or full.
+export function persistQueue(queueStorageKey: StorageKey, stored: unknown) {
+  localStore.writeJSON(queueStorageKey, stored);
 }
 
 export function parsePersistedQueue(

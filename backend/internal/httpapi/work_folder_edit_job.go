@@ -428,7 +428,7 @@ func (e *workFolderEditExecution) stage(ctx context.Context) error {
 				return err
 			}
 			currentIndex := downloadIndex
-			written, err := s.downloadToFile(ctx, tree.source, firstNonEmpty(file.DownloadURL, file.StreamURL), stagedPath, remoteDownloadOptions{
+			written, err := s.downloadToFile(ctx, tree.source, firstNonBlankTrimmed(file.DownloadURL, file.StreamURL), stagedPath, remoteDownloadOptions{
 				MaxBytes:      downloadLimit,
 				ExpectedBytes: item.SizeBytes,
 				OnProgress: func(written int64) {

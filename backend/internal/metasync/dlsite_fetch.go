@@ -9,6 +9,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
@@ -47,7 +48,7 @@ func (s *DLsiteSyncer) fetchProductForEdition(ctx context.Context, workno string
 	if exactLocale == "" {
 		return product, nil
 	}
-	requestedLocale := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(firstNonBlank(product.RequestLocale, product.Language), "_", "-")))
+	requestedLocale := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(textvalue.FirstNonBlankRaw(product.RequestLocale, product.Language), "_", "-")))
 	if requestedLocale == exactLocale {
 		product.RequestLocale = exactLocale
 		return product, nil

@@ -11,13 +11,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/searchtext"
 )
 
-// This SQL is an experimental v5 baseline, never a request-time projection.
-const recommendationEntitiesSQL = `SELECT 'tag' AS kind, work_tag.work_id, work_tag.tag_id AS entity_id
- FROM work_tag JOIN tag ON tag.id = work_tag.tag_id WHERE tag.namespace IN ('dlsite', 'metadata')
- GROUP BY work_tag.work_id, work_tag.tag_id
- UNION ALL SELECT 'voice', work_id, person_id FROM work_credit WHERE role = 'voice_actor' GROUP BY work_id, person_id
- UNION ALL SELECT 'circle', work_id, party_id FROM work_party WHERE role = 'circle' GROUP BY work_id, party_id`
-
 // recommendationProfileEntity sums the feedback of the works carrying one tag,
 // voice actor, or circle, in hundredths of a favorite work's evidence.
 type recommendationProfileEntity struct {
@@ -197,15 +190,6 @@ func (s *Store) loadFrozenRecommendationProfile(ctx context.Context, snapshot Re
 	var profile RecommendationProfile
 	err := json.Unmarshal([]byte(raw), &profile)
 	return profile, err
-}
-
-func containsProfileKey(keys []string, key string) bool {
-	for _, existing := range keys {
-		if existing == key {
-			return true
-		}
-	}
-	return false
 }
 
 // workSignals is the shared pure affinity policy. Removing the candidate's own

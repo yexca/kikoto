@@ -65,7 +65,7 @@ func (s *Server) loadLLMLyrics(ctx context.Context, workID int64, payload llmTra
 		if err != nil {
 			return result, llmInvalid("llm_lyrics_unavailable", "The selected remote lyrics source is unavailable.")
 		}
-		req, err := http.NewRequestWithContext(ctx, "GET", firstNonEmpty(download, stream), nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", firstNonBlankTrimmed(download, stream), nil)
 		if err != nil {
 			return result, llmInvalid("llm_lyrics_unavailable", "The selected lyrics file is unavailable.")
 		}

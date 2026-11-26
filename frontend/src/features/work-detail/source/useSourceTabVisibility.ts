@@ -8,14 +8,14 @@ import {
   type SourceVisibilityKey,
   type SourceVisibilityMode,
 } from "@/components/source-visibility/sourceVisibility";
-import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { accountKey } from "@/lib/clientStorage";
 
-const storagePrefix = "kikoto:detail-source-visibility:";
+const storageName = "kikoto:detail-source-visibility";
 
 /** Per-viewer visibility of the work detail directory source tabs, kept in this browser. */
 export function useSourceTabVisibility() {
   const auth = useAuth();
-  const storageKey = `${storagePrefix}${currentClientStorageScope(auth.user?.id ?? null)}`;
+  const storageKey = accountKey(storageName, auth.user?.id ?? null);
   const [preferences, setPreferences] = useState(() => readSourceVisibility(storageKey));
 
   useEffect(() => {

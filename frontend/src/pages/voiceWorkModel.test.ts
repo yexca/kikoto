@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { VoiceKnownWork, VoiceRemoteObservation, VoiceRemoteWork } from "@/lib/api";
-import { workDetailRoute } from "../app/workDetailNavigation";
+import { workDetailRoute } from "../lib/workDetailNavigation";
 
 import { voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "./voiceWorkModel";
 

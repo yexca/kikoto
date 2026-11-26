@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { SourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
 import type { CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
+import { deviceKey, type StorageKey } from "@/lib/clientStorage";
 
 export const workCollectionColumnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export type WorkCollectionColumnCount = (typeof workCollectionColumnOptions)[number];
@@ -73,15 +74,15 @@ export type WorkCollectionColumnDefaults = Pick<StoredWorkCollectionLayout, "mob
  * start in. The Library and the creator pages share the default store, starting
  * with full cards; Discover keeps its own, starting with simple cards.
  */
-export type WorkCollectionLayoutStore = { storageKey: string; cardMode: WorkCardMode };
+export type WorkCollectionLayoutStore = { storageKey: StorageKey; cardMode: WorkCardMode };
 
 export const LIBRARY_LAYOUT_STORE: WorkCollectionLayoutStore = {
-  storageKey: "kikoto:work-collection-layout",
+  storageKey: deviceKey("kikoto:work-collection-layout"),
   cardMode: "full",
 };
 
 export const DISCOVER_LAYOUT_STORE: WorkCollectionLayoutStore = {
-  storageKey: "kikoto:discover-layout",
+  storageKey: deviceKey("kikoto:discover-layout"),
   cardMode: "simple",
 };
 

@@ -82,7 +82,7 @@ func (s *Store) BootstrapDemo(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var userID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", DemoUsername).Scan(&userID)

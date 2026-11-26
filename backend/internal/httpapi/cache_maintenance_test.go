@@ -269,11 +269,12 @@ func TestCacheMaintenanceRequiresDownloadsManage(t *testing.T) {
 	} {
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
 		response := httptest.NewRecorder()
-		if request.Method == http.MethodGet {
+		switch request.Method {
+		case http.MethodGet:
 			server.getCacheOverview(response, request)
-		} else if request.Method == http.MethodDelete {
+		case http.MethodDelete:
 			server.clearTranscodeCache(response, request)
-		} else {
+		default:
 			server.cleanupOrphanCache(response, request)
 		}
 		if response.Code != http.StatusForbidden {

@@ -51,6 +51,7 @@ import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { startLoad } from "@/lib/effectScope";
 import { cn } from "@/lib/tailwindClassNames";
 import { voiceDetailPath } from "@/lib/voiceRoute";
+import { isMobileViewport } from "./mobileViewport";
 import { visibleBadgeCountForRows } from "./tagLayout";
 import { useWorkCardLabelFit } from "./useWorkCardLabelFit";
 
@@ -1542,8 +1543,4 @@ function openEntityRoute(route: string) {
   const returnTo = `${window.location.pathname}${window.location.search}`;
   window.history.pushState(historyStateWithReturn(returnTo, i18n.t("workCard.back")), "", route);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
-function isMobileViewport() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }

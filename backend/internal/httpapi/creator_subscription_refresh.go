@@ -592,7 +592,7 @@ func (s *Server) processCreatorReleaseCandidates(ctx context.Context, runID int6
 		if err != nil {
 			return err
 		}
-		releaseDate := firstNonEmpty(work.releaseDate, candidate.releaseDate)
+		releaseDate := firstNonBlankTrimmed(work.releaseDate, candidate.releaseDate)
 		if !creatorReleaseIsRecent(releaseDate, now) {
 			if err := s.markCreatorReleaseSeen(ctx, candidate); err != nil {
 				return err

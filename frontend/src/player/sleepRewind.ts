@@ -1,4 +1,5 @@
-import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { accountKey, localStore } from "@/lib/clientStorage";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 export const SLEEP_REWIND_MINUTES_MIN = 0;
 export const SLEEP_REWIND_MINUTES_MAX = 120;
@@ -14,7 +15,7 @@ export type SleepRewindChangeDetail = {
 };
 
 export function sleepRewindStorageKey(principalID: ClientPrincipalID) {
-  return currentScopedStorageKey(SLEEP_REWIND_STORAGE_BASE_KEY, principalID);
+  return accountKey(SLEEP_REWIND_STORAGE_BASE_KEY, principalID);
 }
 
 export function normalizeSleepRewindMinutes(value: unknown) {
@@ -30,23 +31,15 @@ export function parseSleepRewindDraft(value: string) {
 }
 
 export function getStoredSleepRewindMinutes(principalID: ClientPrincipalID) {
-  try {
-    const raw = localStorage.getItem(sleepRewindStorageKey(principalID));
-    const parsed = raw ? (JSON.parse(raw) as { minutes?: unknown } | null) : null;
-    return normalizeSleepRewindMinutes(parsed?.minutes);
-  } catch {
-    return DEFAULT_SLEEP_REWIND_MINUTES;
-  }
+  const parsed = localStore.readJSON(sleepRewindStorageKey(principalID)) as { minutes?: unknown } | null;
+  return normalizeSleepRewindMinutes(parsed?.minutes);
 }
 
 export function storeSleepRewindMinutes(principalID: ClientPrincipalID, value: number) {
   const minutes = normalizeSleepRewindMinutes(value);
   const storageKey = sleepRewindStorageKey(principalID);
-  try {
-    localStorage.setItem(storageKey, JSON.stringify({ version: 1, minutes }));
-  } catch {
-    // The setting applies for this session when browser storage is unavailable.
-  }
+  // The setting applies for this session when browser storage is unavailable.
+  localStore.writeJSON(storageKey, { version: 1, minutes });
   window.dispatchEvent(
     new CustomEvent<SleepRewindChangeDetail>(SLEEP_REWIND_CHANGE_EVENT, { detail: { storageKey, minutes } }),
   );

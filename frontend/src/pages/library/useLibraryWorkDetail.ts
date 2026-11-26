@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 
-import { workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+import { workDetailCodeFromLocation } from "@/lib/workDetailNavigation";
 import { loadWorkDetailStages } from "@/features/work-detail/loadWorkDetailStages";
 import {
   getCachedWorkMedia,

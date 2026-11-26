@@ -20,6 +20,7 @@ import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Input } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { dateTimeFormat, formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -339,7 +340,7 @@ export function ListeningHistoryPage({
             onRetry={() => setStatisticsToken((value) => value + 1)}
           />
         ) : (
-          <div className="skeleton-reveal h-48 animate-pulse rounded-lg bg-muted" />
+          <Skeleton reveal className="h-48 rounded-lg" />
         )}
         {calendarData && year && yearCalendar.status === "error" && (
           <div className="mt-3">
@@ -505,7 +506,7 @@ export function ListeningHistoryPage({
                     {stats.hours && <ListeningHours hours={stats.hours} formatDuration={formatDuration} />}
                   </div>
                 ) : (
-                  <div className="skeleton-reveal h-48 animate-pulse rounded-lg bg-muted" />
+                  <Skeleton reveal className="h-48 rounded-lg" />
                 )}
               </section>
             </div>
@@ -530,9 +531,7 @@ export function ListeningHistoryPage({
           {profile.data ? (
             <ListeningProfileCard profile={profile.data} formatDuration={formatDuration} />
           ) : (
-            profile.status === "loading" && (
-              <div className="skeleton-reveal h-64 animate-pulse rounded-xl border bg-muted/60" />
-            )
+            profile.status === "loading" && <Skeleton reveal className="h-64 rounded-xl border bg-muted/60" />
           )}
         </div>
       </section>
@@ -580,7 +579,7 @@ export function ListeningHistoryPage({
               />
             ) : (
               breakdown.status === "loading" && (
-                <div key={kind} className="skeleton-reveal h-64 animate-pulse rounded-xl border bg-muted/60" />
+                <Skeleton key={kind} reveal className="h-64 rounded-xl border bg-muted/60" />
               )
             ),
           )}
@@ -811,9 +810,7 @@ function Statistic({
         <dt className="truncate text-xs text-muted-foreground">{label}</dt>
       </div>
       <dd className="truncate text-xl font-semibold">
-        {value ?? (
-          <span className="skeleton-reveal inline-block h-6 w-20 animate-pulse rounded bg-muted align-middle" />
-        )}
+        {value ?? <Skeleton as="span" reveal className="inline-block h-6 w-20 align-middle" />}
       </dd>
       {meter !== undefined && (
         <dd className="h-1 overflow-hidden rounded-full bg-primary/15" aria-hidden="true">

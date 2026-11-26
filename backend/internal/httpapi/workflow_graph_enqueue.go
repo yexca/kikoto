@@ -178,11 +178,3 @@ func configInt64(config map[string]any, key string, fallback int64) int64 {
 	}
 	return fallback
 }
-
-func configBool(config map[string]any, key string, fallback bool) bool {
-	value, ok := config[key].(bool)
-	if !ok {
-		return fallback
-	}
-	return value
-}

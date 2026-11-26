@@ -1,4 +1,4 @@
-import { openWorkDetail, REMOTE_SOURCE_WORK_PATTERN, workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+import { openWorkDetail, REMOTE_SOURCE_WORK_PATTERN, workDetailCodeFromLocation } from "@/lib/workDetailNavigation";
 import { type DetailSourceIntent, remoteSourceTabKey } from "@/features/work-detail/source/sourceContextModel";
 import type { RemoteWorkPreview, WorkPreview } from "@/features/work-detail/workDetailShared";
 import type { LibrarySource, Work } from "@/lib/api";

@@ -61,7 +61,7 @@ func (s *Server) suggestCircles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []circleSuggestion{}
 	for rows.Next() {
 		var item circleSuggestion
@@ -100,7 +100,7 @@ func (s *Server) suggestVoices(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []voiceSuggestion{}
 	for rows.Next() {
 		var item voiceSuggestion
@@ -152,7 +152,7 @@ func (s *Server) suggestSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []seriesSuggestion{}
 	for rows.Next() {
 		var item seriesSuggestion

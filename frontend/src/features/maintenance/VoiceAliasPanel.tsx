@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -338,8 +339,8 @@ function CandidateList({
           aria-label={t("common.loading")}
           aria-busy="true"
         >
-          <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
-          <div className="h-3 w-3/5 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-3 w-2/5" />
+          <Skeleton className="h-3 w-3/5" />
         </div>
       ) : tooManyCandidates ? (
         <p className="px-3 pb-2.5 text-xs text-muted-foreground">{t("creatorBrowse.tooManyMatches")}</p>

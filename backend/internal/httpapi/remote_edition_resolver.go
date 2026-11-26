@@ -122,7 +122,7 @@ func (s *Server) resolveRemoteEditionFallback(ctx context.Context, source remote
 		if err != nil {
 			return kikoeru.Work{}, err
 		}
-		if normalizeWorkCode(firstNonEmpty(product.WorkNo, product.ProductID)) != candidate {
+		if normalizeWorkCode(firstNonBlankTrimmed(product.WorkNo, product.ProductID)) != candidate {
 			continue
 		}
 		matches, err := metasync.ProductMatchesExistingEdition(ctx, s.db, product, localCode)
@@ -203,7 +203,7 @@ func (s *Server) persistDLsiteReplacementAlias(ctx context.Context, localCode, c
 		return false, nil
 	}
 	canonical := normalizeDLsiteCode(product.TranslationInfo.OriginalWorkNo)
-	if canonical == "" || normalizeWorkCode(firstNonEmpty(product.WorkNo, product.ProductID)) != candidate {
+	if canonical == "" || normalizeWorkCode(firstNonBlankTrimmed(product.WorkNo, product.ProductID)) != candidate {
 		return false, nil
 	}
 	ownerID, ownerCode, err := metasync.ExistingReplacementEdition(ctx, s.db, product)
@@ -314,7 +314,7 @@ func (s *Server) verifyRemoteWorkIdentity(ctx context.Context, work kikoeru.Work
 	if err != nil {
 		return err
 	}
-	if normalizeWorkCode(firstNonEmpty(product.WorkNo, product.ProductID)) != code {
+	if normalizeWorkCode(firstNonBlankTrimmed(product.WorkNo, product.ProductID)) != code {
 		slog.Warn("dlsite edition identity lookup returned another product code", "work_code", code)
 		return nil
 	}

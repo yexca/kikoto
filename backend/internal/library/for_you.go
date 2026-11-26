@@ -10,6 +10,8 @@ import (
 	mathrand "math/rand/v2"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type ForYouRequest struct {
@@ -94,7 +96,7 @@ func (s *Store) DrawForYou(ctx context.Context, request ForYouRequest) (ForYouDr
 	if err != nil {
 		return ForYouDraw{}, err
 	}
-	candidates, err := s.loadForYouCandidates(ctx, request.UserID, snapshot.CatalogEpoch, uniquePositiveInt64s(append(recalled, localHeard...)))
+	candidates, err := s.loadForYouCandidates(ctx, request.UserID, snapshot.CatalogEpoch, sqlutil.UniquePositiveInt64s(append(recalled, localHeard...)))
 	if err != nil {
 		return ForYouDraw{}, err
 	}
@@ -105,7 +107,7 @@ func (s *Store) DrawForYou(ctx context.Context, request ForYouRequest) (ForYouDr
 			familiar = append(familiar, id)
 		}
 	}
-	exposure, err := s.forYouExposure(ctx, snapshot.CatalogEpoch, uniquePositiveInt64s(familiar))
+	exposure, err := s.forYouExposure(ctx, snapshot.CatalogEpoch, sqlutil.UniquePositiveInt64s(familiar))
 	if err != nil {
 		return ForYouDraw{}, err
 	}
@@ -172,7 +174,7 @@ func (s *Store) forYouLocalWorks(ctx context.Context, userID int64, ids []int64)
 	where, args := listWhere("local", "all", "", userID, false)
 	for start := 0; start < len(ids); start += 500 {
 		batch := ids[start:min(start+500, len(ids))]
-		query, batchArgs := int64InQuery(`SELECT work.id FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE work.id IN (%s) AND `+where, batch)
+		query, batchArgs := sqlutil.UniquePositiveInt64InQuery(`SELECT work.id FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE work.id IN (%s) AND `+where, batch)
 		rows, err := s.db.QueryContext(ctx, query, append(append([]any{userID}, batchArgs...), args...)...)
 		if err != nil {
 			return nil, err
@@ -249,7 +251,7 @@ func (s *Store) loadForYouCandidates(ctx context.Context, userID, epoch int64, i
 // loadForYouBatch reads the live personal state, listening totals, and DLsite
 // rating and sales of one batch of candidates.
 func (s *Store) loadForYouBatch(ctx context.Context, userID int64, ids []int64, candidates map[int64]*forYouCandidate) error {
-	query, args := int64InQuery(`SELECT work.id, COALESCE(work.rating_average, 0), COALESCE(work.sales_count, 0),
+	query, args := sqlutil.UniquePositiveInt64InQuery(`SELECT work.id, COALESCE(work.rating_average, 0), COALESCE(work.sales_count, 0),
 		COALESCE(state.listening_status, 'none'), COALESCE(state.favorite, 0), COALESCE(state.rating, 0), COALESCE(state.last_played_at, '')
 		FROM work LEFT JOIN user_work_state AS state ON state.work_id = work.id AND state.user_id = ?
 		WHERE work.id IN (%s)`, ids)
@@ -277,7 +279,7 @@ func (s *Store) loadForYouBatch(ctx context.Context, userID int64, ids []int64, 
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	query, args = int64InQuery(`SELECT work_id, SUM(seconds), SUM(days), MAX(played) FROM (
+	query, args = sqlutil.UniquePositiveInt64InQuery(`SELECT work_id, SUM(seconds), SUM(days), MAX(played) FROM (
 		SELECT work_id, listened_seconds AS seconds, 1 AS days, day AS played FROM user_listening_day WHERE user_id = ? AND listened_seconds > 0 AND work_id IN (%[1]s)
 		UNION ALL SELECT work_id, listened_seconds, listen_count, COALESCE(last_played_at, '') FROM user_listening_import WHERE user_id = ? AND work_id IN (%[1]s)
 	) GROUP BY work_id`, ids)
@@ -350,7 +352,7 @@ func (s *Store) nameForYouReasons(ctx context.Context, drawn map[ForYouColumn][]
 	}
 	names := map[string]string{}
 	for kind, kindIDs := range ids {
-		query, args := int64InQuery(queries[kind], kindIDs)
+		query, args := sqlutil.UniquePositiveInt64InQuery(queries[kind], kindIDs)
 		rows, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return err

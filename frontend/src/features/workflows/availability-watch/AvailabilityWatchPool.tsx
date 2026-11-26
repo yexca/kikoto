@@ -21,6 +21,7 @@ import { useNow } from "@/features/workflows/useRunClock";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { useArmedConfirm } from "@/hooks/useArmedConfirm";
 import { api, type AvailabilityWatch, type AvailabilityWatchTarget } from "@/lib/api";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { AvailabilityWatchFamilyDialog } from "./AvailabilityWatchFamilyDialog";
@@ -43,14 +44,10 @@ import {
 import type { AvailabilityWatchState } from "./useAvailabilityWatch";
 import type { WatchTargetActions } from "./useWatchTargetActions";
 
-const SORT_STORE = "kikoto:watch-sort";
+const SORT_STORE = deviceKey("kikoto:watch-sort");
 
 function readSort(): WatchSort {
-  try {
-    return localStorage.getItem(SORT_STORE) === "release" ? "release" : "added";
-  } catch {
-    return "added";
-  }
+  return localStore.read(SORT_STORE) === "release" ? "release" : "added";
 }
 
 /** Groups that fold to whole rows; the works to act on stay open. */
@@ -273,11 +270,8 @@ export function AvailabilityWatchPool({
   const changeSort = (next: string) => {
     const value: WatchSort = next === "release" ? "release" : "added";
     setSort(value);
-    try {
-      localStorage.setItem(SORT_STORE, value);
-    } catch {
-      // The order lasts for this visit when local storage is unavailable.
-    }
+    // The order lasts for this visit when local storage is unavailable.
+    localStore.write(SORT_STORE, value);
   };
 
   const withTarget = (target: AvailabilityWatchTarget, run: () => void) => {

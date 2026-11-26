@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { WorkCardListButton, WorkCardQuickMarkButton } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
 import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
@@ -216,12 +217,12 @@ export function FavoriteWorkListSkeleton({ label }: { label: string }) {
       <div className="divide-y" aria-hidden="true">
         {Array.from({ length: 6 }, (_, index) => (
           <div key={index} className="flex items-center gap-3 px-3 py-2.5">
-            <div className="h-14 w-[4.5rem] shrink-0 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-14 w-[4.5rem] shrink-0 rounded-md" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3.5 w-2/3" />
+              <Skeleton className="h-3 w-1/3" />
             </div>
-            <div className="h-8 w-20 shrink-0 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="h-8 w-20 shrink-0 rounded-md" />
           </div>
         ))}
       </div>

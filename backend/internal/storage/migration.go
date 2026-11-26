@@ -587,7 +587,7 @@ func tableColumnNames(db *sqlutil.DB, table string) (map[string]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect %s columns: %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	columns := make(map[string]bool)
 	for rows.Next() {
 		var cid, notNull, primaryKey int
@@ -643,7 +643,7 @@ func loadMigrationHistoryRows(db *sqlutil.DB, catalog migrationCatalog) ([]migra
 	if err != nil {
 		return nil, fmt.Errorf("read migration history: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var historyRows []migrationHistoryRow
 	for rows.Next() {
 		var row migrationHistoryRow
@@ -967,7 +967,7 @@ func verifyForeignKeys(queryer queryer) error {
 	if err != nil {
 		return fmt.Errorf("verify migrated foreign keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		var table string
 		var rowID sql.NullInt64

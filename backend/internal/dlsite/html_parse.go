@@ -21,15 +21,6 @@ var (
 	defaultMakerLanguages     = []string{"JPN", "ENG", "CHI_HANS", "CHI_HANT", "KO_KR", "SPA", "GER", "FRE", "IND", "ITA", "POR", "SWE", "THA", "VIE", "OTL", "NM"}
 )
 
-func parseRankingWorkCodes(rawHTML string) []string {
-	items := parseRankingItems(rawHTML)
-	codes := make([]string, 0, len(items))
-	for _, item := range items {
-		codes = append(codes, item.Code)
-	}
-	return codes
-}
-
 const (
 	maxRankingTitleRunes = 300
 	maxRankingMakerRunes = 200

@@ -5,7 +5,9 @@ import { ChevronLeft, ChevronRight, Lock, Plus, Save, Search, Trash2, UserCog } 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input, NativeSelect, otherCredentialFieldProps } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useLatestLoad } from "@/hooks/useLatestLoad";
@@ -444,16 +446,14 @@ function UserDetails({
               <span>{notice}</span>
             </p>
           )}
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.displayName")}
+          <Field label={t("admin.displayName")} className="font-medium">
             <Input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               disabled={readOnly || (!isSuperAdmin && user.role === "super_admin")}
             />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.role")}
+          </Field>
+          <Field label={t("admin.role")} className="font-medium">
             <NativeSelect
               value={role}
               onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
@@ -461,9 +461,8 @@ function UserDetails({
             >
               <RoleOptions isSuperAdmin={isSuperAdmin} />
             </NativeSelect>
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.credentialField")}
+          </Field>
+          <Field label={t("admin.credentialField")} className="font-medium">
             <Input
               type="password"
               value={password}
@@ -474,7 +473,7 @@ function UserDetails({
               }
               {...otherCredentialFieldProps}
             />
-          </label>
+          </Field>
         </DialogBody>
         <DialogFooter>
           {permissions.canDelete ? (
@@ -541,21 +540,17 @@ function UserRowSkeletons() {
     <div className="divide-y">
       {Array.from({ length: 1 }, (_, index) => (
         <div key={index} className="flex min-h-14 items-center gap-3 px-3 py-2 max-sm:min-h-[3.75rem]">
-          <SkeletonLine className="h-9 w-9 rounded-full" />
+          <Skeleton reveal className="h-9 w-9 rounded-full" />
           <div className="min-w-0 flex-1 space-y-2">
-            <SkeletonLine className="h-4 w-32" />
-            <SkeletonLine className="h-3 w-20" />
+            <Skeleton reveal className="h-4 w-32" />
+            <Skeleton reveal className="h-3 w-20" />
           </div>
-          <SkeletonLine className="h-5 w-16 rounded-full" />
-          <SkeletonLine className="h-5 w-20 rounded-full" />
+          <Skeleton reveal className="h-5 w-16 rounded-full" />
+          <Skeleton reveal className="h-5 w-20 rounded-full" />
         </div>
       ))}
     </div>
   );
-}
-
-function SkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
 }
 
 function UserCreateModal({
@@ -591,30 +586,26 @@ function UserCreateModal({
       />
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
         <DialogBody className="space-y-4">
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.username")}
+          <Field label={t("admin.username")} className="font-medium">
             <Input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               {...otherCredentialFieldProps}
               required
             />
-          </label>
+          </Field>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.displayName")}
+          <Field label={t("admin.displayName")} className="font-medium">
             <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          </label>
+          </Field>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.role")}
+          <Field label={t("admin.role")} className="font-medium">
             <NativeSelect value={role} onChange={(event) => setRole(event.target.value as ManagedUser["role"])}>
               <RoleOptions isSuperAdmin={isSuperAdmin} />
             </NativeSelect>
-          </label>
+          </Field>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.credentialField")}
+          <Field label={t("admin.credentialField")} className="font-medium">
             <Input
               type="password"
               value={password}
@@ -623,7 +614,7 @@ function UserCreateModal({
               {...otherCredentialFieldProps}
               required
             />
-          </label>
+          </Field>
 
           <SwitchField
             label={t("admin.enabled")}

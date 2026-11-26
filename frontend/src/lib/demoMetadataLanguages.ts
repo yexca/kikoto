@@ -1,4 +1,4 @@
-import { currentScopedStorageKey } from "./clientStorageScope";
+import { accountKey, localStore } from "./clientStorage";
 
 // Every Demo visitor shares one account, so a Demo visitor's metadata language
 // priority stays in this browser and travels with each API request instead of
@@ -11,17 +11,14 @@ let demoUserId: number | null = null;
 let current: string[] | null = null;
 
 function demoMetadataLanguagesStorageKey(userId: number) {
-  return currentScopedStorageKey(storageBaseKey, userId);
+  return accountKey(storageBaseKey, userId);
 }
 
-function readStored(userId: number): string[] | null {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(demoMetadataLanguagesStorageKey(userId)) ?? "null");
-    if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((value) => typeof value === "string")) {
-      return parsed;
-    }
-  } catch {
-    // Unavailable or malformed storage means no preference.
+/** The stored priority; unavailable or malformed storage means no preference. */
+function readStoredLanguages(userId: number): string[] | null {
+  const parsed = localStore.readJSON(demoMetadataLanguagesStorageKey(userId));
+  if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((value) => typeof value === "string")) {
+    return parsed;
   }
   return null;
 }
@@ -30,7 +27,7 @@ function readStored(userId: number): string[] | null {
 export function setDemoMetadataLanguageUser(userId: number | null) {
   if (userId === demoUserId) return;
   demoUserId = userId;
-  current = userId === null ? null : readStored(userId);
+  current = userId === null ? null : readStoredLanguages(userId);
 }
 
 /**
@@ -41,12 +38,8 @@ export function setDemoMetadataLanguageUser(userId: number | null) {
 export function writeDemoMetadataLanguages(languages: readonly string[] | null) {
   if (demoUserId === null) return;
   current = languages && languages.length > 0 ? [...languages] : null;
-  try {
-    if (current) localStorage.setItem(demoMetadataLanguagesStorageKey(demoUserId), JSON.stringify(current));
-    else localStorage.removeItem(demoMetadataLanguagesStorageKey(demoUserId));
-  } catch {
-    // The in-memory choice still applies to this tab.
-  }
+  if (current) localStore.writeJSON(demoMetadataLanguagesStorageKey(demoUserId), current);
+  else localStore.remove(demoMetadataLanguagesStorageKey(demoUserId));
 }
 
 /** The header value for the current Demo choice; empty outside Demo or without a choice. */

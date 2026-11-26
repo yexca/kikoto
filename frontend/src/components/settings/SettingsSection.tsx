@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { wholeNumberFromInput } from "@/lib/numberInput";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -95,22 +96,21 @@ export function SettingsSection({
 
 /** A loading placeholder with the footprint of a section of label-and-control rows. */
 export function SettingsSectionSkeleton({ rows = 3 }: { rows?: number }) {
-  const bar = "animate-pulse rounded bg-muted";
   return (
     <div className={cn("skeleton-reveal", sectionContainerClassName)} aria-hidden="true">
       <div className={sectionColumnsClassName}>
         <div className={cn("flex min-w-0 flex-col gap-2 border-b pb-2.5", railClassName)}>
-          <div className={cn(bar, "h-4 w-32")} />
-          <div className={cn(bar, "h-3 w-56 max-w-full")} />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-56 max-w-full" />
         </div>
         <div className="divide-y">
           {Array.from({ length: rows }, (_, index) => (
             <div key={index} className="flex min-w-0 items-center justify-between gap-6 py-3.5">
               <div className="min-w-0 flex-1 space-y-2">
-                <div className={cn(bar, "h-4 w-40 max-w-full")} />
-                <div className={cn(bar, "h-3 w-64 max-w-full")} />
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="h-3 w-64 max-w-full" />
               </div>
-              <div className={cn(bar, "h-9 w-24 shrink-0 rounded-md")} />
+              <Skeleton className="h-9 w-24 shrink-0 rounded-md" />
             </div>
           ))}
         </div>

@@ -63,7 +63,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	}
 	seen := map[string]bool{}
 	for _, variant := range variants {
-		key := firstNonEmpty(strings.ToUpper(strings.TrimSpace(variant.PrimaryCode)), strings.ToUpper(strings.TrimSpace(variant.ExternalID)))
+		key := firstNonBlankTrimmed(strings.ToUpper(strings.TrimSpace(variant.PrimaryCode)), strings.ToUpper(strings.TrimSpace(variant.ExternalID)))
 		if key == "" {
 			key = "variant:" + strconv.FormatInt(variant.ID, 10)
 		}
@@ -142,15 +142,12 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			result.DefaultVariantKey = key
 		}
 	}
-	matched := false
-	if strings.HasPrefix(result.DefaultVariantKey, "llm:") {
-		matched = true
-	}
+	matched := strings.HasPrefix(result.DefaultVariantKey, "llm:")
 	for _, variant := range result.Variants {
 		if matched {
 			break
 		}
-		if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && firstNonEmpty(variant.MetadataCode, variant.Key) == selectedTitle.Code {
+		if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && firstNonBlankTrimmed(variant.MetadataCode, variant.Key) == selectedTitle.Code {
 			result.DefaultVariantKey, matched = variant.Key, true
 			break
 		}

@@ -80,7 +80,7 @@ func (s *Server) loadCircleProfileForRefresh(ctx context.Context, partyID int64,
 	if err != nil {
 		return profile, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var code string
 		if err := rows.Scan(&code); err != nil {
@@ -402,7 +402,7 @@ func (s *Server) syncCircleProduct(ctx context.Context, partyID int64, code stri
 		return fmt.Sprintf("%s: %s", strings.ToUpper(strings.TrimSpace(code)), err.Error()), nil
 	}
 	raw := string(product.Raw)
-	title := firstNonEmpty(product.WorkName, product.ProductName, product.WorkNo)
+	title := firstNonBlankTrimmed(product.WorkName, product.ProductName, product.WorkNo)
 	release := nullableStringFromText(product.RegistDate)
 	if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, s.dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
 		return "", err

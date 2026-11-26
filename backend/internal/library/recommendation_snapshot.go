@@ -344,12 +344,6 @@ func (s *Store) ensureRecommendationContextKey(ctx context.Context, snapshot Rec
 	return snapshot, err
 }
 
-func recommendationInputRevision(ctx context.Context, queryer recommendationConfigQueryer) (int64, error) {
-	var revision int64
-	err := queryer.QueryRowContext(ctx, "SELECT revision FROM recommendation_input_revision WHERE id = 1").Scan(&revision)
-	return revision, err
-}
-
 func recommendationUserRevision(ctx context.Context, queryer recommendationConfigQueryer, userID int64) (int64, error) {
 	var revision int64
 	err := queryer.QueryRowContext(ctx, "SELECT COALESCE((SELECT revision FROM recommendation_user_revision WHERE user_id = ?),0)", userID).Scan(&revision)

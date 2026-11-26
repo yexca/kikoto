@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
+
 /**
  * The open shelf in one line: its icon, its name with any edit action, and a
  * caption with the result count and page. The shelf list already shows every
@@ -33,7 +35,7 @@ export function FavoriteShelfHeader({
       </h2>
       {actions}
       {caption === null ? (
-        <span className="skeleton-reveal h-3 w-16 shrink-0 animate-pulse rounded bg-muted" aria-hidden="true" />
+        <Skeleton as="span" reveal className="h-3 w-16 shrink-0" />
       ) : (
         <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-muted-foreground">{caption}</span>
       )}

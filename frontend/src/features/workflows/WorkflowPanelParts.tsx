@@ -4,11 +4,8 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
-
-export function SkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
-}
 
 export function WorkflowMetadataLoadingState() {
   return (
@@ -19,9 +16,9 @@ export function WorkflowMetadataLoadingState() {
       aria-busy="true"
     >
       <CardContent className="flex min-h-72 flex-col justify-center gap-3 p-6">
-        <SkeletonLine className="h-5 w-40" />
-        <SkeletonLine className="h-4 w-72 max-w-full" />
-        <SkeletonLine className="h-32 w-full" />
+        <Skeleton reveal className="h-5 w-40" />
+        <Skeleton reveal className="h-4 w-72 max-w-full" />
+        <Skeleton reveal className="h-32 w-full" />
       </CardContent>
     </Card>
   );
@@ -80,15 +77,6 @@ export function Modal({
       <DialogHeader title={title} onClose={onClose} closeLabel={workflowCopy("close")} />
       <DialogBody>{children}</DialogBody>
     </Dialog>
-  );
-}
-
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="grid gap-1.5 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
   );
 }
 

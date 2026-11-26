@@ -15,7 +15,7 @@ import {
   useWorkCollectionLayout,
   WorkCollectionDisplayPicker,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { openWorkDetail } from "@/lib/workDetailNavigation";
 import { RankingSettings } from "@/features/rankings/RankingSettings";
 import {
   DEFAULT_RANKING_ORDER,
@@ -64,18 +64,15 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
 import { api } from "@/lib/api";
 import { NAVIGATION_EVENT, requestHistoryScrollRestoration } from "@/lib/browserHistory";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import type { RankingOrder } from "@/lib/rankingApi";
 import { cn } from "@/lib/tailwindClassNames";
 import { openWorkflowPath, openWorkflowRun } from "@/lib/workflowLinks";
 
-const feedDaysStorageKey = "kikoto:release-feed-days";
+const feedDaysStorageKey = deviceKey("kikoto:release-feed-days");
 
 function readFeedDays(): ReleaseFeedDayCount {
-  try {
-    return releaseFeedDayCount(localStorage.getItem(feedDaysStorageKey));
-  } catch {
-    return releaseFeedDayCount(null);
-  }
+  return releaseFeedDayCount(localStore.read(feedDaysStorageKey));
 }
 
 function patchedLocation(patch: Record<string, string | null>) {
@@ -312,11 +309,8 @@ export function SubscriptionsPage({
   const changeFeedDays = (value: number) => {
     const days = releaseFeedDayCount(value);
     setFeedDays(days);
-    try {
-      localStorage.setItem(feedDaysStorageKey, String(days));
-    } catch {
-      // The choice lasts for this visit when local storage is unavailable.
-    }
+    // The choice lasts for this visit when local storage is unavailable.
+    localStore.write(feedDaysStorageKey, String(days));
     changeFeedPage(1);
   };
   // The feed page's works can have their metadata synced and their sources

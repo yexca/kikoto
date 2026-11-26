@@ -1,3 +1,5 @@
+import { pagePaths } from "@/lib/appPages";
+
 /** Personal tags and data transfer need library access; the other personal settings do not. */
 export const PERSONAL_DATA_PERMISSION = "library:read";
 
@@ -7,7 +9,7 @@ export const YOUR_DATA_SETTINGS_PATH = "/settings?tab=data";
 /** Opens the Time zone section of Account. */
 export const TIME_ZONE_SETTINGS_PATH = "/settings?tab=time-zone";
 
-export const SYSTEM_SETTINGS_PATH = "/system";
+export const SYSTEM_SETTINGS_PATH = pagePaths.system;
 
 export const systemSettingsTabs = ["library", "cache", "proxy", "llm", "users"] as const;
 export type SystemSettingsTab = (typeof systemSettingsTabs)[number];
@@ -27,7 +29,7 @@ export function systemSettingsPath(tab: SystemSettingsTab) {
   return `${SYSTEM_SETTINGS_PATH}?tab=${tab}`;
 }
 
-export const CLEANUP_PATH = "/cleanup";
+export const CLEANUP_PATH = pagePaths.cleanup;
 
 /** Cleanup's tabs: local work folders, caches, and the database. */
 export const cleanupTabs = ["works", "cache", "database"] as const;

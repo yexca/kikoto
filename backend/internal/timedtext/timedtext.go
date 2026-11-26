@@ -115,7 +115,7 @@ func ParseLyrics(text string) Lyrics {
 	text = strings.TrimPrefix(text, "\ufeff")
 	sourceLines := splitLines(text)
 	var lines []Line
-	if !(isWebVTTHeaderLine(sourceLines[0]) || cueTimingOutnumbersLrc(sourceLines)) {
+	if !isWebVTTHeaderLine(sourceLines[0]) && !cueTimingOutnumbersLrc(sourceLines) {
 		if lines = parseLRCLines(sourceLines); len(lines) == 0 {
 			lines = parseASSLines(sourceLines)
 		}

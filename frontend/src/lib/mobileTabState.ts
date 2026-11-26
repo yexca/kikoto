@@ -1,11 +1,12 @@
 import { appPageForLocation } from "./appRoutes";
-import type { PageID } from "./navigation";
+import type { PageID } from "./appPages";
 import { historyStateWithWorkDetailOwner, workDetailCodeFromLocation } from "./workDetailNavigation";
-import { normalizeInternalLocation } from "../lib/browserHistory";
+import { normalizeInternalLocation } from "./browserHistory";
+import { accountScopeKey, sessionStore } from "./clientStorage";
 
 // The version names the location form a snapshot holds; a snapshot under
 // another version is not resumed, so its tab opens at its root.
-const storagePrefix = "kikoto:mobile-tab-state:v3:";
+const storageName = "kikoto:mobile-tab-state:v3";
 // Room for the entry's own state plus its bounded back stack.
 const maxSnapshotLength = 320 * 1024;
 
@@ -17,12 +18,7 @@ export type MobileTabSnapshot = {
 };
 
 export function readMobileTabSnapshot(storageScope: string, page: PageID): MobileTabSnapshot | null {
-  try {
-    const raw = window.sessionStorage.getItem(mobileTabStorageKey(storageScope, page));
-    return raw ? mobileTabSnapshotFromValue(JSON.parse(raw), page) : null;
-  } catch {
-    return null;
-  }
+  return mobileTabSnapshotFromValue(sessionStore.readJSON(mobileTabStorageKey(storageScope, page)), page);
 }
 
 export function writeMobileTabSnapshot(
@@ -34,15 +30,12 @@ export function writeMobileTabSnapshot(
 ) {
   const snapshot = mobileTabSnapshotFromValue({ page, location, state, scrollY }, page);
   if (!snapshot) return;
-  try {
-    let serialized = JSON.stringify(snapshot);
-    if (serialized.length > maxSnapshotLength) {
-      serialized = JSON.stringify({ ...snapshot, state: {} });
-    }
-    window.sessionStorage.setItem(mobileTabStorageKey(storageScope, page), serialized);
-  } catch {
-    // Mobile navigation still works when session storage is unavailable.
+  let serialized = JSON.stringify(snapshot);
+  if (serialized.length > maxSnapshotLength) {
+    serialized = JSON.stringify({ ...snapshot, state: {} });
   }
+  // Mobile navigation still works when session storage is unavailable.
+  sessionStore.write(mobileTabStorageKey(storageScope, page), serialized);
 }
 
 export function mobileTabSnapshotFromValue(value: unknown, expectedPage: PageID): MobileTabSnapshot | null {
@@ -78,5 +71,5 @@ function serializableState(value: unknown): Record<string, unknown> {
 }
 
 function mobileTabStorageKey(storageScope: string, page: PageID) {
-  return `${storagePrefix}${storageScope}:${page}`;
+  return accountScopeKey(storageName, storageScope, page);
 }

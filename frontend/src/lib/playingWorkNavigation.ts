@@ -1,6 +1,6 @@
 import { currentAppPage } from "./appRoutes";
 import { readMobileTabSnapshot } from "./mobileTabState";
-import { navItems, type PageID } from "./navigation";
+import { isPageID, pagePaths, type PageID } from "./appPages";
 import { historyStateWithWorkDetailOwner, workDetailCodeFromLocation, workDetailRoute } from "./workDetailNavigation";
 import {
   NAVIGATION_EVENT,
@@ -10,7 +10,7 @@ import {
   normalizeInternalLocation,
   requestHistoryScrollRestoration,
   workspaceSwitchHistoryState,
-} from "../lib/browserHistory";
+} from "./browserHistory";
 
 /** Where a track was queued from, recorded so the player can lead back to it. */
 export type PlaybackOrigin = {
@@ -59,7 +59,7 @@ export function openPlayingWorkDetail({
   const here = currentInternalLocation();
   if (workCodeAt(here) === targetCode) return;
 
-  const owner = returnToOrigin ? navItems.find((item) => item.id === origin.originPage)?.id : undefined;
+  const owner = returnToOrigin && isPageID(origin.originPage) ? origin.originPage : undefined;
   if (owner && owner !== currentAppPage()) {
     const snapshot = readMobileTabSnapshot(storageScope, owner);
     if (snapshot && workCodeAt(snapshot.location) === targetCode) {
@@ -83,8 +83,7 @@ export function openPlayingWorkDetail({
 
 /** Opens the Record folder that holds the playing Record file, unless it already shows. */
 export function openPlayingRecordFolder({ folderId, returnLabel }: { folderId: number; returnLabel: string }) {
-  const path = navItems.find((item) => item.id === "records")?.path;
-  if (!path) return;
+  const path = pagePaths.records;
   const route = folderId > 0 ? `${path}?folder=${folderId}` : path;
   const here = currentInternalLocation();
   if (here === route) return;

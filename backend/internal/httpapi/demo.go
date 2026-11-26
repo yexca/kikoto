@@ -188,7 +188,7 @@ func (s *Server) demoManualAssetEligible(ctx context.Context, filename string) (
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	matchedWorkID := int64(0)
 	for rows.Next() {
 		var workID int64

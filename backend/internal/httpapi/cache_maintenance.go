@@ -303,7 +303,7 @@ func (s *Server) loadCacheReferences(ctx context.Context) (map[string]cacheRefer
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := map[string]cacheReference{}
 	for rows.Next() {
 		var path, availability string
@@ -479,7 +479,7 @@ func (s *Server) enqueueWorkCacheCleanup(ctx context.Context, workIDs []int64) (
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
-	return cacheMaintenanceResult{RunID: result.RunID, JobID: result.JobID, Status: result.Status, Queued: result.Queued}, nil
+	return cacheMaintenanceResult(result), nil
 }
 
 func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJobRecord) error {

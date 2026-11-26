@@ -94,8 +94,8 @@ func upsertAvailableRemoteSourcePresence(ctx context.Context, tx *sql.Tx, source
 		RawJSON: mustJSON(map[string]any{
 			"status":       "available",
 			"primary_code": code,
-			"title":        firstNonEmpty(remoteWork.Title, remoteWork.Name, code),
-			"cover_url":    firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
+			"title":        firstNonBlankTrimmed(remoteWork.Title, remoteWork.Name, code),
+			"cover_url":    firstNonBlankTrimmed(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
 		}),
 	})
 }

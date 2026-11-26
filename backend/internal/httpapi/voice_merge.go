@@ -627,7 +627,7 @@ func loadPersonAliasSnapshots(ctx context.Context, tx *sql.Tx, personID int64) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []personAliasSnapshot{}
 	for rows.Next() {
 		var item personAliasSnapshot
@@ -661,7 +661,7 @@ func loadWorkCreditSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []workCreditSnapshot{}
 	for rows.Next() {
 		var item workCreditSnapshot
@@ -683,7 +683,7 @@ func loadUserPersonStateSnapshots(ctx context.Context, tx *sql.Tx, personID int6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []userPersonStateSnapshot{}
 	for rows.Next() {
 		var item userPersonStateSnapshot
@@ -712,7 +712,7 @@ func loadUserPersonTagLinkSnapshots(ctx context.Context, tx *sql.Tx, personID in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []userPersonTagLinkSnapshot{}
 	for rows.Next() {
 		var item userPersonTagLinkSnapshot

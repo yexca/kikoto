@@ -243,7 +243,7 @@ func (s *Server) loadStoredWorkUserTags(ctx context.Context, userID int64, workI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var workID int64
 		var tag workUserTag

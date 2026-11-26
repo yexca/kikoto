@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { accountKey } from "@/lib/clientStorage";
 
 import { audioElementEventProps } from "./audioElementEvents";
 import type { LyricsChoice } from "./lyricsMatching";
@@ -131,12 +131,9 @@ const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2];
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
-  const playerQueueStorageKey = currentScopedStorageKey(PLAYER_QUEUE_STORAGE_BASE_KEY, principalID);
-  const obsoletePlayerProgressStorageKey = currentScopedStorageKey(
-    OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY,
-    principalID,
-  );
-  const playbackCompatibilityStorageKey = currentScopedStorageKey(PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY, principalID);
+  const playerQueueStorageKey = accountKey(PLAYER_QUEUE_STORAGE_BASE_KEY, principalID);
+  const obsoletePlayerProgressStorageKey = accountKey(OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY, principalID);
+  const playbackCompatibilityStorageKey = accountKey(PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY, principalID);
 
   const restoredQueue = useRestoredPlayerQueue(playerQueueStorageKey, obsoletePlayerProgressStorageKey);
   const [queue, setQueue] = useState<PlayerTrack[]>(restoredQueue.queue);

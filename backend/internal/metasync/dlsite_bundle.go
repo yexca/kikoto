@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 // maxDeclaredBundleCodes bounds the codes read from one product's bundle
@@ -74,7 +75,7 @@ func bundleCodesIn(field json.RawMessage, own string) []string {
 			ProductID string `json:"product_id"`
 		}
 		if err := json.Unmarshal(entry, &object); err == nil {
-			add(firstNonBlank(object.WorkNo, object.ProductID))
+			add(textvalue.FirstNonBlankRaw(object.WorkNo, object.ProductID))
 		}
 	}
 	return codes

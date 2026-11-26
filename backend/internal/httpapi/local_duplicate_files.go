@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // duplicateFileHashBudget bounds how long one request spends hashing. A
@@ -173,7 +174,7 @@ func (s *Server) loadDuplicateFileCandidates(ctx context.Context, family map[int
 	for workID := range family {
 		workIDs = append(workIDs, workID)
 	}
-	query, args := int64InQuery("item.work_id IN (%s)", workIDs)
+	query, args := sqlutil.Int64InQuery("item.work_id IN (%s)", workIDs)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT location.id, item.id, item.work_id, work.primary_code, location.path,
 			location.content_hash, location.content_hash_version

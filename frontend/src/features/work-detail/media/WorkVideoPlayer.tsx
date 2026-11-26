@@ -7,6 +7,7 @@ import { NativeSelect } from "@/components/ui/input";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type VideoAudioTrack, type VideoPlaybackInfo } from "@/lib/api";
+import { localStore } from "@/lib/clientStorage";
 import { startLoad } from "@/lib/effectScope";
 import { playbackURL, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import { usePlayer } from "@/player/PlayerProvider";
@@ -60,14 +61,6 @@ const failureMessages: Record<Exclude<VideoStageFailure, "direct" | "transcode">
   restoreFailed: "videoPlayback.restoreFailed",
 };
 
-function browserStorage() {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The full-screen player for a work's videos, laid out like the Record player:
  * the shared video stage under a header with the video's place among the
@@ -107,10 +100,7 @@ export function WorkVideoPlayer({
   const [audioStream, setAudioStream] = useState(() => chosenVideoAudioStream(principalID, locationId));
   const [audioTracks, setAudioTracks] = useState<VideoAudioTrack[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [stored] = useState(() => {
-    const storage = browserStorage();
-    return storage ? readVideoResumePosition(storage, resumeStorageKey, locationId) : null;
-  });
+  const [stored] = useState(() => readVideoResumePosition(localStore, resumeStorageKey, locationId));
   const [phase, setPhase] = useState<Phase>(() =>
     stored === null ? { kind: "playing", startAt: 0 } : { kind: "prompt", position: stored },
   );
@@ -119,9 +109,7 @@ export function WorkVideoPlayer({
   const displayedDuration = playback?.durationSeconds || durationSeconds || 0;
 
   const writeResumePosition = useStableCallback((position: number, duration?: number) => {
-    const storage = browserStorage();
-    if (!storage) return;
-    writeVideoResumePosition(storage, resumeStorageKey, locationId, position, duration ?? displayedDuration);
+    writeVideoResumePosition(localStore, resumeStorageKey, locationId, position, duration ?? displayedDuration);
     writtenRef.current = position;
   });
 

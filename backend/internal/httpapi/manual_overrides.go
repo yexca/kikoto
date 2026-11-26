@@ -442,7 +442,7 @@ func (s *Server) loadWorkManualOverridesFrom(ctx context.Context, db manualOverr
 	if err != nil {
 		return workManualOverrides{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	overrides := workManualOverrides{}
 	for rows.Next() {
 		var row manualOverrideRow
@@ -541,15 +541,6 @@ func applyManualOverridesToLibrarySummary(work *libraryWorkSummary, overrides wo
 		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
 		work.VoiceCredits = manualPeopleCredits(overrides.VoiceActors)
 	}
-}
-
-func (s *Server) applyManualOverridesToSummary(ctx context.Context, work *libraryWorkSummary) error {
-	overrides, err := s.loadWorkManualOverrides(ctx, work.ID)
-	if err != nil {
-		return err
-	}
-	applyManualOverridesToLibrarySummary(work, overrides)
-	return nil
 }
 
 func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDetail) error {
@@ -742,7 +733,7 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	candidates := []workCoverCandidate{}
 	for rows.Next() {
 		var candidate workCoverCandidate

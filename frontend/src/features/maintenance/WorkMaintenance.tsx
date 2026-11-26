@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -779,19 +780,19 @@ function WorkTableSkeletonRows() {
       {Array.from({ length: 3 }, (_, index) => (
         <tr key={index}>
           <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">
-            <div className="mx-auto h-5 w-5 animate-pulse rounded bg-muted sm:mx-0 sm:mt-3" />
+            <Skeleton className="mx-auto h-5 w-5 sm:mx-0 sm:mt-3" />
           </td>
           <td className="py-2.5 pl-2 sm:pl-3">
             <div className="flex gap-3">
-              <div className="h-12 w-12 shrink-0 animate-pulse rounded-md bg-muted" />
+              <Skeleton className="h-12 w-12 shrink-0 rounded-md" />
               <div className="min-w-0 flex-1 space-y-2 pt-1.5">
-                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
-                <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted" />
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-2.5 w-1/3" />
               </div>
             </div>
           </td>
           <td className="py-2.5 pr-3">
-            <div className="ml-auto mt-1.5 h-8 w-8 animate-pulse rounded-md bg-muted" />
+            <Skeleton className="ml-auto mt-1.5 h-8 w-8 rounded-md" />
           </td>
         </tr>
       ))}

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input, NativeSelect, otherCredentialFieldProps } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import type { OutboundProxy, ProxyScheme } from "@/lib/api";
@@ -105,7 +106,7 @@ export function ProxyDialog({
               </p>
             </div>
 
-            <Field label={t("maintenance.proxy.dialog.name")}>
+            <Field label={t("maintenance.proxy.dialog.name")} className="min-w-0">
               <Input
                 value={draft.name}
                 maxLength={64}
@@ -117,7 +118,7 @@ export function ProxyDialog({
 
             {draft.kind === "host" ? (
               <div className="grid min-w-0 gap-1.5">
-                <Field label={t("maintenance.proxy.dialog.address")}>
+                <Field label={t("maintenance.proxy.dialog.address")} className="min-w-0">
                   <Input
                     value={hostAddress}
                     readOnly
@@ -130,7 +131,7 @@ export function ProxyDialog({
                 </p>
               </div>
             ) : (
-              <Field label={t("maintenance.proxy.dialog.address")}>
+              <Field label={t("maintenance.proxy.dialog.address")} className="min-w-0">
                 <Input
                   value={draft.host}
                   inputMode="url"
@@ -145,7 +146,7 @@ export function ProxyDialog({
             )}
 
             <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
-              <Field label={t("maintenance.proxy.dialog.protocol")}>
+              <Field label={t("maintenance.proxy.dialog.protocol")} className="min-w-0">
                 <NativeSelect value={draft.scheme} onChange={(event) => setScheme(event.target.value as ProxyScheme)}>
                   {PROXY_SCHEMES.map((scheme) => (
                     <option key={scheme} value={scheme}>
@@ -154,7 +155,7 @@ export function ProxyDialog({
                   ))}
                 </NativeSelect>
               </Field>
-              <Field label={t("maintenance.proxy.dialog.port")}>
+              <Field label={t("maintenance.proxy.dialog.port")} className="min-w-0">
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -178,7 +179,7 @@ export function ProxyDialog({
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={t("maintenance.proxy.dialog.username")}>
+                <Field label={t("maintenance.proxy.dialog.username")} className="min-w-0">
                   <Input
                     value={draft.username}
                     {...otherCredentialFieldProps}
@@ -187,7 +188,7 @@ export function ProxyDialog({
                     onChange={(event) => patch({ username: event.target.value })}
                   />
                 </Field>
-                <Field label={t("maintenance.proxy.dialog.password")}>
+                <Field label={t("maintenance.proxy.dialog.password")} className="min-w-0">
                   <Input
                     type="password"
                     {...otherCredentialFieldProps}
@@ -219,14 +220,5 @@ export function ProxyDialog({
         </DialogFooter>
       </form>
     </Dialog>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="grid min-w-0 gap-1.5 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
   );
 }

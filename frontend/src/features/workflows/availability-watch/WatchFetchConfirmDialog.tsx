@@ -7,6 +7,7 @@ import { TokenInput } from "@/components/ui/token-input";
 import { SwitchControl } from "@/features/workflows/RunOptionControls";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { api } from "@/lib/api";
+import { deviceKey, localStore, serverKey } from "@/lib/clientStorage";
 import { startLoad } from "@/lib/effectScope";
 import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
@@ -14,33 +15,31 @@ import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 import { WATCH_ACTION_MAX_TARGETS, watchTargetOtherEdition } from "./availabilityWatchModel";
 import type { WatchActionTarget } from "./useWatchTargetActions";
 
-const EXCLUSION_STORE = "kikoto:watch-fetch-exclusion";
+const EXCLUSION_STORE_NAME = "kikoto:watch-fetch-exclusion";
+// Before the choice was kept per server, one value served every server.
+const DEVICE_EXCLUSION_STORE = deviceKey(EXCLUSION_STORE_NAME);
+const exclusionStore = () => serverKey(EXCLUSION_STORE_NAME);
 
 type FetchExclusion = { enabled: boolean; extensions: string[] };
 
-/** The last exclusion chosen on this device; none until one is chosen. */
+/** The last exclusion chosen on this device for the server; none until one is chosen. */
 function readExclusion(): FetchExclusion {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(EXCLUSION_STORE) ?? "null");
-    if (parsed && typeof parsed === "object") {
-      const { enabled, extensions } = parsed as Partial<FetchExclusion>;
-      return {
-        enabled: enabled === true,
-        extensions: Array.isArray(extensions) ? extensions.filter((value) => typeof value === "string") : [],
-      };
-    }
-  } catch {
-    // An unreadable choice starts over.
+  localStore.carryOver(DEVICE_EXCLUSION_STORE, exclusionStore());
+  const parsed = localStore.readJSON(exclusionStore());
+  if (parsed && typeof parsed === "object") {
+    const { enabled, extensions } = parsed as Partial<FetchExclusion>;
+    return {
+      enabled: enabled === true,
+      extensions: Array.isArray(extensions) ? extensions.filter((value) => typeof value === "string") : [],
+    };
   }
+  // An unreadable choice starts over.
   return { enabled: false, extensions: [] };
 }
 
+// The choice lasts for this Fetch when local storage is unavailable.
 function writeExclusion(exclusion: FetchExclusion) {
-  try {
-    localStorage.setItem(EXCLUSION_STORE, JSON.stringify(exclusion));
-  } catch {
-    // The choice lasts for this Fetch when local storage is unavailable.
-  }
+  localStore.writeJSON(exclusionStore(), exclusion);
 }
 
 /**

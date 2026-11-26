@@ -44,8 +44,8 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	jobID int64,
 	payload remoteWorkFetchJobPayload,
 ) (remoteWorkFetchExecution, error) {
-	editionCode := firstNonEmpty(payload.EditionCode, payload.WorkCode)
-	remoteCode := firstNonEmpty(payload.RemoteCode, payload.WorkCode)
+	editionCode := firstNonBlankTrimmed(payload.EditionCode, payload.WorkCode)
+	remoteCode := firstNonBlankTrimmed(payload.RemoteCode, payload.WorkCode)
 	execution := remoteWorkFetchExecution{workCode: strings.ToUpper(strings.TrimSpace(editionCode))}
 	source, err := s.loadRemoteSourceForUse(ctx, payload.SourceID)
 	if err != nil {

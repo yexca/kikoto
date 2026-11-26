@@ -6,13 +6,14 @@ import {
   renewRecommendationSession,
   RECOMMENDATION_ALGORITHM_VERSION,
 } from "./recommendationSession";
+import { clientStore } from "./clientStorage";
 
 function memoryStorage() {
   const values = new Map<string, string>();
-  return {
+  return clientStore(() => ({
     getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-  };
+    setItem: (key: string, value: string) => void values.set(key, value),
+  }));
 }
 
 describe("recommendation client session", () => {

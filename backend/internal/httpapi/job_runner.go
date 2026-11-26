@@ -648,7 +648,7 @@ func prepareRemoteFetchRetry(ctx context.Context, tx *sql.Tx, job workflowJobRec
 		return err
 	}
 	if stagingCleanupRunning {
-		return errors.New("Fetch staging cleanup is in progress; retry after cleanup finishes")
+		return errors.New("fetch staging cleanup is in progress; retry after cleanup finishes")
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE remote_fetch_manifest

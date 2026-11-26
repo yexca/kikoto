@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { NotFoundPage } from "@/app/NotFoundPage";
-import { PageActiveProvider } from "@/app/pageHeader";
-import { openWorkDetail, workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+import { NotFoundPage } from "@/components/NotFoundPage";
+import { PageActiveProvider } from "@/components/pageHeader";
+import { openWorkDetail, workDetailCodeFromLocation } from "@/lib/workDetailNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";

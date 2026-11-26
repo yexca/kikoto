@@ -129,7 +129,7 @@ func (s *Server) loadKnownLocalWorkRoots(ctx context.Context) ([]knownLocalWorkR
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []knownLocalWorkRoot{}
 	seen := map[string]bool{}
 	for rows.Next() {

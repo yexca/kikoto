@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { normalizeLibraryBrowseLocation } from "@/lib/libraryBrowseState";
-
 import { appPageForLocation, historyStateForNavigation } from "./appRoutes";
-import { legacyLibraryRedirect } from "./legacyLibraryRoutes";
-import { navItems } from "./navigation";
 import { historyStateWithWorkDetailOwner, workDetailOwnerPage } from "./workDetailNavigation";
 
 function stubLocation(location: string, state: unknown) {
@@ -25,19 +21,6 @@ describe("appPageForLocation", () => {
     expect(appPageForLocation("/voices/local-07", {})).toBe("not-found");
     expect(appPageForLocation("/voices/Example%20Voice", {})).toBe("not-found");
     expect(appPageForLocation("/library/unknown/deeper", {})).toBe("not-found");
-  });
-
-  it("keeps every other page's address out of the Library's lists", () => {
-    for (const item of navItems) {
-      if (item.id === "library") continue;
-      expect(normalizeLibraryBrowseLocation(`${item.path}?q=sample`), item.path).toBeNull();
-    }
-    for (const path of ["/subscriptions", "/history", "/runs", "/users", "/maintenance", "/no-source"]) {
-      expect(legacyLibraryRedirect(path), path).not.toBeNull();
-      expect(normalizeLibraryBrowseLocation(path), path).toBeNull();
-    }
-    expect(appPageForLocation("/example_remote_a", {})).toBe("library");
-    expect(normalizeLibraryBrowseLocation("/example_remote_a?q=sample")).toBe("/example_remote_a?q=sample");
   });
 
   it("gives Discover its own address and the Subscriptions address it redirects from", () => {

@@ -4,6 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type CurrentUser } from "@/lib/api";
@@ -95,8 +96,7 @@ export function AccountEditDialog({
             /* Names the account so password managers update its saved sign-in. */
             <input type="text" name="username" autoComplete="username" value={user.username} readOnly hidden />
           )}
-          <label htmlFor="account-display-name" className="grid gap-1.5 text-sm font-medium">
-            {t("settings.displayName")}
+          <Field label={t("settings.displayName")} className="font-medium">
             <Input
               id="account-display-name"
               value={displayName}
@@ -104,7 +104,7 @@ export function AccountEditDialog({
               disabled={readOnly || isSaving}
               onChange={(event) => setDisplayName(event.target.value)}
             />
-          </label>
+          </Field>
           <div className="space-y-3 border-t pt-4">
             <div className="text-sm font-medium">{t("settings.password")}</div>
             {passwordManagedByEnvironment ? (
@@ -187,8 +187,7 @@ function DialogPasswordField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label htmlFor={id} className="grid gap-1.5 text-sm font-medium">
-      {label}
+    <Field label={label} className="font-medium">
       <Input
         id={id}
         name={id}
@@ -199,7 +198,7 @@ function DialogPasswordField({
         aria-describedby={describedBy}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   );
 }
 

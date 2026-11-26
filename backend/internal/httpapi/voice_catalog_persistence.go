@@ -101,7 +101,7 @@ func upsertVoiceCatalogItem(ctx context.Context, tx *sql.Tx, personID, generatio
 			snapshot_generation = excluded.snapshot_generation,
 			last_seen_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
-	`, personID, candidate.CanonicalCode, workID, firstNonEmpty(candidate.Projection.Title, candidate.CanonicalCode),
+	`, personID, candidate.CanonicalCode, workID, firstNonBlankTrimmed(candidate.Projection.Title, candidate.CanonicalCode),
 		nullableCatalogText(candidate.Projection.ReleaseDate), candidate.Projection.CoverURL, candidate.Projection.SourceURL,
 		candidate.Projection.Circle, candidate.Projection.AgeRating, candidate.Projection.Rating,
 		candidate.Projection.RatingCount, candidate.Projection.Sales, candidate.Projection.Price,

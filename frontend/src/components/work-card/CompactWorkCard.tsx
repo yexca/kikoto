@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { assetURL } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
@@ -337,7 +338,6 @@ function ReducedWorkCardShell({
 
 /** Loading placeholder with the same footprint as the matching card layout. */
 export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLayout }) {
-  const bar = "animate-pulse rounded bg-muted";
   if (layout === "simple") {
     return (
       <div
@@ -345,12 +345,12 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
         aria-hidden="true"
       >
         <div className="p-1.5 pb-0">
-          <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+          <Skeleton className="aspect-[4/3] rounded-[calc(var(--radius)-4px)]" />
         </div>
         <div className="flex flex-col gap-2 px-2.5 pb-2.5 pt-2.5">
-          <div className={cn(bar, "h-4 w-full")} />
-          <div className={cn(bar, "h-4 w-2/3")} />
-          <div className={cn(bar, "h-3 w-1/2")} />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
         </div>
       </div>
     );
@@ -362,11 +362,11 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
         aria-hidden="true"
       >
         <div className="p-1.5 pb-0">
-          <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+          <Skeleton className="aspect-[4/3] rounded-[calc(var(--radius)-4px)]" />
         </div>
         <div className="flex h-[3.125rem] flex-col justify-center gap-1.5 px-2">
-          <div className={cn(bar, "h-3 w-full")} />
-          <div className={cn(bar, "h-3 w-2/3")} />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-2/3" />
         </div>
       </div>
     );
@@ -376,31 +376,31 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
       {layout === "row" ? (
         <>
           <div className="flex gap-3 p-2.5 pb-2">
-            <div className="aspect-[4/3] w-[7.5rem] shrink-0 animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+            <Skeleton className="aspect-[4/3] w-[7.5rem] shrink-0 rounded-[calc(var(--radius)-4px)]" />
             <div className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
-              <div className={cn(bar, "h-3 w-1/3")} />
-              <div className={cn(bar, "h-4 w-full")} />
-              <div className={cn(bar, "h-4 w-2/3")} />
-              <div className={cn(bar, "h-3 w-1/2")} />
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-1/2" />
             </div>
           </div>
           <div className="flex gap-1.5 px-2.5 pb-2">
-            <div className={cn(bar, "h-6 w-14")} />
-            <div className={cn(bar, "h-6 w-20")} />
-            <div className={cn(bar, "h-6 w-16")} />
+            <Skeleton className="h-6 w-14" />
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-16" />
           </div>
           <div className="mt-auto h-10 border-t border-border/40" />
         </>
       ) : (
         <>
           <div className="p-1.5 pb-0">
-            <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+            <Skeleton className="aspect-[4/3] rounded-[calc(var(--radius)-4px)]" />
           </div>
           <div className="flex flex-1 flex-col gap-2 px-2.5 pb-2.5 pt-2">
-            <div className={cn(bar, "h-3 w-1/2")} />
-            <div className={cn(bar, "h-4 w-full")} />
-            <div className={cn(bar, "h-4 w-2/3")} />
-            <div className={cn(bar, "h-3 w-1/2")} />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
           <div className="mt-auto h-11 border-t border-border/70" />
         </>

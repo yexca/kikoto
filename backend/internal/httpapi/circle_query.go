@@ -17,10 +17,6 @@ import (
 
 var errCircleNotVisible = errors.New("circle not visible")
 
-func (s *Server) loadCircleDetail(ctx context.Context, userID int64, externalID string) (circleDetail, error) {
-	return s.loadCircleDetailWithWorksQuery(ctx, userID, externalID, circleWorksQuery{Page: 1, PageSize: 100, Availability: "all", Legacy: true})
-}
-
 func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int64, externalID string, worksQuery circleWorksQuery) (circleDetail, error) {
 	partyID, err := s.findCircle(ctx, externalID)
 	if err != nil {
@@ -162,7 +158,7 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []circleSeries{}
 	for rows.Next() {
 		var item circleSeries

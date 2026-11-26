@@ -1,7 +1,7 @@
-import { navItems, type PageID } from "./navigation";
-import { NAVIGATION_EVENT, historyStateWithReturn } from "../lib/browserHistory";
-import { safeDecodePathSegment } from "../lib/routeSegment";
-import { WORK_CODE_PATH_PATTERN } from "../lib/workCode";
+import { isPageID, pageAtPath, type PageID } from "./appPages";
+import { NAVIGATION_EVENT, historyStateWithReturn } from "./browserHistory";
+import { safeDecodePathSegment } from "./routeSegment";
+import { WORK_CODE_PATH_PATTERN } from "./workCode";
 
 const ownerPageStateKey = "__kikotoWorkDetailOwner";
 
@@ -87,7 +87,7 @@ export function workDetailCodeFromLocation(path: string, search: string) {
   if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
   // Another page may carry its own `source` query, such as a Settings deep link.
   const pagePath = path.length > 1 ? path.replace(/\/+$/, "") : path;
-  if (navItems.some((item) => item.path === pagePath)) return null;
+  if (pageAtPath(pagePath)) return null;
   const match = path.match(REMOTE_SOURCE_WORK_PATTERN);
   return match ? safeDecodePathSegment(match[1]) : null;
 }
@@ -99,13 +99,13 @@ export function workDetailCodeFromLocation(path: string, search: string) {
  */
 export function workDetailOwnerPage(state: unknown): PageID {
   const owner = state && typeof state === "object" ? (state as Record<string, unknown>)[ownerPageStateKey] : undefined;
-  return navItems.find((item) => item.id === owner)?.id ?? "library";
+  return isPageID(owner) ? owner : "library";
 }
 
 /** Keeps an owner the entry already names; `replace` assigns the given one regardless. */
 export function historyStateWithWorkDetailOwner(state: unknown, owner: PageID, replace = false) {
   const record = state && typeof state === "object" && !Array.isArray(state) ? (state as Record<string, unknown>) : {};
-  if (!replace && navItems.some((item) => item.id === record[ownerPageStateKey])) return record;
+  if (!replace && isPageID(record[ownerPageStateKey])) return record;
   return { ...record, [ownerPageStateKey]: owner };
 }
 

@@ -10,7 +10,6 @@ import {
   navigationLabel,
   type CollapsibleNavigationGroup,
   type NavigationItem,
-  type PageID,
 } from "@/app/navigation";
 import { LanguageControls, type LanguageControl } from "@/app/header/LanguageControls";
 import { UserAvatar, userDisplayName } from "@/app/header/UserAvatar";
@@ -19,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UI_LOCALE_OPTIONS } from "@/i18n";
 import type { CurrentUser } from "@/lib/api";
+import type { PageID } from "@/lib/appPages";
 import { versionLabel } from "@/lib/appInfo";
 import { getStoredServerURL } from "@/lib/serverConfig";
 import { cn } from "@/lib/tailwindClassNames";

@@ -227,7 +227,7 @@ func TestConfiguredPrivateOriginIsAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configured private origin: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
@@ -384,7 +384,7 @@ func TestTransportPinsDialToValidatedDNSAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pinned request: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -415,7 +415,7 @@ func TestTransportBoundsResponseBodyReadIdleTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	started := time.Now()
 	_, err = response.Body.Read(make([]byte, 1))
 	if !errors.Is(err, ErrResponseReadTimeout) {

@@ -384,7 +384,6 @@ func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 					seeds = append(seeds, seed)
 				}
 				current = RemoteSourceSeed{}
-				hasCurrent = false
 			}
 			hasCurrent = true
 			line = strings.TrimSpace(strings.TrimPrefix(line, "- "))

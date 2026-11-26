@@ -5,18 +5,21 @@ import {
   resumableVideoPosition,
   writeVideoResumePosition,
 } from "@/features/work-detail/media/videoResume";
+import { accountScopeKey, clientStore } from "@/lib/clientStorage";
 
+/** A store over memory that also exposes the raw values it holds. */
 function memoryStorage() {
   const values = new Map<string, string>();
-  return {
+  const area = {
     values,
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => void values.set(key, value),
     removeItem: (key: string) => void values.delete(key),
   };
+  return { ...area, ...clientStore(() => area) };
 }
 
-const key = "kikoto:video-resume:v1:test";
+const key = accountScopeKey("kikoto:video-resume:v1", "test");
 
 describe("video resume positions", () => {
   it("remembers where each location stopped", () => {
@@ -26,7 +29,7 @@ describe("video resume positions", () => {
     expect(readVideoResumePosition(storage, key, 1)).toBe(42);
     expect(readVideoResumePosition(storage, key, 2)).toBe(90);
     expect(readVideoResumePosition(storage, key, 3)).toBeNull();
-    expect(readVideoResumePosition(storage, "kikoto:video-resume:v1:other", 1)).toBeNull();
+    expect(readVideoResumePosition(storage, accountScopeKey("kikoto:video-resume:v1", "other"), 1)).toBeNull();
   });
 
   it("forgets a location that restarted or reached its end", () => {

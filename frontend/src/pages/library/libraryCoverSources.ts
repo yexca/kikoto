@@ -1,9 +1,10 @@
 import type { SourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
 import type { WorkCardBadge } from "@/components/work-card/WorkCardShell";
+import { accountScopeKey, localStore } from "@/lib/clientStorage";
 
 export type LibraryCoverSourceScope = { kind: "local" } | { kind: "tracked" } | { kind: "remote"; sourceId: number };
 
-const storagePrefix = "kikoto:library-cover-sources:";
+const storageName = "kikoto:library-cover-sources";
 
 // A remote catalog presence (`source:<id>`) says another service lists the work;
 // it is not a state of the library, so it is never an exception on any scope.
@@ -37,20 +38,15 @@ export function libraryCoverSourceBadges(
   return { sourceBadges, sourceUnavailableFallback: badges.length === 0 };
 }
 
-export function readLibraryCoverSourceMode(scope: string): SourceVisibilityMode {
-  try {
-    const value = window.localStorage.getItem(`${storagePrefix}${scope}`);
-    return value === "always" || value === "never" ? value : "auto";
-  } catch {
-    return "auto";
-  }
+/** `storageScope` is the account storage scope; the mode is kept per server and account. */
+export function readLibraryCoverSourceMode(storageScope: string): SourceVisibilityMode {
+  const value = localStore.read(accountScopeKey(storageName, storageScope));
+  return value === "always" || value === "never" ? value : "auto";
 }
 
-export function writeLibraryCoverSourceMode(scope: string, mode: SourceVisibilityMode) {
-  try {
-    if (mode === "auto") window.localStorage.removeItem(`${storagePrefix}${scope}`);
-    else window.localStorage.setItem(`${storagePrefix}${scope}`, mode);
-  } catch {
-    // Cards keep the automatic marks when local storage is unavailable.
-  }
+// Cards keep the automatic marks when local storage is unavailable.
+export function writeLibraryCoverSourceMode(storageScope: string, mode: SourceVisibilityMode) {
+  const key = accountScopeKey(storageName, storageScope);
+  if (mode === "auto") localStore.remove(key);
+  else localStore.write(key, mode);
 }

@@ -20,15 +20,11 @@ import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/w
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import type { CircleCatalogWork, ListeningStatus } from "@/lib/api";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
+import { normalizeListeningStatus } from "@/lib/listeningStatus";
+import { openWorkDetail, type WorkDetailIntent } from "@/lib/workDetailNavigation";
 import { currentCircleReturnPath, openCircleRoute } from "@/lib/circleNavigationState";
 import { openLibraryTagSearch } from "@/lib/libraryTagSearch";
-import {
-  normalizeListeningStatus,
-  preferredDirectoryTarget,
-  circleWorkRemoteTarget,
-  dlsiteWorkURL,
-} from "@/pages/circle/circleWorkModel";
+import { preferredDirectoryTarget, circleWorkRemoteTarget, dlsiteWorkURL } from "@/pages/circle/circleWorkModel";
 
 export function CatalogWorkCard({
   work,

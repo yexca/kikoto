@@ -40,9 +40,7 @@ func Decode(ctx context.Context, content []byte, contentType string) (string, er
 	if decoded, ok := decodeBOM(content); ok {
 		return decoded, nil
 	}
-	if bytes.HasPrefix(content, utf8BOM) {
-		content = content[len(utf8BOM):]
-	}
+	content = bytes.TrimPrefix(content, utf8BOM)
 
 	declared := declaredCharset(contentType)
 	if isWideUnicodeCharset(declared) {

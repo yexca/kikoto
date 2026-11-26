@@ -4,6 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/auth/AuthProvider";
 import { ApiError } from "@/lib/api";
@@ -77,8 +78,7 @@ export function SetupPage() {
           </div>
 
           <form className="space-y-3" onSubmit={submit}>
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("setup.setupToken")}
+            <Field label={t("setup.setupToken")} className="font-medium">
               <Input
                 name="setup-token"
                 value={setupToken}
@@ -88,7 +88,7 @@ export function SetupPage() {
                 aria-describedby="setup-token-hint"
                 required
               />
-            </label>
+            </Field>
             <p id="setup-token-hint" className="text-xs text-muted-foreground">
               <Trans
                 i18nKey="setup.tokenHint"
@@ -99,8 +99,7 @@ export function SetupPage() {
                 }}
               />
             </p>
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("setup.username")}
+            <Field label={t("setup.username")} className="font-medium">
               <Input
                 name="username"
                 value={username}
@@ -108,9 +107,8 @@ export function SetupPage() {
                 autoComplete="username"
                 required
               />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("setup.password")}
+            </Field>
+            <Field label={t("setup.password")} className="font-medium">
               <Input
                 name="password"
                 type="password"
@@ -121,12 +119,11 @@ export function SetupPage() {
                 minLength={8}
                 required
               />
-            </label>
+            </Field>
             <p id="setup-password-hint" className="text-xs text-muted-foreground">
               {t("setup.passwordHint")}
             </p>
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("setup.confirmPassword")}
+            <Field label={t("setup.confirmPassword")} className="font-medium">
               <Input
                 name="confirm-password"
                 type="password"
@@ -135,7 +132,7 @@ export function SetupPage() {
                 autoComplete="new-password"
                 required
               />
-            </label>
+            </Field>
             {error && (
               <div
                 className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"

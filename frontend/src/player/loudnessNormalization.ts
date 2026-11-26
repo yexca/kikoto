@@ -1,4 +1,5 @@
-import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { accountKey, localStore } from "@/lib/clientStorage";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import type { MediaLoudness } from "@/lib/api";
 
 /**
@@ -27,7 +28,7 @@ export type LoudnessPreferenceChangeDetail = {
 };
 
 export function loudnessPreferenceStorageKey(principalID: ClientPrincipalID) {
-  return currentScopedStorageKey(LOUDNESS_PREFERENCE_STORAGE_BASE_KEY, principalID);
+  return accountKey(LOUDNESS_PREFERENCE_STORAGE_BASE_KEY, principalID);
 }
 
 export function normalizeLoudnessMode(value: unknown): LoudnessNormalizationMode {
@@ -37,21 +38,14 @@ export function normalizeLoudnessMode(value: unknown): LoudnessNormalizationMode
 }
 
 export function getStoredLoudnessMode(principalID: ClientPrincipalID): LoudnessNormalizationMode {
-  try {
-    return normalizeLoudnessMode(localStorage.getItem(loudnessPreferenceStorageKey(principalID)));
-  } catch {
-    return "off";
-  }
+  return normalizeLoudnessMode(localStore.read(loudnessPreferenceStorageKey(principalID)));
 }
 
 export function storeLoudnessMode(principalID: ClientPrincipalID, value: LoudnessNormalizationMode) {
   const mode = normalizeLoudnessMode(value);
   const storageKey = loudnessPreferenceStorageKey(principalID);
-  try {
-    localStorage.setItem(storageKey, mode);
-  } catch {
-    // The choice still applies to this page when browser storage is unavailable or full.
-  }
+  // The choice still applies to this page when browser storage is unavailable or full.
+  localStore.write(storageKey, mode);
   window.dispatchEvent(
     new CustomEvent<LoudnessPreferenceChangeDetail>(PLAYER_LOUDNESS_PREFERENCE_CHANGE_EVENT, {
       detail: { storageKey, mode },

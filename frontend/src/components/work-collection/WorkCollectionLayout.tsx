@@ -9,6 +9,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
+import { localStore } from "@/lib/clientStorage";
 import {
   chooseWorkCardMode,
   LIBRARY_LAYOUT_STORE,
@@ -67,11 +68,8 @@ export function useWorkCollectionLayout(
   const update = (patch: Partial<StoredWorkCollectionLayout>) => {
     setLayout((current) => {
       const next = { ...current, ...patch };
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // The choice lasts for this visit when local storage is unavailable.
-      }
+      // The choice lasts for this visit when local storage is unavailable.
+      localStore.writeJSON(storageKey, next);
       window.dispatchEvent(new Event(layoutChangeEvent));
       return next;
     });
@@ -361,11 +359,6 @@ function readStoredLayout(
   defaults: WorkCollectionColumnDefaults,
   store: WorkCollectionLayoutStore,
 ): StoredWorkCollectionLayout {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(store.storageKey);
-  } catch {
-    // The defaults apply when local storage is unavailable.
-  }
-  return storedWorkCollectionLayout(raw, defaults, store.cardMode);
+  // The defaults apply when local storage is unavailable.
+  return storedWorkCollectionLayout(localStore.read(store.storageKey), defaults, store.cardMode);
 }

@@ -705,7 +705,7 @@ func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID in
 	}
 	return remoteWorkSummary{
 		RemoteID: projected.RemoteID, PrimaryCode: displayCode, RemoteCode: code,
-		Title: firstNonEmpty(projected.Title, displayCode), ReleaseDate: projected.ReleaseDate,
+		Title: firstNonBlankTrimmed(projected.Title, displayCode), ReleaseDate: projected.ReleaseDate,
 		UpdatedAt: projected.ReleaseDate, CoverURL: projected.CoverURL, Circle: projected.Circle,
 		CircleRef: projected.CircleRef, AgeRating: projected.AgeRating, Rating: projected.Rating,
 		RatingCount: projected.RatingCount, Sales: projected.Sales, Price: projected.Price,

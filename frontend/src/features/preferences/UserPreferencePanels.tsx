@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type UserPreferences } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -68,11 +69,9 @@ export function UserPreferencePanels({
     );
   if (!preferences)
     return (
-      <div
-        role="status"
-        className="skeleton-reveal min-h-40 animate-pulse rounded-lg border bg-muted"
-        aria-label={t("common.loading")}
-      />
+      <div role="status" aria-label={t("common.loading")}>
+        <Skeleton reveal className="min-h-40 rounded-lg border" />
+      </div>
     );
   return (
     <fieldset disabled={readOnly || saving} aria-busy={saving} className="min-w-0 border-0 p-0">

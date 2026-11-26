@@ -9,7 +9,7 @@ import {
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+} from "@/lib/remoteTrackWorkflows";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { persistedTrackingActionState } from "@/features/work-detail/persistedWorkDetailModel";
 import {

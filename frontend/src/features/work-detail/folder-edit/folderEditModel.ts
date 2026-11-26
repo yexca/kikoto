@@ -331,17 +331,6 @@ export function folderEditExtensions(files: readonly FolderEditFile[]) {
   );
 }
 
-/** How many files of a resource the edit changes: removed for the edited folder, added for any other. */
-export function folderEditResourceChanges(
-  resource: FolderEditResource,
-  files: readonly FolderEditFile[] | undefined,
-  selected: ReadonlySet<string> | undefined,
-) {
-  if (!files) return 0;
-  const count = files.filter((file) => selected?.has(file.path)).length;
-  return resource.kind === "current" ? files.length - count : count;
-}
-
 /** The key of a file of the edited folder, both as a result entry and as a placement. */
 export function currentFileKey(path: string) {
   return `current:${path}`;
@@ -427,9 +416,11 @@ export function folderEditItemKey(addition: WorkFolderEditAddition) {
     : `remote:${addition.sourceId}:${addition.remoteCode.toUpperCase()}:${addition.path}`;
 }
 
-function resultStateForItem(item: WorkFolderEditItem): FolderEditResultState {
+/** What a planned item of any file workspace's preview does to the result; only a lyrics edit moves files. */
+export function planItemResultState(item: RemoteWorkSavePlanItem): FolderEditResultState {
   if (item.targetConflict || item.action === "conflict") return "conflict";
   if (item.action === "exclude") return "excluded";
+  if (item.action === "move_local") return "add_move";
   if (item.action === "copy_local") return "add_local";
   if (item.action === "cache_download") return "add_remote";
   return "same";
@@ -478,7 +469,7 @@ export function folderEditResult(
     planned.add(item.itemKey);
     const target = normalizeRelativePath(item.targetPath);
     const path = layout.placements[item.itemKey] ?? (target.startsWith(prefix) ? target.slice(prefix.length) : target);
-    const state = resultStateForItem(item);
+    const state = planItemResultState(item);
     const existing = entries.get(pathIdentity(path));
     if (state === "same" && existing) {
       if (existing.state === "keep") existing.state = "same";
@@ -882,7 +873,7 @@ export function fetchComposeResult(
   const entries = plan
     ? [
         ...plan.items.filter(wanted).map((item) => entry({ ...item, remoteCode: fetchedCode }, fetchResultState(item))),
-        ...(plan.followUp?.items ?? []).filter(wanted).map((item) => entry(item, resultStateForItem(item))),
+        ...(plan.followUp?.items ?? []).filter(wanted).map((item) => entry(item, planItemResultState(item))),
       ]
     : [];
   const planned = new Set(entries.map((shown) => shown.key));

@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import type { AvailabilityWatchState } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { LatestRunStatus } from "@/features/workflows/LatestRunStatus";
 import { OptionField, SegmentedControl } from "@/features/workflows/RunOptionControls";
 import { useLatestRun } from "@/features/workflows/useLatestRun";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
-import { ErrorPanel, SkeletonLine, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
+import { ErrorPanel, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
 import { api, type AvailabilityWatch, type LibrarySource } from "@/lib/api";
 
 const AVAILABILITY_WATCH_CODE = "availability_watch";
@@ -20,8 +21,8 @@ export function AvailabilityWatchLoadState({ state }: { state: AvailabilityWatch
     return (
       <Card className="skeleton-reveal">
         <CardContent className="space-y-3 p-5">
-          <SkeletonLine className="h-6 w-48" />
-          <SkeletonLine className="h-32 w-full" />
+          <Skeleton reveal className="h-6 w-48" />
+          <Skeleton reveal className="h-32 w-full" />
         </CardContent>
       </Card>
     );

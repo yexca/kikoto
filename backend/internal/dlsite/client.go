@@ -107,7 +107,7 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 	// it outranks absence reported by a candidate that was never its home site.
 	var lastErr, lastFailure error
 	for _, site := range candidateSites(workno) {
-		for _, language := range normalizeLanguages(options.Languages) {
+		for _, language := range NormalizeRequestLanguages(options.Languages) {
 			product, err := c.fetchProductFromSite(ctx, site, workno, language)
 			if err == nil {
 				product.Language = language
@@ -165,7 +165,7 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", HTTPStatusError{Operation: "cover download", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
@@ -268,7 +268,7 @@ func (c *Client) fetchProductBody(ctx context.Context, site, endpoint string) ([
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, HTTPStatusError{Operation: "dlsite " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
@@ -375,7 +375,7 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 	if err != nil {
 		return nil, dynamicProductMetadata{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, dynamicProductMetadata{}, HTTPStatusError{Operation: "dlsite dynamic", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
@@ -433,7 +433,12 @@ func candidateSites(workno string) []string {
 	}
 }
 
-func normalizeLanguages(values []string) []string {
+// NormalizeRequestLanguages returns the DLsite locales a product request tries,
+// in order. Spellings are lower-cased with "-" and deduplicated. A blank value
+// or the origin token asks for a request without a locale, which "" stands for
+// and which comes last; no values at all give that request alone. Normalizing a
+// normalized list changes nothing.
+func NormalizeRequestLanguages(values []string) []string {
 	seen := map[string]bool{}
 	languages := []string{}
 	includeDefault := false

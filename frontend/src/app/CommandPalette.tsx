@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight, FileAudio, Loader2, Search, X } from "lucide-react";
 
 import { commandActions, type CommandAction } from "@/app/commandActions";
-import { type NavigationItem, type PageID } from "@/app/navigation";
+import type { NavigationItem } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import type { PageID } from "@/lib/appPages";
 import { cx } from "@/lib/classNames";
 import { isWorkCode } from "@/lib/workCode";
 

@@ -127,7 +127,7 @@ func (s *Server) loadNotificationsPage(ctx context.Context, userID int64, page, 
 	if err != nil {
 		return workflowNotificationsPage{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	notifications := []workflowNotificationRecord{}
 	for rows.Next() {
 		var item workflowNotificationRecord

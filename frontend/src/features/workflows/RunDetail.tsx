@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { CandidateReviewCard } from "@/features/workflows/RunCandidateReview";
 import { RunDiagnostics } from "@/features/workflows/RunDiagnostics";
@@ -13,7 +14,6 @@ import { RunFacts, RunStatusBadge, RunSteps } from "@/features/workflows/RunOver
 import { isDemoShowcaseActiveRun, runTitle } from "@/features/workflows/runPresentation";
 import { RunTransferProgress } from "@/features/workflows/RunTransferProgress";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
-import { SkeletonLine } from "@/features/workflows/WorkflowPanelParts";
 import { usePendingAction } from "@/hooks/usePendingAction";
 import i18n from "@/i18n";
 import { api, type WorkflowCandidate, type WorkflowEvent, type WorkflowRun, type WorkflowRunDetail } from "@/lib/api";
@@ -109,18 +109,18 @@ function RunDetailSkeleton() {
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <SkeletonLine className="h-5 w-48 max-w-full" />
-          <SkeletonLine className="h-5 w-16" />
+          <Skeleton reveal className="h-5 w-48 max-w-full" />
+          <Skeleton reveal className="h-5 w-16" />
         </div>
-        <SkeletonLine className="h-3 w-64 max-w-full" />
-        <SkeletonLine className="h-3 w-56 max-w-full" />
+        <Skeleton reveal className="h-3 w-64 max-w-full" />
+        <Skeleton reveal className="h-3 w-56 max-w-full" />
       </div>
       <div className="flex flex-wrap gap-1.5">
         {Array.from({ length: 4 }, (_, index) => (
-          <SkeletonLine key={index} className="h-6 w-20" />
+          <Skeleton reveal key={index} className="h-6 w-20" />
         ))}
       </div>
-      <SkeletonLine className="h-16 w-full" />
+      <Skeleton reveal className="h-16 w-full" />
     </div>
   );
 }

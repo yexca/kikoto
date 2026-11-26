@@ -512,7 +512,7 @@ func TestSyncFamilyClassifiesMakerRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var code, kind string
 		if err := rows.Scan(&code, &kind); err != nil {

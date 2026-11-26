@@ -26,6 +26,7 @@ import {
 } from "@/features/work-detail/directory/directoryNames";
 import { useOriginalFileNames } from "@/lib/originalFileNames";
 import { cn } from "@/lib/tailwindClassNames";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import { IconButton } from "@/components/ui/icon-button";
 import { buttonVariants } from "@/components/ui/button";
 import { createPortal } from "react-dom";
@@ -283,24 +284,15 @@ function FullNamesToggle({ full, onToggle }: { full: boolean; onToggle: () => vo
   );
 }
 
-const fullNamesStorageKey = "kikoto:work-directory-full-names";
+const fullNamesStorageKey = deviceKey("kikoto:work-directory-full-names");
 
 /** Whether this device shows long directory names in full; the choice stays on this device. */
 function useFullDirectoryNames() {
-  const [full, setFull] = useState(() => {
-    try {
-      return localStorage.getItem(fullNamesStorageKey) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [full, setFull] = useState(() => localStore.read(fullNamesStorageKey) === "true");
   const toggle = () =>
     setFull((current) => {
-      try {
-        localStorage.setItem(fullNamesStorageKey, String(!current));
-      } catch {
-        // The choice still applies to this page view.
-      }
+      // Without storage the choice still applies to this page view.
+      localStore.write(fullNamesStorageKey, String(!current));
       return !current;
     });
   return [full, toggle] as const;

@@ -180,8 +180,8 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 	result.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
 	result.PrimaryCode = workCode
 	result.RemoteCode = workCode
-	result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
-	result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
+	result.Title = firstNonBlankTrimmed(remoteWork.Title, remoteWork.Name, workCode)
+	result.CoverURL = firstNonBlankTrimmed(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
 	return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
 }
 
@@ -338,7 +338,7 @@ func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceA
 			result.ElapsedMS = cached.ElapsedMS
 		}
 	}
-	result.RemoteCode = firstNonEmpty(remoteCode.String, result.PrimaryCode)
+	result.RemoteCode = firstNonBlankTrimmed(remoteCode.String, result.PrimaryCode)
 	result.PrimaryCode = result.RemoteCode
 	return nil
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Field } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -19,10 +20,9 @@ export function SettingsField({
 }) {
   return (
     <div className="grid min-w-0 gap-1.5">
-      <label className="grid min-w-0 gap-1.5 text-sm">
-        <span className="font-medium">{label}</span>
+      <Field label={label} className="min-w-0">
         {children}
-      </label>
+      </Field>
       {hint && (
         <p id={hintId} className={cn("text-xs leading-5 text-muted-foreground", hintClassName)}>
           {hint}

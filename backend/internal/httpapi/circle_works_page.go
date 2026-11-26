@@ -367,7 +367,7 @@ func (s *Server) buildCircleCatalogWork(ctx context.Context, row circleCatalogWo
 		}
 	}
 	item.CoverURL = s.coverURL(item.PrimaryCode)
-	item.DLsiteURL = firstNonEmpty(s.dlsiteURL(item.PrimaryCode), item.DLsiteURL)
+	item.DLsiteURL = firstNonBlankTrimmed(s.dlsiteURL(item.PrimaryCode), item.DLsiteURL)
 	item.Circle, item.CircleExternalID = metadata.Circle, metadata.CircleExternalID
 	if err := s.populateCircleCatalogWorkRelations(ctx, &item, userID, partyID); err != nil {
 		return item, false, err

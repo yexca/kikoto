@@ -87,7 +87,8 @@ confirmation. Waiting and in-library targets fold to whole rows of the grid's
 measured tracks unless a search is active. The page's Actions menu, the
 selection bar, the cards, and the family dialog share one set of Track, Fetch,
 Check now, Remove, and Clean up actions, and Fetch always passes through a
-confirmation dialog that keeps the last extension exclusion in local storage.
+confirmation dialog that keeps the last extension exclusion in local storage,
+scoped to the server.
 Selection reuses the shared work selection bar, whose actions count what each
 applies to.
 

@@ -1,7 +1,7 @@
 # Interaction Principles
 
 The cross-surface interaction rules for failures, secondary navigation, mobile
-layout, work collections and cards, account-scoped state, recommendations, and
+layout, work collections and cards, client storage scopes, recommendations, and
 directory ordering.
 
 ## Failures and Navigation Forms
@@ -60,14 +60,30 @@ compact icon controls, global playback) are in
   sets `aria-expanded`. A view model's `mark` puts the quick mark on
   the simple card's cover.
 
-## Account-Scoped State
+## Client Storage
 
-- Scope account-bearing browser state by the configured server identity and
-  current user (or anonymous principal). This includes player queue/progress,
-  Library and Favorites browse restoration, workflow selection, and in-memory
-  work media. Pure display preferences such as theme and player Dock mode stay
-  shared on the device. Demo mode may change those local display preferences
-  even though server-backed account and administration state remains read-only.
+Browser storage is read and written only through `lib/clientStorage`, and
+Oxlint's `kikoto/no-direct-storage` rejects `localStorage` and
+`sessionStorage` anywhere else outside tests. Every key names its scope when
+it is built:
+
+| Scope | Key | Holds |
+| --- | --- | --- |
+| Device | `deviceKey` | Pure display preferences such as theme, layout, and player Dock mode, and the native server address and session that choose the server |
+| Server | `serverKey` | Per-device conveniences for one server's lists and workflows, such as ranking orders and workflow run options |
+| Account | `accountKey`, or `accountScopeKey` with a handed-down storage scope | Anything that carries the account: player queue and preferences, video positions, Library and Favorites browse restoration, source visibility, and the anonymous locale |
+
+- The account scope is the configured server identity and current user, or
+  the anonymous principal (`lib/clientStorageScope`); in-memory work media
+  uses the same scope. When unsure, a value is account-scoped.
+- `localStore` keeps a value across visits and `sessionStore` for one browser
+  tab or native-app launch. Reads return null for storage that is missing,
+  blocked, or unreadable, and a refused write leaves the choice in memory for
+  the visit.
+- A key's format is its saved data. Changing a key's scope or name moves the
+  saved value with `carryOver` on read, or states why the value may reset.
+- Demo mode may change local display preferences even though server-backed
+  account and administration state remains read-only.
 
 ## Recommendations
 

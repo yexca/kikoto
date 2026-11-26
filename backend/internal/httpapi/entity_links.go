@@ -346,7 +346,7 @@ func (s *Server) voiceCreditsForWork(ctx context.Context, workID int64) ([]voice
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	credits := []voiceCredit{}
 	for rows.Next() {
 		var credit voiceCredit

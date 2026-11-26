@@ -3,7 +3,13 @@ package httpapi
 import (
 	"sort"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
+
+// firstNonBlankTrimmed is textvalue.FirstNonBlankTrimmed under a package name,
+// so the many handlers that need it do not each import textvalue.
+var firstNonBlankTrimmed = textvalue.FirstNonBlankTrimmed
 
 func sortedStringKeys(values map[string]bool) []string {
 	keys := make([]string, 0, len(values))
@@ -30,17 +36,6 @@ func normalizeDate(value string) any {
 		return value[:10]
 	}
 	return value
-}
-
-// firstNonEmpty returns the first value that is not blank, trimmed. Use
-// cmp.Or only when whitespace-only values cannot occur.
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func cleanStringList(values []string, limit int) []string {

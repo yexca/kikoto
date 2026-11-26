@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -242,20 +241,6 @@ func presetWorkflowSpecByCode(code string) (presetWorkflowSpec, bool) {
 		}
 	}
 	return presetWorkflowSpec{}, false
-}
-
-func isPresetWorkflowCode(code string) bool {
-	_, ok := presetWorkflowSpecByCode(code)
-	return ok
-}
-
-func presetWorkflowCodes() []string {
-	codes := make([]string, 0, len(presetWorkflowSpecs))
-	for _, spec := range presetWorkflowSpecs {
-		codes = append(codes, spec.Code)
-	}
-	sort.Strings(codes)
-	return codes
 }
 
 func presetSystemWorkflowSpecs() []systemWorkflowSpec {

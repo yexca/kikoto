@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeMobileTabSnapshot } from "./mobileTabState";
 import { openPlayingWorkDetail } from "./playingWorkNavigation";
 import { historyStateWithWorkDetailOwner, workDetailOwnerPage } from "./workDetailNavigation";
-import { isMobileTabResumeHistoryState } from "../lib/browserHistory";
+import { isMobileTabResumeHistoryState } from "./browserHistory";
 
 const storageScope = "example-server:user-1";
 

@@ -496,7 +496,7 @@ func catalogRemoteObservations(works []voiceRemoteWork) []voiceRemoteObservation
 	observations := []voiceRemoteObservation{}
 	seen := map[string]bool{}
 	for _, work := range works {
-		remoteCode := strings.TrimSpace(firstNonEmpty(work.RemoteCode, work.PrimaryCode))
+		remoteCode := strings.TrimSpace(firstNonBlankTrimmed(work.RemoteCode, work.PrimaryCode))
 		if work.SourceID <= 0 || remoteCode == "" {
 			continue
 		}
@@ -598,7 +598,7 @@ func sourceTagsWithObservations(tags []circleSourceStat, observations []voiceRem
 		tag := circleSourceStat{
 			Key:         "source:" + strconv.FormatInt(sourceID, 10),
 			SourceID:    &sourceID,
-			DisplayName: firstNonEmpty(observation.SourceName, observation.SourceCode, "Remote source"),
+			DisplayName: firstNonBlankTrimmed(observation.SourceName, observation.SourceCode, "Remote source"),
 			Status:      voiceSourceAvailabilityStatus(observation.Status),
 		}
 		if tag.Status == "available" {

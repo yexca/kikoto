@@ -1,8 +1,9 @@
 import { NAVIGATION_EVENT, historyStateWithReturn, normalizeInternalLocation } from "@/lib/browserHistory";
+import { accountScopeKey, sessionStore } from "@/lib/clientStorage";
 import { voiceDetailPath, voiceRouteKeyFromPath } from "@/lib/voiceRoute";
 import { isWorkCodePath } from "@/lib/workCode";
 
-const lastVoiceListLocationPrefix = "kikoto:voice-list-location:v1:";
+const lastVoiceListLocationName = "kikoto:voice-list-location:v1";
 
 export function isVoiceListLocation(location: string) {
   const normalized = normalizeInternalLocation(location);
@@ -15,26 +16,19 @@ export function isVoiceListLocation(location: string) {
 }
 
 export function readLastVoiceListLocation(storageScope: string) {
-  try {
-    const value = window.sessionStorage.getItem(voiceNavigationStorageKey(storageScope));
-    return value && isVoiceListLocation(value) ? normalizeInternalLocation(value) : null;
-  } catch {
-    return null;
-  }
+  const value = sessionStore.read(voiceNavigationStorageKey(storageScope));
+  return value && isVoiceListLocation(value) ? normalizeInternalLocation(value) : null;
 }
 
+// Navigation remains usable when session storage is unavailable.
 export function writeLastVoiceListLocation(storageScope: string, location: string) {
   const normalized = normalizeInternalLocation(location);
   if (!normalized || !isVoiceListLocation(normalized)) return;
-  try {
-    window.sessionStorage.setItem(voiceNavigationStorageKey(storageScope), normalized);
-  } catch {
-    // Navigation remains usable when session storage is unavailable.
-  }
+  sessionStore.write(voiceNavigationStorageKey(storageScope), normalized);
 }
 
 function voiceNavigationStorageKey(storageScope: string) {
-  return `${lastVoiceListLocationPrefix}${storageScope}`;
+  return accountScopeKey(lastVoiceListLocationName, storageScope);
 }
 
 /** Opens the voice detail page a server-reported route key addresses. */

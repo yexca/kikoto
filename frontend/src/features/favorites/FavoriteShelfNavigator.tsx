@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SubNavActiveMark, SubNavColumn, SubNavHeading, subNavItemClassName } from "@/components/ui/sub-nav";
 import type { FavoriteList } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
@@ -262,8 +263,8 @@ function ShelfSkeletonRows() {
     <>
       {Array.from({ length: 3 }, (_, index) => (
         <div key={index} className="skeleton-reveal flex min-h-11 items-center gap-3 px-3">
-          <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-muted" />
-          <div className="h-3 flex-1 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-5 w-5 shrink-0" />
+          <Skeleton className="h-3 flex-1" />
         </div>
       ))}
     </>
@@ -301,10 +302,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
         <div className="flex w-max min-w-full items-center gap-1.5 py-1" role="group" aria-label={t("favorites.lists")}>
           {navigation.listsLoading ? (
             Array.from({ length: 4 }, (_, index) => (
-              <div
-                key={index}
-                className="skeleton-reveal h-9 w-24 shrink-0 animate-pulse rounded-[var(--badge-radius)] bg-muted"
-              />
+              <Skeleton key={index} reveal className="h-9 w-24 shrink-0 rounded-[var(--badge-radius)]" />
             ))
           ) : (
             <>

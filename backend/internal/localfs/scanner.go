@@ -689,21 +689,6 @@ func FileVersion(info os.FileInfo) string {
 	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
 }
 
-func normalizeExtensions(values []string) map[string]struct{} {
-	extensions := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(strings.ToLower(value))
-		if value == "" {
-			continue
-		}
-		if !strings.HasPrefix(value, ".") {
-			value = "." + value
-		}
-		extensions[value] = struct{}{}
-	}
-	return extensions
-}
-
 func relativeDepth(root string, path string) (int, string, error) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {

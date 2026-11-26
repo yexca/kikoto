@@ -33,7 +33,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if target.LocationType == "remote_stream" {
-		remoteURL := firstNonEmpty(target.StreamURL, target.DownloadURL)
+		remoteURL := firstNonBlankTrimmed(target.StreamURL, target.DownloadURL)
 		if (target.Availability != "available" && target.Availability != "remote") ||
 			target.FileSourceID <= 0 || strings.TrimSpace(remoteURL) == "" {
 			writeAPIError(w, http.StatusNotFound, "not_found", "remote media location is not available", false)
@@ -223,7 +223,7 @@ func (s *Server) readMediaLocationText(r *http.Request, target mediaStreamTarget
 		raw, err := os.ReadFile(path)
 		return raw, "", err
 	case "remote_stream":
-		remoteURL := firstNonEmpty(target.StreamURL, target.DownloadURL)
+		remoteURL := firstNonBlankTrimmed(target.StreamURL, target.DownloadURL)
 		if (target.Availability != "available" && target.Availability != "remote") ||
 			target.FileSourceID <= 0 || strings.TrimSpace(remoteURL) == "" {
 			return nil, "", notFound

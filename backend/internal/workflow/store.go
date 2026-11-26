@@ -168,7 +168,7 @@ func (s *Store) LoadRunDetail(ctx context.Context, id int64) (RunDetail, error) 
 	if err != nil {
 		return RunDetail{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	detail := RunDetail{RunRecord: run, NodeRuns: []NodeRunRecord{}, GraphJSON: "{}"}
 	for rows.Next() {
 		var node NodeRunRecord
@@ -189,7 +189,7 @@ func (s *Store) ListEventsAfter(ctx context.Context, runID int64, afterID int64)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	events := []EventRecord{}
 	for rows.Next() {
 		var item EventRecord
@@ -211,7 +211,7 @@ func (s *Store) ListCandidates(ctx context.Context, runID int64) ([]CandidateRec
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	candidates := []CandidateRecord{}
 	for rows.Next() {
 		var item CandidateRecord
@@ -230,7 +230,7 @@ func (s *Store) ListDefinitions(ctx context.Context) ([]DefinitionRecord, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	definitions := []DefinitionRecord{}
 	for rows.Next() {
 		item, err := scanDefinition(rows)
@@ -272,7 +272,7 @@ func (s *Store) ListEnabledAfterTriggers(ctx context.Context, upstream string) (
 }
 
 func scanTriggers(rows *sql.Rows) ([]TriggerRecord, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	triggers := []TriggerRecord{}
 	for rows.Next() {
 		item, err := scanTrigger(rows)
@@ -293,7 +293,7 @@ func (s *Store) RecordEvent(ctx context.Context, runID int64, level string, even
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := InsertEvent(ctx, tx, runID, EventSpec{Level: level, Type: eventType, Message: message, Detail: detail}); err != nil {
 		return err
 	}
@@ -313,7 +313,7 @@ func loadRunFrom(ctx context.Context, db runQuerier, id int64) (RunRecord, error
 }
 
 func scanRuns(rows *sql.Rows) ([]RunRecord, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	runs := []RunRecord{}
 	for rows.Next() {
 		item, err := scanRun(rows)

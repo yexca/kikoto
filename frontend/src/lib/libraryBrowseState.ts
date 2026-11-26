@@ -1,4 +1,5 @@
 import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/api";
+import { accountScopeKey, localStore, sessionStore } from "@/lib/clientStorage";
 import { isWorkCodePath } from "@/lib/workCode";
 import { WORKFLOWS_PATH } from "@/lib/workflowLinks";
 import {
@@ -36,9 +37,9 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   scrollY: 0,
 };
 
-const storagePrefix = "kikoto:library-browse:";
-const lastLocationStoragePrefix = "kikoto:library-last-location:";
-const sortPreferenceStoragePrefix = "kikoto:library-sort:";
+const browseStorageName = "kikoto:library-browse";
+const lastLocationStorageName = "kikoto:library-last-location";
+const sortPreferenceStorageName = "kikoto:library-sort";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
 const sorts = [
   "recent",
@@ -52,62 +53,42 @@ const sorts = [
   "recommend",
 ] satisfies LibrarySort[];
 
+// `key` is a `libraryBrowseKey`: the account storage scope followed by the tab.
 export function readLibraryBrowseState(key: string): LibraryBrowseState | null {
-  try {
-    const raw = window.sessionStorage.getItem(`${storagePrefix}${key}`);
-    return raw ? libraryBrowseStateFromValue(JSON.parse(raw), defaultLibraryBrowseState) : null;
-  } catch {
-    return null;
-  }
+  const value = sessionStore.readJSON(accountScopeKey(browseStorageName, key));
+  return value ? libraryBrowseStateFromValue(value, defaultLibraryBrowseState) : null;
 }
 
+// Browsing still works when session storage is unavailable.
 export function writeLibraryBrowseState(key: string, state: LibraryBrowseState) {
-  try {
-    window.sessionStorage.setItem(`${storagePrefix}${key}`, JSON.stringify({ ...state, query: "" }));
-  } catch {
-    // Browsing still works when session storage is unavailable.
-  }
+  sessionStore.writeJSON(accountScopeKey(browseStorageName, key), { ...state, query: "" });
 }
 
 export function readLibrarySortPreference(key: string): Pick<LibraryBrowseState, "sort" | "direction"> | null {
-  try {
-    const raw = window.localStorage.getItem(`${sortPreferenceStoragePrefix}${key}`);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as { sort?: unknown; direction?: unknown };
-    if (typeof value.sort !== "string" || !sorts.includes(value.sort as LibrarySort)) return null;
-    if (value.direction !== "asc" && value.direction !== "desc") return null;
-    return { sort: value.sort as LibrarySort, direction: value.direction };
-  } catch {
-    return null;
-  }
+  const value = localStore.readJSON(accountScopeKey(sortPreferenceStorageName, key));
+  if (!value || typeof value !== "object") return null;
+  const { sort, direction } = value as { sort?: unknown; direction?: unknown };
+  if (typeof sort !== "string" || !sorts.includes(sort as LibrarySort)) return null;
+  if (direction !== "asc" && direction !== "desc") return null;
+  return { sort: sort as LibrarySort, direction };
 }
 
+// Sorting still works when local storage is unavailable.
 export function writeLibrarySortPreference(key: string, sort: LibrarySort, direction: SortDirection) {
-  try {
-    window.localStorage.setItem(`${sortPreferenceStoragePrefix}${key}`, JSON.stringify({ sort, direction }));
-  } catch {
-    // Sorting still works when local storage is unavailable.
-  }
+  localStore.writeJSON(accountScopeKey(sortPreferenceStorageName, key), { sort, direction });
 }
 
 export function readLastLibraryLocation(storageScope: string): string | null {
-  try {
-    return normalizeLibraryBrowseLocation(
-      window.sessionStorage.getItem(`${lastLocationStoragePrefix}${storageScope}`) ?? "",
-    );
-  } catch {
-    return null;
-  }
+  return normalizeLibraryBrowseLocation(
+    sessionStore.read(accountScopeKey(lastLocationStorageName, storageScope)) ?? "",
+  );
 }
 
+// Navigation still works when session storage is unavailable.
 export function writeLastLibraryLocation(storageScope: string, location: string) {
   const normalized = normalizeLibraryBrowseLocation(location);
   if (!normalized) return;
-  try {
-    window.sessionStorage.setItem(`${lastLocationStoragePrefix}${storageScope}`, normalized);
-  } catch {
-    // Navigation still works when session storage is unavailable.
-  }
+  sessionStore.write(accountScopeKey(lastLocationStorageName, storageScope), normalized);
 }
 
 export function normalizeLibraryBrowseLocation(location: string): string | null {

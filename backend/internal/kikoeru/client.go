@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
+	"github.com/yexca/kikoto/backend/internal/languageedition"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/workcode"
 )
@@ -152,7 +153,7 @@ func decodeLanguageEditionObject(data []byte) (LanguageEditionList, error) {
 	}
 	indexed := make([]indexedLanguageEdition, 0, len(values))
 	for key, raw := range values {
-		index, err := parseLanguageEditionIndex(key)
+		index, err := languageedition.ParseIndex(key)
 		if err != nil {
 			return nil, err
 		}
@@ -173,17 +174,6 @@ func decodeLanguageEditionObject(data []byte) (LanguageEditionList, error) {
 		decoded[index] = value.edition
 	}
 	return decoded, nil
-}
-
-func parseLanguageEditionIndex(key string) (uint64, error) {
-	if key == "" || strings.IndexFunc(key, func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
-		return 0, fmt.Errorf("language_editions object contains a non-numeric key")
-	}
-	index, err := strconv.ParseUint(key, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("language_editions object contains an invalid numeric key")
-	}
-	return index, nil
 }
 
 type Circle struct {
@@ -530,7 +520,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return StatusError{Code: resp.StatusCode}
 	}
@@ -567,7 +557,7 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, target 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return StatusError{Code: resp.StatusCode}
 	}

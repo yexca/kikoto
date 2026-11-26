@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/auth/AuthProvider";
 import { ApiError } from "@/lib/api";
@@ -55,17 +56,15 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
         </div>
 
         <form className="space-y-3" onSubmit={submit}>
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("login.username")}
+          <Field label={t("login.username")} className="font-medium">
             <Input
               name="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
             />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("login.password")}
+          </Field>
+          <Field label={t("login.password")} className="font-medium">
             <Input
               name="password"
               type="password"
@@ -73,7 +72,7 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
             />
-          </label>
+          </Field>
           {error && (
             <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">
               {error}

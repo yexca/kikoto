@@ -129,7 +129,7 @@ func (s *Server) fetchPlanArchiveRoots(ctx context.Context, plan remoteWorkSaveP
 		return roots, nil
 	}
 	var workID int64
-	err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", firstNonEmpty(plan.EditionCode, plan.PrimaryCode)).Scan(&workID)
+	err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", firstNonBlankTrimmed(plan.EditionCode, plan.PrimaryCode)).Scan(&workID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return roots, nil
 	}

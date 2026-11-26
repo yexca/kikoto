@@ -545,7 +545,7 @@ func intersectLocationIDs(allowed []int64, requested []int64) []int64 {
 
 // sortedUniquePositiveInt64s drops non-positive and repeated ids and sorts the rest ascending.
 func sortedUniquePositiveInt64s(values []int64) []int64 {
-	result := uniquePositiveInt64s(values)
+	result := sqlutil.UniquePositiveInt64s(values)
 	slices.Sort(result)
 	return result
 }

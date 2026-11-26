@@ -22,7 +22,7 @@ func (s *Server) executeGraphVoiceCatalog(ctx context.Context, runID int64, node
 	personID := int64(configInt(node.Config, "personId", 0))
 	sourceIDs := configInt64Slice(node.Config, "sourceIds")
 	mode := strings.ToLower(configString(node.Config, "mode"))
-	summary := map[string]any{"mode": firstNonEmpty(mode, "stored")}
+	summary := map[string]any{"mode": firstNonBlankTrimmed(mode, "stored")}
 	partial := false
 	if mode == "incremental" || mode == "full" {
 		progress := voiceCatalogProgress{runID: runID}

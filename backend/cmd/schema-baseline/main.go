@@ -138,7 +138,7 @@ func writeBaseline(migrationsDir string, files []string, header string, outputPa
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
@@ -348,7 +348,7 @@ func readSchemaObjects(db *sql.DB) ([]schemaObject, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var objects []schemaObject
 	for rows.Next() {
 		var object schemaObject
@@ -428,7 +428,7 @@ func dumpSeedData(db *sql.DB, tables []schemaObject) ([]string, error) {
 				pointers[i] = &values[i]
 			}
 			if err := rows.Scan(pointers...); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("read seed table %s: %w", table.name, err)
 			}
 			tableRows = append(tableRows, values)
@@ -485,7 +485,7 @@ func orderSeedData(db *sql.DB, data []seedTableData) ([]seedTableData, error) {
 			var id, sequence int
 			var referenced, from, to, onUpdate, onDelete, match string
 			if err := rows.Scan(&id, &sequence, &referenced, &from, &to, &onUpdate, &onDelete, &match); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("inspect seed dependencies for %s: %w", table.name, err)
 			}
 			if referenced != table.name {
@@ -535,7 +535,7 @@ func tableColumnDefinitions(db *sql.DB, table string) ([]column, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var columns []column
 	for rows.Next() {
 		var column column
@@ -575,7 +575,7 @@ func verifyForeignKeys(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		return fmt.Errorf("foreign key check failed while generating baseline")
 	}

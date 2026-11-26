@@ -216,7 +216,7 @@ func retireFetchRemoteStreams(ctx context.Context, tx *sql.Tx, manifest remoteFe
 		if sourceID <= 0 {
 			continue
 		}
-		remotePath := firstNonEmpty(item.RemotePath, item.Path)
+		remotePath := firstNonBlankTrimmed(item.RemotePath, item.Path)
 		if _, err := tx.ExecContext(ctx, `
 			DELETE FROM media_file_location
 			WHERE file_source_id = ? AND location_type = 'remote_stream'

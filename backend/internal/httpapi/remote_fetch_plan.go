@@ -115,7 +115,7 @@ func (s *Server) buildRemoteFetchPlanRemoteItem(
 ) (remoteWorkSavePlanItem, error) {
 	item := remoteWorkSavePlanItem{
 		ItemKey: "remote:" + file.Path, Path: file.Path, Kind: file.Kind, SizeBytes: file.SizeBytes,
-		SourceKind: "remote", SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL),
+		SourceKind: "remote", SourcePath: firstNonBlankTrimmed(file.DownloadURL, file.StreamURL),
 		CachePath:  cacheMediaRelPath(source.Code, inputs.workCode, file.Path),
 		TargetPath: filepath.ToSlash(joinRemotePath(inputs.saveRoot, file.Path)), LocalPaths: []string{},
 		RemoteSourceID: source.ID, RemoteSourceCode: source.Code, RemoteSourceName: source.DisplayName,
@@ -242,7 +242,7 @@ func (s *Server) defaultRemoteFetchAction(ctx context.Context, item *remoteWorkS
 		item.Action, item.Status = "skip", "local_exists"
 		return nil
 	}
-	if cachePath, ok := s.findRemoteCacheFile(ctx, item.RemoteSourceID, item.RemoteSourceCode, workCode, firstNonEmpty(item.RemotePath, item.Path), item.SizeBytes); ok {
+	if cachePath, ok := s.findRemoteCacheFile(ctx, item.RemoteSourceID, item.RemoteSourceCode, workCode, firstNonBlankTrimmed(item.RemotePath, item.Path), item.SizeBytes); ok {
 		item.CachePath = filepath.ToSlash(cachePath)
 		item.Action, item.Status = "cache_hit", "cache_hit"
 		return nil

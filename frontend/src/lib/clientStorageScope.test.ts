@@ -10,8 +10,6 @@ import {
   clientStorageScope,
   currentClientServerIdentity,
   currentClientStorageScope,
-  currentScopedStorageKey,
-  currentServerScopedStorageKey,
   normalizeClientServerIdentity,
 } from "./clientStorageScope";
 
@@ -49,10 +47,6 @@ describe("client storage scope", () => {
 
     expect(currentClientServerIdentity()).toBe("https://browser.example.invalid");
     expect(currentClientStorageScope(null)).toBe("https%3A%2F%2Fbrowser.example.invalid:anonymous");
-    expect(currentScopedStorageKey("kikoto:queue", 7)).toBe(
-      "kikoto:queue:https%3A%2F%2Fbrowser.example.invalid:user-7",
-    );
-    expect(currentServerScopedStorageKey("kikoto:seed")).toBe("kikoto:seed:https%3A%2F%2Fbrowser.example.invalid");
   });
 
   it("uses the configured native server and has an explicit unconfigured scope", () => {

@@ -1,4 +1,5 @@
 import type { LibrarySort, SortDirection } from "@/lib/libraryApi";
+import { accountScopeKey, localStore } from "@/lib/clientStorage";
 
 /** The orders a creator's works offer: the Library orders that need no seed or account history. */
 export const creatorWorkSortValues = [
@@ -24,9 +25,9 @@ export const defaultCreatorWorksBrowse: CreatorWorksBrowse = { sort: "release", 
 /** Circle catalogs and voice actor works each keep their own choice. */
 export type CreatorWorksKind = "circle" | "voice";
 
-const storagePrefixes: Record<CreatorWorksKind, string> = {
-  circle: "kikoto:circle-works-browse:",
-  voice: "kikoto:voice-works-browse:",
+const storageNames: Record<CreatorWorksKind, string> = {
+  circle: "kikoto:circle-works-browse",
+  voice: "kikoto:voice-works-browse",
 };
 
 /** Keeps each valid stored field and defaults the rest. */
@@ -44,19 +45,10 @@ export function creatorWorksBrowseFromValue(value: unknown): CreatorWorksBrowse 
 
 /** The order and page size chosen for one kind of creator, kept per server and account on this device. */
 export function readCreatorWorksBrowse(kind: CreatorWorksKind, storageScope: string): CreatorWorksBrowse {
-  try {
-    return creatorWorksBrowseFromValue(
-      JSON.parse(window.localStorage.getItem(storagePrefixes[kind] + storageScope) ?? "{}"),
-    );
-  } catch {
-    return defaultCreatorWorksBrowse;
-  }
+  return creatorWorksBrowseFromValue(localStore.readJSON(accountScopeKey(storageNames[kind], storageScope)));
 }
 
+// The choice still applies to this visit when storage is unavailable.
 export function writeCreatorWorksBrowse(kind: CreatorWorksKind, storageScope: string, browse: CreatorWorksBrowse) {
-  try {
-    window.localStorage.setItem(storagePrefixes[kind] + storageScope, JSON.stringify(browse));
-  } catch {
-    // The choice still applies to this visit when storage is unavailable.
-  }
+  localStore.writeJSON(accountScopeKey(storageNames[kind], storageScope), browse);
 }

@@ -25,8 +25,8 @@ import {
   navigationLabel,
   pageTurnedOff,
   visibleNavigationItems,
-  type PageID,
 } from "@/app/navigation";
+import type { PageID } from "@/lib/appPages";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
@@ -38,7 +38,7 @@ import { PlayerProvider } from "@/player/PlayerProvider";
 import { AppSidebar } from "@/app/AppSidebar";
 import type { AccountDestination } from "@/app/header/AccountPanel";
 import { HeaderActions } from "@/app/HeaderActions";
-import { NotFoundPage } from "@/app/NotFoundPage";
+import { NotFoundPage } from "@/components/NotFoundPage";
 import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
 import {
@@ -47,7 +47,7 @@ import {
   PageHeaderProvider,
   PageHeaderTitleSlot,
   usePageHeaderBackState,
-} from "@/app/pageHeader";
+} from "@/components/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
@@ -55,9 +55,10 @@ import { useNativeUnlockLabels } from "@/hooks/useNativePrivacySettings";
 import { createEffectScope } from "@/lib/effectScope";
 import { addNativeEdgeBackListener } from "@/lib/nativeEdgeBack";
 import { isNativeApp } from "@/lib/serverConfig";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
-import { currentAppPage, isWorkDetailLocationOpen, pageFromPath, type AppPage } from "@/app/appRoutes";
-import { openWorkDetail, workDetailRoute } from "@/app/workDetailNavigation";
+import { currentAppPage, isWorkDetailLocationOpen, pageFromPath, type AppPage } from "@/lib/appRoutes";
+import { openWorkDetail, workDetailRoute } from "@/lib/workDetailNavigation";
 import type {
   ListeningEntityLinkFactory,
   ListeningHistoryWorkLinkFactory,
@@ -95,7 +96,7 @@ import {
   edgeSwipeStartsOnHorizontalGesture,
   handleNativeBack,
 } from "@/app/nativeBack";
-import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
+import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/lib/mobileTabState";
 import { isMobileTabDetailLocation, navigateToMobileTabHome, pageHomeLocation } from "@/app/workspaceNavigation";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
@@ -122,7 +123,7 @@ import {
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackCreatedDetail,
   type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+} from "@/lib/remoteTrackWorkflows";
 
 // A workspace that stays hidden skips renders driven by the shell; the active
 // workspace, and one being shown or hidden, render normally. Context updates
@@ -169,7 +170,8 @@ const CommandPalette = commandPalette.Component;
 
 // Record takes the second tab while the instance offers it, making five tabs.
 const preferredMobileTabs: PageID[] = ["library", "records", "favorites", "circles", "voice-actors"];
-const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = deviceKey("kikoto:sidebar-collapsed");
+const DISMISSED_VERSION_NOTICE_KEY = deviceKey("kikoto:dismissed-version-notice");
 
 enableInAppBackStack(isNativeApp());
 
@@ -196,9 +198,7 @@ function AuthenticatedApp() {
   const [routePage, setRoutePage] = useState<AppPage>(resolveAppPageFromLocation);
   const [workDetailOpen, setWorkDetailOpen] = useState(isWorkDetailLocationOpen);
   const [routeRenderKey, setRouteRenderKey] = useState(resolveRouteRenderKey);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
-  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStore.read(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteRequested, setCommandPaletteRequested] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
@@ -478,7 +478,7 @@ function AuthenticatedApp() {
   const toggleSidebar = () => {
     setSidebarCollapsed((collapsed) => {
       const next = !collapsed;
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      localStore.write(SIDEBAR_COLLAPSED_KEY, String(next));
       return next;
     });
   };
@@ -1117,8 +1117,7 @@ function MobileConnectionBanner({
   onReconnect: () => void;
 }) {
   const { t } = useTranslation();
-  const dismissedStorageKey = "kikoto:dismissed-version-notice";
-  const [dismissedNotice, setDismissedNotice] = useState(() => localStorage.getItem(dismissedStorageKey) ?? "");
+  const [dismissedNotice, setDismissedNotice] = useState(() => localStore.read(DISMISSED_VERSION_NOTICE_KEY) ?? "");
   const isClientUpdate = kind === "client-update-available" || kind === "client-update-required";
   const isServerUpdate = kind === "server-update-available";
   const isRequired = kind === "client-update-required";
@@ -1147,7 +1146,7 @@ function MobileConnectionBanner({
           <button
             className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={() => {
-              localStorage.setItem(dismissedStorageKey, noticeKey);
+              localStore.write(DISMISSED_VERSION_NOTICE_KEY, noticeKey);
               setDismissedNotice(noticeKey);
             }}
             aria-label={t("app.dismissVersionNotice")}

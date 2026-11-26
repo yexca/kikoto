@@ -3,6 +3,7 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { RunStatusDot, useRunLabels } from "@/features/workflows/RunOverview";
 import {
   formatRelativeTime,
@@ -13,7 +14,6 @@ import {
   type RunTone,
 } from "@/features/workflows/runPresentation";
 import { useNow } from "@/features/workflows/useRunClock";
-import { SkeletonLine } from "@/features/workflows/WorkflowPanelParts";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { WorkflowRun } from "@/lib/api";
@@ -77,7 +77,7 @@ export function OperationStatus({
   if (state.phase === "loading") {
     return (
       <div className={className} aria-hidden>
-        <SkeletonLine className="h-4 w-24" />
+        <Skeleton reveal className="h-4 w-24" />
       </div>
     );
   }

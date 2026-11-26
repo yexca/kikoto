@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api } from "@/lib/api";
@@ -123,8 +124,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
 
         <form className="space-y-3" onSubmit={submit}>
           <div className="grid grid-cols-2 gap-3">
-            <label className="col-span-2 grid min-w-0 gap-1.5 text-sm font-medium">
-              {t("serverGate.serverAddress")}
+            <Field label={t("serverGate.serverAddress")} className="col-span-2 min-w-0 font-medium">
               <Input
                 fieldSize="lg"
                 className="w-full min-w-0"
@@ -136,9 +136,8 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
                 autoCorrect="off"
                 disabled={isConnecting}
               />
-            </label>
-            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-              {t("serverGate.protocol")}
+            </Field>
+            <Field label={t("serverGate.protocol")} className="min-w-0 font-medium">
               <NativeSelect
                 fieldSize="lg"
                 className="w-full min-w-0 px-2"
@@ -152,9 +151,8 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
                   </option>
                 ))}
               </NativeSelect>
-            </label>
-            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-              {t("serverGate.port")}
+            </Field>
+            <Field label={t("serverGate.port")} className="min-w-0 font-medium">
               <Input
                 fieldSize="lg"
                 className="w-full min-w-0"
@@ -165,7 +163,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
                 autoComplete="off"
                 disabled={isConnecting}
               />
-            </label>
+            </Field>
           </div>
           {error && (
             <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">

@@ -1,11 +1,11 @@
-import { navItems, type PageID } from "./navigation";
+import { pageAtPath, type PageID } from "./appPages";
 import {
   historyStateWithWorkDetailOwner,
   workDetailCodeFromLocation,
   workDetailOwnerPage,
 } from "./workDetailNavigation";
-import { isVoiceDetailPath } from "../lib/voiceRoute";
-import { isWorkCodePath } from "../lib/workCode";
+import { isVoiceDetailPath } from "./voiceRoute";
+import { isWorkCodePath } from "./workCode";
 
 export type AppPage = PageID | "not-found";
 
@@ -15,9 +15,9 @@ export function pageFromPath(rawPath: string): AppPage {
   if (path === "/" || isWorkCodePath(path)) {
     return "library";
   }
-  const item = navItems.find((navItem) => navItem.path === path);
-  if (item) {
-    return item.id;
+  const page = pageAtPath(path);
+  if (page) {
+    return page;
   }
   // A `/subscriptions` entry, such as a remembered tab, belongs to Discover, which it redirects to.
   if (path === "/subscriptions") {

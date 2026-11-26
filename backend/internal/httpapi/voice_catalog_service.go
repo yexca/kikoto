@@ -781,7 +781,7 @@ func (s *Server) loadVoiceCatalogMetadataTargets(ctx context.Context, personID i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	targets := []voiceCatalogMetadataTarget{}
 	for rows.Next() {
 		var code string

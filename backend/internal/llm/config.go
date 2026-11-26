@@ -13,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
+	"github.com/yexca/kikoto/backend/internal/modellist"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
@@ -169,33 +170,6 @@ func (p Provider) ResolveModel(requested string) (string, bool) {
 	return requested, slices.Contains(p.EnabledModels, requested)
 }
 
-// normalizeModels trims and deduplicates the enabled models and keeps the
-// default among them, falling back to the first.
-func normalizeModels(enabled []string, defaultModel string) ([]string, string, error) {
-	result := []string{}
-	for _, id := range enabled {
-		id = strings.TrimSpace(id)
-		if id == "" || slices.Contains(result, id) {
-			continue
-		}
-		if len(id) > 256 || strings.ContainsFunc(id, unicode.IsControl) {
-			return nil, "", errors.New("invalid model id")
-		}
-		result = append(result, id)
-	}
-	if len(result) > MaxEnabledModels {
-		return nil, "", errors.New("too many enabled models")
-	}
-	defaultModel = strings.TrimSpace(defaultModel)
-	if !slices.Contains(result, defaultModel) {
-		defaultModel = ""
-		if len(result) > 0 {
-			defaultModel = result[0]
-		}
-	}
-	return result, defaultModel, nil
-}
-
 func (p Provider) Preset() Preset {
 	for _, preset := range Presets {
 		if preset.ID == p.PresetID {
@@ -300,7 +274,7 @@ func Normalize(p Provider) (Provider, error) {
 	if len(p.APIKey) > 4096 || strings.ContainsFunc(p.APIKey, unicode.IsControl) {
 		return p, errors.New("invalid API key")
 	}
-	p.EnabledModels, p.DefaultModel, err = normalizeModels(p.EnabledModels, p.DefaultModel)
+	p.EnabledModels, p.DefaultModel, err = modellist.Normalize(p.EnabledModels, p.DefaultModel, MaxEnabledModels)
 	if err != nil {
 		return p, err
 	}

@@ -14,7 +14,7 @@ import (
 
 // input order, keeping each work once and stopping at maxWorks.
 func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
-	circleIDs := splitPresetWorkflowTargets(firstNonEmpty(inputs["circle"].Text, configString(node.Config, "circleId")), normalizeMakerID)
+	circleIDs := splitPresetWorkflowTargets(firstNonBlankTrimmed(inputs["circle"].Text, configString(node.Config, "circleId")), normalizeMakerID)
 	if len(circleIDs) == 0 {
 		return graphNodeExecution{}, fmt.Errorf("invalid circle id")
 	}
@@ -91,7 +91,7 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, nod
 }
 
 func (s *Server) executeGraphSeriesCatalog(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
-	seriesIDs := splitPresetWorkflowTargets(firstNonEmpty(inputs["series"].Text, configString(node.Config, "seriesId")), normalizeSeriesID)
+	seriesIDs := splitPresetWorkflowTargets(firstNonBlankTrimmed(inputs["series"].Text, configString(node.Config, "seriesId")), normalizeSeriesID)
 	if len(seriesIDs) == 0 {
 		return graphNodeExecution{}, fmt.Errorf("series id is required")
 	}

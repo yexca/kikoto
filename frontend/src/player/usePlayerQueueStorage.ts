@@ -1,10 +1,11 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import { api } from "@/lib/api";
+import type { StorageKey } from "@/lib/clientStorage";
 import { startLoad } from "@/lib/effectScope";
 
 import { restoredCursorStartPosition } from "./playbackStart";
-import { discardObsoletePlayerState, loadPersistedQueue } from "./playerPersistence";
+import { discardObsoletePlayerState, loadPersistedQueue, persistQueue } from "./playerPersistence";
 import { keepPlayingTrackLocation, revalidatePersistedQueue } from "./playerQueueRestore";
 import type { PlayerTrack, PlayMode, SleepTimerState } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
@@ -12,7 +13,7 @@ import type { PlaybackEngine } from "./usePlaybackEngine";
 type RestoredPlayerQueue = ReturnType<typeof loadPersistedQueue>;
 
 /** Reads the persisted queue once, before the first render uses it as initial state. */
-export function useRestoredPlayerQueue(queueStorageKey: string, obsoleteProgressStorageKey: string) {
+export function useRestoredPlayerQueue(queueStorageKey: StorageKey, obsoleteProgressStorageKey: StorageKey) {
   const restoredRef = useRef<RestoredPlayerQueue | null>(null);
   if (restoredRef.current === null) {
     discardObsoletePlayerState(obsoleteProgressStorageKey);
@@ -94,7 +95,7 @@ export function usePersistPlayerQueue({
   playbackRate,
   sleepTimer,
 }: {
-  storageKey: string;
+  storageKey: StorageKey;
   queue: PlayerTrack[];
   currentIndex: number;
   mode: PlayMode;
@@ -110,20 +111,13 @@ export function usePersistPlayerQueue({
       0,
       persistentQueue.findIndex((track) => track.queueItemId === currentQueueItemId),
     );
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          version: 1,
-          queue: persistentQueue,
-          currentIndex: persistedCurrentIndex,
-          mode,
-          playbackRate,
-          sleepTimer,
-        }),
-      );
-    } catch {
-      // Playback should continue when browser storage is unavailable or full.
-    }
+    persistQueue(storageKey, {
+      version: 1,
+      queue: persistentQueue,
+      currentIndex: persistedCurrentIndex,
+      mode,
+      playbackRate,
+      sleepTimer,
+    });
   }, [queue, currentIndex, mode, playbackRate, storageKey, sleepTimer]);
 }

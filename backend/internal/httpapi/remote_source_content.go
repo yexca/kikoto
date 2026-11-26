@@ -147,7 +147,7 @@ func (s *Server) readRemoteText(ctx context.Context, source remoteSourceForUse, 
 	if err != nil {
 		return nil, "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, "", remoteTextError{message: fmt.Sprintf("remote text returned HTTP %d", response.StatusCode)}
 	}
@@ -171,7 +171,7 @@ func remoteTextTrackURL(nodes []kikoeru.Track, targetPath string, basePath strin
 			continue
 		}
 		if path == targetPath && isTextPreviewFile(remoteTrackKindForPath(node.Type, path), path) {
-			return firstNonEmpty(node.MediaStreamURL, node.MediaDownloadURL, node.StreamLowQualityURL), true
+			return firstNonBlankTrimmed(node.MediaStreamURL, node.MediaDownloadURL, node.StreamLowQualityURL), true
 		}
 	}
 	return "", false
@@ -210,7 +210,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("cover download returned HTTP %d", response.StatusCode)
 	}

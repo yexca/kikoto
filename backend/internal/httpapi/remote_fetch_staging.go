@@ -2,14 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -689,43 +685,6 @@ func countPromotedFetchItems(items []remoteWorkSavePlanItem) int {
 	return count
 }
 
-func hashFile(path string) (string, int64, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	size, err := io.Copy(hash, file)
-	if err != nil {
-		return "", 0, err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), size, nil
-}
-
-func copyDirectoryTree(sourceRoot string, targetRoot string) error {
-	return filepath.WalkDir(sourceRoot, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(sourceRoot, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(targetRoot, relative)
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("fetch root contains unsupported symbolic link: %s", filepath.ToSlash(relative))
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-		return copyFile(path, target)
-	})
-}
-
 func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT manifest.workflow_run_id, run.status
@@ -885,9 +844,4 @@ func (s *Server) requeueRemoteFetchManifest(ctx context.Context, manifest remote
 		return err
 	}
 	return tx.Commit()
-}
-
-func pathExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

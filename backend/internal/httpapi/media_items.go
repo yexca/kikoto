@@ -65,7 +65,7 @@ func (s *Server) presentRemoteMediaLocations(ctx context.Context, mediaItems []m
 				continue
 			}
 			if mediaItems[itemIndex].Kind == "image" {
-				imageURL := s.remoteImageProxyURL(location.FileSourceID, firstNonEmpty(location.DownloadURL, location.StreamURL))
+				imageURL := s.remoteImageProxyURL(location.FileSourceID, firstNonBlankTrimmed(location.DownloadURL, location.StreamURL))
 				location.StreamURL, location.DownloadURL = imageURL, imageURL
 				continue
 			}

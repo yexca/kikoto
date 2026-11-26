@@ -38,10 +38,6 @@ func (s *Server) remoteCatalogProjector(ctx context.Context) remoteCatalogProjec
 	return newRemoteCatalogProjectorWithLanguages(s.instanceMetadataLanguages(ctx))
 }
 
-func newRemoteCatalogProjector(language string) remoteCatalogProjector {
-	return newRemoteCatalogProjectorWithLanguages([]string{language})
-}
-
 func newRemoteCatalogProjectorWithLanguages(languages []string) remoteCatalogProjector {
 	ordered := make([]string, 0, len(languages))
 	seen := map[string]bool{}
@@ -119,7 +115,7 @@ func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workM
 	if len(ordered) > 16 {
 		ordered = ordered[:16]
 	}
-	title := firstNonEmpty(strings.TrimSpace(work.Title), strings.TrimSpace(work.Name), normalizedRemoteWorkCode(work))
+	title := firstNonBlankTrimmed(strings.TrimSpace(work.Title), strings.TrimSpace(work.Name), normalizedRemoteWorkCode(work))
 	for _, language := range ordered {
 		tags := make([]string, 0, len(work.Tags))
 		tagLanguages := append([]string{language}, languages...)
@@ -214,9 +210,9 @@ func (projector remoteCatalogProjector) project(sourceID int64, work kikoeru.Wor
 	return remoteCatalogWorkProjection{
 		RemoteID:        strconv.FormatInt(work.ID, 10),
 		RemoteCode:      normalizedRemoteWorkCode(work),
-		Title:           firstNonEmpty(work.Title, work.Name),
+		Title:           firstNonBlankTrimmed(work.Title, work.Name),
 		ReleaseDate:     work.Release,
-		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
+		CoverURL:        firstNonBlankTrimmed(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 		SourceURL:       strings.TrimSpace(work.SourceURL),
 		Circle:          circle,
 		CircleRef:       circleRef,

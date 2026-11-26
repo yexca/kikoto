@@ -517,7 +517,7 @@ func rankingFailureStatus(err error) string {
 // rankingVariantLabel names a list's order in run logs.
 func rankingVariantLabel(list rankingList, variant rankingVariant) string {
 	if list.Provider == rankingProviderRemote {
-		return "remote source " + firstNonEmpty(list.SourceName, "ranking")
+		return "remote source " + firstNonBlankTrimmed(list.SourceName, "ranking")
 	}
 	label := "DLsite " + list.Period
 	if list.Period == "year" {

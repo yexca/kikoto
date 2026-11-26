@@ -682,7 +682,7 @@ func (s *Server) loadCircleUserTags(ctx context.Context, userID int64, partyID i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tags := []voiceUserTag{}
 	for rows.Next() {
 		var tag voiceUserTag

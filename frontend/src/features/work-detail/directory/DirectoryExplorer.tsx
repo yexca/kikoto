@@ -60,30 +60,22 @@ import {
 import i18n from "@/i18n";
 import type { DirectoryRoutingRule } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 
 const trackPageSize = 160;
 const imagePageSize = 24;
 // Below this width the folder column would squeeze file names; the navigator moves behind a button.
 const folderRailMinWidthRem = 38;
-const folderRailHiddenKey = "kikoto:work-folder-rail-hidden";
+const folderRailHiddenKey = deviceKey("kikoto:work-folder-rail-hidden");
 
 /** Remembers whether this viewer hid the folder column on wide directories. */
 function useFolderRailHidden() {
-  const [hidden, setHidden] = useState(() => {
-    try {
-      return localStorage.getItem(folderRailHiddenKey) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [hidden, setHidden] = useState(() => localStore.read(folderRailHiddenKey) === "true");
   const toggle = useCallback(() => {
     setHidden((current) => {
       const next = !current;
-      try {
-        localStorage.setItem(folderRailHiddenKey, String(next));
-      } catch {
-        // The choice still applies to this page view.
-      }
+      // Without storage the choice still applies to this page view.
+      localStore.write(folderRailHiddenKey, String(next));
       return next;
     });
   }, []);

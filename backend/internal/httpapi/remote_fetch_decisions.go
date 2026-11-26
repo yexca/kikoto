@@ -53,7 +53,7 @@ func appendRemoteFetchSourceOptions(result map[string][]remoteFetchSourceOption,
 		}
 		result[groupPath] = append(result[groupPath], remoteFetchSourceOption{
 			SourceID: source.ID, SourceCode: source.Code, SourceName: source.DisplayName,
-			Path: file.Path, SizeBytes: file.SizeBytes, SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL), Kind: file.Kind, Hash: file.Hash,
+			Path: file.Path, SizeBytes: file.SizeBytes, SourcePath: firstNonBlankTrimmed(file.DownloadURL, file.StreamURL), Kind: file.Kind, Hash: file.Hash,
 		})
 	}
 }

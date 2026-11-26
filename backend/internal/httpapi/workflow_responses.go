@@ -3,8 +3,6 @@ package httpapi
 import "github.com/yexca/kikoto/backend/internal/workflow"
 
 type workflowRunRecord = workflow.RunRecord
-type workflowRunsPageRecord = workflow.RunsPage
-type workflowNodeRunRecord = workflow.NodeRunRecord
 type workflowEventRecord = workflow.EventRecord
 type workflowCandidateRecord = workflow.CandidateRecord
 type workflowRunDetailRecord = workflow.RunDetail

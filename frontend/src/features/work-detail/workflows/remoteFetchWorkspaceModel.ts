@@ -8,7 +8,7 @@ import {
   type RemoteWorkSavePlan,
   type SourceAvailabilitySource,
 } from "../../../lib/api";
-import { buildRemoteTree, type TreeNode, type TreeTrack } from "../media/mediaTreeModel";
+import { buildRemoteTree, flattenTreeFiles, type TreeNode } from "../media/mediaTreeModel";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "../../../lib/remoteFetchPlan";
 
 /** The folders an edition is stored in, also when a response omits the list. */
@@ -375,16 +375,6 @@ function demoSourceAvailability(detail: RemoteWorkDetail): SourceAvailabilitySou
     error: "",
     elapsedMs: 0,
   };
-}
-
-function flattenTreeFiles(root: TreeNode) {
-  const files: TreeTrack[] = [];
-  const visit = (node: TreeNode) => {
-    files.push(...node.files);
-    for (const child of node.children.values()) visit(child);
-  };
-  visit(root);
-  return files;
 }
 
 function normalizeDemoFetchRoot(targetRoot: string, code: string) {

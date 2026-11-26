@@ -418,8 +418,8 @@ func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 }
 
 func TestNormalizeLanguagesRetainsAnExplicitDefaultFallback(t *testing.T) {
-	if got := normalizeLanguages([]string{"zh-cn", "", "zh-cn"}); len(got) != 2 || got[0] != "zh-cn" || got[1] != "" {
-		t.Fatalf("normalizeLanguages() = %#v, want [zh-cn \"\"]", got)
+	if got := NormalizeRequestLanguages([]string{"zh-cn", "", "zh-cn"}); len(got) != 2 || got[0] != "zh-cn" || got[1] != "" {
+		t.Fatalf("NormalizeRequestLanguages() = %#v, want [zh-cn \"\"]", got)
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"strconv"
 	"strings"
 )
 
@@ -56,7 +55,7 @@ func (s *Server) availableVoiceSourceTags(ctx context.Context, code string) ([]c
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tags := []circleSourceStat{}
 	tagIndexes := map[string]int{}
 	for rows.Next() {
@@ -109,7 +108,7 @@ func (s *Server) observedVoiceSourceTags(ctx context.Context, code string) ([]ci
 	if err != nil {
 		return nil, nil, err
 	}
-	defer presenceRows.Close()
+	defer func() { _ = presenceRows.Close() }()
 	observedStats := map[int64]circleSourceStat{}
 	observedSourceOrder := []int64{}
 	remoteObservations := []voiceRemoteObservation{}
@@ -273,15 +272,6 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	return item, err
 }
 
-func parseKikoeruVoiceActors(raw string) []string {
-	identities := parseKikoeruVoiceActorIdentities(raw)
-	names := make([]string, 0, len(identities))
-	for _, identity := range identities {
-		names = append(names, identity.Name)
-	}
-	return names
-}
-
 func parseKikoeruVoiceActorIdentities(raw string) []voiceActorIdentity {
 	if strings.TrimSpace(raw) == "" {
 		return []voiceActorIdentity{}
@@ -346,9 +336,4 @@ func remoteImportStatus(workID *int64) string {
 		return "remote"
 	}
 	return "imported"
-}
-
-func parseInt64Text(value string) int64 {
-	id, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	return id
 }

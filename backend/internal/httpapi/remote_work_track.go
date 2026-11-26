@@ -374,7 +374,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 		workCode = requestedCode
 	}
 	coverCached := true
-	coverURL := firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
+	coverURL := firstNonBlankTrimmed(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
 	if coverURL != "" {
 		coverCached = s.downloadRemoteCover(ctx, source, workCode, coverURL) == nil
 	}

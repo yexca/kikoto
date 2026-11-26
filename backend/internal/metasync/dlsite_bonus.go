@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 // DLsiteMakerCatalogClient lists a maker's published works. Purchase bonus
@@ -287,7 +288,7 @@ func (s *DLsiteSyncer) fetchProductInLocale(ctx context.Context, code string, lo
 }
 
 func productLocale(product dlsite.Product) string {
-	return normalizeRequestLocale(firstNonBlank(product.RequestLocale, product.Language))
+	return normalizeRequestLocale(textvalue.FirstNonBlankRaw(product.RequestLocale, product.Language))
 }
 
 // purchaseBonusProduct fills the bonus's empty genres, credits and series from

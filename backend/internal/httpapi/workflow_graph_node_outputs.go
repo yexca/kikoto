@@ -10,7 +10,7 @@ import (
 
 func (s *Server) executeGraphTagWorks(ctx context.Context, userID int64, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
 	refs := uniqueGraphWorkRefs(inputs["works"].WorkRefs)
-	tagName := strings.TrimSpace(firstNonEmpty(inputs["tag"].Text, configString(node.Config, "tagName")))
+	tagName := strings.TrimSpace(firstNonBlankTrimmed(inputs["tag"].Text, configString(node.Config, "tagName")))
 	if tagName == "" || len([]rune(tagName)) > 40 {
 		return graphNodeExecution{}, fmt.Errorf("tag name is required and must be at most 40 characters")
 	}

@@ -243,27 +243,6 @@ func validSeconds(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
 }
 
-func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemID int64) (mediaProgressDetail, error) {
-	var progress mediaProgressDetail
-	var durationSeconds sql.NullFloat64
-	var lastPlayedAt sql.NullString
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT position_seconds, duration_seconds, completed, last_played_at
-		FROM user_work_playback_cursor
-		WHERE user_id = ? AND media_item_id = ?
-	`, userID, mediaItemID).Scan(
-		&progress.PositionSeconds,
-		&durationSeconds,
-		&progress.Completed,
-		&lastPlayedAt,
-	); err != nil {
-		return mediaProgressDetail{}, err
-	}
-	progress.DurationSeconds = sqlutil.Float64(durationSeconds)
-	progress.LastPlayedAt = sqlutil.String(lastPlayedAt)
-	return progress, nil
-}
-
 func (s *Server) loadWorkPlaybackCursor(ctx context.Context, userID int64, workID int64) (*workProgressSummary, error) {
 	canonicalWorkID, err := s.canonicalWorkID(ctx, workID)
 	if err != nil {

@@ -10,8 +10,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 )
 
-type userResponse = account.ManagedUser
-
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "users:manage"); !ok {
 		return

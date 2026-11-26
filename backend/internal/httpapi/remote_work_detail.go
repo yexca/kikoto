@@ -192,7 +192,7 @@ func (s *Server) remoteWorkDetailWithLanguages(ctx context.Context, source remot
 		RemoteID:         projected.RemoteID,
 		PrimaryCode:      displayCode,
 		RemoteCode:       code,
-		Title:            firstNonEmpty(projected.Title, displayCode),
+		Title:            firstNonBlankTrimmed(projected.Title, displayCode),
 		CoverURL:         projected.CoverURL,
 		SourceURL:        projected.SourceURL,
 		PublicWorkURL:    publicRemoteWorkURL(source.Endpoint, code),
@@ -263,7 +263,7 @@ func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition
 	if currentCode != "" {
 		edition, ok := declared[currentCode]
 		item := newRemoteLanguageEdition(edition, currentCode, currentCode, originOrder, !ok)
-		item.Label = firstNonEmpty(strings.TrimSpace(work.Title), item.Label, currentCode)
+		item.Label = firstNonBlankTrimmed(strings.TrimSpace(work.Title), item.Label, currentCode)
 		if originalCode := strings.ToUpper(strings.TrimSpace(work.OriginalWorkNumber)); originalCode != "" {
 			item.Origin = strings.EqualFold(originalCode, currentCode)
 		}
@@ -277,8 +277,8 @@ func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition
 		}
 		seen[code] = true
 		item := newRemoteLanguageEdition(declared[code], code, currentCode, originOrder, false)
-		item.Language = firstNonEmpty(strings.TrimSpace(available.Language), item.Language)
-		item.Label = firstNonEmpty(strings.TrimSpace(available.Title), item.Label, item.Language, code)
+		item.Language = firstNonBlankTrimmed(strings.TrimSpace(available.Language), item.Language)
+		item.Label = firstNonBlankTrimmed(strings.TrimSpace(available.Title), item.Label, item.Language, code)
 		item.Origin = available.IsOriginal || item.Origin
 		result = append(result, item)
 	}
@@ -303,7 +303,7 @@ func newRemoteLanguageEdition(edition kikoeru.LanguageEdition, code, currentCode
 	}
 	language := strings.TrimSpace(edition.Language)
 	return remoteLanguageEdition{
-		RemoteCode: code, Language: language, Label: firstNonEmpty(strings.TrimSpace(edition.Label), language, code),
+		RemoteCode: code, Language: language, Label: firstNonBlankTrimmed(strings.TrimSpace(edition.Label), language, code),
 		DisplayOrder: edition.DisplayOrder, Current: strings.EqualFold(code, currentCode), Origin: origin,
 	}
 }
@@ -404,7 +404,7 @@ func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Tra
 			Type:            remoteTrackKindForPath(track.Type, path),
 			Title:           title,
 			Hash:            track.Hash,
-			StreamURL:       firstNonEmpty(track.MediaStreamURL, track.StreamLowQualityURL),
+			StreamURL:       firstNonBlankTrimmed(track.MediaStreamURL, track.StreamLowQualityURL),
 			DownloadURL:     track.MediaDownloadURL,
 			DurationSeconds: duration,
 			SizeBytes:       track.KnownSize(),
@@ -450,7 +450,7 @@ func hideRemoteTrackAddresses(sourceID int64, requestCode string, tracks []remot
 			query := "?path=" + url.QueryEscape(path)
 			switch {
 			case track.Type == "image":
-				track.StreamURL = imageURL(sourceID, firstNonEmpty(track.DownloadURL, track.StreamURL))
+				track.StreamURL = imageURL(sourceID, firstNonBlankTrimmed(track.DownloadURL, track.StreamURL))
 			case isTextPreviewFile(track.Type, path):
 				track.StreamURL = workPath + "/text" + query
 			default:

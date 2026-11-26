@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -105,7 +106,7 @@ func (s *Server) syncCircleRemoteSourceCatalogPage(ctx context.Context, partyID,
 	if total == 0 {
 		total = worksPage.Pagination.Count
 	}
-	stop := (pagesFromTotal(total, pageSize) > 0 && page >= pagesFromTotal(total, pageSize)) ||
+	stop := (dlsite.PagesFromTotal(total, pageSize) > 0 && page >= dlsite.PagesFromTotal(total, pageSize)) ||
 		(total == 0 && (len(worksPage.Works) == 0 || len(worksPage.Works) < pageSize))
 	return synced, stop, nil
 }
@@ -149,7 +150,7 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 	if err != nil {
 		return err
 	}
-	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
+	title := firstNonBlankTrimmed(remoteWork.Title, remoteWork.Name, code)
 	release := nullableStringFromText(normalizeDateText(remoteWork.Release))
 	if err := s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), false); err != nil {
 		return err
@@ -212,7 +213,7 @@ func (s *Server) knownCircleCatalogCodesForProvider(ctx context.Context, partyID
 }
 
 func scanCatalogCodeRows(rows *sql.Rows) (map[string]bool, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := map[string]bool{}
 	for rows.Next() {
 		var code string
@@ -251,7 +252,7 @@ func (s *Server) circleCatalogCodesMissingMetadata(ctx context.Context, partyID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := map[string]bool{}
 	for rows.Next() {
 		var code string
@@ -264,90 +265,6 @@ func (s *Server) circleCatalogCodesMissingMetadata(ctx context.Context, partyID 
 		}
 	}
 	return result, rows.Err()
-}
-
-func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64, workCodes []string) (map[string]bool, error) {
-	result, err := s.queryCircleCatalogCodes(ctx, `
-		SELECT DISTINCT catalog.primary_code
-		FROM `+circleCatalogProjection+` AS catalog
-		INNER JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
-		INNER JOIN media_item AS item ON item.work_id = work.id
-		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
-		WHERE catalog.party_id = ?
-			AND location.availability = 'available'
-	`, partyID)
-	if err != nil {
-		return nil, err
-	}
-	otherCodes, err := s.queryCircleCatalogCodes(ctx, `
-		SELECT DISTINCT catalog.primary_code
-		FROM `+circleCatalogProjection+` AS catalog
-		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
-		WHERE catalog.party_id = ?
-			AND provider.code != 'dlsite'
-	`, partyID)
-	if err != nil {
-		return nil, err
-	}
-	for code := range otherCodes {
-		result[code] = true
-	}
-	sources, err := s.loadRemoteSourcesForAvailability(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, code := range workCodes {
-		code = strings.ToUpper(strings.TrimSpace(code))
-		if code == "" || result[code] {
-			continue
-		}
-		if s.circleWorkAvailableInAnyRemoteSource(ctx, sources, code) {
-			result[code] = true
-		}
-	}
-	return result, nil
-}
-
-func (s *Server) queryCircleCatalogCodes(ctx context.Context, query string, args ...any) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := map[string]bool{}
-	for rows.Next() {
-		var code string
-		if err := rows.Scan(&code); err != nil {
-			return nil, err
-		}
-		code = strings.ToUpper(strings.TrimSpace(code))
-		if code != "" {
-			result[code] = true
-		}
-	}
-	return result, rows.Err()
-}
-
-func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sources []remoteSourceForUse, code string) bool {
-	for _, source := range sources {
-		if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-			continue
-		}
-		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, sourceRequestCrawl)
-		if err != nil {
-			if errors.Is(err, errRemoteWorkNotFound) {
-				s.setSourceHealthOrLog(ctx, source.ID, "healthy")
-			} else {
-				s.setSourceHealthOrLog(ctx, source.ID, "unavailable")
-			}
-			continue
-		}
-		s.setSourceHealthOrLog(ctx, source.ID, "healthy")
-		if normalizedRemoteWorkCode(remoteWork) != "" || remoteWork.ID > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func circleRefreshMaxPages(mode string) int {
@@ -367,13 +284,6 @@ func codesBeforeFirstKnown(codes []string, known map[string]bool) ([]string, boo
 		}
 	}
 	return codes, false
-}
-
-func pagesFromTotal(total int, perPage int) int {
-	if total <= 0 || perPage <= 0 {
-		return 0
-	}
-	return (total + perPage - 1) / perPage
 }
 
 func (s *Server) circleRefreshDelay(ctx context.Context) time.Duration {

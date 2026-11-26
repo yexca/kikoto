@@ -106,10 +106,13 @@ make backend-lint
 `backend-lint` first runs `scripts/check-go-dropped-errors.go` over the whole
 backend, which rejects a dropped workflow state write, database write, or JSON
 decode error ([Backend Guidelines](backend-guidelines.md#principles)). It then
-runs the pinned `scripts/golangci-lint.yml` policy against changes
-after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
-parent in CI), so existing lint debt does not block new work. Use
-`make backend-lint-full` for a complete audit of the current backend.
+runs the pinned `scripts/golangci-lint.yml` policy over the whole backend,
+tests included, and lists every issue; the backend has no accepted lint debt.
+The policy rejects `http.Get`, `http.Head`, `http.Post`, `http.PostForm`,
+`http.DefaultClient`, `http.DefaultTransport`, and `http.Transport` outside
+`internal/outbound` and tests, so every request is built from an outbound
+policy ([Outbound HTTP](security.md#outbound-http)), and it requires each
+`//nolint` to name its linter and give a reason.
 `make backend-vet` runs `go vet` and `scripts/check-api-errors.go`, which fails
 when an `internal/httpapi` handler answers an error through `writeJSON`, by an
 error status or an `{"error": ...}` map, instead of `writeAPIError` or
@@ -369,6 +372,14 @@ selects all jobs. A change reaches only the jobs that consume it:
   `scripts/ci-plan.mjs` names the jobs behind each other script. A script
   missing from that table selects all jobs, and the planner's tests fail until
   it is listed.
+
+`Style` also runs `make file-size-ratchet`. A backend Go file or a
+`frontend/src` file, tests and locale tables aside, stays at or under 800
+lines unless `scripts/file-size-baseline.json` records it, and a recorded
+file may not grow past its recorded length. Put new code in a module of its
+own or split the file by responsibility; never raise or add an entry. When a
+recorded file shrinks or drops under the limit, the check fails until
+`make file-size-ratchet-lower` records the smaller size.
 
 The `full` tier ignores changed paths and always plans every job, so whatever
 a pull request leaves out is validated on `main` before a release can use it.

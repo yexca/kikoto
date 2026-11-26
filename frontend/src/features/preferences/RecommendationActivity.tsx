@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Shuffle } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber, numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type RecommendationTelemetrySummary } from "@/lib/api";
@@ -53,11 +54,9 @@ export function RecommendationActivity({ userId }: { userId: number }) {
         {failed ? (
           <p className="py-4 text-sm text-muted-foreground">{t("maintenance.status.unavailable")}</p>
         ) : !telemetry ? (
-          <div
-            role="status"
-            aria-label={t("common.loading")}
-            className="skeleton-reveal mt-3 h-48 animate-pulse rounded-md bg-muted/40"
-          />
+          <div role="status" aria-label={t("common.loading")}>
+            <Skeleton reveal className="mt-3 h-48 rounded-md bg-muted/40" />
+          </div>
         ) : telemetry.totalEvents === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             {t("recommendationActivity.empty", { count: windowDays })}

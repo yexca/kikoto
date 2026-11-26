@@ -1,3 +1,5 @@
+import { accountScopeKey, sessionStore, type ClientStore, type StorageKey } from "./clientStorage";
+
 export const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v6";
 export const USER_PREFERENCES_CHANGED = "kikoto:user-preferences-changed";
 export type RecommendationClientSession = {
@@ -5,43 +7,39 @@ export type RecommendationClientSession = {
   seed: number;
 };
 
-type RecommendationSessionStorage = Pick<Storage, "getItem" | "setItem">;
-
-const storagePrefix = "kikoto:recommendation-session:v1:";
+const storagePrefix = "kikoto:recommendation-session:v1";
 const sessionIDPattern = /^[A-Za-z0-9._:-]{1,64}$/;
 const memorySessions = new Map<string, string>();
 let fallbackSequence = 0;
 
+function sessionStorageKey(storageScope: string, algorithmVersion: string) {
+  return accountScopeKey(`${storagePrefix}:${encodeURIComponent(algorithmVersion)}`, storageScope);
+}
+
 export function readOrCreateRecommendationSession(
   storageScope: string,
   algorithmVersion: string,
-  storage: RecommendationSessionStorage | null = browserSessionStorage(),
+  storage: ClientStore = sessionStore,
   createID: () => string = createRecommendationSessionID,
 ): RecommendationClientSession {
-  const key = `${storagePrefix}${encodeURIComponent(algorithmVersion)}:${storageScope}`;
+  const key = sessionStorageKey(storageScope, algorithmVersion);
   let sessionID = memorySessions.get(key) ?? readStoredSessionID(storage, key) ?? "";
   if (!sessionIDPattern.test(sessionID)) {
     sessionID = createID();
     if (!sessionIDPattern.test(sessionID)) sessionID = createRecommendationSessionID();
     memorySessions.set(key, sessionID);
-    try {
-      storage?.setItem(key, sessionID);
-    } catch {
-      // The in-memory session still prevents page navigation from rebuilding.
-    }
+    // The in-memory session still prevents page navigation from rebuilding.
+    storage.write(key, sessionID);
   }
   return { id: sessionID, seed: recommendationSeedForSessionID(sessionID) };
 }
 
 export function renewRecommendationSession(storageScope: string) {
-  const key = `${storagePrefix}${encodeURIComponent(RECOMMENDATION_ALGORITHM_VERSION)}:${storageScope}`;
+  const key = sessionStorageKey(storageScope, RECOMMENDATION_ALGORITHM_VERSION);
   const id = createRecommendationSessionID();
   memorySessions.set(key, id);
-  try {
-    browserSessionStorage()?.setItem(key, id);
-  } catch {
-    /* Keep the new session in memory. */
-  }
+  // Memory keeps the new session when storage refuses it.
+  sessionStore.write(key, id);
 }
 
 export function recommendationSeedForSessionID(sessionID: string) {
@@ -52,21 +50,9 @@ export function recommendationSeedForSessionID(sessionID: string) {
   return (hash % 2147483646) + 1;
 }
 
-function readStoredSessionID(storage: RecommendationSessionStorage | null, key: string) {
-  try {
-    const value = storage?.getItem(key) ?? "";
-    return sessionIDPattern.test(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function browserSessionStorage() {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
+function readStoredSessionID(storage: ClientStore, key: StorageKey) {
+  const value = storage.read(key) ?? "";
+  return sessionIDPattern.test(value) ? value : null;
 }
 
 function createRecommendationSessionID() {

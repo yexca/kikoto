@@ -569,7 +569,7 @@ func readRemoteFetchRootMarker(root string) (remoteFetchRootMarker, bool, error)
 	if err != nil {
 		return remoteFetchRootMarker{}, true, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, remoteFetchRootMarkerMaxBytes+1))
 	if err != nil || len(data) > remoteFetchRootMarkerMaxBytes {
 		return remoteFetchRootMarker{}, true, errors.New("invalid Fetch root marker")
@@ -635,7 +635,7 @@ func directoryIsEmpty(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	_, err = directory.Readdirnames(1)
 	if errors.Is(err, io.EOF) {
 		return true, nil

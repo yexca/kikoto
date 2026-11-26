@@ -26,7 +26,10 @@ authentication, sources, media access, filesystems, or outbound networking.
 ## Outbound HTTP
 
 Every new direct outbound request path must document its allowed destination
-boundary and include tests for it.
+boundary and include tests for it. Its client comes from an
+`internal/outbound` policy; `make backend-lint` rejects the standard library's
+default clients and transports elsewhere
+([Backend](testing.md#backend)).
 
 - Accept only HTTP(S) and reject embedded URL credentials.
 - Give source-returned URLs an explicit policy: configured origins only,

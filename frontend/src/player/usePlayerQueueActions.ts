@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 
-import { currentPlaybackOrigin } from "@/app/playingWorkNavigation";
+import { currentPlaybackOrigin } from "@/lib/playingWorkNavigation";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api } from "@/lib/api";

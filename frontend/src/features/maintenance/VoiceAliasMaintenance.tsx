@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
@@ -342,8 +343,8 @@ function VoiceAliasDialog({
           </div>
         ) : aliases === null ? (
           <div className="skeleton-reveal space-y-2" role="status" aria-label={t("common.loading")} aria-busy="true">
-            <div className="h-5 w-40 animate-pulse rounded bg-muted" />
-            <div className="h-9 w-full animate-pulse rounded bg-muted" />
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-9 w-full" />
           </div>
         ) : (
           <VoiceAliasPanel
@@ -382,25 +383,25 @@ function VoiceAliasTableSkeleton() {
         {Array.from({ length: 3 }, (_, index) => (
           <tr key={index}>
             <td className="py-3 pl-4 pr-3">
-              <div className="h-3 w-8 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3 w-8" />
             </td>
             <td className="px-3 py-2">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 shrink-0 animate-pulse rounded-md bg-muted" />
-                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                <Skeleton className="h-10 w-10 shrink-0 rounded-md" />
+                <Skeleton className="h-3 w-24" />
               </div>
             </td>
             <td className="px-3 py-3">
-              <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3 w-20" />
             </td>
             <td className="px-3 py-3">
-              <div className="h-3 w-6 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3 w-6" />
             </td>
             <td className="px-3 py-3">
-              <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-3 w-14" />
             </td>
             <td className="py-2 pr-1 sm:pr-3">
-              <div className="ml-auto h-8 w-8 animate-pulse rounded-md bg-muted" />
+              <Skeleton className="ml-auto h-8 w-8 rounded-md" />
             </td>
           </tr>
         ))}

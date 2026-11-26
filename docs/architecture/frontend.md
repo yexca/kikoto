@@ -19,5 +19,5 @@ rules are [Frontend Guidelines](../development/frontend-guidelines.md).
 | [Player and Video](frontend/player-and-video.md) | Changing audio delivery, HLS, loudness, playback guards, the resume position, or the full-screen video player |
 | [Playback Reports](frontend/playback-reports.md) | Changing listening measurement, playback report sending, the IndexedDB outbox, or acknowledgement handling |
 | [Navigation, History, and Scroll](frontend/navigation-and-history.md) | Changing workspace retention, Back and the in-app back stack, detail ownership, or scroll and browse-state restoration |
-| [Interaction Principles](frontend/interaction-principles.md) | Changing secondary navigation, mobile fixed surfaces, work collections and cards, account-scoped storage, recommendations, or directory ordering |
+| [Interaction Principles](frontend/interaction-principles.md) | Changing secondary navigation, mobile fixed surfaces, work collections and cards, browser storage or its scope, recommendations, or directory ordering |
 | [Native Shells](frontend/native-shells.md) | Changing native media controls, screen lyrics, asset or session credentials, device privacy, or version states |

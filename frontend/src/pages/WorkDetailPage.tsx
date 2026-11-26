@@ -1,15 +1,16 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { PageID } from "@/app/navigation";
-import { NotFoundPage } from "@/app/NotFoundPage";
+import { NotFoundPage } from "@/components/NotFoundPage";
 import {
   announceWorkDetailPlay,
   announceWorkDetailUserState,
   announceWorkDetailWorksChanged,
-} from "@/app/workDetailEvents";
-import { workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+} from "@/lib/workDetailEvents";
+import type { PageID } from "@/lib/appPages";
+import { workDetailCodeFromLocation } from "@/lib/workDetailNavigation";
 import { useAuth } from "@/auth/AuthProvider";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { PersistedWorkDetailController, RemoteOnlyWorkDetailController } from "@/features/work-detail/lazyWorkDetail";
 import { api, type LibrarySource, type ListeningStatus } from "@/lib/api";
@@ -195,16 +196,16 @@ function WorkDetailLoading() {
   const { t } = useTranslation();
   return (
     <div className="skeleton-reveal space-y-5" role="status" aria-label={t("app.loadingPage")}>
-      <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
+      <Skeleton className="h-9 w-24 rounded-md" />
       <div className="flex flex-col gap-5 lg:flex-row">
-        <div className="aspect-[4/3] w-full animate-pulse rounded-lg bg-muted lg:w-80" />
+        <Skeleton className="aspect-[4/3] w-full rounded-lg lg:w-80" />
         <div className="flex-1 space-y-3">
-          <div className="h-4 w-28 animate-pulse rounded bg-muted" />
-          <div className="h-8 w-3/4 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-8 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
         </div>
       </div>
-      <div className="min-h-[22rem] animate-pulse rounded-lg bg-muted" />
+      <Skeleton className="min-h-[22rem] rounded-lg" />
     </div>
   );
 }

@@ -43,7 +43,8 @@ private LAN address. URLs, redirects, headers, and metadata it returns are
 untrusted. For every new or materially changed outbound path:
 
 - Route it through the shared transport in `internal/outbound` and define its
-  destinations. The transport existing does not cover a new path; document
+  destinations; `make backend-lint` rejects standard-library clients and
+  transports elsewhere. The transport existing does not cover a new path; document
   the stronger contract only after the path uses the policy and has tests.
 - Accept only HTTP(S) URLs; reject embedded credentials.
 - State whether the destination stays on the configured origin or may use an

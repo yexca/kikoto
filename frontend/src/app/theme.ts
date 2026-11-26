@@ -1,3 +1,5 @@
+import { deviceKey, localStore } from "@/lib/clientStorage";
+
 export type ThemeMode = "light" | "dark" | "system";
 export type ThemePreset = "anthropic" | "openai" | "apple" | "google-md";
 /** An accent hue. Each preset offers Original plus the accents its design source publishes. */
@@ -81,43 +83,43 @@ const FORMER_THEME_PALETTES = new Map<string, ThemePalette>([
   ["iris", "purple"],
 ]);
 
-const THEME_STORAGE_KEY = "kikoto:theme";
-const THEME_PRESET_STORAGE_KEY = "kikoto:theme-preset";
-const THEME_PALETTE_STORAGE_KEY = "kikoto:theme-palette";
+const THEME_STORAGE_KEY = deviceKey("kikoto:theme");
+const THEME_PRESET_STORAGE_KEY = deviceKey("kikoto:theme-preset");
+const THEME_PALETTE_STORAGE_KEY = deviceKey("kikoto:theme-palette");
 export const THEME_CHANGE_EVENT = "kikoto:theme-change";
 export const THEME_PRESET_CHANGE_EVENT = "kikoto:theme-preset-change";
 export const THEME_PALETTE_CHANGE_EVENT = "kikoto:theme-palette-change";
 const darkModeQuery = "(prefers-color-scheme: dark)";
 
 export function getStoredThemeMode(): ThemeMode {
-  const value = localStorage.getItem(THEME_STORAGE_KEY);
+  const value = localStore.read(THEME_STORAGE_KEY);
   return value === "light" || value === "dark" || value === "system" ? value : "system";
 }
 
 export function storeThemeMode(mode: ThemeMode) {
-  localStorage.setItem(THEME_STORAGE_KEY, mode);
+  localStore.write(THEME_STORAGE_KEY, mode);
   window.dispatchEvent(new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: mode }));
 }
 
 export function getStoredThemePreset(): ThemePreset {
-  const value = localStorage.getItem(THEME_PRESET_STORAGE_KEY);
+  const value = localStore.read(THEME_PRESET_STORAGE_KEY);
   if (value === "claude") return "anthropic";
   return isThemePreset(value) ? value : DEFAULT_THEME_PRESET;
 }
 
 export function storeThemePreset(preset: ThemePreset) {
-  localStorage.setItem(THEME_PRESET_STORAGE_KEY, preset);
+  localStore.write(THEME_PRESET_STORAGE_KEY, preset);
   window.dispatchEvent(new CustomEvent<ThemePreset>(THEME_PRESET_CHANGE_EVENT, { detail: preset }));
 }
 
 export function getStoredThemePalette(): ThemePalette {
-  const value = localStorage.getItem(THEME_PALETTE_STORAGE_KEY);
+  const value = localStore.read(THEME_PALETTE_STORAGE_KEY);
   if (isThemePalette(value)) return value;
   return FORMER_THEME_PALETTES.get(value ?? "") ?? DEFAULT_THEME_PALETTE;
 }
 
 export function storeThemePalette(palette: ThemePalette) {
-  localStorage.setItem(THEME_PALETTE_STORAGE_KEY, palette);
+  localStore.write(THEME_PALETTE_STORAGE_KEY, palette);
   window.dispatchEvent(new CustomEvent<ThemePalette>(THEME_PALETTE_CHANGE_EVENT, { detail: palette }));
 }
 

@@ -1,3 +1,5 @@
+import { localStore, type StorageKey } from "@/lib/clientStorage";
+
 /**
  * Per-viewer source visibility shared by source switchers: each source is
  * shown automatically, always, or never, and only explicit choices are stored.
@@ -38,30 +40,21 @@ export function sourceVisible(mode: SourceVisibilityMode, autoVisible: boolean) 
   return autoVisible;
 }
 
-export function readSourceVisibility(storageKey: string): SourceVisibilityPreferences {
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return {};
-    const value = JSON.parse(raw) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    const preferences: SourceVisibilityPreferences = {};
-    for (const [key, mode] of Object.entries(value)) {
-      if (!isVisibilityKey(key) || (mode !== "always" && mode !== "never")) continue;
-      preferences[key] = mode;
-    }
-    return preferences;
-  } catch {
-    return {};
+export function readSourceVisibility(storageKey: StorageKey): SourceVisibilityPreferences {
+  const value = localStore.readJSON(storageKey);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const preferences: SourceVisibilityPreferences = {};
+  for (const [key, mode] of Object.entries(value)) {
+    if (!isVisibilityKey(key) || (mode !== "always" && mode !== "never")) continue;
+    preferences[key] = mode;
   }
+  return preferences;
 }
 
-export function writeSourceVisibility(storageKey: string, preferences: SourceVisibilityPreferences) {
-  try {
-    if (Object.keys(preferences).length === 0) window.localStorage.removeItem(storageKey);
-    else window.localStorage.setItem(storageKey, JSON.stringify(preferences));
-  } catch {
-    // Switchers fall back to automatic visibility when local storage is unavailable.
-  }
+// Switchers fall back to automatic visibility when local storage is unavailable.
+export function writeSourceVisibility(storageKey: StorageKey, preferences: SourceVisibilityPreferences) {
+  if (Object.keys(preferences).length === 0) localStore.remove(storageKey);
+  else localStore.writeJSON(storageKey, preferences);
 }
 
 function isVisibilityKey(key: string): key is SourceVisibilityKey {

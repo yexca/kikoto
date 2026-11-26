@@ -90,7 +90,6 @@ type Server struct {
 	layoutMigrationScan            atomic.Bool
 	jobRunnerStarted               bool
 	workflowLeases                 *workflowLeaseRegistry
-	voiceCatalogRefreshMu          sync.Mutex
 	creatorRefreshMu               sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate

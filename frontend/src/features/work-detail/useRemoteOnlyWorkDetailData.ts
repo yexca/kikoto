@@ -5,7 +5,7 @@ import {
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+} from "@/lib/remoteTrackWorkflows";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { loadRemoteOnlyDetail } from "@/features/work-detail/remoteOnlyWorkDetailModel";
 import type { RemoteSourceAvailability } from "@/features/work-detail/source/sourceContextModel";

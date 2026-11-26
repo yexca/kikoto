@@ -8,29 +8,23 @@ import {
   navigationLabel,
   type CollapsibleNavigationGroup,
   type NavigationItem,
-  type PageID,
 } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
+import type { PageID } from "@/lib/appPages";
 import { cx } from "@/lib/classNames";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 
 function groupExpandedKey(group: CollapsibleNavigationGroup) {
-  return `kikoto:sidebar-${group}-expanded`;
+  return deviceKey(`kikoto:sidebar-${group}-expanded`);
 }
 
 function readGroupExpanded(group: CollapsibleNavigationGroup) {
-  try {
-    return localStorage.getItem(groupExpandedKey(group)) === "true";
-  } catch {
-    return false;
-  }
+  return localStore.read(groupExpandedKey(group)) === "true";
 }
 
+// Without storage the choice only lasts for this page load.
 function storeGroupExpanded(group: CollapsibleNavigationGroup, expanded: boolean) {
-  try {
-    localStorage.setItem(groupExpandedKey(group), String(expanded));
-  } catch {
-    // The choice only lasts for this page load.
-  }
+  localStore.write(groupExpandedKey(group), String(expanded));
 }
 
 /**

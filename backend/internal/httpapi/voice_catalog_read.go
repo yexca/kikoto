@@ -217,7 +217,7 @@ func (s *Server) loadVoiceCatalogMatchRows(ctx context.Context, personID int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Building a remote work may query canonical identity and availability, so
 	// release the cursor's pooled connection before that enrichment.
 	matchRows := []voiceCatalogMatchRow{}
@@ -345,7 +345,7 @@ func (s *Server) buildVoiceCatalogRemoteWork(ctx context.Context, row voiceCatal
 	return voiceRemoteWork{
 		SourceID: row.SourceID.Int64, SourceCode: row.SourceCode, SourceName: row.SourceName,
 		RemoteID: row.RemoteID, PrimaryCode: code, RemoteCode: strings.TrimSpace(row.RemoteCode),
-		Title: firstNonEmpty(row.Title, code), ReleaseDate: voiceCatalogStringValue(row.ReleaseDate),
+		Title: firstNonBlankTrimmed(row.Title, code), ReleaseDate: voiceCatalogStringValue(row.ReleaseDate),
 		UpdatedAt: voiceCatalogStringValue(row.ReleaseDate), CoverURL: s.visibleRemoteImageURL(ctx, row.SourceID.Int64, row.CoverURL),
 		Circle: row.Circle, AgeRating: row.AgeRating, Rating: nullableFloat64FromNull(row.Rating),
 		RatingCount: nullableInt64FromFloatNull(row.RatingCount), Sales: nullableInt64FromFloatNull(row.Sales),

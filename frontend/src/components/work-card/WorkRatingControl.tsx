@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/tailwindClassNames";
+import { isMobileViewport } from "./mobileViewport";
 
 const stars = [1, 2, 3, 4, 5] as const;
 
@@ -123,9 +124,4 @@ export function WorkRatingControl({
       </AnchoredPopover>
     </div>
   );
-}
-
-/** Phones keep the popover above the bottom navigation and player. */
-function isMobileViewport() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }

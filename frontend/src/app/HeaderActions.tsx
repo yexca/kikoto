@@ -9,7 +9,6 @@ import type { LanguageControl } from "@/app/header/LanguageControls";
 import { NotificationCenter } from "@/app/header/NotificationCenter";
 import { UserAvatar, userDisplayName } from "@/app/header/UserAvatar";
 import { useServerConnection } from "@/app/header/useServerConnection";
-import type { PageID } from "@/app/navigation";
 import {
   applyThemeMode,
   applyThemePalette,
@@ -32,6 +31,7 @@ import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { useMetadataDisplayLanguage } from "@/features/maintenance/useMetadataDisplayLanguage";
 import { Button } from "@/components/ui/button";
 import type { CurrentUser } from "@/lib/api";
+import type { PageID } from "@/lib/appPages";
 import { cx } from "@/lib/classNames";
 import { isNativeApp } from "@/lib/serverConfig";
 import type { UiLocale } from "@/i18n";

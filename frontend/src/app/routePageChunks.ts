@@ -1,4 +1,4 @@
-import type { AppPage } from "@/app/appRoutes";
+import type { AppPage } from "@/lib/appRoutes";
 import { preloadableComponent } from "@/lib/preloadableComponent";
 
 // The route pages outside the retained browse workspaces. The current

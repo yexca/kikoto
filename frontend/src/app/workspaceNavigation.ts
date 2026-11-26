@@ -1,5 +1,6 @@
-import { appPageForLocation, currentAppPage, pageFromPath } from "@/app/appRoutes";
-import { navItems, type PageID } from "@/app/navigation";
+import { navItems } from "@/app/navigation";
+import type { PageID } from "@/lib/appPages";
+import { appPageForLocation, currentAppPage, pageFromPath } from "@/lib/appRoutes";
 import { currentInternalLocation, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { isCircleListLocation, readLastCircleListLocation } from "@/lib/circleNavigationState";
 import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/libraryBrowseState";

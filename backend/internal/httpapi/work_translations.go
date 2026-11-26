@@ -105,7 +105,7 @@ func mergeLogicalWorkTranslation(translations []workTranslation, seen map[string
 	target.HasMedia = item.HasMedia
 	target.MediaState = item.MediaState
 	target.LocalAvailable = item.LocalAvailable
-	target.EditionLabel = firstNonEmpty(target.EditionLabel, item.EditionLabel)
+	target.EditionLabel = firstNonBlankTrimmed(target.EditionLabel, item.EditionLabel)
 	target.TranslationKind = item.TranslationKind
 	target.Origin = item.Origin
 	target.Official = item.Official

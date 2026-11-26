@@ -16,7 +16,16 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { fileWorkspacePlace, finalFolderPaths } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  fileWorkspacePlace,
+  finalFolderPaths,
+  folderEditResourceChanges,
+} from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  ResourceFilesBody,
+  SelectAllNone,
+  useResourceSelection,
+} from "@/features/work-detail/folder-edit/FileWorkspaceSelection";
 import {
   FolderEditArrangeTree,
   RowMenu,
@@ -28,9 +37,6 @@ import {
   currentFileKey,
   folderEditCanMerge,
   folderEditExtensions,
-  folderEditResourceChanges,
-  folderEditSelectedBytes,
-  withFolderEditPaths,
   type FolderEditFile,
   type FolderEditResource,
   type FolderEditResultEntry,
@@ -53,9 +59,6 @@ import { PendingDeletionPanel } from "@/features/work-detail/folder-edit/Pending
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { languageLabel } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
 import { cn } from "@/lib/tailwindClassNames";
-
-const noSelection: ReadonlySet<string> = new Set();
-const noFiles: FolderEditFile[] = [];
 
 export function resourceTitle(resource: FolderEditResource, t: (key: string) => string) {
   if (resource.kind === "current") return t("folderEdit.currentFolder");
@@ -319,9 +322,8 @@ export function SelectionColumn({
   className?: string;
 }) {
   const { t } = useTranslation();
-  const state = workspace.files[resource.id];
-  const files = state?.status === "ready" ? state.files : noFiles;
-  const selected = workspace.selection[resource.id] ?? noSelection;
+  const selection = useResourceSelection(workspace, resource.id);
+  const { files, selected, selectedCount, bytes, setIncluded } = selection;
   const current = resource.kind === "current";
   // The edited folder's identical files: marked, opened after each check, and shown alone on request.
   const identical = current ? manage?.identical : undefined;
@@ -340,12 +342,7 @@ export function SelectionColumn({
     [identicalPaths, identicalRevision],
   );
   const tree = useMemo(() => buildFolderEditTree(shown), [shown]);
-  const allPaths = useMemo(() => files.map((file) => file.path), [files]);
   const place = fileWorkspacePlace(resource);
-  const selectedCount = files.filter((file) => selected.has(file.path)).length;
-  const bytes = folderEditSelectedBytes(files, selected);
-  const setIncluded = (paths: readonly string[], included: boolean) =>
-    workspace.setSelected(resource.id, withFolderEditPaths(selected, paths, included));
   const merging = resource.kind === "local" && Boolean(workspace.merge?.folderIds.has(resource.folderId));
   const [toolsOpen, setToolsOpen] = useState(false);
   const arrange = workspace.arrange;
@@ -426,24 +423,12 @@ export function SelectionColumn({
               {selectedCount > 0 && bytes > 0 ? ` · ${formatBytes(bytes)}` : ""}
             </div>
           </div>
-          <div className="-mr-2 flex shrink-0 gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={workspace.applying || files.length === 0}
-              onClick={() => setIncluded(allPaths, true)}
-            >
-              {current && manage ? t("fileWorkspace.keepAll") : t("remoteFetch.all")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={workspace.applying || files.length === 0}
-              onClick={() => setIncluded(allPaths, false)}
-            >
-              {current && manage ? t("fileWorkspace.deleteAll") : t("remoteFetch.none")}
-            </Button>
-          </div>
+          <SelectAllNone
+            selection={selection}
+            applying={workspace.applying}
+            allLabel={current && manage ? t("fileWorkspace.keepAll") : undefined}
+            noneLabel={current && manage ? t("fileWorkspace.deleteAll") : undefined}
+          />
         </div>
         {merging ? (
           // Merging deletes the whole folder, so it says so where the files are chosen.
@@ -491,40 +476,28 @@ export function SelectionColumn({
           <ExtensionChips files={files} selected={selected} disabled={workspace.applying} onToggle={setIncluded} />
         )}
       </div>
-      <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
-        {!state || state.status === "loading" ? (
-          <PaneNote>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t("folderEdit.loadingFiles")}
-          </PaneNote>
-        ) : state.status === "error" ? (
-          <PaneNote>
-            {t("folderEdit.filesFailed")}
-            <Button variant="outline" size="sm" onClick={() => workspace.retryResource(resource)}>
-              {t("folderEdit.retry")}
-            </Button>
-          </PaneNote>
-        ) : files.length === 0 ? (
-          <PaneNote>{t("folderEdit.noFiles")}</PaneNote>
-        ) : (
-          <SelectionNode
-            // Folder open state belongs to the resource it was opened in.
-            key={resource.id}
-            node={tree}
-            depth={0}
-            selected={selected}
-            disabled={workspace.applying}
-            onToggle={setIncluded}
-            onDragFiles={onDragFiles}
-            meta={meta}
-            folderNote={current ? manage?.folderNote : undefined}
-            rowMenu={rowMenu}
-            expand={expand}
-            reveal={reveal}
-            isRoot
-          />
-        )}
-      </div>
+      <ResourceFilesBody
+        state={selection.state}
+        empty={t("folderEdit.noFiles")}
+        onRetry={() => workspace.retryResource(resource)}
+      >
+        <SelectionNode
+          // Folder open state belongs to the resource it was opened in.
+          key={resource.id}
+          node={tree}
+          depth={0}
+          selected={selected}
+          disabled={workspace.applying}
+          onToggle={setIncluded}
+          onDragFiles={onDragFiles}
+          meta={meta}
+          folderNote={current ? manage?.folderNote : undefined}
+          rowMenu={rowMenu}
+          expand={expand}
+          reveal={reveal}
+          isRoot
+        />
+      </ResourceFilesBody>
     </section>
   );
 }

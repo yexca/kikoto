@@ -59,7 +59,7 @@ func (s *Server) loadVoiceUserTags(ctx context.Context, userID int64, personID i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tags := []voiceUserTag{}
 	for rows.Next() {
 		var tag voiceUserTag

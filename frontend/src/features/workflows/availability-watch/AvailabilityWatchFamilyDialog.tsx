@@ -1,6 +1,6 @@
 import { Activity, ExternalLink, GitFork, HardDriveDownload, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { openWorkDetail } from "@/lib/workDetailNavigation";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import i18n, { intlLocaleFor } from "@/i18n";

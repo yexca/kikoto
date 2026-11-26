@@ -23,6 +23,8 @@
   differs on purpose is named for the difference. `make duplicate-helper-check`
   reports an unexported function name that a second package defines, and a
   baseline entry that allows more copies than remain.
+- Keep source files under 800 lines; a large file is not where new code goes
+  ([file size ratchet](testing.md#continuous-integration)).
 
 ## Validation
 

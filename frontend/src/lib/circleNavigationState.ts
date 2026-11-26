@@ -1,6 +1,7 @@
 import { NAVIGATION_EVENT, historyStateWithReturn, normalizeInternalLocation } from "@/lib/browserHistory";
+import { accountScopeKey, sessionStore } from "@/lib/clientStorage";
 
-const lastCircleListLocationPrefix = "kikoto:circle-list-location:v1:";
+const lastCircleListLocationName = "kikoto:circle-list-location:v1";
 
 export function isCircleListLocation(location: string) {
   const normalized = normalizeInternalLocation(location);
@@ -13,26 +14,19 @@ export function isCircleListLocation(location: string) {
 }
 
 export function readLastCircleListLocation(storageScope: string) {
-  try {
-    const value = window.sessionStorage.getItem(circleNavigationStorageKey(storageScope));
-    return value && isCircleListLocation(value) ? normalizeInternalLocation(value) : null;
-  } catch {
-    return null;
-  }
+  const value = sessionStore.read(circleNavigationStorageKey(storageScope));
+  return value && isCircleListLocation(value) ? normalizeInternalLocation(value) : null;
 }
 
+// Navigation remains usable when session storage is unavailable.
 export function writeLastCircleListLocation(storageScope: string, location: string) {
   const normalized = normalizeInternalLocation(location);
   if (!normalized || !isCircleListLocation(normalized)) return;
-  try {
-    window.sessionStorage.setItem(circleNavigationStorageKey(storageScope), normalized);
-  } catch {
-    // Navigation remains usable when session storage is unavailable.
-  }
+  sessionStore.write(circleNavigationStorageKey(storageScope), normalized);
 }
 
 function circleNavigationStorageKey(storageScope: string) {
-  return `${lastCircleListLocationPrefix}${storageScope}`;
+  return accountScopeKey(lastCircleListLocationName, storageScope);
 }
 
 export function openCircleRoute(externalId: string) {

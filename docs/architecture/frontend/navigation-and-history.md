@@ -26,10 +26,12 @@ history entries.
   The shell draws no placeholder shape while a page chunk loads; a slow chunk
   shows the shared refresh indicator. A page's first-data placeholder has the
   footprint of what it is about to show: a work collection uses its grid, card
-  mode, and columns, and a settings tab uses the shape of its sections. Every
-  loading placeholder carries `skeleton-reveal` (`styles.css`): it keeps its
-  footprint but stays hidden for its first 200ms, so a fast answer replaces a
-  blank directly instead of flashing a placeholder. An empty result is shown
+  mode, and columns, and a settings tab uses the shape of its sections. Its
+  pulsing blocks are `Skeleton` (`components/ui/skeleton.tsx`). Every loading
+  placeholder carries `skeleton-reveal` (`styles.css`), through `Skeleton`'s
+  `reveal` or on the container around its blocks: it keeps its footprint but
+  stays hidden for its first 200ms, so a fast answer replaces a blank directly
+  instead of flashing a placeholder. An empty result is shown
   only once the first page has answered.
 - Keep destination switches proportional to the workspaces that change. A
   workspace that stays hidden skips shell-driven renders, and browse list items
@@ -58,7 +60,7 @@ history entries.
   keep browser history, whose Back button the app cannot remove.
 - A work detail entry belongs to the page it was opened from. The work URL
   stays the canonical `/<primary_code>`; the history entry records its owner
-  when it is created (`app/appRoutes`), a work opened from another work
+  when it is created (`lib/appRoutes`), a work opened from another work
   inherits that work's owner, and a direct link belongs to Library. The owner
   decides which navigation item is current, which list Back falls back to, and
   which destination resumes the entry.
@@ -66,7 +68,7 @@ history entries.
   detail, its location, because a track of another edition carries that
   edition's code rather than the work the listener opened. On the
   bottom-navigation layout the Full player's cover leads back there
-  (`app/playingWorkNavigation`): the origin destination resumes its own entry
+  (`lib/playingWorkNavigation`): the origin destination resumes its own entry
   when it still shows the work and otherwise opens the work as its own. In a
   browser Back returns to where the cover was tapped; with an in-app back
   stack the work starts its destination's stack, so Back goes up to that

@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, GripVertical, Plus, Save, Trash2 } from "lucide-rea
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/components/settings/SettingsSection";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { TokenInput } from "@/components/ui/token-input";
 import type { DirectoryRoutingRule } from "@/lib/api";
@@ -266,9 +267,8 @@ function TagListInput({
 
 function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
+    <Field label={label} className="gap-1">
       <Input value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
+    </Field>
   );
 }

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { workflowRunSettled } from "@/hooks/useWorkflowRunWatcher";
 import { api } from "@/lib/api";
-import { announceRemoteTrackCreated } from "@/app/remoteTrackWorkflows";
+import { announceRemoteTrackCreated } from "@/lib/remoteTrackWorkflows";
 import {
   groupRemoteTargetsBySource,
   remoteBulkRunOutcome,

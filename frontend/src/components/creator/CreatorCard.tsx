@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { UserTagRow, type UserTag } from "@/components/UserTagRow";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilityMeter } from "@/components/creator/AvailabilityMeter";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { assetURL } from "@/lib/api";
@@ -193,14 +194,14 @@ export function CreatorCard({
 export function CreatorCardSkeleton() {
   return (
     <Card className="flex h-full flex-col overflow-hidden">
-      <div className="aspect-[4/3] w-full shrink-0 animate-pulse border-b bg-muted" />
+      <Skeleton className="aspect-[4/3] w-full shrink-0 border-b rounded-none" />
       <div className="flex flex-1 flex-col p-2.5 sm:p-3">
-        <div className="h-5 w-3/4 animate-pulse rounded bg-muted" />
-        <div className="mt-1 h-4 w-1/2 animate-pulse rounded bg-muted" />
-        <div className="mt-2 h-7 w-7 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="mt-1 h-4 w-1/2" />
+        <Skeleton className="mt-2 h-7 w-7 rounded-md" />
         <div className="mt-auto pt-2.5">
-          <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
-          <div className="mt-1.5 h-4 w-2/3 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-1.5 w-full rounded-full" />
+          <Skeleton className="mt-1.5 h-4 w-2/3" />
         </div>
       </div>
     </Card>

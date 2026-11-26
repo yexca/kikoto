@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
+import { favoriteListNameKey } from "@/components/favorite-list/favoriteListPickerModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -27,10 +28,6 @@ export type FavoriteListDraft = {
 
 /** What the dialog around the editor must respect: unsaved edits and popovers that own Escape. */
 export type FavoriteListEditorGuard = { dirty: boolean; layerOpen: boolean };
-
-function nameKey(name: string) {
-  return name.trim().toLocaleLowerCase();
-}
 
 /**
  * Creates one list or edits one list inside the list dialog: its header,
@@ -89,7 +86,8 @@ export function FavoriteListEditor({
   const ruleChanged = smart && smartRuleMatchKey(rule) !== savedRuleKey;
   const canSave = Boolean(name.trim()) && (!smart || smartRuleCanSave(rule));
   const duplicate =
-    Boolean(name.trim()) && lists.some((item) => item.id !== list?.id && nameKey(item.name) === nameKey(name));
+    Boolean(name.trim()) &&
+    lists.some((item) => item.id !== list?.id && favoriteListNameKey(item.name) === favoriteListNameKey(name));
   const dirty =
     name !== (list?.name ?? "") ||
     description !== (list?.description ?? "") ||

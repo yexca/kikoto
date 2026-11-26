@@ -1,19 +1,10 @@
-import type { CircleCatalogWork, CircleDetail, CircleSeries, CircleSourceStat, ListeningStatus } from "@/lib/api";
+import type { CircleCatalogWork, CircleDetail, CircleSeries, CircleSourceStat } from "@/lib/api";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
-import type { WorkDetailIntent } from "@/app/workDetailNavigation";
+import type { WorkDetailIntent } from "@/lib/workDetailNavigation";
 import type { RemoteWorkTarget } from "@/pages/remoteBulkRunModel";
 
 /** The availability filter of a circle's catalog works. */
 export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
-
-const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
-  { value: "none", label: "Unmarked" },
-  { value: "want_to_listen", label: "Want" },
-  { value: "listening", label: "Listening" },
-  { value: "finished", label: "Finished" },
-  { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Shelved" },
-];
 
 export function circleWorkKey(work: CircleCatalogWork) {
   return work.primaryCode;
@@ -49,10 +40,6 @@ export function emptyCircleDetail(externalId: string): CircleDetail {
     worksMeta: { page: 1, pageSize: 24, loaded: 0, total: 0, hasMore: false, truncated: false },
     series: [],
   };
-}
-
-export function normalizeListeningStatus(status: string): ListeningStatus {
-  return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
 }
 
 function availableSourceTags(sources: CircleSourceStat[] | null | undefined) {

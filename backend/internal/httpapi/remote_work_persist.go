@@ -29,7 +29,7 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	if code == "" {
 		return 0, fmt.Errorf("remote work does not expose a stable work code")
 	}
-	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
+	title := firstNonBlankTrimmed(remoteWork.Title, remoteWork.Name, code)
 	workID, err := remoteWorkIDForVerifiedDLsiteAlias(ctx, tx, code)
 	if err != nil {
 		return 0, err
@@ -301,7 +301,7 @@ func syncRemoteTrackChildren(ctx context.Context, tx *sql.Tx, fileSourceID, work
 }
 
 func upsertRemoteTrackLocation(ctx context.Context, tx *sql.Tx, fileSourceID, itemID int64, path string, node kikoeru.Track, duration, size any, state *remoteTrackSyncState) error {
-	streamURL := firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL)
+	streamURL := firstNonBlankTrimmed(node.MediaStreamURL, node.StreamLowQualityURL)
 	downloadURL := node.MediaDownloadURL
 	if streamURL == "" && downloadURL == "" {
 		return nil
@@ -347,7 +347,7 @@ func remoteCodeFromRawJSON(raw string) string {
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return ""
 	}
-	return firstNonEmpty(payload.WorkNo, payload.WorkNoAlt, payload.ProductID, payload.ProductIDAlt, payload.ProductIDText, payload.SourceID)
+	return firstNonBlankTrimmed(payload.WorkNo, payload.WorkNoAlt, payload.ProductID, payload.ProductIDAlt, payload.ProductIDText, payload.SourceID)
 }
 
 func remoteTrackKind(value string) string {

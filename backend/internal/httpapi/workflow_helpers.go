@@ -136,17 +136,6 @@ func (s *Server) loadWorkflowTrigger(ctx context.Context, id int64) (workflowTri
 	return s.workflowStore.LoadTrigger(ctx, id)
 }
 
-func normalizeOptionalString(value *string) any {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return trimmed
-}
-
 func mergeJSONObjects(raw string, patch map[string]any) map[string]any {
 	result := map[string]any{}
 	if strings.TrimSpace(raw) != "" {

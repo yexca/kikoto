@@ -232,7 +232,7 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	variants := []DLsiteMetadataVariant{}
 	for rows.Next() {
 		var variant DLsiteMetadataVariant

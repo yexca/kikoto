@@ -100,7 +100,7 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	if err != nil {
 		return appUpdateResponse{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return appUpdateResponse{}, fmt.Errorf("github returned status %d", response.StatusCode)
 	}

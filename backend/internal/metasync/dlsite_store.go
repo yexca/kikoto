@@ -13,6 +13,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product dlsite.Product) error {
@@ -95,7 +96,7 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if editionToken == "" {
 		editionToken = strings.ToUpper(editionLanguage)
 	}
-	requestLocale := normalizeRequestLocale(firstNonBlank(product.RequestLocale, product.Language))
+	requestLocale := normalizeRequestLocale(textvalue.FirstNonBlankRaw(product.RequestLocale, product.Language))
 	if requestLocale == "" {
 		requestLocale = dlsite.LocaleForMetadataLanguage(editionToken)
 	}
@@ -365,7 +366,7 @@ func upsertDLsiteMetadataVariant(
 	tags := make([]string, 0, len(genres))
 	seen := map[string]bool{}
 	for _, genre := range genres {
-		name := strings.TrimSpace(firstNonBlank(genre.Name, genre.NameBase))
+		name := strings.TrimSpace(textvalue.FirstNonBlankRaw(genre.Name, genre.NameBase))
 		key := strings.ToLower(name)
 		if name == "" || seen[key] {
 			continue

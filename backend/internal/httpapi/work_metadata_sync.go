@@ -219,7 +219,7 @@ func (s *Server) activeWorkMetadataSync(ctx context.Context, payload workMetadat
 	if err != nil {
 		return workMetadataSyncRunResult{}, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var runID, jobID int64
 		var inputJSON, status string

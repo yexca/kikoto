@@ -1,9 +1,9 @@
 import {
   folderEditResources,
   localFolderFiles,
+  planItemResultState,
   type FolderEditFile,
   type FolderEditResultEntry,
-  type FolderEditResultState,
   type FolderEditSelection,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
@@ -12,7 +12,6 @@ import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsMode
 import type {
   FolderLyricsMode,
   LyricsEditAddition,
-  LyricsEditItem,
   LyricsEditPlan,
   LyricsEditRequest,
   MediaItem,
@@ -187,26 +186,6 @@ export function lyricsEditRequest({
   };
 }
 
-/** How many files of a resource the edit changes: deleted for the managed lyrics, added for any other. */
-export function lyricsEditResourceChanges(
-  resource: LyricsEditResource,
-  files: readonly FolderEditFile[] | undefined,
-  selected: ReadonlySet<string> | undefined,
-) {
-  if (!files) return 0;
-  const count = files.filter((file) => selected?.has(file.path)).length;
-  return resource.kind === "current" ? files.length - count : count;
-}
-
-function resultStateForItem(item: LyricsEditItem): FolderEditResultState {
-  if (item.targetConflict || item.action === "conflict") return "conflict";
-  if (item.action === "exclude") return "excluded";
-  if (item.action === "move_local") return "add_move";
-  if (item.action === "copy_local") return "add_local";
-  if (item.action === "cache_download") return "add_remote";
-  return "same";
-}
-
 /**
  * The managed lyrics after the edit: the files they keep, the files they
  * lose, and the planned additions. An addition that is already there marks the
@@ -235,7 +214,7 @@ export function lyricsEditResult(
   const below = (path: string) => (plan ? (pathBelowFolder(plan.saveRoot, path) ?? path) : path);
   for (const item of plan?.items ?? []) {
     const path = below(item.targetPath);
-    const state = resultStateForItem(item);
+    const state = planItemResultState(item);
     const existing = entries.get(path.toLowerCase());
     if (state === "same" && existing) {
       if (existing.state === "keep") existing.state = "same";

@@ -28,7 +28,7 @@ func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	folder := localfs.WorkFolder{Code: "TEST-WORK-LOCAL-001", Title: "Detected work", RelPath: "TEST-WORK-LOCAL-001"}
 	workID, err := upsertDetectedWork(context.Background(), tx, folder)
 	if err != nil {

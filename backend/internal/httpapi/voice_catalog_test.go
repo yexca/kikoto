@@ -31,12 +31,13 @@ func TestVoiceCatalogDiscoversEveryPageAndConfirmedAliasWithoutCreatingWorks(t *
 		switch keyword {
 		case "$va:Example Voice$":
 			result.Pagination.TotalCount = 3
-			if page == 1 {
+			switch page {
+			case 1:
 				result.Works = []kikoeru.Work{
 					{ID: 1, SourceID: "RJ00000001", Title: "Example Work 1"},
 					{ID: 2, SourceID: "RJ00000002", Title: "Example Work 2"},
 				}
-			} else if page == 2 {
+			case 2:
 				result.Works = []kikoeru.Work{{ID: 3, SourceID: "RJ00000003", Title: "Example Work 3"}}
 			}
 		case "$va:Confirmed Alias$":
@@ -675,7 +676,7 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	nodeStatuses := map[string]string{}
 	for rows.Next() {
 		var nodeID, nodeStatus string

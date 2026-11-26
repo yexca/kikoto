@@ -1,38 +1,25 @@
 import { useState } from "react";
 
-const shelfListHiddenStorageKey = "kikoto:favorites-shelves-hidden";
+import { deviceKey, localStore, type ClientStore } from "@/lib/clientStorage";
 
-export function readFavoriteShelfListHidden(storage: Pick<Storage, "getItem"> | undefined): boolean {
-  try {
-    return storage?.getItem(shelfListHiddenStorageKey) === "true";
-  } catch {
-    return false;
-  }
+const shelfListHiddenStorageKey = deviceKey("kikoto:favorites-shelves-hidden");
+
+export function readFavoriteShelfListHidden(store: ClientStore = localStore): boolean {
+  return store.read(shelfListHiddenStorageKey) === "true";
 }
 
-export function storeFavoriteShelfListHidden(storage: Pick<Storage, "setItem"> | undefined, hidden: boolean) {
-  try {
-    storage?.setItem(shelfListHiddenStorageKey, String(hidden));
-  } catch {
-    // The list still hides for this visit when storage is unavailable.
-  }
-}
-
-function browserStorage() {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
+// The list still hides for this visit when storage is unavailable.
+export function storeFavoriteShelfListHidden(hidden: boolean, store: ClientStore = localStore) {
+  store.write(shelfListHiddenStorageKey, String(hidden));
 }
 
 /** Whether the wide layout hides its shelf list: a per-device preference, like the view mode. */
 export function useFavoriteShelfListHidden() {
-  const [hidden, setHidden] = useState(() => readFavoriteShelfListHidden(browserStorage()));
+  const [hidden, setHidden] = useState(() => readFavoriteShelfListHidden());
   const toggle = () => {
     const next = !hidden;
     setHidden(next);
-    storeFavoriteShelfListHidden(browserStorage(), next);
+    storeFavoriteShelfListHidden(next);
   };
   return [hidden, toggle] as const;
 }

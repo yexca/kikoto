@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { WorkCoverThumbnail } from "@/components/work-card/WorkCoverThumbnail";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
@@ -356,7 +357,7 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
       {searched === null || (shown === null && !loading) ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{t("cleanup.ratedWorks.notSearched")}</p>
       ) : shown === null ? (
-        <div className="skeleton-reveal my-3 h-12 animate-pulse rounded-md bg-muted/60" aria-hidden="true" />
+        <Skeleton reveal className="my-3 h-12 rounded-md bg-muted/60" />
       ) : works.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{t("cleanup.ratedWorks.empty")}</p>
       ) : (

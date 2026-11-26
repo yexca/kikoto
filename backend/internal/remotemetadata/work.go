@@ -9,6 +9,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 // Bounds for remote work metadata. A response or snapshot outside them is
@@ -62,7 +63,7 @@ func Decode(raw []byte) (Work, error) {
 	}
 	work := Work{
 		Code:      kikoeru.WorkCode(remote),
-		Title:     strings.TrimSpace(firstNonEmpty(remote.Title, remote.Name)),
+		Title:     strings.TrimSpace(textvalue.FirstNonBlankTrimmed(remote.Title, remote.Name)),
 		AgeRating: strings.TrimSpace(remote.AgeCategoryString),
 		CoverURL:  strings.TrimSpace(remote.MainCoverURL),
 	}
@@ -133,17 +134,7 @@ func decodeTag(tag kikoeru.Tag) (metadatatags.ProviderTag, error) {
 		}
 	}
 	if result.Name == "" {
-		result.Name = firstNonEmpty(result.Names["ja-jp"], result.Names["en-us"], result.Names["zh-cn"], result.Names["zh-tw"], result.Names["ko-kr"])
+		result.Name = textvalue.FirstNonBlankTrimmed(result.Names["ja-jp"], result.Names["en-us"], result.Names["zh-cn"], result.Names["zh-tw"], result.Names["ko-kr"])
 	}
 	return result, nil
-}
-
-// firstNonEmpty returns the first value that is not blank, trimmed.
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }

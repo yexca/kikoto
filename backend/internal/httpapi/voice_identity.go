@@ -571,7 +571,7 @@ func (s *Server) loadVoiceAliases(ctx context.Context, personID int64) ([]voiceA
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	aliases := []voiceAlias{}
 	for rows.Next() {
 		var item voiceAlias
@@ -627,7 +627,7 @@ func (s *Server) loadVoiceAliasCandidates(ctx context.Context, personID int64, q
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	candidates := []voiceAliasCandidate{}
 	personIDs := []int64{}
 	for rows.Next() {
@@ -703,7 +703,7 @@ func (s *Server) loadVoiceMergeReviews(ctx context.Context, personID int64) ([]v
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []voiceMergeReview{}
 	for rows.Next() {
 		var item voiceMergeReview

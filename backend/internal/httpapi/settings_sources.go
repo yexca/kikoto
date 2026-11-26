@@ -199,7 +199,7 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	sources := []librarySource{}
 	for rows.Next() {
 		var source librarySource
@@ -670,7 +670,7 @@ func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLega
 	if payload.SourceType == sourceTypeKikoeruCompatible178 && !allowLegacy {
 		return errors.New("legacy number178 sources are disabled")
 	}
-	if !isKikoeruSourceType(payload.SourceType) && !(allowLocal && payload.SourceType == sourceTypeLocalFolder) {
+	if !isKikoeruSourceType(payload.SourceType) && (!allowLocal || payload.SourceType != sourceTypeLocalFolder) {
 		return errors.New("unsupported sourceType")
 	}
 	if isKikoeruSourceType(payload.SourceType) {

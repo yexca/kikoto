@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 
-import { REMOTE_TRACK_TERMINAL_EVENT, type RemoteTrackTerminalDetail } from "@/app/remoteTrackWorkflows";
+import { REMOTE_TRACK_TERMINAL_EVENT, type RemoteTrackTerminalDetail } from "@/lib/remoteTrackWorkflows";
 import {
   WORK_DETAIL_PLAY_EVENT,
   WORK_DETAIL_USER_STATE_EVENT,
   WORK_DETAIL_WORKS_CHANGED_EVENT,
   type WorkDetailPlayDetail,
   type WorkDetailUserStateDetail,
-} from "@/app/workDetailEvents";
+} from "@/lib/workDetailEvents";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import type { RecommendationEventInput, Work } from "@/lib/api";
 import type { LibraryTab } from "@/pages/library/libraryRoutes";

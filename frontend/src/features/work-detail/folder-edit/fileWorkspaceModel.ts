@@ -20,6 +20,20 @@ export function fileWorkspacePlace(resource: Pick<FolderEditResource, "kind">): 
 }
 
 /**
+ * How many files of a place an edit changes, in any file workspace: removed
+ * for the `current` place the edit writes, added for any other.
+ */
+export function folderEditResourceChanges(
+  resource: { kind: string },
+  files: readonly FolderEditFile[] | undefined,
+  selected: ReadonlySet<string> | undefined,
+) {
+  if (!files) return 0;
+  const count = files.filter((file) => selected?.has(file.path)).length;
+  return resource.kind === "current" ? files.length - count : count;
+}
+
+/**
  * The folders of the final folder that files can go to, parents first and in
  * name order: every folder that holds a file the folder keeps or gains, and
  * every folder the edit creates. Kikoto's lyrics folder takes files only

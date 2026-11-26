@@ -114,7 +114,7 @@ func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
 }
 
 func (s *DLsiteSyncer) WithLanguages(languages []string) *DLsiteSyncer {
-	s.languages = normalizeLanguages(languages)
+	s.languages = dlsite.NormalizeRequestLanguages(languages)
 	return s
 }
 
@@ -454,36 +454,4 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 		return 0, 0, err
 	}
 	return runID, jobID, nil
-}
-
-// firstNonBlank returns the first value that is not blank, exactly as written.
-func firstNonBlank(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func normalizeLanguages(values []string) []string {
-	seen := map[string]bool{}
-	result := []string{}
-	includeDefault := false
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "" {
-			includeDefault = true
-			continue
-		}
-		if seen[value] {
-			continue
-		}
-		seen[value] = true
-		result = append(result, value)
-	}
-	if includeDefault {
-		result = append(result, "")
-	}
-	return result
 }

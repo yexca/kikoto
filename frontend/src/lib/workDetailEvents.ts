@@ -1,4 +1,4 @@
-import type { PageID } from "@/app/navigation";
+import type { PageID } from "@/lib/appPages";
 import type { ListeningStatus } from "@/lib/api";
 
 /**

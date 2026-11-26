@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { syntheticWorkCode } from "@/test-support/workCode";
+import { accountScopeKey, clientStore } from "@/lib/clientStorage";
+
 import { discardObsoletePlayerState, loadPersistedQueue, parsePersistedQueue } from "./playerPersistence";
+
+const currentOwner = accountScopeKey("kikoto:player-queue:v2", "server.example.invalid:user-1");
+const currentProgress = accountScopeKey("kikoto:player-progress:v2", "server.example.invalid:user-1");
+const anotherOwner = accountScopeKey("kikoto:player-queue:v2", "server.example.invalid:user-2");
 import type { PlayerTrack } from "./playerTypes";
 
 const track = {
@@ -64,29 +70,34 @@ describe("persisted player state", () => {
     expect(restored).toEqual({ queue: [track], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null });
     expect(parsePersistedQueue("malformed").queue).toEqual([]);
     expect(
-      loadPersistedQueue("current-owner", {
-        getItem: () => {
-          throw new Error("Storage unavailable");
-        },
-      }).queue,
+      loadPersistedQueue(
+        currentOwner,
+        clientStore(() => ({
+          getItem: () => {
+            throw new Error("Storage unavailable");
+          },
+        })),
+      ).queue,
     ).toEqual([]);
   });
 
   it("reads only the requested owner and removes obsolete state without touching other owners", () => {
-    const data = new Map([
+    const data = new Map<string, string>([
       ["kikoto:player-queue:v1", "unowned"],
       ["kikoto:player-progress:v1", "unowned"],
-      ["current-progress", "obsolete"],
-      ["current-owner", JSON.stringify({ queue: [track] })],
-      ["another-owner", "another user's state"],
+      [currentProgress, "obsolete"],
+      [currentOwner, JSON.stringify({ queue: [track] })],
+      [anotherOwner, "another user's state"],
     ]);
-    discardObsoletePlayerState("current-progress", {
+    const store = clientStore(() => ({
+      getItem: (key) => data.get(key) ?? null,
       removeItem: (key) => {
         data.delete(key);
       },
-    });
-    expect([...data.keys()]).toEqual(["current-owner", "another-owner"]);
-    expect(loadPersistedQueue("current-owner", { getItem: (key) => data.get(key) ?? null }).queue).toEqual([track]);
-    expect(data.get("another-owner")).toBe("another user's state");
+    }));
+    discardObsoletePlayerState(currentProgress, store);
+    expect([...data.keys()]).toEqual([currentOwner, anotherOwner]);
+    expect(loadPersistedQueue(currentOwner, store).queue).toEqual([track]);
+    expect(data.get(anotherOwner)).toBe("another user's state");
   });
 });

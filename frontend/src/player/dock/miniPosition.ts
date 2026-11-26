@@ -1,4 +1,6 @@
-export const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
+import { deviceKey, localStore } from "@/lib/clientStorage";
+
+export const MINI_POSITION_STORAGE_KEY = deviceKey("kikoto:player-mini-position:v1");
 /** Rendered Mini player diameter in pixels. */
 export const MINI_PLAYER_SIZE = 92;
 const MINI_EDGE_GAP = 8;
@@ -35,39 +37,29 @@ export function clampMiniPosition(position: MiniPosition) {
 }
 
 export function restoreMiniPosition(): MiniPosition | null {
-  try {
-    const stored = JSON.parse(localStorage.getItem(MINI_POSITION_STORAGE_KEY) ?? "null") as {
-      side?: "left" | "right";
-      verticalRatio?: number;
-    } | null;
-    if (!stored || (stored.side !== "left" && stored.side !== "right") || !Number.isFinite(stored.verticalRatio))
-      return null;
-    const bounds = miniVerticalBounds();
-    const ratio = Math.max(0, Math.min(1, Number(stored.verticalRatio)));
-    return {
-      x: stored.side === "left" ? MINI_EDGE_GAP : miniRightEdgeX(),
-      y: bounds.min + (bounds.max - bounds.min) * ratio,
-    };
-  } catch {
+  const stored = localStore.readJSON(MINI_POSITION_STORAGE_KEY) as {
+    side?: "left" | "right";
+    verticalRatio?: number;
+  } | null;
+  if (!stored || (stored.side !== "left" && stored.side !== "right") || !Number.isFinite(stored.verticalRatio))
     return null;
-  }
+  const bounds = miniVerticalBounds();
+  const ratio = Math.max(0, Math.min(1, Number(stored.verticalRatio)));
+  return {
+    x: stored.side === "left" ? MINI_EDGE_GAP : miniRightEdgeX(),
+    y: bounds.min + (bounds.max - bounds.min) * ratio,
+  };
 }
 
 export function persistMiniPosition(position: MiniPosition) {
   const bounds = miniVerticalBounds();
   const verticalRatio = bounds.max > bounds.min ? (position.y - bounds.min) / (bounds.max - bounds.min) : 0;
-  try {
-    localStorage.setItem(
-      MINI_POSITION_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        side: position.x + MINI_PLAYER_SIZE / 2 < window.innerWidth / 2 ? "left" : "right",
-        verticalRatio: Math.max(0, Math.min(1, verticalRatio)),
-      }),
-    );
-  } catch {
-    // The Mini player keeps its in-memory position when storage is unavailable.
-  }
+  // The Mini player keeps its in-memory position when storage is unavailable.
+  localStore.writeJSON(MINI_POSITION_STORAGE_KEY, {
+    version: 1,
+    side: position.x + MINI_PLAYER_SIZE / 2 < window.innerWidth / 2 ? "left" : "right",
+    verticalRatio: Math.max(0, Math.min(1, verticalRatio)),
+  });
 }
 
 export function snapMiniPosition(rect: { left: number; top: number }) {

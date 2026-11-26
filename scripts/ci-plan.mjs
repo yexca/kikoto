@@ -43,6 +43,8 @@ export const scriptJobs = {
   "check-doc-links.mjs": [],
   "check-duplicate-helpers.mjs": [],
   "duplicate-helpers-baseline.json": [],
+  "check-file-size.mjs": [],
+  "file-size-baseline.json": [],
   "check-e2e-locators.mjs": [],
   "check-hook-deps-suppressions.mjs": [],
   "check-doc-locales.mjs": [],

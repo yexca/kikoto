@@ -222,7 +222,7 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			var filenames []string
 			for rows.Next() {
 				var filename string
@@ -250,7 +250,7 @@ func TestMigrateCanRerunOnSingleConnectionMemoryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := MigrateFS(db, migrations.Files, "memory-first"); err != nil {
 		t.Fatalf("first MigrateFS() error = %v", err)
 	}
@@ -568,12 +568,12 @@ func TestMigrateConcurrentStartupIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer first.Close()
+	defer func() { _ = first.Close() }()
 	second, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer second.Close()
+	defer func() { _ = second.Close() }()
 
 	results := make(chan error, 2)
 	go func() { results <- MigrateFS(first, migrations.Files, "concurrent-first") }()
@@ -655,7 +655,7 @@ func replaceMigrationHistoryWithRetiredBaseline(t *testing.T, db *sqlutil.DB, fi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.Exec("DELETE FROM schema_migration"); err != nil {
 		t.Fatal(err)
 	}
@@ -689,7 +689,7 @@ func schemaSnapshot(t *testing.T, db *sqlutil.DB) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	snapshot := make(map[string]string)
 	for rows.Next() {
 		var kind, name, definition string
@@ -729,7 +729,7 @@ func dataSnapshot(t *testing.T, db *sqlutil.DB) map[string]string {
 				pointers[i] = &row[i]
 			}
 			if err := rows.Scan(pointers...); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				t.Fatal(err)
 			}
 			parts := make([]string, len(row))
@@ -763,7 +763,7 @@ func applicationTables(t *testing.T, db *sqlutil.DB) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tables []string
 	for rows.Next() {
 		var table string
@@ -784,7 +784,7 @@ func tableInfo(t *testing.T, db *sqlutil.DB, table string) []testColumn {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var columns []testColumn
 	for rows.Next() {
 		var cid, notNull, primaryKey int

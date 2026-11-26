@@ -151,7 +151,7 @@ func waitMakerCatalogDelay(ctx context.Context, delay time.Duration) error {
 }
 
 func makerCatalogPageLimit(profile MakerProfile, currentLimit int) int {
-	pageTotal := pagesFromTotal(profile.TotalWorks, 50)
+	pageTotal := PagesFromTotal(profile.TotalWorks, 50)
 	pageNoTotal := parsePageNoMax(profile.RawHTML)
 	if pageNoTotal > pageTotal {
 		pageTotal = pageNoTotal
@@ -384,7 +384,9 @@ func pageListsCodeBelow(codes []string, limit string) bool {
 	return false
 }
 
-func pagesFromTotal(total int, perPage int) int {
+// PagesFromTotal returns how many pages of perPage entries hold total entries,
+// or 0 when either is unknown.
+func PagesFromTotal(total int, perPage int) int {
 	if total <= 0 || perPage <= 0 {
 		return 0
 	}

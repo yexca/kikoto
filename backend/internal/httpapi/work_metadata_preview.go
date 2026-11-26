@@ -543,7 +543,7 @@ func previewValuesFromDLsiteProduct(product dlsite.Product) workMetadataPreviewV
 		// field of another shape only leaves the preview without a series.
 		_ = json.Unmarshal(product.ProductRaw, &seriesFields)
 	}
-	series = strings.TrimSpace(firstNonEmpty(seriesFields.SeriesName, seriesFields.Series))
+	series = strings.TrimSpace(firstNonBlankTrimmed(seriesFields.SeriesName, seriesFields.Series))
 	actors := []string{}
 	seenActors := map[string]bool{}
 	for _, creator := range product.Creators["voice_by"] {

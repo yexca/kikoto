@@ -2,7 +2,7 @@ import { Plus, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { PageHeaderTitle } from "@/app/pageHeader";
+import { PageHeaderTitle } from "@/components/pageHeader";
 import { SearchToggle, useCollapsibleSearch } from "@/components/collection/CollapsibleSearch";
 import { numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";

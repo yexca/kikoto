@@ -26,7 +26,7 @@ order (Recommended always requests descending), the mark
 filter on local and tracked works, the recently played picker, and View. The
 wide source tabs lead with the shared source visibility picker; the phone
 source menu, which the phone toolbar renders with the result caption in the
-app header title slot from `app/pageHeader`, lists every source. View is a popover on wide layouts and a sheet
+app header title slot from `components/pageHeader`, lists every source. View is a popover on wide layouts and a sheet
 on phones, holding the shared work collection display options, the
 recommendation score switch, and Select works on a remote source. The sort
 button and the mark filter button each name their own setting, so no other
@@ -41,7 +41,7 @@ Library route: the shell mounts one detail page, which loads the work the
 location names and renders it over the page the work was opened from. That
 page stays mounted and hidden, so only one detail loads, checks sources, or
 follows playback however many destinations have a work open. The browse lists
-learn what a detail changed from `app/workDetailEvents` (a changed listening
+learn what a detail changed from `lib/workDetailEvents` (a changed listening
 status, a play, a changed set of works) instead of sharing state with it. The
 app shell recognizes a direct work link and starts the detail chunk with the
 session request; an idle Library also preloads it, so opening a work normally
@@ -50,7 +50,7 @@ renders without suspending.
 The persisted and remote-only details are composed from the same parts: the
 Hero, the Directory, and the Source info panel, which lists the selected
 source's actions at every width. The phone Hero renders its work code into
-the app header's detail slot from `app/pageHeader`, beside the back action.
+the app header's detail slot from `components/pageHeader`, beside the back action.
 The Hero's one primary action
 (`heroPlaybackModel`) follows from the shown directory, the folder routing
 rules, and the saved playback cursor: Resume, Play for the folder the
@@ -90,3 +90,14 @@ merge has its own review, and the detail reloads once the queued run ends.
 Manage files opens this workspace for a manager of the selected local folder,
 and a list of files to delete for a tracked source's cache and every other
 viewer.
+
+The `lyrics` feature's Manage lyrics workspace edits the managed lyrics of one
+folder in the same three columns of sources, a place's files, and the result,
+with its own headers, language and folder-mode tools, and result column. Every
+file workspace shares the per-place selection from `FileWorkspaceSelection`
+(the chosen files of a place, All and None, and the loading, failed, and
+empty states of its file list), the place change count in
+`fileWorkspaceModel`, the result state of a planned item in
+`folderEditModel`, and the rows and trees in `FolderEditPanes`; a new
+workspace builds its columns from these instead of copying another
+workspace's columns.

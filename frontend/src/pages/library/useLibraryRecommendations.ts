@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { api, type RecommendationBreakdown, type RecommendationEventInput, type Work } from "@/lib/api";
+import { deviceKey, localStore } from "@/lib/clientStorage";
 import { readOrCreateRecommendationSession, RECOMMENDATION_ALGORITHM_VERSION } from "@/lib/recommendationSession";
 
 import { loadRecommendationExplanation } from "./recommendationExplanation";
@@ -17,7 +18,7 @@ export type RecommendationExplanationState = {
   error: string;
 };
 
-const recommendBadgesStorageKey = "kikoto:recommend-badges";
+const recommendBadgesStorageKey = deviceKey("kikoto:recommend-badges");
 
 /**
  * Recommendation interaction of the Library: the client session, the score
@@ -31,9 +32,7 @@ export function useLibraryRecommendations(storageScope: string) {
     () => readOrCreateRecommendationSession(storageScope, RECOMMENDATION_ALGORITHM_VERSION),
     [storageScope],
   );
-  const [badgesEnabled, setBadgesEnabled] = useState(
-    () => window.localStorage.getItem(recommendBadgesStorageKey) === "true",
-  );
+  const [badgesEnabled, setBadgesEnabled] = useState(() => localStore.read(recommendBadgesStorageKey) === "true");
   const [explanation, setExplanation] = useState<RecommendationExplanationState | null>(null);
   const listContextRef = useRef<RecommendationListContext | null>(null);
 
@@ -83,7 +82,7 @@ export function useLibraryRecommendations(storageScope: string) {
   const toggleBadges = () => {
     setBadgesEnabled((current) => {
       const next = !current;
-      window.localStorage.setItem(recommendBadgesStorageKey, String(next));
+      localStore.write(recommendBadgesStorageKey, String(next));
       return next;
     });
   };

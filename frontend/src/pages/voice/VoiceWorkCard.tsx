@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { openWorkDetail } from "@/lib/workDetailNavigation";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -20,21 +20,13 @@ import {
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import type { CircleSourceStat, ListeningStatus } from "@/lib/api";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
+import { normalizeListeningStatus } from "@/lib/listeningStatus";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import { currentVoiceReturnPath } from "@/lib/voiceNavigationState";
 import { openLibraryTagSearch } from "@/lib/libraryTagSearch";
 import { voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
 import { voiceWorkIsExplicitlyUnavailable } from "@/pages/voiceWorkAvailabilityModel";
-
-const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
-  { value: "none", label: "Unmarked" },
-  { value: "want_to_listen", label: "Want" },
-  { value: "listening", label: "Listening" },
-  { value: "finished", label: "Finished" },
-  { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Shelved" },
-];
 
 export function VoiceWorkCard({
   work,
@@ -191,10 +183,6 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
 
 function voiceWorkDLsiteURL(work: VoiceWorkView) {
   return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : DLSITE_ENDPOINTS.workURL("maniax", work.primaryCode);
-}
-
-function normalizeListeningStatus(status: string): ListeningStatus {
-  return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
 }
 
 function voiceObservedStatusBadges(sourceTags: CircleSourceStat[], t: TFunction): WorkCardBadge[] {

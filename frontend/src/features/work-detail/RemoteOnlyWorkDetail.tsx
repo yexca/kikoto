@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { NotFoundPage } from "@/app/NotFoundPage";
-import { announceRemoteTrackCreated } from "@/app/remoteTrackWorkflows";
+import { NotFoundPage } from "@/components/NotFoundPage";
+import { announceRemoteTrackCreated } from "@/lib/remoteTrackWorkflows";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { toastFromError, useToast } from "@/components/ui/toast";

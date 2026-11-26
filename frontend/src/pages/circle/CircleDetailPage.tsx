@@ -51,13 +51,13 @@ import { startLoad } from "@/lib/effectScope";
 import { coalesceRuns } from "@/lib/inflightRequests";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
-import { NotFoundPage } from "@/app/NotFoundPage";
-import { usePageHeaderBack } from "@/app/pageHeader";
+import { NotFoundPage } from "@/components/NotFoundPage";
+import { usePageHeaderBack } from "@/components/pageHeader";
 import {
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+} from "@/lib/remoteTrackWorkflows";
 import {
   circleReturnLabelForLocation,
   openCircleRoute,

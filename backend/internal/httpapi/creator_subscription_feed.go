@@ -493,7 +493,7 @@ func (s *Server) releaseFeedFallback(ctx context.Context, code string) releaseFe
 			LIMIT 1
 		`, code).Scan(&title, &releaseDate, &circle)
 	}
-	fallback.Title = firstNonEmpty(strings.TrimSpace(title.String), code)
+	fallback.Title = firstNonBlankTrimmed(strings.TrimSpace(title.String), code)
 	fallback.ReleaseDate = normalizeGraphReleaseDate(releaseDate.String)
 	fallback.Circle = strings.TrimSpace(circle.String)
 	return fallback

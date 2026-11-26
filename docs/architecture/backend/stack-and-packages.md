@@ -66,6 +66,12 @@ The backend stack, the internal package map, and the layering rule between HTTP 
   per-scope proxy resolution.
 - `backend/internal/storage`: database opening and migrations.
 - `backend/internal/sqlutil`: shared `database/sql` helpers with no application imports.
+- `backend/internal/textvalue`: shared string helpers with no application
+  imports.
+- `backend/internal/modellist`: validation of the enabled and default models,
+  shared by `asr` and `llm`.
+- `backend/internal/languageedition`: the key reader of the numeric-keyed
+  `language_editions` object, shared by `dlsite` and `kikoeru`.
 - `backend/internal/workflow`: workflow persistence helpers, lease-based
   settlement of orphaned jobs, and release of jobs interrupted by a service stop
   (recoverable jobs requeue from their checkpoint, others fail).

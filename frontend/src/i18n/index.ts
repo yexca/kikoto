@@ -2,7 +2,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import { englishResource } from "@/i18n/resources";
-import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { accountKey, deviceKey, localStore } from "@/lib/clientStorage";
 
 export type UiLocale = "auto" | "en" | "zh-Hans" | "zh-Hant" | "ja" | "ko";
 export type ResolvedUiLocale = Exclude<UiLocale, "auto">;
@@ -116,16 +116,16 @@ export function intlLocaleFor(locale: ResolvedUiLocale): string {
   }
 }
 
-export function anonymousLocaleStorageKey() {
-  if (typeof window === "undefined") return ANONYMOUS_LOCALE_KEY;
-  return currentScopedStorageKey(ANONYMOUS_LOCALE_KEY, null);
+/** The locale chosen before sign-in, kept for the server's anonymous principal. */
+function anonymousLocaleStorageKey() {
+  if (typeof window === "undefined") return deviceKey(ANONYMOUS_LOCALE_KEY);
+  return accountKey(ANONYMOUS_LOCALE_KEY, null);
 }
 
 export function readAnonymousUiLocale(): UiLocale {
-  if (typeof localStorage === "undefined") return DEFAULT_UI_LOCALE;
-  return normalizeUiLocale(localStorage.getItem(anonymousLocaleStorageKey()));
+  return normalizeUiLocale(localStore.read(anonymousLocaleStorageKey()));
 }
 
 export function writeAnonymousUiLocale(value: UiLocale) {
-  if (typeof localStorage !== "undefined") localStorage.setItem(anonymousLocaleStorageKey(), value);
+  localStore.write(anonymousLocaleStorageKey(), value);
 }

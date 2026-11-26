@@ -20,11 +20,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { WORKFLOWS_PATH } from "../lib/workflowLinks";
-import { CLEANUP_PATH, SYSTEM_SETTINGS_PATH } from "../pages/settingsPaths";
+import { pagePaths, type PageID } from "@/lib/appPages";
 
 type NavItem = {
-  id: string;
+  id: PageID;
   label: string;
   labelKey: string;
   path: string;
@@ -59,16 +58,17 @@ export const navigationGroups: ReadonlyArray<{
   { id: "manage", label: "Manage", labelKey: "nav.manage", icon: Wrench, accountPanel: "nested" },
 ];
 
-export const FOR_YOU_PATH = "/for-you";
-export const INSIGHTS_PATH = "/insights";
-export const TAGS_PATH = "/tags";
+export const FOR_YOU_PATH = pagePaths["for-you"];
+export const INSIGHTS_PATH = pagePaths.insights;
+export const TAGS_PATH = pagePaths.tags;
 
+/** One entry for each page of `lib/appPages`, in the order the shell offers them. */
 export const navItems = [
   {
     id: "library",
     label: "Library",
     labelKey: "nav.library",
-    path: "/",
+    path: pagePaths.library,
     icon: Library,
     audience: "public",
     permission: undefined,
@@ -78,7 +78,7 @@ export const navItems = [
     id: "favorites",
     label: "Favorites",
     labelKey: "nav.favorites",
-    path: "/favorites",
+    path: pagePaths.favorites,
     icon: Heart,
     audience: "authenticated",
     permission: undefined,
@@ -88,7 +88,7 @@ export const navItems = [
     id: "circles",
     label: "Circles",
     labelKey: "nav.circles",
-    path: "/circles",
+    path: pagePaths.circles,
     icon: Users,
     audience: "public",
     permission: undefined,
@@ -98,7 +98,7 @@ export const navItems = [
     id: "voice-actors",
     label: "Voice Actors",
     labelKey: "nav.voiceActors",
-    path: "/voices",
+    path: pagePaths["voice-actors"],
     icon: MicVocal,
     audience: "public",
     permission: undefined,
@@ -108,7 +108,7 @@ export const navItems = [
     id: "records",
     label: "Record",
     labelKey: "nav.record",
-    path: "/records",
+    path: pagePaths.records,
     icon: Clapperboard,
     audience: "authenticated",
     permission: "library:read",
@@ -118,7 +118,7 @@ export const navItems = [
     id: "for-you",
     label: "For you",
     labelKey: "nav.forYou",
-    path: FOR_YOU_PATH,
+    path: pagePaths["for-you"],
     icon: Sparkles,
     audience: "authenticated",
     permission: "library:read",
@@ -128,7 +128,7 @@ export const navItems = [
     id: "subscriptions",
     label: "Discover",
     labelKey: "nav.subscriptions",
-    path: "/discover",
+    path: pagePaths.subscriptions,
     icon: Compass,
     audience: "authenticated",
     permission: "library:read",
@@ -138,7 +138,7 @@ export const navItems = [
     id: "insights",
     label: "Insights",
     labelKey: "nav.insights",
-    path: INSIGHTS_PATH,
+    path: pagePaths.insights,
     icon: ChartColumn,
     audience: "authenticated",
     permission: "library:read",
@@ -148,7 +148,7 @@ export const navItems = [
     id: "tags",
     label: "Tags",
     labelKey: "nav.tags",
-    path: TAGS_PATH,
+    path: pagePaths.tags,
     icon: Tags,
     audience: "authenticated",
     permission: "library:read",
@@ -158,7 +158,7 @@ export const navItems = [
     id: "settings",
     label: "Settings",
     labelKey: "nav.settings",
-    path: "/settings",
+    path: pagePaths.settings,
     icon: Settings,
     audience: "authenticated",
     permission: undefined,
@@ -168,7 +168,7 @@ export const navItems = [
     id: "workflows",
     label: "Workflows",
     labelKey: "nav.workflows",
-    path: WORKFLOWS_PATH,
+    path: pagePaths.workflows,
     icon: Workflow,
     audience: "admin",
     permission: "workflows:run",
@@ -178,7 +178,7 @@ export const navItems = [
     id: "metadata",
     label: "Metadata",
     labelKey: "nav.workManagement",
-    path: "/metadata",
+    path: pagePaths.metadata,
     icon: Database,
     audience: "admin",
     permission: "metadata:sync",
@@ -188,7 +188,7 @@ export const navItems = [
     id: "translation",
     label: "Translation",
     labelKey: "nav.translation",
-    path: "/translation",
+    path: pagePaths.translation,
     icon: Languages,
     audience: "admin",
     permission: "library:write",
@@ -199,7 +199,7 @@ export const navItems = [
     id: "cleanup",
     label: "Cleanup",
     labelKey: "nav.cleanup",
-    path: CLEANUP_PATH,
+    path: pagePaths.cleanup,
     icon: Eraser,
     audience: "admin",
     permission: undefined,
@@ -210,7 +210,7 @@ export const navItems = [
     id: "system",
     label: "System",
     labelKey: "nav.system",
-    path: SYSTEM_SETTINGS_PATH,
+    path: pagePaths.system,
     icon: ServerCog,
     audience: "admin",
     permission: undefined,
@@ -220,15 +220,13 @@ export const navItems = [
     id: "about",
     label: "About",
     labelKey: "nav.about",
-    path: "/about",
+    path: pagePaths.about,
     icon: Info,
     audience: "public",
     permission: undefined,
     group: "app",
   },
 ] as const satisfies readonly NavItem[];
-
-export type PageID = (typeof navItems)[number]["id"];
 
 /**
  * The destinations the account panel shows as its row of tiles on every

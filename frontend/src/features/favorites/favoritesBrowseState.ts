@@ -1,5 +1,6 @@
 import type { FavoriteSort, ListeningStatus, SortDirection } from "@/lib/api";
-import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { accountKey, sessionStore } from "@/lib/clientStorage";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 export type FavoriteAvailability = "all" | "available" | "local" | "remote" | "missing";
 /** A listening status, every work, or any Quick mark (`marked`), which the Marked system list also holds. */
@@ -123,23 +124,13 @@ export function favoritesBrowseStateFromValue(
 }
 
 export function readFavoritesBrowseState(principalID: ClientPrincipalID) {
-  try {
-    const raw = window.sessionStorage.getItem(currentScopedStorageKey(favoritesBrowseStorageKey, principalID));
-    return raw ? favoritesBrowseStateFromValue(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
+  const value = sessionStore.readJSON(accountKey(favoritesBrowseStorageKey, principalID));
+  return value ? favoritesBrowseStateFromValue(value) : null;
 }
 
+// Favorites remains usable when session storage is unavailable.
 export function writeFavoritesBrowseState(principalID: ClientPrincipalID, state: FavoritesBrowseState) {
-  try {
-    window.sessionStorage.setItem(
-      currentScopedStorageKey(favoritesBrowseStorageKey, principalID),
-      JSON.stringify(state),
-    );
-  } catch {
-    // Favorites remains usable when session storage is unavailable.
-  }
+  sessionStore.writeJSON(accountKey(favoritesBrowseStorageKey, principalID), state);
 }
 
 export function favoritesBrowseSearch(state: FavoritesBrowseState) {

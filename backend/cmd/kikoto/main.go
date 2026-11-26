@@ -43,7 +43,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// Before migrations, which can rebuild more than the page cache holds.
 	cfg.TempDir = useCacheTempDir(ctx, db, cfg.TempDir)
 

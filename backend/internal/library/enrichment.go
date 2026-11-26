@@ -28,11 +28,11 @@ type VoiceCredit struct {
 
 func (s *Store) LoadVoiceCredits(ctx context.Context, workIDs []int64) (map[int64][]VoiceCredit, error) {
 	result := map[int64][]VoiceCredit{}
-	workIDs = uniquePositiveInt64s(workIDs)
+	workIDs = sqlutil.UniquePositiveInt64s(workIDs)
 	if len(workIDs) == 0 {
 		return result, nil
 	}
-	query, args := int64InQuery(`
+	query, args := sqlutil.UniquePositiveInt64InQuery(`
 		SELECT credit.work_id, person.id, person.display_name
 		FROM work_credit AS credit
 		INNER JOIN person ON person.id = credit.person_id
@@ -139,7 +139,7 @@ func AvailabilityBadgeWhere(badge string) string {
 
 func (s *Store) LoadMediaSelections(ctx context.Context, workIDs []int64) (map[int64]MediaSelection, error) {
 	result := map[int64]MediaSelection{}
-	query, args := int64InQuery(`
+	query, args := sqlutil.UniquePositiveInt64InQuery(`
 		SELECT current.work_id, edition.work_id, edition.primary_code, edition.translation_kind
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
@@ -150,7 +150,7 @@ func (s *Store) LoadMediaSelections(ctx context.Context, workIDs []int64) (map[i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var currentID int64
 		var selection MediaSelection
@@ -181,7 +181,7 @@ func (s *Store) LoadFallbackMediaSelections(ctx context.Context, codes []string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var item MediaSelection
 		if err := rows.Scan(&item.WorkID, &item.Code, &item.TranslationKind); err != nil {
@@ -197,18 +197,18 @@ func (s *Store) LoadAvailability(ctx context.Context, workIDs []int64) (map[int6
 	if len(workIDs) == 0 {
 		return result, nil
 	}
-	query, args := int64InQuery(`
+	query, args := sqlutil.UniquePositiveInt64InQuery(`
 		SELECT work.id,
 			(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))),
 			(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available'),
 			COALESCE((SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available'), '')
 		FROM work WHERE work.id IN (%s)
-	`, uniquePositiveInt64s(workIDs))
+	`, workIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var workID int64
 		var item Availability
@@ -234,7 +234,7 @@ func (s *Store) LoadSeries(ctx context.Context, codes []string) (map[string]stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var code, titleID string
 		if err := rows.Scan(&code, &titleID); err != nil {
@@ -250,12 +250,12 @@ func (s *Store) LoadSeries(ctx context.Context, codes []string) (map[string]stri
 
 func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[int64][]ManualOverrideRow, error) {
 	result := map[int64][]ManualOverrideRow{}
-	query, args := int64InQuery(`SELECT work_id, field_name, value_json, asset_path, language FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, uniquePositiveInt64s(workIDs))
+	query, args := sqlutil.UniquePositiveInt64InQuery(`SELECT work_id, field_name, value_json, asset_path, language FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, workIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var workID int64
 		var row ManualOverrideRow
@@ -269,7 +269,7 @@ func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[i
 
 func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64) (map[int64]Progress, error) {
 	result := map[int64]Progress{}
-	query, args := int64InQuery(`
+	query, args := sqlutil.UniquePositiveInt64InQuery(`
 		SELECT requested_work.id, playback_cursor.work_id, media_item.work_id, media_item.id,
 			playback_cursor.file_source_id, playback_cursor.location_id,
 			playback_cursor.location_type, media_item.title,
@@ -296,13 +296,13 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 		WHERE requested_work.id IN (%s)
 			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 		ORDER BY requested_work.id
-	`, uniquePositiveInt64s(workIDs))
+	`, workIDs)
 	args = append([]any{userID}, args...)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var requestedWorkID int64
 		var workID, mediaWorkID, mediaItemID, fileSourceID, locationID sql.NullInt64
@@ -328,15 +328,6 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 	return result, rows.Err()
 }
 
-func int64InQuery(format string, values []int64) (string, []any) {
-	values = uniquePositiveInt64s(values)
-	args := make([]any, len(values))
-	for index, value := range values {
-		args[index] = value
-	}
-	return fmt.Sprintf(format, placeholders(len(values))), args
-}
-
 func stringInQuery(format string, values []string) (string, []any) {
 	args := make([]any, len(values))
 	for index, value := range values {
@@ -350,20 +341,6 @@ func placeholders(count int) string {
 		return "NULL"
 	}
 	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
-}
-
-// uniquePositiveInt64s drops non-positive and repeated ids, keeping first-seen order.
-func uniquePositiveInt64s(values []int64) []int64 {
-	result := []int64{}
-	seen := map[int64]bool{}
-	for _, value := range values {
-		if value <= 0 || seen[value] {
-			continue
-		}
-		seen[value] = true
-		result = append(result, value)
-	}
-	return result
 }
 
 func uniqueUpperStrings(values []string) []string {

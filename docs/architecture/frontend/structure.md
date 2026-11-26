@@ -28,27 +28,44 @@ modules apart from the language picker's native labels.
 New and extracted frontend code follows a downward dependency direction:
 
 ```text
-app and routes -> domain features -> shared application code -> UI primitives
+app and pages -> domain features, player -> shared application code -> UI primitives
 ```
 
 - `app` and page shells compose navigation, providers, and domain surfaces.
 - `features/<domain>` owns a cohesive business slice such as work detail,
   workflows, or maintenance. Sibling features should not deep-import each
   other's internals.
+- `player` owns the global player, which stays mounted across navigation.
 - `components`, reusable hooks, and `lib` hold application-wide behavior with no
   single domain owner.
 - `components/ui` contains generic primitives and must not acquire work, source,
   or workflow knowledge.
+
+Oxlint's `kikoto/dependency-direction` rule in
+`frontend/oxlint-plugin-kikoto.mjs` enforces the direction outside tests:
+`components`, `hooks`, and `lib` never import `features`, `pages`, `app`, or
+`player`; `features` and `player` never import `app` or `pages`;
+`components/ui` also never imports other components, hooks, or `auth`; and a
+feature imports another feature only through its public entry
+(`@/features/<domain>`). The rule's `crossFeatureAllowance` lists the deep
+imports that predate it. It only shrinks, and a unit test fails when an entry
+no longer matches an import.
 
 This is an incremental extraction direction, not a request for a repository-wide
 move. A domain earns its own feature boundary after it owns a real page or flow
 and several mostly private components, models, or hooks. App composition or a
 small shared contract should resolve cross-domain needs.
 
-Navigation and browse state that pages and features share lives in `lib`:
-circle and voice route helpers, Library browse state, and Library search
-clauses. Work detail and the pages depend on those modules instead of on each
-other, so no feature imports from `pages`.
+Navigation and browse state that the shell, pages, features, and the player
+share lives in `lib`: page ids and addresses (`lib/appPages`), the page a
+location belongs to (`lib/appRoutes`), work detail routes and events, mobile
+tab snapshots, opening the playing work, remote track events, circle and voice
+route helpers, Library browse state, and Library search clauses.
+`app/navigation` adds each page's label, icon, audience, and sidebar group,
+and a unit test keeps its entries matching `lib/appPages`. The app header's
+back action and title slots (`components/pageHeader`) and the not-found page
+(`components/NotFoundPage`) are shared components that the shell renders and
+detail pages fill.
 
 Work detail metadata editing exposes its public entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,

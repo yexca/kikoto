@@ -54,7 +54,7 @@ import {
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useFolderEditWorkflow } from "@/features/work-detail/folder-edit/useFolderEditWorkflow";
 import { invalidateCachedWorkMedia, setCachedWorkMedia } from "@/features/work-detail/media/workMediaCache";
-import { PageHeaderBackAction } from "@/app/pageHeader";
+import { PageHeaderBackAction } from "@/components/pageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { FetchComposeDialog } from "@/features/work-detail/folder-edit/FetchComposeDialog";
 import type { FetchComposeTarget } from "@/features/work-detail/folder-edit/folderEditModel";

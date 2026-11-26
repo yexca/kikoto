@@ -239,13 +239,13 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, requestedByUserID 
 	}
 	cacheNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Materialize cache file", Position: 4, Status: "queued",
-		Input: map[string]any{"download_url": firstNonEmpty(target.DownloadURL, target.StreamURL), "cache_path": target.CachePath}, Output: nil,
+		Input: map[string]any{"download_url": firstNonBlankTrimmed(target.DownloadURL, target.StreamURL), "cache_path": target.CachePath}, Output: nil,
 	})
 	if err != nil {
 		return mediaCacheResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Priority: workflow.JobPriorityPlayback, ResourceKey: sourceResourceKey(firstNonEmpty(target.DownloadURL, target.StreamURL)), Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
+		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Priority: workflow.JobPriorityPlayback, ResourceKey: sourceResourceKey(firstNonBlankTrimmed(target.DownloadURL, target.StreamURL)), Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
 		return mediaCacheResult{}, err
@@ -313,7 +313,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		return err
 	}
 	s.checkpointJobOrLog(ctx, job, "download", map[string]any{"cachePath": target.CachePath}, 0, 1)
-	written, err := s.downloadToFile(ctx, source, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
+	written, err := s.downloadToFile(ctx, source, firstNonBlankTrimmed(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
 		MaxBytes: s.remoteMediaDownloadLimitBytes(ctx),
 	})
 	if err != nil {

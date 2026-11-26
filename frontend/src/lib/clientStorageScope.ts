@@ -26,10 +26,4 @@ export function isClientStorageScopeOnCurrentServer(scope: string) {
   return scope.startsWith(`${encodeURIComponent(currentClientServerIdentity())}:`);
 }
 
-export function currentScopedStorageKey(baseKey: string, principalID: ClientPrincipalID) {
-  return `${baseKey}:${currentClientStorageScope(principalID)}`;
-}
-
-export function currentServerScopedStorageKey(baseKey: string) {
-  return `${baseKey}:${encodeURIComponent(currentClientServerIdentity())}`;
-}
+// Storage keys are built from these scopes in ./clientStorage.

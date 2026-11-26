@@ -19,6 +19,14 @@
   common, and a copy that differs on purpose is named for the difference.
   `make duplicate-helper-check` reports a function name that a second file
   defines, and a baseline entry that allows more copies than remain.
+- Draw loading placeholders with `Skeleton` from `components/ui/skeleton.tsx`,
+  with `reveal` on the outermost block
+  ([navigation and history](../architecture/frontend/navigation-and-history.md));
+  Oxlint's `kikoto/no-inline-skeleton` reports a hand-styled `animate-pulse`
+  block.
+- Label form fields with `Field` from `components/ui/field.tsx`.
+- Keep source files under 800 lines; a large file is not where new code goes
+  ([file size ratchet](testing.md#continuous-integration)).
 
 ## Async Effects
 

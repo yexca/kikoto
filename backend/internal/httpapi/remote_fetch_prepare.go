@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -127,7 +126,7 @@ func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode str
 		LIMIT 1
 	`, requestedCode).Scan(&originLanguage, &editionLanguage, &requestLocale)
 	if err == nil {
-		return metadataRequestMatchesEdition(requestLocale, firstNonEmpty(editionLanguage, originLanguage)), nil
+		return metadataRequestMatchesEdition(requestLocale, firstNonBlankTrimmed(editionLanguage, originLanguage)), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
@@ -170,7 +169,7 @@ func originSnapshotMatchesEditionLanguage(snapshotJSON string, editionLanguage s
 	if err := json.Unmarshal([]byte(snapshotJSON), &payload); err != nil {
 		return false
 	}
-	observed := firstNonEmpty(payload.Kikoto.RequestLocale, payload.Kikoto.ResponseLanguage)
+	observed := firstNonBlankTrimmed(payload.Kikoto.RequestLocale, payload.Kikoto.ResponseLanguage)
 	if observed == "" {
 		observed = payload.Kikoto.EditionLanguage
 	}
@@ -185,12 +184,6 @@ func originSnapshotMatchesEditionLanguage(snapshotJSON string, editionLanguage s
 	// mapping to validate.  A non-empty provider declaration is sufficient for
 	// the readiness check; future syncs still preserve the raw value.
 	return strings.TrimSpace(payload.Kikoto.EditionLanguage) != "" || strings.TrimSpace(editionLanguage) != ""
-}
-
-// originSnapshotUsesJapaneseLocale is an alias of
-// originSnapshotMatchesEditionLanguage.
-func originSnapshotUsesJapaneseLocale(snapshotJSON string, editionLanguage string) bool {
-	return originSnapshotMatchesEditionLanguage(snapshotJSON, editionLanguage)
 }
 
 func metadataRequestMatchesEdition(requestLocale, editionLanguage string) bool {
@@ -220,7 +213,7 @@ func (s *Server) loadRemoteFetchEditions(ctx context.Context, requestedCode stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []remoteFetchEdition{}
 	for rows.Next() {
 		var item remoteFetchEdition
@@ -268,7 +261,7 @@ func (s *Server) loadRemoteFetchLocalRoots(ctx context.Context, workID int64, co
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []remoteFetchLocalRoot{}
 	for rows.Next() {
 		var item remoteFetchLocalRoot
@@ -384,17 +377,4 @@ func attachRemoteFetchPreparation(plan *remoteWorkSavePlan, preparation remoteFe
 	if plan.Preparation.Editions == nil {
 		plan.Preparation.Editions = []remoteFetchEdition{}
 	}
-}
-
-func remoteFetchEditionForCode(editions []remoteFetchEdition, code string) (remoteFetchEdition, bool) {
-	for _, edition := range editions {
-		if strings.EqualFold(edition.PrimaryCode, code) {
-			return edition, true
-		}
-	}
-	return remoteFetchEdition{}, false
-}
-
-func sortRemoteFetchRoots(roots []remoteFetchLocalRoot) {
-	sort.Slice(roots, func(i, j int) bool { return roots[i].RootPath < roots[j].RootPath })
 }

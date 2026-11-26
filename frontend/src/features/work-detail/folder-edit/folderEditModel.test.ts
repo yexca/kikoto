@@ -22,13 +22,13 @@ import {
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
-  folderEditResourceChanges,
   folderEditResources,
   folderEditResult,
   localFolderFiles,
   refreshedFolderEditSelection,
   type FolderEditFile,
 } from "./folderEditModel";
+import { folderEditResourceChanges } from "./fileWorkspaceModel";
 
 const target = { workId: 1, folderId: 11, rootPath: "Library/RJ00000001" };
 

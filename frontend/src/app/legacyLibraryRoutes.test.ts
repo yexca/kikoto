@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { appPageForLocation } from "@/lib/appRoutes";
+import { normalizeLibraryBrowseLocation } from "@/lib/libraryBrowseState";
+
 import { legacyLibraryRedirect } from "./legacyLibraryRoutes";
+import { navItems } from "./navigation";
 
 describe("legacyLibraryRedirect", () => {
   it("canonicalizes Metadata links while preserving category and run filters", () => {
@@ -131,5 +135,20 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/metadata", "?view=translation&language=zh-cn&missing=tags")).toBe(
       "/translation?view=coverage&language=zh-cn&missing=tags",
     );
+  });
+});
+
+describe("page addresses", () => {
+  it("keeps every other page's address out of the Library's lists", () => {
+    for (const item of navItems) {
+      if (item.id === "library") continue;
+      expect(normalizeLibraryBrowseLocation(`${item.path}?q=sample`), item.path).toBeNull();
+    }
+    for (const path of ["/subscriptions", "/history", "/runs", "/users", "/maintenance", "/no-source"]) {
+      expect(legacyLibraryRedirect(path), path).not.toBeNull();
+      expect(normalizeLibraryBrowseLocation(path), path).toBeNull();
+    }
+    expect(appPageForLocation("/example_remote_a", {})).toBe("library");
+    expect(normalizeLibraryBrowseLocation("/example_remote_a?q=sample")).toBe("/example_remote_a?q=sample");
   });
 });

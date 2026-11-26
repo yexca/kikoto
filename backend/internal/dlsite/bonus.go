@@ -6,6 +6,8 @@ import (
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/yexca/kikoto/backend/internal/textvalue"
 )
 
 // A purchase bonus (購入特典, 早期購入特典, 予約特典) is a hidden, free product
@@ -79,7 +81,7 @@ func PurchaseBonusHintFor(product Product) (PurchaseBonusHint, bool) {
 	if free == nil || !*free {
 		return PurchaseBonusHint{}, false
 	}
-	code := strings.ToUpper(strings.TrimSpace(firstNonBlank(product.WorkNo, product.ProductID)))
+	code := strings.ToUpper(strings.TrimSpace(textvalue.FirstNonBlankRaw(product.WorkNo, product.ProductID)))
 	makerID := strings.ToUpper(strings.TrimSpace(product.MakerID))
 	if code == "" || !makerIDPattern.MatchString(makerID) {
 		return PurchaseBonusHint{}, false
@@ -119,9 +121,9 @@ func IsPurchaseBonusTitle(title string) bool {
 func PurchaseBonusCandidateFromProduct(product Product) PurchaseBonusCandidate {
 	free := product.IsPermanentlyFree()
 	return PurchaseBonusCandidate{
-		Code:        strings.ToUpper(strings.TrimSpace(firstNonBlank(product.WorkNo, product.ProductID))),
+		Code:        strings.ToUpper(strings.TrimSpace(textvalue.FirstNonBlankRaw(product.WorkNo, product.ProductID))),
 		MakerID:     strings.ToUpper(strings.TrimSpace(product.MakerID)),
-		Title:       firstNonBlank(product.WorkName, product.ProductName),
+		Title:       textvalue.FirstNonBlankRaw(product.WorkName, product.ProductName),
 		TitleKana:   product.WorkNameKana,
 		ReleaseDate: product.RegistDate,
 		Free:        free != nil && *free,
@@ -239,14 +241,4 @@ func isSubsequence(needle string, haystack string) bool {
 		}
 	}
 	return false
-}
-
-// firstNonBlank returns the first value that is not blank, exactly as written.
-func firstNonBlank(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

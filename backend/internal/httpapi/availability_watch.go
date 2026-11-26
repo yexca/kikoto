@@ -431,7 +431,7 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	if err != nil {
 		return view, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var target availabilityWatchTarget
 		var availableSourceID, trackRunID, fetchRunID sql.NullInt64
@@ -471,7 +471,7 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 		// own work's title when the library has one.
 		if family := families[target.WorkCode]; family != nil {
 			target.Family = family
-			target.Title = firstNonEmpty(availabilityWatchFamilyTitle(target.WorkCode, family), target.Title)
+			target.Title = firstNonBlankTrimmed(availabilityWatchFamilyTitle(target.WorkCode, family), target.Title)
 			target.CoverURL = s.availabilityWatchFamilyCover(target.WorkCode, family)
 		} else {
 			target.CoverURL = s.coverURL(target.WorkCode)

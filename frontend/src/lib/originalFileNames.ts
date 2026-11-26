@@ -1,26 +1,24 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+import { deviceKey, localStore } from "./clientStorage";
+
 // Whether this viewer asked to see the real names of local files and folders in
 // place of their display names. The work detail directory and the player share
 // the choice, which stays on this device.
 
-const originalFileNamesStorageKey = "kikoto:work-directory-original-names";
+const originalFileNamesStorageKey = deviceKey("kikoto:work-directory-original-names");
 const listeners = new Set<() => void>();
-let original = readStored();
+let original = readOriginalFileNamesShown();
 
-function readStored() {
-  try {
-    return localStorage.getItem(originalFileNamesStorageKey) === "true";
-  } catch {
-    return false;
-  }
+function readOriginalFileNamesShown() {
+  return localStore.read(originalFileNamesStorageKey) === "true";
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   const syncFromOtherTab = (event: StorageEvent) => {
     if (event.key !== originalFileNamesStorageKey) return;
-    original = readStored();
+    original = readOriginalFileNamesShown();
     listener();
   };
   window.addEventListener("storage", syncFromOtherTab);
@@ -37,11 +35,8 @@ export function originalFileNamesShown() {
 
 export function setOriginalFileNamesShown(next: boolean) {
   original = next;
-  try {
-    localStorage.setItem(originalFileNamesStorageKey, String(next));
-  } catch {
-    // The choice still applies to this page view.
-  }
+  // Without storage the choice still applies to this page view.
+  localStore.write(originalFileNamesStorageKey, String(next));
   for (const listener of listeners) listener();
 }
 
