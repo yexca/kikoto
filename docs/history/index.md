@@ -21,6 +21,7 @@ is in [Release Notes](../development/commit-and-release.md#release-notes).
 ## Releases
 
 - [Unreleased changes](unreleased.md)
+- [v0.11.1](v0.11.1.md)
 - [v0.11.0](v0.11.0.md)
 - [v0.10.2](v0.10.2.md)
 - [v0.10.1](v0.10.1.md)
