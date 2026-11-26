@@ -356,7 +356,7 @@ export function LocalWorkCleanupSection({ readOnly, canForget }: { readOnly: boo
       {searched === null || (shown === null && !loading) ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{t("cleanup.ratedWorks.notSearched")}</p>
       ) : shown === null ? (
-        <div className="my-3 h-12 animate-pulse rounded-md bg-muted/60" aria-hidden="true" />
+        <div className="skeleton-reveal my-3 h-12 animate-pulse rounded-md bg-muted/60" aria-hidden="true" />
       ) : works.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{t("cleanup.ratedWorks.empty")}</p>
       ) : (

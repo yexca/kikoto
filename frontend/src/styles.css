@@ -1265,6 +1265,28 @@ html[data-native-app="true"] .theme-shell-surface {
   }
 }
 
+/* A loading placeholder keeps its footprint but stays hidden for its first
+   200ms, so a fast answer replaces a blank instead of flashing a placeholder.
+   The wait is an animation delay with a backwards fill: reduced motion
+   shortens durations, not delays, so it keeps the wait too. A placeholder
+   that also pulses lists both animations. */
+@keyframes skeleton-reveal {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: hidden;
+  }
+}
+.skeleton-reveal {
+  animation: skeleton-reveal 1ms linear 200ms backwards;
+}
+.skeleton-reveal.animate-pulse {
+  animation:
+    skeleton-reveal 1ms linear 200ms backwards,
+    var(--animate-pulse);
+}
+
 /* Simple work card. Its details stay out of the layout at rest. They open
    while the card marks them open (its toggle, or keyboard focus inside it) or
    has a menu open; a fine pointer also opens them on hover, over the cards

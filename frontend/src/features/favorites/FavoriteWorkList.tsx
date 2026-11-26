@@ -208,7 +208,7 @@ function ResumeCell({ work }: { work: Work }) {
 export function FavoriteWorkListSkeleton({ label }: { label: string }) {
   return (
     <div
-      className="overflow-hidden rounded-[var(--radius)] border bg-card"
+      className="skeleton-reveal overflow-hidden rounded-[var(--radius)] border bg-card"
       role="status"
       aria-label={label}
       aria-busy="true"

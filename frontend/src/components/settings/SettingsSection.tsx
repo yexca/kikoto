@@ -97,7 +97,7 @@ export function SettingsSection({
 export function SettingsSectionSkeleton({ rows = 3 }: { rows?: number }) {
   const bar = "animate-pulse rounded bg-muted";
   return (
-    <div className={sectionContainerClassName} aria-hidden="true">
+    <div className={cn("skeleton-reveal", sectionContainerClassName)} aria-hidden="true">
       <div className={sectionColumnsClassName}>
         <div className={cn("flex min-w-0 flex-col gap-2 border-b pb-2.5", railClassName)}>
           <div className={cn(bar, "h-4 w-32")} />

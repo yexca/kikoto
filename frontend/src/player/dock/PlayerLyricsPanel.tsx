@@ -16,7 +16,7 @@ const LYRICS_OFFSET_STEP_MS = 500;
 export function LyricsLoadingSkeleton() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-4 p-5" aria-label={t("player.loadingLyrics")}>
+    <div className="skeleton-reveal space-y-4 p-5" aria-label={t("player.loadingLyrics")}>
       <div className="h-3 w-24 animate-pulse rounded-full bg-foreground/10" />
       <div className="space-y-3 pt-2">
         <div className="h-5 w-4/5 animate-pulse rounded-full bg-foreground/10" />

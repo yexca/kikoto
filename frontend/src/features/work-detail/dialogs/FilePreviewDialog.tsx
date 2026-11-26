@@ -619,7 +619,7 @@ function TextReader({
 
 function TextPreviewSkeleton() {
   return (
-    <div className="space-y-3" aria-label={i18n.t("libraryDetail.loadingTextPreview")}>
+    <div className="skeleton-reveal space-y-3" aria-label={i18n.t("libraryDetail.loadingTextPreview")}>
       <div className="h-4 w-40 animate-pulse rounded bg-muted" />
       <div className="space-y-2">
         <div className="h-4 w-full animate-pulse rounded bg-muted" />

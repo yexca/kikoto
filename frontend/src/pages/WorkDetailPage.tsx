@@ -194,7 +194,7 @@ export function WorkDetailPage({
 function WorkDetailLoading() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-5" role="status" aria-label={t("app.loadingPage")}>
+    <div className="skeleton-reveal space-y-5" role="status" aria-label={t("app.loadingPage")}>
       <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
       <div className="flex flex-col gap-5 lg:flex-row">
         <div className="aspect-[4/3] w-full animate-pulse rounded-lg bg-muted lg:w-80" />

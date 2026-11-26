@@ -555,7 +555,7 @@ function UserRowSkeletons() {
 }
 
 function SkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
 }
 
 function UserCreateModal({

@@ -261,7 +261,7 @@ function ShelfSkeletonRows() {
   return (
     <>
       {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="flex min-h-11 items-center gap-3 px-3">
+        <div key={index} className="skeleton-reveal flex min-h-11 items-center gap-3 px-3">
           <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-muted" />
           <div className="h-3 flex-1 animate-pulse rounded bg-muted" />
         </div>
@@ -301,7 +301,10 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
         <div className="flex w-max min-w-full items-center gap-1.5 py-1" role="group" aria-label={t("favorites.lists")}>
           {navigation.listsLoading ? (
             Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-9 w-24 shrink-0 animate-pulse rounded-[var(--badge-radius)] bg-muted" />
+              <div
+                key={index}
+                className="skeleton-reveal h-9 w-24 shrink-0 animate-pulse rounded-[var(--badge-radius)] bg-muted"
+              />
             ))
           ) : (
             <>

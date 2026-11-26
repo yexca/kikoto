@@ -26,9 +26,11 @@ history entries.
   The shell draws no placeholder shape while a page chunk loads; a slow chunk
   shows the shared refresh indicator. A page's first-data placeholder has the
   footprint of what it is about to show: a work collection uses its grid, card
-  mode, and columns, and a settings tab uses the shape of its sections. A fast
-  answer replaces the blank directly, and an empty result is shown only once
-  the first page has answered.
+  mode, and columns, and a settings tab uses the shape of its sections. Every
+  loading placeholder carries `skeleton-reveal` (`styles.css`): it keeps its
+  footprint but stays hidden for its first 200ms, so a fast answer replaces a
+  blank directly instead of flashing a placeholder. An empty result is shown
+  only once the first page has answered.
 - Keep destination switches proportional to the workspaces that change. A
   workspace that stays hidden skips shell-driven renders, and browse list items
   are memoized with stable item handlers so a page render does not re-render

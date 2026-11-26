@@ -16,7 +16,6 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
-import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import type { LibrarySource, RemoteWork, RemoteWorksResponse } from "@/lib/api";
 import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
@@ -146,18 +145,15 @@ function RemoteSourceResults({
   onRetry: () => void;
   t: TFunction;
 }) {
-  const showSkeleton = useDeferredBusy(isInitialLoading);
   if (isInitialLoading) {
-    // A fast first page replaces the previous view directly; placeholders
-    // appear only when the wait is noticeable.
-    return showSkeleton ? (
+    return (
       <WorkCollectionLoadingState
         count={skeletonCount}
         mobileColumns={mobileColumns}
         desktopColumns={desktopColumns}
         cardLayout={cardLayout}
       />
-    ) : null;
+    );
   }
   if (remoteError) return <RemoteSourceErrorCard error={remoteError} onRetry={onRetry} />;
   if (visibleWorks.length === 0) {

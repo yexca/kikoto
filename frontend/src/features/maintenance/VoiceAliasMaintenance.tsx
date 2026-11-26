@@ -341,7 +341,7 @@ function VoiceAliasDialog({
             </Button>
           </div>
         ) : aliases === null ? (
-          <div className="space-y-2" role="status" aria-label={t("common.loading")} aria-busy="true">
+          <div className="skeleton-reveal space-y-2" role="status" aria-label={t("common.loading")} aria-busy="true">
             <div className="h-5 w-40 animate-pulse rounded bg-muted" />
             <div className="h-9 w-full animate-pulse rounded bg-muted" />
           </div>
@@ -372,7 +372,7 @@ function VoiceAliasTableSkeleton() {
   const { t } = useTranslation();
   return (
     <table
-      className={metadataTableClassName}
+      className={`skeleton-reveal ${metadataTableClassName}`}
       role="status"
       aria-label={t("creatorBrowse.loadingVoices")}
       aria-busy="true"

@@ -775,7 +775,7 @@ function UnlinkedWorkDeleteDialog({
 
 function WorkTableSkeletonRows() {
   return (
-    <tbody className="divide-y" aria-hidden="true">
+    <tbody className="skeleton-reveal divide-y" aria-hidden="true">
       {Array.from({ length: 3 }, (_, index) => (
         <tr key={index}>
           <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">

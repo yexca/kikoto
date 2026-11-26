@@ -29,7 +29,7 @@ export function WorkCollectionLoadingState({
   const resolvedLabel = label ?? t("collection.loadingWorks");
   return (
     <div
-      className={`${workCollectionClassName()} min-h-72`}
+      className={`${workCollectionClassName()} skeleton-reveal min-h-72`}
       style={workCollectionStyle(mobileColumns, desktopColumns, cardLayout)}
       role="status"
       aria-label={resolvedLabel}

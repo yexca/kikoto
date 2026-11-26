@@ -8,7 +8,6 @@ import type { CompactWorkCardLayout } from "@/components/work-card/CompactWorkCa
 import { workCollectionClassName, workCollectionStyle } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import type { ListeningStatus, SourcePresenceItem, Work } from "@/lib/api";
 import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
@@ -95,10 +94,7 @@ export function LocalLibraryPanel({
   // Phones show the page beside the result count in the toolbar instead.
   const mobileNavigationLayout = useMobileNavigationLayout();
   // Until the first page answers, an empty list is not yet known to be empty.
-  // A fast answer replaces the blank directly; placeholders appear only when
-  // the wait is noticeable.
   const firstPagePending = resultCount === null && !loadError;
-  const showSkeleton = useDeferredBusy(firstPagePending);
   return (
     <div className="space-y-3">
       {!loadError &&
@@ -119,14 +115,12 @@ export function LocalLibraryPanel({
       {loadError && <LibraryLoadErrorCard message={loadError} onRetry={onRetry} />}
       {works.length === 0 ? (
         firstPagePending ? (
-          showSkeleton && (
-            <WorkCollectionLoadingState
-              count={Math.min(pagination.pageSize, maxSkeletonCards)}
-              mobileColumns={mobileColumns}
-              desktopColumns={desktopColumns}
-              cardLayout={cardLayout}
-            />
-          )
+          <WorkCollectionLoadingState
+            count={Math.min(pagination.pageSize, maxSkeletonCards)}
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+            cardLayout={cardLayout}
+          />
         ) : (
           !loadError && <EmptyLibraryWorksCard scope={scope} filtered={filtered} onClear={onClearFilters} />
         )

@@ -340,7 +340,10 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
   const bar = "animate-pulse rounded bg-muted";
   if (layout === "simple") {
     return (
-      <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
+      <div
+        className="skeleton-reveal flex h-full flex-col overflow-hidden rounded-lg border bg-card"
+        aria-hidden="true"
+      >
         <div className="p-1.5 pb-0">
           <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
         </div>
@@ -354,7 +357,10 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
   }
   if (layout === "cover") {
     return (
-      <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
+      <div
+        className="skeleton-reveal flex h-full flex-col overflow-hidden rounded-lg border bg-card"
+        aria-hidden="true"
+      >
         <div className="p-1.5 pb-0">
           <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
         </div>
@@ -366,7 +372,7 @@ export function CompactWorkCardSkeleton({ layout }: { layout: CompactWorkCardLay
     );
   }
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
+    <div className="skeleton-reveal flex h-full flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
       {layout === "row" ? (
         <>
           <div className="flex gap-3 p-2.5 pb-2">

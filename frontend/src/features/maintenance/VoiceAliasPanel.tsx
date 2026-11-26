@@ -332,7 +332,12 @@ function CandidateList({
         {t("creatorBrowse.duplicateCandidates")}
       </div>
       {candidates === null ? (
-        <div className="space-y-2 px-3 pb-3 pt-1" role="status" aria-label={t("common.loading")} aria-busy="true">
+        <div
+          className="skeleton-reveal space-y-2 px-3 pb-3 pt-1"
+          role="status"
+          aria-label={t("common.loading")}
+          aria-busy="true"
+        >
           <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
           <div className="h-3 w-3/5 animate-pulse rounded bg-muted" />
         </div>

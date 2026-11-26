@@ -97,7 +97,7 @@ function voiceWorkFilterOptions(t: TFunction): readonly { value: VoiceWorkFilter
 }
 
 function EntitySkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
 }
 
 type VoiceRouteState =

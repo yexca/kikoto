@@ -981,7 +981,7 @@ function DetailTitleBlock({
           {versionMenu}
         </div>
         <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
-        {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
+        {loading && <div className="skeleton-reveal h-2 w-40 animate-pulse rounded bg-muted" />}
       </div>
       <DetailCircleLine
         circle={circle}
@@ -1069,7 +1069,7 @@ function MobileDetailIdentity({
           {infoCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
         </Button>
       </div>
-      {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
+      {loading && <div className="skeleton-reveal h-2 w-40 animate-pulse rounded bg-muted" />}
       {!infoCollapsed && (
         <>
           <DetailCircleLine
@@ -1364,17 +1364,19 @@ export function HeroActionGroups({ primary, children }: { primary: ReactNode; ch
 
 export function DetailSkeletonActions() {
   return (
-    <HeroActionGroups primary={<div className="h-[var(--control-height)] w-28 animate-pulse rounded-md bg-muted" />}>
-      <div className="h-8 w-8 animate-pulse rounded-md bg-muted" />
-      <div className="h-8 w-14 animate-pulse rounded-md bg-muted" />
-      <div className="h-8 w-8 animate-pulse rounded-md bg-muted" />
+    <HeroActionGroups
+      primary={<div className="skeleton-reveal h-[var(--control-height)] w-28 animate-pulse rounded-md bg-muted" />}
+    >
+      <div className="skeleton-reveal h-8 w-8 animate-pulse rounded-md bg-muted" />
+      <div className="skeleton-reveal h-8 w-14 animate-pulse rounded-md bg-muted" />
+      <div className="skeleton-reveal h-8 w-8 animate-pulse rounded-md bg-muted" />
     </HeroActionGroups>
   );
 }
 
 export function DirectorySkeleton() {
   return (
-    <div className="min-h-[22rem] space-y-3" data-testid="directory-skeleton" aria-hidden="true">
+    <div className="skeleton-reveal min-h-[22rem] space-y-3" data-testid="directory-skeleton" aria-hidden="true">
       <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3">
         <div className="h-3 w-10 animate-pulse rounded bg-muted" />
         <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />

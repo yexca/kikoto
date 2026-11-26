@@ -452,7 +452,7 @@ export function LibrarySourceListSkeleton() {
     </Card>
   );
   return (
-    <div className="min-w-0" aria-hidden="true">
+    <div className="skeleton-reveal min-w-0" aria-hidden="true">
       <div className="border-b pb-2.5">
         <div className={cn(bar, "h-4 w-24")} />
       </div>

@@ -70,7 +70,7 @@ export function UserPreferencePanels({
     return (
       <div
         role="status"
-        className="min-h-40 animate-pulse rounded-lg border bg-muted"
+        className="skeleton-reveal min-h-40 animate-pulse rounded-lg border bg-muted"
         aria-label={t("common.loading")}
       />
     );

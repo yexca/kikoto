@@ -56,7 +56,7 @@ export function RecommendationActivity({ userId }: { userId: number }) {
           <div
             role="status"
             aria-label={t("common.loading")}
-            className="mt-3 h-48 animate-pulse rounded-md bg-muted/40"
+            className="skeleton-reveal mt-3 h-48 animate-pulse rounded-md bg-muted/40"
           />
         ) : telemetry.totalEvents === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">

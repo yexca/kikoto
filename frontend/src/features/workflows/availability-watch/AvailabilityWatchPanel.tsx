@@ -18,7 +18,7 @@ const AVAILABILITY_WATCH_CODE = "availability_watch";
 export function AvailabilityWatchLoadState({ state }: { state: AvailabilityWatchState }) {
   if (state.loading) {
     return (
-      <Card>
+      <Card className="skeleton-reveal">
         <CardContent className="space-y-3 p-5">
           <SkeletonLine className="h-6 w-48" />
           <SkeletonLine className="h-32 w-full" />

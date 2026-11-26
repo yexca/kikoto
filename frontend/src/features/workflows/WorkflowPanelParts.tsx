@@ -7,12 +7,17 @@ import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 
 export function SkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+  return <div className={`skeleton-reveal animate-pulse rounded bg-muted ${className}`} />;
 }
 
 export function WorkflowMetadataLoadingState() {
   return (
-    <Card className="min-h-72" role="status" aria-label={workflowCopy("loadingWorkflowData")} aria-busy="true">
+    <Card
+      className="skeleton-reveal min-h-72"
+      role="status"
+      aria-label={workflowCopy("loadingWorkflowData")}
+      aria-busy="true"
+    >
       <CardContent className="flex min-h-72 flex-col justify-center gap-3 p-6">
         <SkeletonLine className="h-5 w-40" />
         <SkeletonLine className="h-4 w-72 max-w-full" />

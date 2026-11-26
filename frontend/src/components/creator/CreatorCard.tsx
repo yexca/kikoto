@@ -211,7 +211,12 @@ export function CreatorCollectionSkeleton({ label }: { label?: string }) {
   const { t } = useTranslation();
   const resolvedLabel = label ?? t("creator.loading");
   return (
-    <div className={creatorCollectionClassName} role="status" aria-label={resolvedLabel} aria-busy="true">
+    <div
+      className={`skeleton-reveal ${creatorCollectionClassName}`}
+      role="status"
+      aria-label={resolvedLabel}
+      aria-busy="true"
+    >
       <CreatorCardSkeleton />
       <div aria-hidden="true">
         <CreatorCardSkeleton />

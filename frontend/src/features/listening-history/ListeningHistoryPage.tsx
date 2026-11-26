@@ -339,7 +339,7 @@ export function ListeningHistoryPage({
             onRetry={() => setStatisticsToken((value) => value + 1)}
           />
         ) : (
-          <div className="h-48 animate-pulse rounded-lg bg-muted" />
+          <div className="skeleton-reveal h-48 animate-pulse rounded-lg bg-muted" />
         )}
         {calendarData && year && yearCalendar.status === "error" && (
           <div className="mt-3">
@@ -505,7 +505,7 @@ export function ListeningHistoryPage({
                     {stats.hours && <ListeningHours hours={stats.hours} formatDuration={formatDuration} />}
                   </div>
                 ) : (
-                  <div className="h-48 animate-pulse rounded-lg bg-muted" />
+                  <div className="skeleton-reveal h-48 animate-pulse rounded-lg bg-muted" />
                 )}
               </section>
             </div>
@@ -530,7 +530,9 @@ export function ListeningHistoryPage({
           {profile.data ? (
             <ListeningProfileCard profile={profile.data} formatDuration={formatDuration} />
           ) : (
-            profile.status === "loading" && <div className="h-64 animate-pulse rounded-xl border bg-muted/60" />
+            profile.status === "loading" && (
+              <div className="skeleton-reveal h-64 animate-pulse rounded-xl border bg-muted/60" />
+            )
           )}
         </div>
       </section>
@@ -578,7 +580,7 @@ export function ListeningHistoryPage({
               />
             ) : (
               breakdown.status === "loading" && (
-                <div key={kind} className="h-64 animate-pulse rounded-xl border bg-muted/60" />
+                <div key={kind} className="skeleton-reveal h-64 animate-pulse rounded-xl border bg-muted/60" />
               )
             ),
           )}
@@ -809,7 +811,9 @@ function Statistic({
         <dt className="truncate text-xs text-muted-foreground">{label}</dt>
       </div>
       <dd className="truncate text-xl font-semibold">
-        {value ?? <span className="inline-block h-6 w-20 animate-pulse rounded bg-muted align-middle" />}
+        {value ?? (
+          <span className="skeleton-reveal inline-block h-6 w-20 animate-pulse rounded bg-muted align-middle" />
+        )}
       </dd>
       {meter !== undefined && (
         <dd className="h-1 overflow-hidden rounded-full bg-primary/15" aria-hidden="true">

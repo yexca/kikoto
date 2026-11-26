@@ -300,7 +300,7 @@ function TaskCount({
   label: string;
 }) {
   const { t } = useTranslation();
-  if (loading) return <span className="h-5 w-8 shrink-0 animate-pulse rounded-full bg-muted" />;
+  if (loading) return <span className="skeleton-reveal h-5 w-8 shrink-0 animate-pulse rounded-full bg-muted" />;
   if (!available)
     return (
       <Badge variant="outline" className="shrink-0 text-muted-foreground">

@@ -33,7 +33,7 @@ export function FavoriteShelfHeader({
       </h2>
       {actions}
       {caption === null ? (
-        <span className="h-3 w-16 shrink-0 animate-pulse rounded bg-muted" aria-hidden="true" />
+        <span className="skeleton-reveal h-3 w-16 shrink-0 animate-pulse rounded bg-muted" aria-hidden="true" />
       ) : (
         <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-muted-foreground">{caption}</span>
       )}
