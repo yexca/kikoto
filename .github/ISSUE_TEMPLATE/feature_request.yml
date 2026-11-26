@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Explain the task you want to complete and the behavior that would help.
+        Explain the task you want to complete and the behavior that would help. You can write in any language.
         Use synthetic examples; omit private sources, credentials, media, and personal library records.
         Report suspected vulnerabilities through [private security reporting](https://github.com/yexca/kikoto/security/advisories/new).
   - type: checkboxes
@@ -41,4 +41,4 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Optional sanitized mockups or examples, including web or Android needs.
+      description: Optional sanitized mockups or examples, including web, Android, or iOS needs.
