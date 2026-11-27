@@ -317,7 +317,7 @@ test("merging a tag into a selected existing tag updates the list", async ({ pag
   await expect(list.getByRole("listitem")).toHaveCount(2);
   await expect(list.getByRole("listitem").filter({ hasText: "Example Tag 2" })).toContainText("Used by 6");
 
-  await page.getByRole("radio", { name: "Circles" }).click();
+  await page.getByRole("tab", { name: "Circles" }).click();
   await expect(list.getByText("Example Circle Tag")).toBeVisible();
   expect(log.tagRequests.at(-1)?.searchParams.get("scope")).toBe("circle");
 });

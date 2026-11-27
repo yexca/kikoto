@@ -15,8 +15,8 @@ compact icon controls, global playback) are in
   must not discard an already rendered detail shell.
 - Give secondary navigation one of two forms, both from `components/ui/sub-nav`:
   `SubNavTabs` along the top of a page for its views (Discover, Metadata,
-  Workflows, Settings, and System), and a list beside the page for an
-  open-ended set of destinations (the Favorites shelf list composes
+  Workflows, Translation, Tags, Settings, and System), and a list beside the
+  page for an open-ended set of destinations (the Favorites shelf list composes
   `SubNavColumn` and `subNavItemClassName` around its own entries). Tabs
   that all carry an icon show it beside the name; `SubNavTabs` measures the
   named row and, where the row is too narrow for it, folds the tabs to icons

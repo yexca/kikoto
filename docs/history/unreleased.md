@@ -17,5 +17,7 @@
   start from their cards on Workflows; a work opens by its address.
 - **Recover stale runs** sits beside the tabs on Workflows → **Needs
   attention** and reports how many runs it requeued or marked failed.
+- Translation and Tags switch views with the same icon tabs as Settings and
+  System; the Tags search sits at the end of the tab row.
 
 </details>

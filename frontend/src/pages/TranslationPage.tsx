@@ -1,4 +1,14 @@
-import { Inbox, Loader2, RefreshCw } from "lucide-react";
+import {
+  ChartPie,
+  CircleAlert,
+  ClipboardCheck,
+  History,
+  Inbox,
+  Loader2,
+  RefreshCw,
+  Timer,
+  type LucideIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -6,7 +16,7 @@ import { TranslationReviewList, type TranslationReviewMode } from "@/components/
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
 import { Button } from "@/components/ui/button";
 import { contentPageClassName } from "@/components/ui/page-width";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { TranslationCoverage } from "@/features/maintenance/TranslationCoverage";
@@ -25,6 +35,14 @@ import { cn } from "@/lib/tailwindClassNames";
 import { openWorkflowRun, workflowRunPath } from "@/lib/workflowLinks";
 
 const pollMs = 4000;
+
+const viewIcons: Record<TranslationCenterView, LucideIcon> = {
+  review: ClipboardCheck,
+  running: Timer,
+  attention: CircleAlert,
+  history: History,
+  coverage: ChartPie,
+};
 
 const itemViews: Partial<Record<TranslationCenterView, TranslationReviewMode>> = {
   review: "review",
@@ -166,6 +184,22 @@ export function TranslationPage({
     if (value === "attention") return counts.attention;
     return 0;
   };
+  const navItems: SubNavItem<TranslationCenterView>[] = views.map((value) => ({
+    value,
+    label: t(`translationCenter.views.${value}`),
+    icon: viewIcons[value],
+    id: `translation-tab-${value}`,
+    controls: "translation-panel",
+    suffix:
+      badge(value) > 0 ? (
+        <span
+          aria-hidden="true"
+          className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground"
+        >
+          {badge(value)}
+        </span>
+      ) : undefined,
+  }));
   const toolbar: MaintenanceToolbarSlots = { actions: actionsSlot, search: searchSlot, compactSearch: false };
   const empty = (message: string) => (
     <div className="grid min-h-48 place-items-center rounded-lg border bg-card px-6 py-10 text-center">
@@ -187,26 +221,8 @@ export function TranslationPage({
 
   return (
     <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
+      <SubNavTabs label={t("translationCenter.views.label")} items={navItems} selected={view} onSelect={showView} />
       <div className="flex min-h-10 flex-wrap items-center gap-2" data-toast-avoid>
-        <div role="tablist" aria-label={t("translationCenter.views.label")} className={segmentedListClassName()}>
-          {views.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={view === value}
-              className={segmentedItemClassName(view === value)}
-              onClick={() => showView(value)}
-            >
-              {t(`translationCenter.views.${value}`)}
-              {badge(value) > 0 && (
-                <span className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
-                  {badge(value)}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
         {view === "coverage" ? (
           <>
             <div ref={setSearchSlot} className="contents" />
@@ -225,80 +241,87 @@ export function TranslationPage({
           </Button>
         )}
       </div>
-      {loadError && (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"
-        >
-          {t("translationCenter.loadFailed")}
-          <Button size="sm" variant="outline" onClick={() => void load()}>
-            {t("common.retry")}
-          </Button>
-        </div>
-      )}
-      {view === "coverage" ? (
-        <TranslationCoverage
-          readOnly={readOnly}
-          permissions={{ metadata: canTranslateMetadata, files: canTranslateFiles }}
-          toolbar={toolbar}
-        />
-      ) : view === "running" ? (
-        !runs ? (
-          <Loading />
-        ) : runs.active.length + runs.queued.length === 0 ? (
-          empty(emptyMessage.running)
-        ) : (
-          <div className="space-y-4">
-            {runs.active.length > 0 && (
-              <section className="space-y-2" aria-label={t("translationCenter.running")}>
-                <h3 className="text-sm font-medium">{t("translationCenter.running")}</h3>
-                <TranslationRunList
-                  runs={runs.active}
-                  busyRunIds={cancelling}
-                  onCancel={(id) => void cancelRun(id)}
-                  renderWorkLink={workLink}
-                  activityLink={activityLink}
-                />
-              </section>
-            )}
-            {runs.queued.length > 0 && (
-              <section className="space-y-2" aria-label={t("translationCenter.queued")}>
-                <h3 className="text-sm font-medium">{t("translationCenter.queued")}</h3>
-                <TranslationRunList
-                  runs={runs.queued}
-                  busyRunIds={cancelling}
-                  onCancel={(id) => void cancelRun(id)}
-                  renderWorkLink={workLink}
-                  activityLink={activityLink}
-                />
-              </section>
-            )}
+      <div
+        className="min-w-0 space-y-3"
+        role="tabpanel"
+        id="translation-panel"
+        aria-labelledby={`translation-tab-${view}`}
+      >
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"
+          >
+            {t("translationCenter.loadFailed")}
+            <Button size="sm" variant="outline" onClick={() => void load()}>
+              {t("common.retry")}
+            </Button>
           </div>
-        )
-      ) : !items ? (
-        <Loading />
-      ) : items.length === 0 ? (
-        empty(emptyMessage[view])
-      ) : (
-        <TranslationReviewList
-          items={items}
-          mode={itemViews[view] ?? "history"}
-          showWork
-          busyIds={review.busyIds}
-          onAccept={(ids) => void review.accept(ids)}
-          onReject={(ids) => void review.reject(ids)}
-          onResend={(ids, acknowledge) => void review.resend(ids, acknowledge)}
-          renderWorkLink={workLink}
-          renderLyricsPreview={(item) => (
-            <LyricsPreview
-              label={item.label}
-              loadKey={`translation:${item.id}`}
-              load={() => api.translationItemText(item.id, "result")}
-              durationSeconds={item.durationSeconds ?? null}
-            />
-          )}
-        />
-      )}
+        )}
+        {view === "coverage" ? (
+          <TranslationCoverage
+            readOnly={readOnly}
+            permissions={{ metadata: canTranslateMetadata, files: canTranslateFiles }}
+            toolbar={toolbar}
+          />
+        ) : view === "running" ? (
+          !runs ? (
+            <Loading />
+          ) : runs.active.length + runs.queued.length === 0 ? (
+            empty(emptyMessage.running)
+          ) : (
+            <div className="space-y-4">
+              {runs.active.length > 0 && (
+                <section className="space-y-2" aria-label={t("translationCenter.running")}>
+                  <h3 className="text-sm font-medium">{t("translationCenter.running")}</h3>
+                  <TranslationRunList
+                    runs={runs.active}
+                    busyRunIds={cancelling}
+                    onCancel={(id) => void cancelRun(id)}
+                    renderWorkLink={workLink}
+                    activityLink={activityLink}
+                  />
+                </section>
+              )}
+              {runs.queued.length > 0 && (
+                <section className="space-y-2" aria-label={t("translationCenter.queued")}>
+                  <h3 className="text-sm font-medium">{t("translationCenter.queued")}</h3>
+                  <TranslationRunList
+                    runs={runs.queued}
+                    busyRunIds={cancelling}
+                    onCancel={(id) => void cancelRun(id)}
+                    renderWorkLink={workLink}
+                    activityLink={activityLink}
+                  />
+                </section>
+              )}
+            </div>
+          )
+        ) : !items ? (
+          <Loading />
+        ) : items.length === 0 ? (
+          empty(emptyMessage[view])
+        ) : (
+          <TranslationReviewList
+            items={items}
+            mode={itemViews[view] ?? "history"}
+            showWork
+            busyIds={review.busyIds}
+            onAccept={(ids) => void review.accept(ids)}
+            onReject={(ids) => void review.reject(ids)}
+            onResend={(ids, acknowledge) => void review.resend(ids, acknowledge)}
+            renderWorkLink={workLink}
+            renderLyricsPreview={(item) => (
+              <LyricsPreview
+                label={item.label}
+                loadKey={`translation:${item.id}`}
+                load={() => api.translationItemText(item.id, "result")}
+                durationSeconds={item.durationSeconds ?? null}
+              />
+            )}
+          />
+        )}
+      </div>
     </div>
   );
 }
