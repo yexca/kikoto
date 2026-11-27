@@ -1,4 +1,4 @@
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, CircleAlert, History, LayoutGrid, X, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,6 +15,11 @@ import { useRunList } from "./useRunList";
 
 const historyPageSize = 20;
 const panelId = "workflow-runs";
+const tabIcons: Record<WorkflowTab, LucideIcon> = {
+  operations: LayoutGrid,
+  attention: CircleAlert,
+  history: History,
+};
 
 export type RunWorkflowOption = { code: string; name: string };
 
@@ -133,6 +138,7 @@ export function WorkflowRuns({
           items={workflowTabs.map((value) => ({
             value,
             label: t(`workflowPage.runs.tabs.${value}`),
+            icon: tabIcons[value],
             id: `workflow-runs-${value}`,
             controls: panelId,
             suffix: value === "attention" ? <RunCount value={attentionCount} tone="warning" /> : undefined,

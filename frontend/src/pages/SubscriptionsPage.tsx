@@ -1,4 +1,4 @@
-import { Settings2, X } from "lucide-react";
+import { BellRing, Radar, Settings2, TrendingUp, X, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -70,6 +70,13 @@ import { cn } from "@/lib/tailwindClassNames";
 import { openWorkflowPath, openWorkflowRun } from "@/lib/workflowLinks";
 
 const feedDaysStorageKey = deviceKey("kikoto:release-feed-days");
+
+/** The same glyphs as the workflows that fill each view. */
+const viewIcons: Record<SubscriptionView, LucideIcon> = {
+  releases: BellRing,
+  rankings: TrendingUp,
+  watch: Radar,
+};
 
 function readFeedDays(): ReleaseFeedDayCount {
   return releaseFeedDayCount(localStore.read(feedDaysStorageKey));
@@ -420,6 +427,7 @@ export function SubscriptionsPage({
               items={views.map((item) => ({
                 value: item,
                 label: t(`subscriptions.views.${item}`),
+                icon: viewIcons[item],
                 id: `subscriptions-view-${item}`,
                 controls: "subscriptions-view-panel",
                 suffix:

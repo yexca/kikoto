@@ -1,4 +1,4 @@
-import { FolderPlus } from "lucide-react";
+import { BookMarked, FilePenLine, FolderPlus, MicVocal, Tags, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
@@ -22,6 +22,14 @@ import { cn } from "@/lib/tailwindClassNames";
 type MetadataView = "works" | "aliases" | "tags" | "circles";
 // DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
 type MetadataTabValue = "dlsite" | "custom" | "aliases" | "tags" | "circles";
+
+const tabIcons: Record<MetadataTabValue, LucideIcon> = {
+  dlsite: BookMarked,
+  custom: FilePenLine,
+  tags: Tags,
+  circles: Users,
+  aliases: MicVocal,
+};
 
 /**
  * The work list a link names. Links that name one kind of attention, metadata
@@ -210,6 +218,7 @@ export function WorkManagementPage({
       return {
         value,
         label,
+        icon: tabIcons[value],
         // The count is a guide beside the name; the description reads it after the group.
         suffix: count ? (
           <span aria-hidden="true" className="text-xs font-normal tabular-nums text-muted-foreground">

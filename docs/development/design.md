@@ -419,10 +419,10 @@ A page with several views or sections takes one of two forms, and the same form
 looks and works the same on every page:
 
 - The views of a page are tabs along the top: a hairline under the row and a
-  line under the open tab (Discover, Metadata, Workflows, Settings, System,
-  and Cleanup). The page's own controls may share the row at its end. Settings,
-  System, and Cleanup tabs carry an icon beside the name. A row too narrow to name every
-  such tab shows icons and names only the open one, and a row that still does
+  line under the open tab (Discover, Metadata, Workflows, Translation, Tags,
+  Settings, System, and Cleanup). The page's own controls may share the row at
+  its end. Every tab carries an icon beside its name. A row too narrow to name
+  every tab shows icons and names only the open one, and a row that still does
   not fit scrolls sideways.
 - An open-ended set of destinations, such as shelves, is a list beside the
   page, always with a text label (Favorites). Its entries are an icon, a name,
