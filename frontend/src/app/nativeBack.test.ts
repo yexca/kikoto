@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { edgeSwipeStartsOnHorizontalGesture, handleNativeBack, type NativeBackTargets } from "@/app/nativeBack";
 
 type Layers = {
-  commandPalette?: boolean;
-  commandPaletteBusy?: boolean;
   login?: boolean;
   dialog?: boolean;
   player?: boolean;
@@ -14,11 +12,6 @@ type Layers = {
 function backTargets(layers: Layers) {
   const closed: string[] = [];
   const targets: NativeBackTargets = {
-    commandPalette: {
-      open: Boolean(layers.commandPalette),
-      busy: Boolean(layers.commandPaletteBusy),
-      close: () => closed.push("commandPalette"),
-    },
     login: { open: Boolean(layers.login), close: () => closed.push("login") },
     closeTopLayer: () => {
       if (layers.dialog) closed.push("dialog");
@@ -39,7 +32,6 @@ function backTargets(layers: Layers) {
 describe("handleNativeBack", () => {
   it("closes only the innermost layer, in the shared Android and iOS order", () => {
     const order: [Layers, string][] = [
-      [{ commandPalette: true, login: true, dialog: true, player: true, history: true }, "commandPalette"],
       [{ login: true, dialog: true, player: true, history: true }, "login"],
       [{ dialog: true, player: true, history: true }, "dialog"],
       [{ player: true, history: true }, "player"],
@@ -50,18 +42,6 @@ describe("handleNativeBack", () => {
       expect(handleNativeBack(targets)).toBe(expected);
       expect(closed).toEqual([expected]);
     }
-  });
-
-  it("keeps a busy command palette open and closes nothing behind it", () => {
-    const { targets, closed } = backTargets({
-      commandPalette: true,
-      commandPaletteBusy: true,
-      dialog: true,
-      history: true,
-    });
-
-    expect(handleNativeBack(targets)).toBe("commandPaletteBusy");
-    expect(closed).toEqual([]);
   });
 
   it("reports the root without navigating when nothing can close", () => {

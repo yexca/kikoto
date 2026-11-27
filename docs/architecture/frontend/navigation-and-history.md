@@ -16,7 +16,7 @@ history entries.
   its rendered list. Each workspace has its own loading boundary, and the other
   route pages share one apart from them, so a route page that suspends never
   hides a retained workspace. The current location's page chunk starts loading
-  with the app; the other workspaces, the command palette, and every route page
+  with the app; the other workspaces and every route page
   the navigation offers load when the shell is idle (`app/routePageChunks`). A
   loaded chunk renders without suspending: React holds a shown Suspense fallback
   for at least 300ms, which would otherwise delay the page and the requests its
@@ -89,7 +89,7 @@ history entries.
   its nearest list entry, or replaces the detail with the list and clears the
   stack when none is stacked.
 - The Android back button and the iOS left-edge swipe share one back order
-  (`app/nativeBack`): command palette, sign-in, the topmost dialog, sheet, or
+  (`app/nativeBack`): sign-in, the topmost dialog, sheet, or
   popover, the player's own panels and full view, then the in-app back stack.
   With nothing stacked, a detail goes up to its destination's list. At any other
   destination's root the Android button opens Library, and at the Library root

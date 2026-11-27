@@ -6,8 +6,7 @@ Sign in and open **Insights**, **Tags**, and **Settings** from the
 **Personal** group of the sidebar, or on a phone from the account menu behind
 your avatar. On a wide screen that menu also has all three. Insights holds your listening calendar, report, and history,
 Tags holds your personal tags, and **Your data** is the last section of
-**Settings**. Quick actions opens each one directly. They show only
-your account's data.
+**Settings**. They show only your account's data.
 
 ## Personal tags
 

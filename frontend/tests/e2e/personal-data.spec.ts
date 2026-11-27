@@ -235,7 +235,7 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await expect(page.getByRole("heading", { name: "Tags", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("list", { name: "Personal tags" }).getByText("Unused")).toBeVisible();
 
-  // Your data is reached through Settings and Quick actions, not the account menu.
+  // Your data is reached through Settings, not the account menu.
   await page.getByRole("button", { name: "Account menu" }).click();
   await expect(account.getByRole("button", { name: "Tags", exact: true })).toBeVisible();
   await expect(account.getByRole("button", { name: "Your data", exact: true })).toHaveCount(0);

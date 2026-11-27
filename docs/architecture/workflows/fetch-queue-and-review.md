@@ -48,8 +48,9 @@ such as a job whose own settlement write failed: a recoverable job with resume
 budget returns to the queue from its checkpoint and spends one resume
 (`job.orphan_requeued`), and any other job fails (`job.orphan_failed`).
 
-The manual **Recover stale workflow runs** command applies the same rule to the
-runs the user can see. It never touches a job whose executor is still running
+**Recover stale runs** on the Workflows page's Needs attention tab
+(`POST /api/workflow-runs/recover-stale`) applies the same rule to the runs
+the user can see. It never touches a job whose executor is still running
 or a queued job. It also returns a run left running beside a queued job to the
 queue (`run.requeued_stranded`), and fails a run with no queued or running job
 (`run.recovered_stale`). A run is repaired this way only when its jobs have not

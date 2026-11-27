@@ -81,9 +81,8 @@ folder and plays in the global audio player.
 ## Scanning and artwork
 
 A scan runs as the **Record scan** workflow: from its card on
-[Workflows](workflows.md#user-surfaces), from its trigger at startup or on a
-schedule, or with **Scan Record library** in the command palette (Ctrl+K or
-⌘K). Before the first scan, the empty Record page offers **Scan** too. Each
+[Workflows](workflows.md#user-surfaces), or from its trigger at startup or on
+a schedule. Before the first scan, the empty Record page offers **Scan** too. Each
 needs library write access, and a scan coalesces with one already queued or
 running. Hovering **Refresh** shows when the root was last scanned. While a
 scan runs, the status beside **Continue watching** shows whether it is queued,

@@ -22,7 +22,7 @@
   "backend/internal/outbound/policy.go": 838,
   "backend/internal/record/store.go": 1009,
   "backend/internal/storage/migration.go": 985,
-  "frontend/src/app/App.tsx": 1222,
+  "frontend/src/app/App.tsx": 1152,
   "frontend/src/components/work-card/WorkCardShell.tsx": 1546,
   "frontend/src/features/listening-history/ListeningHistoryPage.tsx": 838,
   "frontend/src/features/maintenance/WorkMaintenance.tsx": 812,

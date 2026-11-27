@@ -1950,7 +1950,6 @@ test("mobile header keeps Notifications and the account panel, which holds the r
 
   await expect(page.getByRole("button", { name: "Notifications", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Quick actions" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open appearance settings" })).toHaveCount(0);
 
   const headerActions = page.locator("header").getByRole("button", { name: /^(Notifications|Account menu)$/ });
@@ -1981,11 +1980,11 @@ test("mobile header keeps Notifications and the account panel, which holds the r
   await expect(accountPopover).toBeVisible();
   expect(await accountPopover.evaluate((element) => getComputedStyle(element).zIndex)).toBe("50");
   // A phone's account panel tiles For you, Discover, and Insights in one row like a wide screen, then lists
-  // Quick actions first, the pages the bottom navigation does not carry, and the account's own entries.
+  // the pages the bottom navigation does not carry and the account's own entries.
   await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
   await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
-  for (const name of ["For you", "Quick actions", "Discover", "Insights", "Tags", "Settings", "About"]) {
+  for (const name of ["For you", "Discover", "Insights", "Tags", "Settings", "About"]) {
     await expect(accountPopover.getByRole("button", { name, exact: true })).toBeVisible();
   }
   const tileBoxes = await Promise.all(
@@ -1994,9 +1993,7 @@ test("mobile header keeps Notifications and the account panel, which holds the r
     ),
   );
   const listBoxes = await Promise.all(
-    ["Quick actions", "Tags", "Settings"].map((name) =>
-      accountPopover.getByRole("button", { name, exact: true }).boundingBox(),
-    ),
+    ["Tags", "Settings"].map((name) => accountPopover.getByRole("button", { name, exact: true }).boundingBox()),
   );
   expect(tileBoxes.every((box) => Math.abs(box!.y - tileBoxes[0]!.y) < 1)).toBe(true);
   expect(tileBoxes.map((box) => box!.x)).toEqual([...tileBoxes.map((box) => box!.x)].sort((a, b) => a - b));
@@ -2087,13 +2084,6 @@ test("mobile header keeps Notifications and the account panel, which holds the r
   expect(colorGroupBox!.y + colorGroupBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.keyboard.press("Escape");
   await expect(appearancePopover).toHaveCount(0);
-
-  // Quick actions opens from the account panel on phones.
-  await page.getByRole("button", { name: "Account menu" }).click();
-  await accountPopover.getByRole("button", { name: "Quick actions", exact: true }).click();
-  await expect(accountPopover).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
-  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
   await page.getByRole("dialog", { name: "Notifications" }).getByRole("button", { name: "Open Workflows" }).click();
@@ -2657,6 +2647,35 @@ test("Needs attention marks a run reviewed when only not-found products remain",
   await expect(row(65).getByRole("button", { name: "Mark reviewed", exact: true })).toHaveCount(0);
   await row(64).getByRole("button", { name: "Mark reviewed", exact: true }).click();
   await expect.poll(() => reviews).toEqual(["/api/workflow-runs/64/review"]);
+});
+
+test("Needs attention recovers stale runs and reloads the lists", async ({ page }) => {
+  await mockWorkflows(page);
+  let recoveries = 0;
+  let attentionLoads = 0;
+  await page.route("**/api/workflow-runs?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("view") === "attention") attentionLoads += 1;
+    await route.fulfill({ json: workflowRunsPageFixture([], { pageSize: Number(params.get("pageSize")) }) });
+  });
+  await page.route("**/api/workflow-runs/recover-stale", async (route) => {
+    recoveries += 1;
+    await route.fulfill({
+      json: { runId: 0, status: "recovered", message: "", recovered: 2, requeued: 1, failed: 1, active: 0 },
+    });
+  });
+  await page.goto("/workflows?tab=attention");
+  const activity = page.getByRole("region", { name: "Runs", exact: true });
+  await expect.poll(() => attentionLoads).toBeGreaterThan(0);
+  const loadsBefore = attentionLoads;
+
+  // Recovery sits beside the tabs only on Needs attention.
+  await activity.getByRole("button", { name: "Recover stale runs", exact: true }).click();
+  await expect(page.getByText("Requeued 1, marked 1 failed.", { exact: true })).toBeVisible();
+  expect(recoveries).toBe(1);
+  await expect.poll(() => attentionLoads).toBeGreaterThan(loadsBefore);
+  await activity.getByRole("tab", { name: /^History$/ }).click();
+  await expect(activity.getByRole("button", { name: "Recover stale runs", exact: true })).toHaveCount(0);
 });
 
 for (const viewport of ["mobile", "@desktop"]) {

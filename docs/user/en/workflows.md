@@ -71,7 +71,9 @@ Workflows make backend actions inspectable.
   until library setup or you turn a trigger on.
 - Running and Next each show five entries, and **Show all** shows the rest.
   **Needs attention** lists the runs that wait for a decision, 20 to a page,
-  and its tab counts them while there are any. **History** lists the runs
+  and its tab counts them while there are any. Its **Recover stale runs**
+  returns a run stuck as running with no work in progress to the queue, or
+  marks it failed when it cannot resume. **History** lists the runs
   that ended, newest first; it narrows to failed runs or to one workflow, and
   the search field finds runs by workflow name, work code, circle, or source.
 - **Next** lists the triggers that are on: interval schedules by their next
@@ -136,8 +138,8 @@ administrators.
 ## Current Behavior
 
 - **Fetch** starts from a work's [detail page](work-detail.md), including a
-  work the library does not have, which Quick actions opens by its code. It
-  runs manually and has no automation triggers.
+  work the library does not have. It runs manually and has no automation
+  triggers.
 - Local scan records folder discovery and local source presence without waiting
   for a metadata provider. Metadata sync, source availability, remote sync,
   cache, fetch, cleanup, circle refresh, and bulk remote actions record separate

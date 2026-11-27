@@ -31,7 +31,9 @@ a run and stays there on every tab. **Operations**, the default tab, holds the
 cards and then Next, the triggers of every workflow; Running and Next each
 show five entries and **Show all** the rest. **Needs attention**
 (`?tab=attention`, `view=attention`) lists the runs waiting for a decision in
-server pages of twenty, with an empty state, and its tab counts them. Next
+server pages of twenty, with an empty state, and its tab counts them; beside
+its tab it offers [stale-run recovery](fetch-queue-and-review.md) to accounts
+with `workflows:run` and `sources:write`, and to Demo disabled. Next
 lists only enabled triggers: interval triggers by their next run, then those
 still waiting for one, then Startup, After, and folder triggers. A paused trigger is
 left out, since it runs nothing; an operation's trigger dialog still lists it
@@ -59,8 +61,8 @@ it. Any other run takes the place of the running list and the tabs
 from another page, and every open run below 1280px, where the mobile layout
 returns through the header back action. Opening a run is a history entry, so
 Back returns to the list and filters it was opened from; a linked run returns
-to the tab its address names. The header notification panel and Quick actions
-open runs and lists here. `/runs`,
+to the tab its address names. The header notification panel opens runs and
+lists here. `/runs`,
 `/activity`, and `/workflows?activity=1` redirect here with their run;
 their ended-run lists (`history`, `completed`, `logs`, `failed`) open
 History with that list's workflow (`?runsOf=`, or `?workflow=` on

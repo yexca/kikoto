@@ -2027,6 +2027,11 @@ export const surfaceJapanese = {
       next: "次回",
       nothingNext:
         "自動で実行されるものはありません。トリガーをオンにすると、スキャン、メタデータ、インデックスを自動で実行できます。",
+      recoverStale: "停止した実行を復旧",
+      recoverStaleDescription: "実行者のいない実行を再キューまたは失敗にする",
+      recoverStaleDone: "{{requeued}} 件を再キュー、{{failed}} 件を失敗にしました。",
+      recoverStaleNone: "停止した実行はありません。",
+      recoverStaleFailed: "停止した実行を復旧できませんでした。",
     },
     sourceCheck: {
       title: "ライブラリの作品を確認",

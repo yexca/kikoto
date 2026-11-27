@@ -1915,6 +1915,11 @@ export const surfaceHans = {
       status: "状态",
       next: "接下来",
       nothingNext: "没有会自动运行的任务。开启触发器即可让扫描、元数据或索引自动运行。",
+      recoverStale: "恢复停滞的运行",
+      recoverStaleDescription: "将无人执行的运行重新排队或标记为失败",
+      recoverStaleDone: "已重新排队 {{requeued}} 个，标记失败 {{failed}} 个。",
+      recoverStaleNone: "没有停滞的运行。",
+      recoverStaleFailed: "无法恢复停滞的运行。",
     },
     sourceCheck: {
       title: "检查库内作品",

@@ -1381,28 +1381,16 @@ test("mobile circle Back returns to its source and the active tab returns to the
   await expect(page.getByRole("button", { name: "Back to circles", exact: true })).toHaveCount(0);
 });
 
-test("mobile command palette uses a sheet, stays in the visual viewport, and closes on a downward swipe", async ({
-  page,
-}) => {
+test("a mobile sheet stays in the visual viewport and closes on a downward swipe", async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 915 });
   await mockCreatorDetails(page);
   await page.goto("/circles/RG09999");
 
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^(Account menu|Sign in)$/ })
-    .click();
-  await page
-    .getByRole("dialog", { name: "Account" })
-    .getByRole("button", { name: "Quick actions", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Command palette" });
-  const input = page.getByPlaceholder("Search or open a work code");
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "View" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("data-mobile-sheet");
   await expect(dialog).toHaveAttribute("data-state", "open");
-  await expect(dialog.getByRole("button", { name: "Close command palette" })).toHaveCount(0);
-  await expect(input).toBeFocused();
 
   await page.setViewportSize({ width: 412, height: 430 });
   await expect
@@ -1411,8 +1399,7 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
       return box ? box.y + box.height <= 430 : false;
     })
     .toBe(true);
-  await expect(input).toBeVisible();
-  await expect(page.locator("footer")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeVisible();
 
   const handleBox = await dialog.locator("[data-mobile-sheet-handle]").boundingBox();
   expect(handleBox).not.toBeNull();
@@ -1427,24 +1414,16 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
 
 test("a tall mobile sheet stays below the top safe area and leaves a strip that dismisses it", async ({ page }) => {
   const safeAreaTop = 59;
-  await page.setViewportSize({ width: 412, height: 480 });
+  await page.setViewportSize({ width: 412, height: 360 });
   await mockCreatorDetails(page);
   await page.goto("/circles/RG09999");
   await page.addStyleTag({ content: `:root { --safe-area-top: ${safeAreaTop}px !important; }` });
 
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^(Account menu|Sign in)$/ })
-    .click();
-  await page
-    .getByRole("dialog", { name: "Account" })
-    .getByRole("button", { name: "Quick actions", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Command palette" });
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "View" });
   await expect(dialog).toHaveAttribute("data-state", "open");
-  await page.getByPlaceholder("Search or open a work code").blur();
 
-  // The palette lists more actions than fit, so the settled sheet reaches its height cap.
+  // The View options are taller than this viewport, so the settled sheet reaches its height cap.
   await expect.poll(async () => (await dialog.boundingBox())?.y ?? 0).toBeCloseTo(safeAreaTop + 40, 0);
   const handleBox = await dialog.locator("[data-mobile-sheet-handle]").boundingBox();
   expect(handleBox).not.toBeNull();

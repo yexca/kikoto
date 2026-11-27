@@ -385,19 +385,20 @@ destinations and no administration controls:
 - The account panel behind the avatar opens with a compact profile (the
   handle only where it differs from the name) and closes with one row of About
   and Sign out. One row of three tiles opens For you, Discover, and Insights
-  on every layout. One list sits between them: Quick actions on phones, Tags
-  and Settings on every layout, below the sidebar breakpoint the sidebar's
+  on every layout. One list sits between them: Tags and Settings on every
+  layout, below the sidebar breakpoint the sidebar's
   other pages the bottom navigation does not carry and the Manage group behind
   one entry, Appearance on phones, Language, and the server connection in the
   native shell.
-- The header shows the page title without a description. Its tray holds Quick
-  actions, Notifications, and Appearance, and the avatar carries no role text.
+- The header shows the page title without a description. Its tray holds
+  Notifications and Appearance, and the avatar carries no role text.
 - A phone header holds two actions, Notifications and the avatar, so a page
-  title such as the Library source menu keeps its width; Quick actions and
-  Appearance open from the account panel.
+  title such as the Library source menu keeps its width; Appearance opens from
+  the account panel.
 - A new destination or shell action joins an existing container (a sidebar
-  group, the account panel, or Quick actions) rather than adding a persistent
-  button, and Quick actions reaches every destination the viewer can open.
+  group or the account panel) rather than adding a persistent button. A
+  maintenance action belongs on the page whose state it repairs, such as
+  stale-run recovery on Needs attention.
 
 A page takes one of two widths, chosen by what it holds:
 

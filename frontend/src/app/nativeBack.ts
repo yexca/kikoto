@@ -1,11 +1,9 @@
 import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 
 /** The layer a native back request closed, or why it did nothing. */
-export type NativeBackStep =
-  "commandPaletteBusy" | "commandPalette" | "login" | "dialog" | "player" | "history" | "root";
+export type NativeBackStep = "login" | "dialog" | "player" | "history" | "root";
 
 export type NativeBackTargets = {
-  commandPalette: { open: boolean; busy: boolean; close(): void };
   login: { open: boolean; close(): void };
   /** Closes the topmost dialog, sheet, or popover; false when none is open. */
   closeTopLayer(): boolean;
@@ -21,11 +19,6 @@ export type NativeBackTargets = {
  * "root" result changed nothing; each platform decides what that means.
  */
 export function handleNativeBack(targets: NativeBackTargets): NativeBackStep {
-  if (targets.commandPalette.open) {
-    if (targets.commandPalette.busy) return "commandPaletteBusy";
-    targets.commandPalette.close();
-    return "commandPalette";
-  }
   if (targets.login.open) {
     targets.login.close();
     return "login";

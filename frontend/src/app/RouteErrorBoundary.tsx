@@ -87,27 +87,3 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
     );
   }
 }
-
-/**
- * Contains a failure of an optional overlay, such as a lazily loaded dialog,
- * so it cannot unmount the app shell and the global player. It renders
- * nothing after reporting the error; remounting it tries again.
- */
-export class OverlayErrorBoundary extends Component<
-  { children: ReactNode; onError: (error: unknown) => void },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    this.props.onError(error);
-  }
-
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}

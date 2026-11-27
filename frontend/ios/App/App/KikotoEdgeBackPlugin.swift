@@ -2,7 +2,7 @@ import Capacitor
 import UIKit
 
 /// Reports a left screen-edge swipe so the web app can apply its own back
-/// order: command palette, sign-in, dialogs, the player, then history. The
+/// order: sign-in, dialogs, the player, then history. The
 /// plugin never navigates or leaves the app by itself.
 @objc(KikotoEdgeBackPlugin)
 public class KikotoEdgeBackPlugin: CAPPlugin, CAPBridgedPlugin, UIGestureRecognizerDelegate {

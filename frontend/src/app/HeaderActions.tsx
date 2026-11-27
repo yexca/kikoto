@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LogIn, Zap } from "lucide-react";
+import { LogIn } from "lucide-react";
 
 import { AppearanceControls } from "@/app/AppearanceControls";
 import { AccountPanel, type AccountDestination } from "@/app/header/AccountPanel";
@@ -49,7 +49,6 @@ type HeaderActionsProps = {
   onOpenLogin: () => void;
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
-  onOpenCommandPalette: () => void;
   onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
 
@@ -60,15 +59,10 @@ const accountTriggerCurrentClass: Record<AccountDestination["placement"], string
   wide: "lg:bg-primary/10 lg:ring-1 lg:ring-primary/30",
 };
 
-const appleShortcuts = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const commandShortcutLabel = appleShortcuts ? "⌘K" : "Ctrl K";
-const commandShortcutKeys = appleShortcuts ? "Meta+K" : "Control+K";
-
 // Phones show Notifications and the account avatar; the account panel opens
-// Quick actions and Appearance there. Wider screens group Quick actions,
-// Notifications, and Appearance in a tray before the avatar. Quick actions stays
-// an icon so it is not mistaken for the library search field. Languages and the
-// native server connection live in the account panel on every screen size.
+// Appearance there. Wider screens group Notifications and Appearance in a tray
+// before the avatar. Languages and the native server connection live in the
+// account panel on every screen size.
 export function HeaderActions({
   user,
   canView,
@@ -78,7 +72,6 @@ export function HeaderActions({
   onOpenLogin,
   onOpenPage,
   onOpenPath,
-  onOpenCommandPalette,
   onLocaleChange,
 }: HeaderActionsProps) {
   const { t } = useTranslation();
@@ -186,7 +179,7 @@ export function HeaderActions({
   );
 
   // One panel serves both triggers; `close` belongs to the popover it is in. The phone
-  // panel also holds Quick actions and Appearance, which its header has no buttons for.
+  // panel also holds Appearance, which its header has no button for.
   const accountPanel = (close: () => void, phone: boolean) => (
     <AccountPanel
       user={user}
@@ -198,14 +191,6 @@ export function HeaderActions({
         close();
         onOpenPage(id);
       }}
-      onOpenQuickActions={
-        phone
-          ? () => {
-              close();
-              onOpenCommandPalette();
-            }
-          : undefined
-      }
       appearance={phone ? { detail: t(`appearance.${themeMode}`), content: appearanceControls } : undefined}
       onLogout={() => {
         close();
@@ -225,18 +210,6 @@ export function HeaderActions({
   return (
     <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
       <div className="contents sm:flex sm:items-center sm:gap-0.5 sm:rounded-full sm:border sm:bg-background/70 sm:p-0.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("header.quickActions")}
-          aria-keyshortcuts={commandShortcutKeys}
-          title={`${t("header.quickActions")} (${commandShortcutLabel})`}
-          className={cx(trayButtonClass, "max-sm:hidden")}
-          onClick={onOpenCommandPalette}
-        >
-          <Zap className="h-4 w-4" />
-        </Button>
-
         {user && <NotificationCenter user={user} canView={canView} readOnly={readOnly} onOpenPath={onOpenPath} />}
 
         {/* Phones open Appearance from the account panel. */}

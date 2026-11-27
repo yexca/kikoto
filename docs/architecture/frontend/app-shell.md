@@ -27,16 +27,11 @@ rail that the sidebar collapses to keeps the same structure.
 On phones, the app header holds Notifications (when authenticated) and the
 account avatar, or Sign in for anonymous visitors; Appearance opens as a view
 of the account panel there (`HeaderActions` passes the controls in). Wider
-screens group Quick actions, Notifications, and Appearance in one header tray
-before the avatar, which shows the display name on extra-wide screens but
-never the role. Quick actions is always an icon button, never a search field,
-so it is not confused with library search; its tooltip names the keyboard
-shortcut. It opens the searchable Command Palette, a bottom sheet on phones
-and a centered surface on desktop; Notifications, Appearance, and the account
-panel are anchored popovers. Appearance (`app/ThemeTrigger`) is one palette
-icon whose tooltip states the current mode, style, and color; its popover owns
-only those three choices. Quick actions lists every destination the viewer can
-open, in every group.
+screens group Notifications and Appearance in one header tray before the
+avatar, which shows the display name on extra-wide screens but never the role.
+Notifications, Appearance, and the account panel are anchored popovers.
+Appearance (`app/ThemeTrigger`) is one palette icon whose tooltip states the
+current mode, style, and color; its popover owns only those three choices.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
 Sign in for anonymous visitors, on every screen size. A compact profile leads
@@ -44,8 +39,7 @@ it, naming the handle only where it differs from the display name. One row of
 three tiles under the profile opens For you, Discover, and Insights on every
 layout (`accountShortcutIds` in `app/navigation`); where the sidebar is shown
 it keeps these pages in their own groups, so the tiles repeat them. One list
-follows: on phones Quick actions, which the phone header has no button for;
-Tags and Settings on every layout (`accountListIds`), repeating the sidebar's
+follows: Tags and Settings on every layout (`accountListIds`), repeating the sidebar's
 Personal group where it is shown; below the sidebar breakpoint the sidebar's
 other pages the bottom navigation does not carry; one **Manage** entry that opens the
 Manage pages as a view of the panel and names the current page while it is

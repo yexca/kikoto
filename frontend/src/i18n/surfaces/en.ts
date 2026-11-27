@@ -2074,6 +2074,11 @@ export const surfaceEnglish = {
       status: "Status",
       next: "Next",
       nothingNext: "Nothing runs on its own. Turn on a trigger to run Scan, Metadata, or Index automatically.",
+      recoverStale: "Recover stale runs",
+      recoverStaleDescription: "Requeue or fail runs no executor is running",
+      recoverStaleDone: "Requeued {{requeued}}, marked {{failed}} failed.",
+      recoverStaleNone: "No stale runs found.",
+      recoverStaleFailed: "Could not recover stale runs.",
     },
     sourceCheck: {
       title: "Check library works",

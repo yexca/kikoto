@@ -1919,6 +1919,11 @@ export const surfaceHant = {
       status: "狀態",
       next: "接下來",
       nothingNext: "沒有會自動執行的工作。開啟觸發器即可讓掃描、中繼資料或索引自動執行。",
+      recoverStale: "復原停滯的執行",
+      recoverStaleDescription: "將無人執行的執行重新排入佇列或標記為失敗",
+      recoverStaleDone: "已重新排入佇列 {{requeued}} 個，標記失敗 {{failed}} 個。",
+      recoverStaleNone: "沒有停滯的執行。",
+      recoverStaleFailed: "無法復原停滯的執行。",
     },
     sourceCheck: {
       title: "檢查庫內作品",

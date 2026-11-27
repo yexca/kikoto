@@ -39,7 +39,7 @@ import { AppSidebar } from "@/app/AppSidebar";
 import type { AccountDestination } from "@/app/header/AccountPanel";
 import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/components/NotFoundPage";
-import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
+import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
 import {
   PageActiveProvider,
@@ -99,7 +99,6 @@ import {
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/lib/mobileTabState";
 import { isMobileTabDetailLocation, navigateToMobileTabHome, pageHomeLocation } from "@/app/workspaceNavigation";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
 import { preloadableComponent } from "@/lib/preloadableComponent";
 import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
@@ -162,11 +161,6 @@ const InsightsPage = insightsPage.Component;
 const ForYouPage = forYouPage.Component;
 const SubscriptionsPage = subscriptionsPage.Component;
 const RecordsPage = recordsPage.Component;
-// Preloaded with the browse workspaces so the first Quick actions tap opens at once.
-const commandPalette = preloadableComponent(() =>
-  import("@/app/CommandPalette").then((module) => module.CommandPalette),
-);
-const CommandPalette = commandPalette.Component;
 
 // Record takes the second tab while the instance offers it, making five tabs.
 const preferredMobileTabs: PageID[] = ["library", "records", "favorites", "circles", "voice-actors"];
@@ -199,9 +193,6 @@ function AuthenticatedApp() {
   const [workDetailOpen, setWorkDetailOpen] = useState(isWorkDetailLocationOpen);
   const [routeRenderKey, setRouteRenderKey] = useState(resolveRouteRenderKey);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStore.read(SIDEBAR_COLLAPSED_KEY) === "true");
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [commandPaletteRequested, setCommandPaletteRequested] = useState(false);
-  const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const mobileRuntime = useMobileRuntime();
   const toast = useToast();
@@ -222,31 +213,6 @@ function AuthenticatedApp() {
       window.removeEventListener(USER_TAGS_CHANGED_EVENT, refreshTags);
     };
   }, [clientStorageScope]);
-
-  const openCommandPalette = useCallback(() => {
-    setCommandPaletteRequested(true);
-    setCommandPaletteOpen(true);
-  }, []);
-
-  // A palette that cannot load closes with a notice; the next open tries again.
-  const handleCommandPaletteError = useCallback(
-    (error: unknown) => {
-      setCommandPaletteOpen(false);
-      setCommandPaletteBusy(false);
-      setCommandPaletteRequested(false);
-      toast.notify(
-        isChunkLoadError(error)
-          ? {
-              kind: "warning",
-              message: t("notFound.staleVersionMessage"),
-              actionLabel: t("notFound.reloadApp"),
-              onAction: reloadApp,
-            }
-          : { kind: "error", message: t("errors.unavailable") },
-      );
-    },
-    [t, toast],
-  );
 
   const { syncAccountPreference } = locale;
   const { hasPermission, refresh: refreshAuth } = auth;
@@ -484,17 +450,6 @@ function AuthenticatedApp() {
   };
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        openCommandPalette();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [openCommandPalette]);
-
-  useEffect(() => {
     const openLogin = () => setLoginOpen(true);
     window.addEventListener(LOGIN_REQUEST_EVENT, openLogin);
     return () => window.removeEventListener(LOGIN_REQUEST_EVENT, openLogin);
@@ -504,19 +459,12 @@ function AuthenticatedApp() {
     if (!isNativeApp()) return;
     const scope = createEffectScope();
     const goBack = (leaveDestination: boolean) => {
-      const step = handleNativeBack({
-        commandPalette: {
-          open: commandPaletteOpen,
-          busy: commandPaletteBusy,
-          close: () => setCommandPaletteOpen(false),
-        },
+      return handleNativeBack({
         login: { open: loginOpen, close: () => setLoginOpen(false) },
         closeTopLayer: closeTopDocumentLayer,
         closePlayerLayer,
         navigateBack: () => navigateNativeBack(leaveDestination),
       });
-      if (step === "commandPaletteBusy") toast.info(t("app.workflowSubmitting"));
-      return step;
     };
     CapacitorApp.addListener("backButton", async () => {
       if (scope.signal.aborted) return;
@@ -552,7 +500,7 @@ function AuthenticatedApp() {
       scope.cancel();
       void CapacitorApp.removeAllListeners();
     };
-  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, navigateNativeBack, t, toast]);
+  }, [loginOpen, navigateNativeBack, t, toast]);
 
   if (auth.isLoading) {
     return (
@@ -618,7 +566,6 @@ function AuthenticatedApp() {
                 onOpenLogin={() => setLoginOpen(true)}
                 onOpenPage={openPage}
                 onOpenPath={openPath}
-                onOpenCommandPalette={openCommandPalette}
                 onLocaleChange={updateLocale}
               />
             </div>
@@ -805,22 +752,6 @@ function AuthenticatedApp() {
           </footer>
         )}
         {!mobileRuntime.keyboardOpen && <PlayerDock />}
-        {commandPaletteRequested && (
-          <OverlayErrorBoundary onError={handleCommandPaletteError}>
-            <Suspense fallback={null}>
-              <CommandPalette
-                open={commandPaletteOpen}
-                onOpenChange={setCommandPaletteOpen}
-                hasPermission={effectiveHasPermission}
-                canView={navigationHasPermission}
-                visibleNavItems={visibleNavItems}
-                onBusyChange={setCommandPaletteBusy}
-                onOpenPage={openPage}
-                onOpenPath={openPath}
-              />
-            </Suspense>
-          </OverlayErrorBoundary>
-        )}
         {loginOpen && <LoginOverlay onClose={() => setLoginOpen(false)} />}
       </div>
     </PlayerProvider>
@@ -938,8 +869,7 @@ function CachedBrowsePages({
   useEffect(
     () =>
       whenIdle(() => {
-        for (const component of [...Object.values(browsePages), commandPalette])
-          void component.preload().catch(() => {});
+        for (const component of Object.values(browsePages)) void component.preload().catch(() => {});
       }),
     [],
   );

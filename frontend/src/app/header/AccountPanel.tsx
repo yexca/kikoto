@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Clipboard, Languages, LogIn, LogOut, Palette, RotateCcw, Server, Zap, type LucideIcon } from "lucide-react";
+import { Clipboard, Languages, LogIn, LogOut, Palette, RotateCcw, Server, type LucideIcon } from "lucide-react";
 
 import { ActionItem, MenuSection, PopoverHeader } from "@/app/header/HeaderPopover";
 import {
@@ -48,8 +48,8 @@ type AccountView = "main" | "language" | "appearance" | "server" | CollapsibleNa
  * Discover, and Insights, and Tags and Settings lead the list, on every
  * layout. A layout without the sidebar also lists the sidebar's other pages
  * that the bottom navigation does not carry, with the Manage group behind one
- * entry. On phones the list opens with Quick actions and holds Appearance,
- * which the phone header has no button for, and in the native shell it holds
+ * entry. On phones the list holds Appearance, which the phone header has no
+ * button for, and in the native shell it holds
  * the server connection behind one entry.
  */
 export function AccountPanel({
@@ -59,7 +59,6 @@ export function AccountPanel({
   destinations,
   currentPage,
   onOpenPage,
-  onOpenQuickActions,
   appearance,
   onLogout,
   onOpenLogin,
@@ -71,8 +70,6 @@ export function AccountPanel({
   destinations: readonly AccountDestination[];
   currentPage: string;
   onOpenPage: (id: PageID) => void;
-  /** Present where the header has no Quick actions button of its own. */
-  onOpenQuickActions?: () => void;
   /** Present where the header has no Appearance button of its own. */
   appearance?: { detail: string; content: ReactNode };
   onLogout: () => void;
@@ -171,14 +168,6 @@ export function AccountPanel({
       )}
 
       <MenuSection>
-        {onOpenQuickActions && (
-          <ActionItem
-            icon={<Zap className="h-4 w-4" />}
-            label={t("header.quickActions")}
-            className="sm:hidden"
-            onClick={onOpenQuickActions}
-          />
-        )}
         {listedDestinations.map(destinationItem)}
         {navigationGroups.map((group) => {
           const entries = groupDestinations(group.id);

@@ -1,4 +1,4 @@
-import { Compass } from "lucide-react";
+import { Compass, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -228,6 +228,32 @@ export function WorkflowsPage({
   /** Automating an operation also needs `workflows:run`, which every trigger runs under. */
   const triggerPermitted = (operation: Operation) =>
     operation.group === "record" ? recordPermitted && canRun : permitted;
+
+  /**
+   * Stale-run recovery is instance maintenance under `sources:write`. Demo lists
+   * it for inspection and the server refuses it.
+   */
+  const recoverListed = canRun && (readOnly || auth.hasPermission("sources:write"));
+  const [recovering, setRecovering] = useState(false);
+  const recoverStaleRuns = async () => {
+    if (readOnly || recovering) return;
+    setRecovering(true);
+    try {
+      const result = await api.recoverStaleWorkflowRuns();
+      const requeued = result.requeued ?? 0;
+      const failed = result.failed ?? 0;
+      toast.notify(
+        requeued + failed > 0
+          ? { kind: "success", message: t("workflowPage.runs.recoverStaleDone", { requeued, failed }) }
+          : { kind: "info", message: t("workflowPage.runs.recoverStaleNone") },
+      );
+      setRevision((value) => value + 1);
+    } catch (error) {
+      toast.notify(toastFromError(error, t("workflowPage.runs.recoverStaleFailed")));
+    } finally {
+      setRecovering(false);
+    }
+  };
 
   const toggleTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
@@ -470,6 +496,20 @@ export function WorkflowsPage({
             onSelectRun={selectListRun}
             onChanged={() => setRevision((value) => value + 1)}
           />
+        }
+        attentionActions={
+          recoverListed ? (
+            <Button
+              size="sm"
+              variant="outline"
+              title={t("workflowPage.runs.recoverStaleDescription")}
+              disabled={readOnly || recovering}
+              onClick={() => void recoverStaleRuns()}
+            >
+              {recovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              {t("workflowPage.runs.recoverStale")}
+            </Button>
+          ) : undefined
         }
         status={location.status}
         onStatusChange={location.setStatus}

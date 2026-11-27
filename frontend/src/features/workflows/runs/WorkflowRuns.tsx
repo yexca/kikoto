@@ -41,6 +41,7 @@ export function WorkflowRuns({
   operations,
   attentionCount,
   attention,
+  attentionActions,
   status,
   onStatusChange,
   workflowCode,
@@ -67,6 +68,8 @@ export function WorkflowRuns({
   /** Runs that need attention, beside the tab's name. */
   attentionCount: number;
   attention: ReactNode;
+  /** Actions at the end of the tab row while Needs attention is shown. */
+  attentionActions?: ReactNode;
   status: HistoryStatus;
   onStatusChange: (status: HistoryStatus) => void;
   /** The workflow History is narrowed to; empty for every workflow. */
@@ -167,6 +170,8 @@ export function WorkflowRuns({
                 </NativeSelect>
                 <RunSearch query={query} onQueryChange={onQueryChange} />
               </div>
+            ) : tab === "attention" ? (
+              attentionActions
             ) : undefined
           }
         />

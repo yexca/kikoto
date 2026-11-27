@@ -2017,6 +2017,11 @@ export const surfaceKorean = {
       status: "상태",
       next: "다음",
       nothingNext: "자동으로 실행되는 항목이 없습니다. 트리거를 켜서 스캔, 메타데이터, 인덱스를 자동으로 실행하세요.",
+      recoverStale: "멈춘 실행 복구",
+      recoverStaleDescription: "실행 중인 작업자가 없는 실행을 다시 대기열에 넣거나 실패 처리",
+      recoverStaleDone: "{{requeued}}개를 다시 대기열에 넣고 {{failed}}개를 실패 처리했습니다.",
+      recoverStaleNone: "멈춘 실행이 없습니다.",
+      recoverStaleFailed: "멈춘 실행을 복구하지 못했습니다.",
     },
     sourceCheck: {
       title: "라이브러리 작품 확인",
