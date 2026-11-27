@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -18,6 +19,21 @@ var demoShowcaseWorkflowCodes = []string{
 	"local_library_scan", "local_media_index", "metadata_sync",
 	"remote_popular_collection", "dlsite_popular_collection", "availability_watch",
 	"remote_work_fetch", sourcePresenceCheckWorkflowCode, "circle_catalog_sync", "series_catalog_sync", "voice_catalog_sync",
+	aiTranslationWorkflowCode, workFolderEditWorkflowCode,
+}
+
+// These examples act on the instance rather than on one work.
+var demoShowcaseInstanceWorkflowCodes = []string{
+	creatorSubscriptionWorkflowCode, databaseBackupWorkflowCode, databaseOptimizeWorkflowCode,
+}
+
+// demoShowcaseLazyWorkflowSpecs are the definitions a workflow registers only
+// when its first run is queued. Demo queues none, so the showcase registers
+// them before it adds their examples.
+func demoShowcaseLazyWorkflowSpecs() []systemWorkflowSpec {
+	return []systemWorkflowSpec{
+		aiTranslationWorkflowSpec(), workFolderEditDefinition(), databaseBackupWorkflowSpec(), databaseOptimizeWorkflowSpec(),
+	}
 }
 
 // These Record definitions join the sample history while Demo's generated
@@ -49,6 +65,10 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 		return fmt.Errorf("demo showcase is only available in demo mode")
 	}
 	recordOn := s.recordLibraryEnabled(ctx)
+	demo, err := s.accountStore.LoadByUsername(ctx, account.DemoUsername)
+	if err != nil {
+		return fmt.Errorf("find demo account: %w", err)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -63,21 +83,53 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM workflow_run WHERE trigger_reason = ?", demoShowcaseRunReason); err != nil {
 		return err
 	}
-	for _, code := range demoShowcaseWorkflowCodes {
-		if err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", works); err != nil {
+	for _, spec := range demoShowcaseLazyWorkflowSpecs() {
+		if _, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes}); err != nil {
 			return err
+		}
+	}
+	// The Fetch and subscription examples also reach the Demo account's Updates.
+	notifications := []workflow.NotificationSpec{}
+	for _, code := range demoShowcaseWorkflowCodes {
+		runID, err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", works)
+		if err != nil {
+			return err
+		}
+		if code == "remote_work_fetch" && len(works) > 0 {
+			notifications = append(notifications, demoFetchNotification(demo.ID, runID, "succeeded", works[0]))
+		}
+	}
+	for _, code := range demoShowcaseInstanceWorkflowCodes {
+		runID, err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", nil)
+		if err != nil {
+			return err
+		}
+		if code == creatorSubscriptionWorkflowCode && len(demoReleaseFeedEntries) > 0 {
+			notifications = append(notifications, workflow.NotificationSpec{
+				UserID: demo.ID, RunID: runID, Type: "subscription_release", Status: "succeeded",
+				WorkCode: demoReleaseFeedEntries[0].code, Message: demoReleaseFeedEntries[0].code + " is new from your subscriptions.",
+			})
 		}
 	}
 	if recordOn {
 		// Record runs name no work.
 		for _, code := range demoShowcaseRecordWorkflowCodes {
-			if err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", nil); err != nil {
+			if _, err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", nil); err != nil {
 				return err
 			}
 		}
 	}
 	for _, example := range demoShowcaseActivityExamples {
-		if err := seedDemoWorkflowRun(ctx, tx, example.code, example.status, example.error, works); err != nil {
+		runID, err := seedDemoWorkflowRun(ctx, tx, example.code, example.status, example.error, works)
+		if err != nil {
+			return err
+		}
+		if example.code == "remote_work_fetch" && len(works) > 0 {
+			notifications = append(notifications, demoFetchNotification(demo.ID, runID, example.status, works[0]))
+		}
+	}
+	for _, notification := range notifications {
+		if err := workflow.InsertNotification(ctx, tx, notification); err != nil {
 			return err
 		}
 	}
@@ -91,12 +143,25 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleError string, works []demoShowcaseWork) error {
+// demoFetchNotification is the Updates entry of an example Fetch.
+func demoFetchNotification(userID, runID int64, status string, work demoShowcaseWork) workflow.NotificationSpec {
+	message := "Fetch completed for " + work.code + "."
+	if status == "failed" {
+		message = "Fetch failed for " + work.code + "."
+	}
+	return workflow.NotificationSpec{
+		UserID: userID, RunID: runID, Type: "remote_fetch", Status: status,
+		WorkID: work.id, WorkCode: work.code, Message: message,
+	}
+}
+
+// seedDemoWorkflowRun adds one example run and returns its id.
+func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleError string, works []demoShowcaseWork) (int64, error) {
 	var definitionID int64
 	var displayName, definitionJSON string
 	if err := tx.QueryRowContext(ctx, `SELECT id, display_name, definition_json
 		FROM workflow_definition WHERE code = ?`, code).Scan(&definitionID, &displayName, &definitionJSON); err != nil {
-		return err
+		return 0, err
 	}
 	var definition struct {
 		Nodes []struct {
@@ -106,7 +171,7 @@ func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleE
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(definitionJSON), &definition); err != nil {
-		return err
+		return 0, err
 	}
 	input := map[string]any{"demoShowcase": true}
 	if len(works) > 0 {
@@ -120,7 +185,7 @@ func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleE
 		status, "manual", demoShowcaseRunReason, input,
 		map[string]any{"demoShowcase": true, "message": "Illustrative status; no workflow was executed."})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var lastNodeID int64
 	for index, node := range definition.Nodes {
@@ -148,7 +213,7 @@ func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleE
 			Output: output,
 		})
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
 	jobStatus := status
@@ -164,7 +229,7 @@ func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleE
 		Payload: input, ProgressCurrent: progress, ProgressTotal: len(definition.Nodes), Error: exampleError,
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return runID, nil
 }

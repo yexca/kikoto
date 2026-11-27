@@ -45,6 +45,12 @@
   scan and Media details examples, and System → Library shows the record
   root as online. Demo ignores `KIKOTO_RECORD_ROOT` and never reads a
   `/record` mount.
+- The Translation page in Demo lists sample runs and items over a few of its
+  works, marked as samples and read-only, instead of only Coverage.
+- Workflows in Demo also shows examples of Translate with AI, file editing,
+  database backup and optimization, and subscription refresh; Updates lists a
+  finished and a failed example Fetch and a subscription release; and
+  System → Users lists sample accounts of each role.
 
 </details>
 

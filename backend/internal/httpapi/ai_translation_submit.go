@@ -239,8 +239,8 @@ func (s *Server) submitAITranslation(ctx context.Context, actor currentUser, wor
 		return response, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, aiTranslationWorkflowCode, "Translate with AI", "Translate one work's missing text for review.",
-		map[string]any{"nodes": []map[string]string{{"id": "translate", "type": aiTranslationWorkerType, "displayName": "Translate for review"}}})
+	spec := aiTranslationWorkflowSpec()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes})
 	if err != nil {
 		return response, err
 	}
@@ -314,4 +314,15 @@ func (s *Server) lyricsSourceDetail(ctx context.Context, family map[int64]bool, 
 		return detail, err
 	}
 	return detail, nil
+}
+
+// aiTranslationWorkflowSpec defines Translate with AI, which is registered
+// when its first run is queued.
+func aiTranslationWorkflowSpec() systemWorkflowSpec {
+	return systemWorkflowSpec{
+		Code:        aiTranslationWorkflowCode,
+		Name:        "Translate with AI",
+		Description: "Translate one work's missing text for review.",
+		Nodes:       []map[string]string{{"id": "translate", "type": aiTranslationWorkerType, "displayName": "Translate for review"}},
+	}
 }

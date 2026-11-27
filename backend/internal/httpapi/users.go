@@ -22,7 +22,20 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	for index := range users {
 		users[index] = s.withEnvironmentManagement(users[index])
 	}
+	if s.cfg.IsDemo() {
+		users = append(users, demoSampleUsers...)
+	}
 	writeJSON(w, http.StatusOK, users)
+}
+
+// demoSampleUsers fill Demo's Users tab, which otherwise lists only the Demo
+// account, with one account of each role and a disabled one. They exist only
+// in this list; Demo refuses every change to them.
+var demoSampleUsers = []account.ManagedUser{
+	{ID: 900001, Username: "example-owner", DisplayName: "Example owner", Role: "super_admin", Enabled: true, CreatedAt: "2026-01-05 09:00:00", UpdatedAt: "2026-01-05 09:00:00"},
+	{ID: 900002, Username: "example-admin", DisplayName: "Example administrator", Role: "admin", Enabled: true, CreatedAt: "2026-02-11 18:30:00", UpdatedAt: "2026-03-02 21:15:00"},
+	{ID: 900003, Username: "example-listener", DisplayName: "Example listener", Role: "user", Enabled: true, CreatedAt: "2026-04-20 12:00:00", UpdatedAt: "2026-04-20 12:00:00"},
+	{ID: 900004, Username: "example-guest", DisplayName: "Example former guest", Role: "user", Enabled: false, CreatedAt: "2026-05-01 08:45:00", UpdatedAt: "2026-06-14 10:10:00"},
 }
 
 func (s *Server) withEnvironmentManagement(user account.ManagedUser) account.ManagedUser {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -119,7 +120,7 @@ func TestDemoWorkflowAPIShowsOnlyExamples(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
-	wantRuns := len(demoShowcaseWorkflowCodes) + len(demoShowcaseActivityExamples)
+	wantRuns := len(demoShowcaseWorkflowCodes) + len(demoShowcaseInstanceWorkflowCodes) + len(demoShowcaseActivityExamples)
 	if page.Total != int64(wantRuns) {
 		t.Fatalf("visible run count = %d, want %d", page.Total, wantRuns)
 	}
@@ -157,7 +158,7 @@ func TestDemoWorkflowAPIShowsOnlyExamples(t *testing.T) {
 	}{
 		{name: "running", want: 1},
 		{name: "attention", want: 3},
-		{name: "history", want: int64(len(demoShowcaseWorkflowCodes))},
+		{name: "history", want: int64(len(demoShowcaseWorkflowCodes) + len(demoShowcaseInstanceWorkflowCodes))},
 	} {
 		response = httptest.NewRecorder()
 		s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/workflow-runs?view="+view.name, nil))
@@ -184,5 +185,62 @@ func TestDemoWorkflowAPIShowsOnlyExamples(t *testing.T) {
 	}
 	if runningJobs != 1 || failedJobs != 3 {
 		t.Fatalf("example job states: running = %d, failed = %d", runningJobs, failedJobs)
+	}
+}
+
+// Demo's Updates and Users tabs show samples, which a restart replaces
+// rather than adds to, and changing a sample user stays refused.
+func TestDemoShowsSampleUpdatesAndUsers(t *testing.T) {
+	s := newDemoAdmissionServer(t)
+	ctx := context.Background()
+	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := s.SeedDemoShowcase(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := httptest.NewRecorder()
+	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/notifications", nil))
+	var updates struct {
+		Total         int64 `json:"total"`
+		Notifications []struct {
+			Type     string `json:"type"`
+			Status   string `json:"status"`
+			WorkCode string `json:"workCode"`
+		} `json:"notifications"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &updates) != nil {
+		t.Fatalf("notifications = %d %s", response.Code, response.Body.String())
+	}
+	kinds := map[string]int{}
+	for _, notification := range updates.Notifications {
+		kinds[notification.Type+":"+notification.Status]++
+	}
+	if updates.Total != 3 || kinds["remote_fetch:succeeded"] != 1 || kinds["remote_fetch:failed"] != 1 || kinds["subscription_release:succeeded"] != 1 {
+		t.Fatalf("Demo updates = %d %v", updates.Total, kinds)
+	}
+
+	response = httptest.NewRecorder()
+	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/users", nil))
+	var users []struct {
+		ID   int64  `json:"id"`
+		Role string `json:"role"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &users) != nil {
+		t.Fatalf("users = %d %s", response.Code, response.Body.String())
+	}
+	roles := map[string]int{}
+	for _, user := range users {
+		roles[user.Role]++
+	}
+	if len(users) != 1+len(demoSampleUsers) || roles["super_admin"] == 0 || roles["admin"] == 0 {
+		t.Fatalf("Demo users = %+v", users)
+	}
+	response = httptest.NewRecorder()
+	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPatch, "/api/users/"+strconv.FormatInt(demoSampleUsers[0].ID, 10), strings.NewReader(`{"enabled":false}`)))
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"demo_read_only"`) {
+		t.Fatalf("sample user change = %d %s", response.Code, response.Body.String())
 	}
 }

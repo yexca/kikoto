@@ -660,6 +660,8 @@ export const surfaceJapanese = {
     demoFileNamesNotice: "デモモード：ここで表示名の編集を試せますが、保存はできません。",
     demoFolderEditNotice:
       "デモモード：ここでファイルを並べ替えてサンプルのプレビューを確認できますが、フォルダーは変更できません。",
+    demoTranslationCenterNotice:
+      "デモモード：ここにある翻訳の実行と結果はサンプルです。デモは LLM プロバイダーに何も送信しないため、翻訳、承認、破棄は行われません。",
     demoForYouNotice:
       "デモモード：「あなた向け」はデモ作品からランダムに選んだサンプルです。選ばれた作品と理由は例であり、再生履歴から学習したものではありません。",
     permissionDenied: "この機能を使用する権限がありません。",

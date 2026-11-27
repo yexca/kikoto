@@ -99,9 +99,8 @@ func (s *Server) enqueueDatabaseBackup(ctx context.Context, kind string, actorUs
 	if !errors.Is(err, sql.ErrNoRows) {
 		return databaseOptimizeQueuedResult{}, err
 	}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, databaseBackupWorkflowCode, databaseBackupDisplayName,
-		"Write a verified copy of the SQLite database beside it and keep a bounded number of recent copies.",
-		map[string]any{"nodes": []map[string]string{{"id": "backup", "type": "backup_database", "displayName": "Back up database"}}})
+	spec := databaseBackupWorkflowSpec()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes})
 	if err != nil {
 		return databaseOptimizeQueuedResult{}, err
 	}
@@ -226,5 +225,16 @@ func (s *Server) queueDueDatabaseBackup(ctx context.Context, now time.Time) {
 	}
 	if _, err := s.enqueueDatabaseBackup(ctx, storage.BackupKindScheduled, 0); err != nil && !errors.Is(err, context.Canceled) {
 		slog.Error("queue automatic database backup", "error", err)
+	}
+}
+
+// databaseBackupWorkflowSpec defines the database backup workflow, which is
+// registered when its first run is queued.
+func databaseBackupWorkflowSpec() systemWorkflowSpec {
+	return systemWorkflowSpec{
+		Code:        databaseBackupWorkflowCode,
+		Name:        databaseBackupDisplayName,
+		Description: "Write a verified copy of the SQLite database beside it and keep a bounded number of recent copies.",
+		Nodes:       []map[string]string{{"id": "backup", "type": "backup_database", "displayName": "Back up database"}},
 	}
 }

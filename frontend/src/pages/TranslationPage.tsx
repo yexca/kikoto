@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { TranslationReviewList, type TranslationReviewMode } from "@/components/translation/TranslationReviewList";
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
 import { Button } from "@/components/ui/button";
@@ -56,8 +57,8 @@ const itemViews: Partial<Record<TranslationCenterView, TranslationReviewMode>> =
  * wrote, and how much of the library each language covers. Finished items
  * apply through acceptance; while auto-accept is off, the items waiting for
  * review are listed first. It reads runs and their items; Activity keeps the
- * runs' diagnostics. Demo shows it read-only: it translates nothing, so only
- * coverage has content.
+ * runs' diagnostics. Demo shows it read-only over sample runs and items the
+ * server makes up, since it translates nothing.
  */
 export function TranslationPage({
   canTranslateMetadata,
@@ -223,6 +224,7 @@ export function TranslationPage({
 
   return (
     <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
+      {readOnly && <DemoPreviewNotice surface="translationCenter" />}
       <SubNavTabs label={t("translationCenter.views.label")} items={navItems} selected={view} onSelect={showView} />
       <div className="flex min-h-10 flex-wrap items-center gap-2" data-toast-avoid>
         {view === "coverage" ? (
@@ -308,6 +310,7 @@ export function TranslationPage({
             items={items}
             mode={itemViews[view] ?? "history"}
             showWork
+            readOnly={readOnly}
             busyIds={review.busyIds}
             onAccept={(ids) => void review.accept(ids)}
             onReject={(ids) => void review.reject(ids)}

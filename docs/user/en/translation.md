@@ -3,7 +3,7 @@
 
 The **Translation** page (`/translation`) follows [Translate with AI](work-detail.md#translate-with-ai) across the whole library: what is running or queued, what stopped, what finished translations wrote, and how much of each language the works already cover. It opens from the sidebar's **Manage** group for accounts with library write permission; it does not need workflow permission. Everyone who can open it sees every account's translations. Each item takes effect as soon as it finishes, as described under [Results](work-detail.md#results).
 
-The page is a view of the Translate with AI runs and their items. [Workflows](workflows.md) lists the same runs with their diagnostics. Demo shows the page read-only: it translates nothing, so only **Coverage** lists works. Works can still be selected there and the translate button opens its dialog with example models, but nothing can be queued.
+The page is a view of the Translate with AI runs and their items. [Workflows](workflows.md) lists the same runs with their diagnostics. Demo shows the page read-only. It translates nothing, so the other views list sample runs and items over a few of its works, marked as samples, that cannot be accepted, discarded, sent again, or cancelled. Works can still be selected in **Coverage** and the translate button opens its dialog with example models, but nothing can be queued.
 
 ## In progress
 

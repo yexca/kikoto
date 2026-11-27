@@ -63,8 +63,7 @@ var translationListStates = map[string][]string{
 func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
 	actor, ok := userFromContext(r.Context())
 	if ok && s.cfg.IsDemo() {
-		// Demo translates nothing, so its Translation page lists no items.
-		writeJSON(w, 200, map[string]any{"items": []translationItemResponse{}})
+		s.writeDemoTranslationItems(w, r, actor)
 		return
 	}
 	if !ok || !canUseTranslationCenter(actor) {

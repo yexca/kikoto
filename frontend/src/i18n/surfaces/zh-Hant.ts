@@ -641,6 +641,8 @@ export const surfaceHant = {
     demoAITranslationNotice: "示範模式：這裡的模型均為範例。示範不會向 LLM 服務商傳送任何內容，因此無法開始翻譯。",
     demoFileNamesNotice: "示範模式：可以在這裡試著編輯顯示名稱，但無法儲存。",
     demoFolderEditNotice: "示範模式：可以在這裡整理檔案並查看範例預覽，但無法變更資料夾。",
+    demoTranslationCenterNotice:
+      "示範模式：這裡的翻譯執行和結果都是範例；示範不會向 LLM 提供者傳送任何內容，因此不會翻譯、接受或捨棄任何項目。",
     demoForYouNotice:
       "示範模式：為你推薦是從示範作品中隨機抽取的範例，推薦結果和理由都是示範資料，並非根據收聽紀錄學習得出。",
     permissionDenied: "您的帳戶沒有使用此功能的權限。",

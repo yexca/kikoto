@@ -266,23 +266,3 @@ func TestAITranslationLeavesOutTextAFallbackReplaces(t *testing.T) {
 		t.Fatalf("plan with fallbacks = %+v", en)
 	}
 }
-
-// Demo translates nothing: its Translation page lists no runs or items
-// instead of refusing.
-func TestAITranslationDemoListsNothing(t *testing.T) {
-	f := newManualOverrideFixture(t, config.Config{Mode: config.ModeDemo})
-	insertTranslationAccessRun(t, f, aiTranslationWorkflowCode, "queued", f.userID)
-	viewer := currentUser{ID: f.userID, Permissions: []string{"library:read"}}
-	for path, handler := range map[string]http.HandlerFunc{
-		"/api/translation/runs?view=queued":   f.server.listTranslationRuns,
-		"/api/translation/items?view=history": f.server.listTranslationItems,
-	} {
-		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r = r.WithContext(context.WithValue(r.Context(), currentUserKey, viewer))
-		response := httptest.NewRecorder()
-		handler(response, r)
-		if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"runId"`) {
-			t.Fatalf("%s = %d %s", path, response.Code, response.Body.String())
-		}
-	}
-}

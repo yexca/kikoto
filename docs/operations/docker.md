@@ -284,8 +284,10 @@ but an in-process transport answers them from the admitted local files and
 refuses every other destination, so no request leaves the container. The
 Library shows a notice above the source stating that it is simulated and not a
 real server. Demo also refreshes a completed example
-for each workflow, plus one running and three attention-needed examples with
-illustrative jobs. These run details are synthetic; no example job is
+for each workflow, Translate with AI, file editing, database backup and
+optimization, and subscription refresh included, plus one running and three
+attention-needed examples with illustrative jobs. The example Fetches and
+subscription refresh also appear under the Demo account's Updates. These run details are synthetic; no example job is
 executed. The running example has no live elapsed-time clock or job event
 stream, so it can remain visible during a long-lived Demo deployment. Actual
 `demo_library_scan` runs stay in the isolated database
@@ -316,6 +318,14 @@ it plays whichever works pass admission. Each day's listening depends only on
 its date, so the past stays the same across restarts, and a running Demo
 extends the history every hour. Insights states above the dashboard that the
 history is simulated.
+
+Demo contacts no LLM provider either. The Translation page shows fixed sample
+runs and items over the first admitted works instead: a run translating and
+one queued, items waiting for review, stopped items, and applied ones, each
+result marked as a sample, with a notice above the page. They are not stored,
+and Demo refuses to accept, discard, resend, or cancel them. **System → Users**
+lists sample accounts of each role beside the Demo account; they exist only
+in that list.
 
 `./demo/config` contains the isolated Demo SQLite database. `./demo/cache` contains only isolated or sanitized assets; startup
 may add covers after the provider eligibility check and writes the generated

@@ -85,8 +85,7 @@ var translationRunViews = map[string][]string{
 func (s *Server) listTranslationRuns(w http.ResponseWriter, r *http.Request) {
 	actor, ok := userFromContext(r.Context())
 	if ok && s.cfg.IsDemo() {
-		// Demo translates nothing, so its Translation page lists no runs.
-		writeJSON(w, 200, map[string]any{"runs": []translationRunResponse{}, "counts": map[string]int{"active": 0, "queued": 0, "review": 0, "attention": 0}, "autoAccept": true})
+		s.writeDemoTranslationRuns(w, r, actor)
 		return
 	}
 	if !ok || !canUseTranslationCenter(actor) {

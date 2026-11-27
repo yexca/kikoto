@@ -658,6 +658,8 @@ export const surfaceKorean = {
       "데모 모드: 여기의 모델은 예시입니다. 데모는 LLM 제공자에게 아무것도 보내지 않으므로 번역을 시작할 수 없습니다.",
     demoFileNamesNotice: "데모 모드: 여기서 표시 이름 편집을 시험해 볼 수 있지만 저장할 수는 없습니다.",
     demoFolderEditNotice: "데모 모드: 여기서 파일을 정리하고 예시 미리보기를 볼 수 있지만 폴더는 변경할 수 없습니다.",
+    demoTranslationCenterNotice:
+      "데모 모드: 이곳의 번역 실행과 결과는 샘플입니다. 데모는 LLM 제공자에게 아무것도 보내지 않으므로 번역, 승인, 폐기가 이루어지지 않습니다.",
     demoForYouNotice:
       "데모 모드: 맞춤 추천은 데모 작품에서 무작위로 고른 예시입니다. 선택된 작품과 이유는 예시이며 청취 기록에서 학습한 것이 아닙니다.",
     permissionDenied: "이 기능을 사용할 권한이 없습니다.",

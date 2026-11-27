@@ -707,6 +707,8 @@ export const surfaceEnglish = {
     demoFileNamesNotice: "Demo mode: you can try editing display names here, but they cannot be saved.",
     demoFolderEditNotice:
       "Demo mode: you can arrange files here and see a sample preview, but the folder cannot be changed.",
+    demoTranslationCenterNotice:
+      "Demo mode: these translation runs and results are samples. Demo sends nothing to an LLM provider, so nothing is translated, accepted, or discarded.",
     demoForYouNotice:
       "Demo mode: For you shows a random sample of the demo works. The picks and their reasons are examples, not learned from listening.",
     permissionDenied: "Your account does not have permission to use this feature.",

@@ -288,7 +288,8 @@ Text-only mode matches literal keywords; it does not interpret meaning, translat
 Users manages accounts. Administrators and super administrators can create
 and edit User, Contributor, and Admin accounts; only a super administrator can
 grant Super admin or change a super administrator. Super administrators in
-production and development also see **Instance access** here.
+production and development also see **Instance access** here. Demo lists
+sample accounts of each role beside its own, and none of them can be changed.
 
 Each role has a fixed set of permissions:
 

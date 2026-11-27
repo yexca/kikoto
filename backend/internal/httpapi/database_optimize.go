@@ -76,9 +76,8 @@ func (s *Server) enqueueDatabaseOptimize(ctx context.Context, actorUserID int64)
 	if !errors.Is(err, sql.ErrNoRows) {
 		return databaseOptimizeQueuedResult{}, err
 	}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, databaseOptimizeWorkflowCode, databaseOptimizeDisplayName,
-		"Compact the SQLite database, refresh query planner statistics, and truncate the write-ahead log.",
-		map[string]any{"nodes": []map[string]string{{"id": "optimize", "type": "optimize_database", "displayName": "Compact database"}}})
+	spec := databaseOptimizeWorkflowSpec()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes})
 	if err != nil {
 		return databaseOptimizeQueuedResult{}, err
 	}
@@ -182,4 +181,15 @@ func (s *Server) finishDatabaseOptimizeJob(ctx context.Context, job workflowJobR
 // committed scan, metadata sync or media publication.
 func (s *Server) refreshQueryPlannerStatistics(ctx context.Context) {
 	s.statistics.Request(context.WithoutCancel(ctx))
+}
+
+// databaseOptimizeWorkflowSpec defines the database optimization workflow,
+// which is registered when its first run is queued.
+func databaseOptimizeWorkflowSpec() systemWorkflowSpec {
+	return systemWorkflowSpec{
+		Code:        databaseOptimizeWorkflowCode,
+		Name:        databaseOptimizeDisplayName,
+		Description: "Compact the SQLite database, refresh query planner statistics, and truncate the write-ahead log.",
+		Nodes:       []map[string]string{{"id": "optimize", "type": "optimize_database", "displayName": "Compact database"}},
+	}
 }
