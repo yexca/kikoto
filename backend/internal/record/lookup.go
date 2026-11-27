@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// IgnoredName reports whether a scan skips every file or folder of this name,
+// such as the root marker, its trash, and NAS or desktop metadata.
+func IgnoredName(name string) bool { return ignoredNames[name] }
+
 // AssetByPath returns the asset recorded at a path relative to the root.
 func (s *Store) AssetByPath(ctx context.Context, relative string) (Asset, error) {
 	return scanAsset(s.db.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM record_asset a WHERE a.root_id=1 AND a.path_key=?`, pathKey(relative)))

@@ -31,10 +31,6 @@ var ignoredNames = map[string]bool{
 	"#recycle": true, ".DS_Store": true, "Thumbs.db": true,
 }
 
-// IgnoredName reports whether a scan skips every file or folder of this name,
-// such as the root marker, its trash, and NAS or desktop metadata.
-func IgnoredName(name string) bool { return ignoredNames[name] }
-
 type Store struct {
 	db    *sqlutil.DB
 	root  string
