@@ -20,6 +20,25 @@
 - Every page with views switches them through one icon tab row: Translation
   and Tags take it in place of their pills, and Discover, Metadata, and
   Workflows tabs gain icons. On a narrow row the tabs fold to icons and name
-  only the open one. The Tags search sits at the end of the tab row.
+  only the open one, and a tab's count is read after its name. The Tags
+  search sits at the end of the tab row.
+
+</details>
+
+<details>
+<summary><strong>Playback</strong></summary>
+
+- The player scrolls only the title or artist line that does not fit; when
+  both overflow they start each cycle together. The full player's title and
+  artist scroll instead of ending in an ellipsis, and a queue row scrolls its
+  artist as well as its title while it plays, is pointed at, or has focus.
+
+</details>
+
+<details>
+<summary><strong>Sources and remote fetch</strong></summary>
+
+- The file types a Fetch from the availability watch leaves out are kept for
+  each server. Every server starts from the choice made before the upgrade.
 
 </details>

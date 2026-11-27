@@ -219,6 +219,8 @@ export const translationKorean = {
       attention: "중지됨",
       history: "기록",
       coverage: "현황",
+      count_one: "{{count}}개",
+      count_other: "{{count}}개",
     },
     running: "실행 중",
     queued: "대기 중",

@@ -221,6 +221,8 @@ export const translationEnglish = {
       attention: "Stopped",
       history: "History",
       coverage: "Coverage",
+      count_one: "{{count}} item",
+      count_other: "{{count}} items",
     },
     running: "Running",
     queued: "Queued",

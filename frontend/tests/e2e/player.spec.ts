@@ -474,6 +474,60 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   expect(compactKeyframes[1].offset).toBeGreaterThan(0);
 });
 
+test("@desktop queue row that starts playing scrolls its bolder title by its own width", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  const secondTitle = "Another deliberately long queued track title that the queue row cannot show in full";
+  const first = { ...persistedTrack, title: "First queued track.wav" };
+  const second = { ...persistedTrack, queueItemId: "e2e-track-2", locationId: 2, title: secondTitle };
+  persistedPlayerTracks.set(page, [first, second]);
+  await page.addInitScript(
+    ({ queue, baseKey }) => {
+      const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:anonymous`;
+      localStorage.setItem(
+        key,
+        JSON.stringify({ version: 1, queue, currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }),
+      );
+    },
+    { queue: [first, second], baseKey: playerQueueStorageBaseKey },
+  );
+  await page.route(/\/api\/media\/\d+\/stream(?:\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(100) }),
+  );
+  await page.goto("/");
+  // A platform font may draw both weights at one width; the spacing makes the
+  // playing row's title wider than its resting one on every platform.
+  await page.addStyleTag({ content: "[data-queue-row] .font-semibold { letter-spacing: 0.1em; }" });
+
+  await page.getByRole("button", { name: "Playback queue" }).click();
+  const row = page.getByRole("listitem").filter({ hasText: secondTitle });
+  const line = row.locator('[data-marquee="auto"]', { hasText: secondTitle });
+  await expect(line).toBeVisible();
+  // The row was measured at its resting weight; playing it sets the title bolder.
+  await row
+    .getByRole("button", { name: new RegExp(secondTitle) })
+    .first()
+    .click();
+  await expect(row.getByRole("button", { name: new RegExp(secondTitle) }).first()).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+
+  // The scroll ends where the second copy started, so the loop has no seam.
+  const scrollEnd = () =>
+    line.locator("[data-marquee-track]").evaluate((element) => {
+      const frames = (element.getAnimations()[0]?.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
+      const transform = String(frames.at(-1)?.transform ?? "");
+      return Number(/translateX\(-([\d.]+)px\)/.exec(transform)?.[1] ?? 0);
+    });
+  const copyStart = () =>
+    line.locator("[data-marquee-copy]").evaluateAll((copies) => {
+      const [own, repeated] = copies.map((copy) => copy.getBoundingClientRect().left);
+      return Math.round(repeated - own);
+    });
+  await expect.poll(async () => Math.abs((await scrollEnd()) - (await copyStart()))).toBeLessThanOrEqual(1);
+});
+
 test("@desktop compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);

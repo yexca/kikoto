@@ -81,7 +81,10 @@ it is built:
   blocked, or unreadable, and a refused write leaves the choice in memory for
   the visit.
 - A key's format is its saved data. Changing a key's scope or name moves the
-  saved value with `carryOver` on read, or states why the value may reset.
+  saved value with `carryOver` on read, or states why the value may reset. A
+  value that narrows from the device to each server or account reads the
+  device key whenever the narrower key holds nothing, so every server or
+  account starts from it instead of only the first one opened.
 - Demo mode may change local display preferences even though server-backed
   account and administration state remains read-only.
 

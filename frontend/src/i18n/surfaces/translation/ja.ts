@@ -222,6 +222,8 @@ export const translationJapanese = {
       attention: "停止",
       history: "履歴",
       coverage: "カバレッジ",
+      count_one: "{{count}} 件",
+      count_other: "{{count}} 件",
     },
     running: "実行中",
     queued: "待機中",

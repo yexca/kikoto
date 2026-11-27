@@ -213,6 +213,8 @@ export const translationHant = {
       attention: "已停止",
       history: "歷史",
       coverage: "覆蓋",
+      count_one: "{{count}} 項",
+      count_other: "{{count}} 項",
     },
     running: "執行中",
     queued: "已排隊",

@@ -16,7 +16,8 @@ import { WATCH_ACTION_MAX_TARGETS, watchTargetOtherEdition } from "./availabilit
 import type { WatchActionTarget } from "./useWatchTargetActions";
 
 const EXCLUSION_STORE_NAME = "kikoto:watch-fetch-exclusion";
-// Before the choice was kept per server, one value served every server.
+// Before the choice was kept per server, one value served every server. It
+// stays as the starting choice of each server that has none of its own.
 const DEVICE_EXCLUSION_STORE = deviceKey(EXCLUSION_STORE_NAME);
 const exclusionStore = () => serverKey(EXCLUSION_STORE_NAME);
 
@@ -24,8 +25,7 @@ type FetchExclusion = { enabled: boolean; extensions: string[] };
 
 /** The last exclusion chosen on this device for the server; none until one is chosen. */
 function readExclusion(): FetchExclusion {
-  localStore.carryOver(DEVICE_EXCLUSION_STORE, exclusionStore());
-  const parsed = localStore.readJSON(exclusionStore());
+  const parsed = localStore.readJSON(exclusionStore()) ?? localStore.readJSON(DEVICE_EXCLUSION_STORE);
   if (parsed && typeof parsed === "object") {
     const { enabled, extensions } = parsed as Partial<FetchExclusion>;
     return {

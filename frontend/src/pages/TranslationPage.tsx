@@ -190,6 +190,8 @@ export function TranslationPage({
     icon: viewIcons[value],
     id: `translation-tab-${value}`,
     controls: "translation-panel",
+    // The count is a guide beside the name; the description reads it after the name.
+    description: badge(value) > 0 ? t("translationCenter.views.count", { count: badge(value) }) : undefined,
     suffix:
       badge(value) > 0 ? (
         <span

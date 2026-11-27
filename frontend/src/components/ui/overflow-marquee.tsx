@@ -57,6 +57,11 @@ export function OverflowMarqueeLines({
   // Callers rebuild the lines every render; key the effects on the texts themselves.
   const textsKey = JSON.stringify(lines.map((line) => line.text));
   const texts = useMemo(() => JSON.parse(textsKey) as string[], [textsKey]);
+  // A class change, such as the bolder title of the playing queue row, widens
+  // the text without resizing its line.
+  const classesKey = JSON.stringify(lines.map((line) => line.className ?? ""));
+  // A line that starts or stops scrolling swaps its text for the two copies.
+  const scrollingKey = distances.map((distance) => distance > 0).join();
   const scrolls = !reducedMotion;
 
   useLayoutEffect(() => {
@@ -77,7 +82,11 @@ export function OverflowMarqueeLines({
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     texts.forEach((_, index) => {
       const line = lineRefs.current[index];
-      if (line) observer?.observe(line);
+      if (!line) return;
+      observer?.observe(line);
+      // The copy is an inline block, so a change of its own width reports here.
+      const copy = line.querySelector<HTMLElement>("[data-marquee-copy]");
+      if (copy) observer?.observe(copy);
     });
     window.addEventListener("resize", measure);
     // A web font that finishes loading changes the text width but not the line box.
@@ -87,7 +96,7 @@ export function OverflowMarqueeLines({
       window.removeEventListener("resize", measure);
       document.fonts?.removeEventListener("loadingdone", measure);
     };
-  }, [texts]);
+  }, [texts, classesKey, scrollingKey]);
 
   const timeline = useMemo(() => (scrolls ? marqueeTimeline(distances) : null), [scrolls, distances]);
 

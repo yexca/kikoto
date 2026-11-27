@@ -213,6 +213,8 @@ export const translationHans = {
       attention: "已停止",
       history: "历史",
       coverage: "覆盖",
+      count_one: "{{count}} 项",
+      count_other: "{{count}} 项",
     },
     running: "运行中",
     queued: "已排队",
