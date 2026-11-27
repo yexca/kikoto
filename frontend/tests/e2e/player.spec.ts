@@ -564,7 +564,8 @@ test("@desktop compact player supports relative drag seeking and global playback
   await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.75, box!.y + box!.height * 0.5, { steps: 4 });
-  const scrubOverlay = page.locator('[aria-live="polite"]');
+  // The page's loading status is also a polite live region; the scrub readout is the compact player's own.
+  const scrubOverlay = compact.locator('[aria-live="polite"]');
   await expect(scrubOverlay).toBeVisible();
   const scrubDeltaText = await scrubOverlay.textContent();
   const scrubDeltaSeconds = Number(/\+([\d.]+)s/.exec(scrubDeltaText ?? "")?.[1] ?? 0);
