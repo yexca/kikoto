@@ -67,7 +67,7 @@ export function TranslationCoverage({
   preferenceRevision = 0,
   readOnly = false,
   permissions,
-  toolbar,
+  actionsSlot,
   editingWorkId = null,
   onEditWork,
 }: {
@@ -75,7 +75,8 @@ export function TranslationCoverage({
   readOnly?: boolean;
   /** The categories the viewer may translate. */
   permissions: { metadata: boolean; files: boolean };
-  toolbar: MaintenanceToolbarSlots;
+  /** Where the page shows the coverage's refresh, page size, and translate buttons. */
+  actionsSlot: HTMLElement | null;
   editingWorkId?: number | null;
   onEditWork?: (work: TranslationCoverageWork, onSaved: () => void) => void;
 }) {
@@ -87,6 +88,9 @@ export function TranslationCoverage({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const search = useMaintenanceSearch(() => setPage(1));
+  // The search ends the filter row, so the page's tab row keeps only the buttons.
+  const [searchSlot, setSearchSlot] = useState<HTMLDivElement | null>(null);
+  const toolbar: MaintenanceToolbarSlots = { actions: actionsSlot, search: searchSlot, compactSearch: false };
   const query = search.query;
   const [result, setResult] = useState<TranslationCoveragePage>({
     language,
@@ -218,6 +222,7 @@ export function TranslationCoverage({
             }}
           />
         </div>
+        <div ref={setSearchSlot} className="flex min-w-[12rem] flex-1 sm:justify-end" />
       </div>
       {(hasLoaded || !loadError) && (
         <WorkCollectionPagination {...paginationProps} placement="top" compactMobile compactTop />

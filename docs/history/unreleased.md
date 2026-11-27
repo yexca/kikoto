@@ -22,6 +22,9 @@
   Workflows tabs gain icons. On a narrow row the tabs fold to icons and name
   only the open one, and a tab's count is read after its name. The Tags
   search sits at the end of the tab row.
+- Translation keeps Refresh, and on Coverage its refresh, page size, and
+  translate buttons, at the end of the tab row instead of a row of their own;
+  the Coverage search ends the row of its target language and filter.
 
 </details>
 

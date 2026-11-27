@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { contentPageClassName } from "@/components/ui/page-width";
 import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { TranslationCoverage } from "@/features/maintenance/TranslationCoverage";
 import {
   translationCenterViewFromSearch,
@@ -86,7 +85,6 @@ export function TranslationPage({
   const [loadError, setLoadError] = useState(false);
   const [cancelling, setCancelling] = useState<ReadonlySet<number>>(new Set());
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
-  const [searchSlot, setSearchSlot] = useState<HTMLDivElement | null>(null);
   const views = visibleTranslationCenterViews(autoAccept, counts?.review ?? 0);
   const view = requestedView && views.includes(requestedView) ? requestedView : views[0];
 
@@ -203,7 +201,6 @@ export function TranslationPage({
         </span>
       ) : undefined,
   }));
-  const toolbar: MaintenanceToolbarSlots = { actions: actionsSlot, search: searchSlot, compactSearch: false };
   const empty = (message: string) => (
     <div className="grid min-h-48 place-items-center rounded-lg border bg-card px-6 py-10 text-center">
       <div>
@@ -225,25 +222,28 @@ export function TranslationPage({
   return (
     <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
       {readOnly && <DemoPreviewNotice surface="translationCenter" />}
-      <SubNavTabs label={t("translationCenter.views.label")} items={navItems} selected={view} onSelect={showView} />
-      <div className="flex min-h-10 flex-wrap items-center gap-2" data-toast-avoid>
-        {view === "coverage" ? (
-          <>
-            <div ref={setSearchSlot} className="contents" />
-            <div ref={setActionsSlot} className="ml-auto flex shrink-0 items-center gap-2" />
-          </>
-        ) : (
-          <Button
-            className="ml-auto"
-            variant="toolbar"
-            size="icon-sm"
-            aria-label={t("translationCenter.refresh")}
-            title={t("translationCenter.refresh")}
-            onClick={() => void load()}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        )}
+      <div data-toast-avoid>
+        <SubNavTabs
+          label={t("translationCenter.views.label")}
+          items={navItems}
+          selected={view}
+          onSelect={showView}
+          trailing={
+            view === "coverage" ? (
+              <div ref={setActionsSlot} className="flex shrink-0 items-center gap-2" />
+            ) : (
+              <Button
+                variant="toolbar"
+                size="icon-sm"
+                aria-label={t("translationCenter.refresh")}
+                title={t("translationCenter.refresh")}
+                onClick={() => void load()}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            )
+          }
+        />
       </div>
       <div
         className="min-w-0 space-y-3"
@@ -266,7 +266,7 @@ export function TranslationPage({
           <TranslationCoverage
             readOnly={readOnly}
             permissions={{ metadata: canTranslateMetadata, files: canTranslateFiles }}
-            toolbar={toolbar}
+            actionsSlot={actionsSlot}
           />
         ) : view === "running" ? (
           !runs ? (
