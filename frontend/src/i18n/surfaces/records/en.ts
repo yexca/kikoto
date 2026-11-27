@@ -3,8 +3,6 @@ export const recordsEnglish = {
   records: {
     loading: "Loading Record…",
     loadingFolder: "Loading folder…",
-    demoTitle: "Record is unavailable in Demo",
-    demoMessage: "Connect to a normal Kikoto instance to configure a record root.",
     setupTitle: "Set up Record",
     setupMessage: "Initialize the record root in System settings, then scan it for videos and photos.",
     openLibrarySettings: "Open Library settings",

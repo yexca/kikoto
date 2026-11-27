@@ -154,6 +154,29 @@ func TestLoadReadsDemoMode(t *testing.T) {
 	}
 }
 
+// Demo shows only the Record samples it generates, never a configured folder.
+func TestLoadKeepsDemoRecordRootInsideTheCache(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "demo")
+	t.Setenv("KIKOTO_CACHE_ROOT", filepath.Join("isolated", "cache"))
+	t.Setenv("KIKOTO_RECORD_ROOT", filepath.Join("operator", "record"))
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("isolated", "cache", DemoRecordDirName); cfg.RecordRoot != want {
+		t.Fatalf("demo record root = %q, want %q", cfg.RecordRoot, want)
+	}
+
+	t.Setenv("KIKOTO_MODE", "production")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("operator", "record"); cfg.RecordRoot != want {
+		t.Fatalf("production record root = %q, want %q", cfg.RecordRoot, want)
+	}
+}
+
 func TestLoadParsesTrustedProxiesAndRejectsInvalidEntries(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "development")
 	t.Setenv("KIKOTO_TRUSTED_PROXIES", " 192.0.2.1 , 198.51.100.7/24, 2001:db8::/48 ")

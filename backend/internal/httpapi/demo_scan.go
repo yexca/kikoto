@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -27,6 +28,10 @@ func (s *Server) RunDemoStartupWorkflows(ctx context.Context) (DemoLibraryScanRe
 	result, err := s.RunDemoLibraryScan(ctx)
 	if err != nil {
 		return result, err
+	}
+	// Demo starts without Record rather than not at all.
+	if err := s.prepareDemoRecordLibrary(ctx); err != nil {
+		slog.Warn("demo record library unavailable", "error", err)
 	}
 	if err := s.SeedDemoShowcase(ctx); err != nil {
 		return result, fmt.Errorf("seed demo showcase: %w", err)

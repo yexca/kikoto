@@ -26,10 +26,13 @@ const refusalKeys: Record<string, string> = {
  */
 export function RecordDeleteDialog({
   target,
+  demo = false,
   onCancel,
   onDeleted,
 }: {
   target: RecordDeleteTarget;
+  /** Demo walks through the review and deletes nothing. */
+  demo?: boolean;
   onCancel: () => void;
   onDeleted: (target: RecordDeleteTarget) => void;
 }) {
@@ -45,6 +48,11 @@ export function RecordDeleteDialog({
     : (target.asset.relativePath ?? target.asset.name);
 
   const confirm = async () => {
+    if (demo) {
+      toast.warning(t("permissions.demoReadOnly"));
+      onCancel();
+      return;
+    }
     setDeleting(true);
     let removed: ReadonlySet<number>;
     try {

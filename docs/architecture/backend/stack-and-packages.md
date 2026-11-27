@@ -23,6 +23,9 @@ The backend stack, the internal package map, and the layering rule between HTTP 
   asset scanner, safe path resolution, artwork selection, streaming,
   per-user playback progress, and moving deleted files to the record trash.
   Record assets never enter the work or media-item identity model.
+- `backend/internal/demorecord`: the sample Record library Demo generates
+  with bounded `ffmpeg` runs, which never serves or replaces a folder holding
+  anything it did not make.
 - `backend/internal/storagepool`: storage pool layout below the data root and
   the marker that distinguishes an online pool from an empty mount point.
 - `backend/internal/localfs`: local folder discovery.

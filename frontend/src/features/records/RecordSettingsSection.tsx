@@ -57,8 +57,7 @@ export function RecordSettingsSection({
   const { t } = useTranslation();
   const auth = useAuth();
   const status = useAutosaveStatus();
-  // Demo has no record root to read.
-  const showRoot = enabled && savedEnabled && !auth.demoMode;
+  const showRoot = enabled && savedEnabled;
   const { state: rootState, reload, setRoot } = useRecordRoot(showRoot);
   const [initializing, setInitializing] = useState<"idle" | "busy" | "failed">("idle");
   const [initializeFailure, setInitializeFailure] = useState("records.initializeFailed");

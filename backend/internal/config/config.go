@@ -115,13 +115,19 @@ func Load() (Config, error) {
 	}
 	databasePath := env("KIKOTO_DB_PATH", "../config/kikoto.db")
 	cacheRoot := env("KIKOTO_CACHE_ROOT", "../cache")
+	recordRoot := env("KIKOTO_RECORD_ROOT", "../record")
+	if mode == ModeDemo {
+		// Demo never reads an operator's folder for Record: its root holds
+		// only the samples Demo generates in its isolated cache.
+		recordRoot = filepath.Join(cacheRoot, DemoRecordDirName)
+	}
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        databasePath,
 		DatabaseBackupDir:   env("KIKOTO_DB_BACKUP_DIR", defaultDatabaseBackupDir(databasePath)),
 		DBReadConnections:   envInt("KIKOTO_DB_READ_CONNECTIONS", 8),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
-		RecordRoot:          env("KIKOTO_RECORD_ROOT", "../record"),
+		RecordRoot:          recordRoot,
 		CacheRoot:           cacheRoot,
 		TempDir:             filepath.Join(cacheRoot, tempDirName),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
@@ -144,6 +150,10 @@ func Load() (Config, error) {
 // tempDirName is the temporary directory inside the cache root. Startup
 // empties it, so the name is one only Kikoto uses.
 const tempDirName = ".kikoto-tmp"
+
+// DemoRecordDirName is the folder inside the cache root that holds Demo's
+// generated Record library.
+const DemoRecordDirName = "demo-record"
 
 // defaultDatabaseBackupDir keeps backups beside the database, on the same
 // durable volume, and never in the disposable cache or the media library.

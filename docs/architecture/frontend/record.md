@@ -26,6 +26,10 @@ Each entry carries the breadcrumb trail, which shows until the folder's
 listing arrives with the trail the server names; a pasted folder link takes
 its trail from that listing.
 
+Demo browses and plays its generated sample library as usual, with a notice
+above it saying the files are samples. It saves no progress, and its delete
+review ends in the read-only warning instead of the trash.
+
 The single-row header places the breadcrumb on the left and the Continue
 watching picker and Scan (or Refresh without `library:write`) on the right.
 The page follows the record workflows through the root's `activity`: while a

@@ -3,8 +3,6 @@ export const recordsHant = {
   records: {
     loading: "正在載入記錄…",
     loadingFolder: "正在載入資料夾…",
-    demoTitle: "示範模式下無法使用記錄",
-    demoMessage: "連線到一般的 Kikoto 執行個體以設定記錄根目錄。",
     setupTitle: "設定記錄",
     setupMessage: "在系統設定中初始化記錄根目錄，然後掃描其中的影片與照片。",
     openLibrarySettings: "開啟媒體庫設定",

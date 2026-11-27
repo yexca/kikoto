@@ -6,7 +6,10 @@ audio files, and images. Its root is configured separately from the audio data r
 storage pool and it is never included in the audio local-work scan.
 
 Record is off until an administrator turns it on in **System → Library**,
-which saves the `record_library_enabled` app setting. While it is off, every
+which saves the `record_library_enabled` app setting. Demo instead turns it on
+at startup over the sample library the `demorecord` package generates in its
+cache, and off when that library cannot be made (see
+[Demo Stack](../operations/docker.md#demo-stack)). While it is off, every
 `/api/records` route answers `404` with `record_library_disabled`, the
 navigation leaves Record out, and `/records` is not found; `GET
 /api/runtime-settings` reports the setting to signed-in readers as

@@ -648,6 +648,8 @@ export const surfaceKorean = {
     demoWorksNotice: "데모 모드: 작품은 데모 용도로만 표시되며, 저작권은 원저작자에게 있습니다.",
     demoListeningNotice:
       "데모 모드: 이 청취 기록은 시뮬레이션이며 실제 청취가 아닙니다. 이 데모에서의 재생도 기록되지 않습니다.",
+    demoRecordNotice:
+      "데모 모드: 이곳의 동영상, 사진, 오디오 파일은 생성된 샘플입니다. 시청 위치는 저장되지 않으며 스캔하거나 삭제할 수 없습니다.",
     demoTranscriptionNotice:
       "데모 모드: 이 전사 기록은 예시입니다. 데모는 오디오를 음성 인식 서비스로 보내지 않으므로 등급 확인과 전사 시작·추가·폐기를 사용할 수 없습니다.",
     demoLyricsTranslationNotice:

@@ -696,6 +696,8 @@ export const surfaceEnglish = {
       "Demo mode: these works are shown for demonstration only, and their copyrights belong to their original creators.",
     demoListeningNotice:
       "Demo mode: this listening history is simulated. Nobody listened to it, and listening in this demo is not recorded.",
+    demoRecordNotice:
+      "Demo mode: these videos, photos, and audio files are generated samples. Watching progress is not saved, and nothing can be scanned or deleted.",
     demoTranscriptionNotice:
       "Demo mode: these transcriptions are samples. Demo sends no audio to a speech recognition service, so checking ratings and starting, adding, or discarding transcriptions are unavailable.",
     demoLyricsTranslationNotice:

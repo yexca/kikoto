@@ -36,6 +36,19 @@
 </details>
 
 <details>
+<summary><strong>Demo</strong></summary>
+
+- Demo shows Record over a library it generates on start: short
+  test-pattern videos, one with a subtitle sidecar and one with embedded
+  subtitles, photos, and tone audio files with cover art. The Demo account
+  has two samples under Continue watching, the Workflows page shows Record
+  scan and Media details examples, and System → Library shows the record
+  root as online. Demo ignores `KIKOTO_RECORD_ROOT` and never reads a
+  `/record` mount.
+
+</details>
+
+<details>
 <summary><strong>Sources and remote fetch</strong></summary>
 
 - The file types a Fetch from the availability watch leaves out are kept for

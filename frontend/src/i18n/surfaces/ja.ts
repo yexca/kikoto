@@ -649,6 +649,8 @@ export const surfaceJapanese = {
     demoWorksNotice: "デモモード：作品はデモ用途でのみ表示しており、著作権は原作者に帰属します。",
     demoListeningNotice:
       "デモモード：この聴取履歴はシミュレーションで、実際の聴取ではありません。このデモでの再生も記録されません。",
+    demoRecordNotice:
+      "デモモード：ここにある動画、写真、音声ファイルは生成されたサンプルです。視聴位置は保存されず、スキャンや削除もできません。",
     demoTranscriptionNotice:
       "デモモード：これらの文字起こしはサンプルです。デモは音声を音声認識サービスに送信しないため、区分の確認や、文字起こしの開始・追加・破棄はできません。",
     demoLyricsTranslationNotice:

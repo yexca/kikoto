@@ -3,8 +3,6 @@ export const recordsJapanese = {
   records: {
     loading: "記録を読み込み中…",
     loadingFolder: "フォルダーを読み込み中…",
-    demoTitle: "デモでは記録を利用できません",
-    demoMessage: "記録ルートを設定するには、通常の Kikoto インスタンスに接続してください。",
     setupTitle: "記録を設定",
     setupMessage: "システム設定で記録ルートを初期化し、動画と写真をスキャンします。",
     openLibrarySettings: "ライブラリ設定を開く",

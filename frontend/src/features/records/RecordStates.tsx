@@ -53,17 +53,6 @@ export function RecordLoading({ label }: { label: string }) {
   );
 }
 
-export function RecordDemoNotice() {
-  const { t } = useTranslation();
-  return (
-    <RecordNotice
-      icon={<Clapperboard className="h-4 w-4" />}
-      title={t("records.demoTitle")}
-      message={t("records.demoMessage")}
-    />
-  );
-}
-
 /**
  * An uninitialized record root. The root is initialized in System -> Library,
  * which `settingsPath` opens for a viewer who may change instance settings.

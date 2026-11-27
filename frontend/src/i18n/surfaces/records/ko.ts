@@ -3,8 +3,6 @@ export const recordsKorean = {
   records: {
     loading: "기록을 불러오는 중…",
     loadingFolder: "폴더를 불러오는 중…",
-    demoTitle: "데모에서는 기록을 사용할 수 없습니다",
-    demoMessage: "기록 루트를 구성하려면 일반 Kikoto 인스턴스에 연결하세요.",
     setupTitle: "기록 설정",
     setupMessage: "시스템 설정에서 기록 루트를 초기화한 다음 동영상과 사진을 스캔하세요.",
     openLibrarySettings: "라이브러리 설정 열기",

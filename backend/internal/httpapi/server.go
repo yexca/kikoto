@@ -19,6 +19,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/auththrottle"
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/demorecord"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/llm"
@@ -75,6 +76,7 @@ type Server struct {
 	videoKeyframeIndexes           videoKeyframeIndexes
 	videoKeyframePrefetch          videoKeyframePrefetch
 	recordMediaDetails             recordMediaDetails
+	demoRecordFFmpeg               demorecord.FFmpegFunc
 	videoHardware                  videoHardwareState
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
@@ -154,6 +156,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		lifetime:                       newServerLifetime(),
 	}
 	server.recordThumbnails = server.newRecordThumbnailer(record.FFmpeg)
+	server.demoRecordFFmpeg = runDemoRecordFFmpeg
 	server.proxyConfig = &proxyConfigStore{load: server.loadProxyConfig}
 	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, func(ctx context.Context) (proxyRoute, error) {
 		return server.resolveProxyRoute(ctx, proxyconfig.ScopeDLsite, 0)

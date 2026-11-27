@@ -292,6 +292,22 @@ stream, so it can remain visible during a long-lived Demo deployment. Actual
 but are not exposed through the public workflow-run API. Repeated starts replace
 the examples and remove Tracked examples that no longer pass admission.
 
+Demo also offers Record over a library it generates itself. On start, with
+`ffmpeg`, it writes a fixed set of short test-pattern videos, a subtitle
+sidecar, gradient and fractal photos, and sine-tone audio files to
+`./demo/cache/demo-record`, initializes that folder as the record root, scans
+it, and reads its media details. `KIKOTO_RECORD_ROOT` is ignored in Demo mode
+and no `/record` mount is read, so Record never shows an operator's own
+videos or photos. A start that finds the set already generated leaves its
+files and cached thumbnails as they are. A file or folder in it that Demo did
+not generate keeps Demo from scanning or replacing that folder, so Demo starts
+with Record turned off and leaves the folder as it is; remove what was added,
+or the whole folder, to get the samples back. Demo also starts with Record
+turned off when the set cannot be made, and logs the end of `ffmpeg`'s error
+output. The Demo account's Continue
+watching lists two samples it left part way, and the Record page states above
+the library that its files are generated samples.
+
 Demo rejects every write, so no visitor's listening is recorded. Insights
 instead shows a simulated listening history of the Demo account over the
 admitted local works: plays, listening days, and hours of the day for the last
@@ -302,7 +318,8 @@ extends the history every hour. Insights states above the dashboard that the
 history is simulated.
 
 `./demo/config` contains the isolated Demo SQLite database. `./demo/cache` contains only isolated or sanitized assets; startup
-may add covers after the provider eligibility check. Never point a public Demo
+may add covers after the provider eligibility check and writes the generated
+Record samples. Never point a public Demo
 deployment at production or personal runtime directories. The
 service creates a reserved passwordless `__demo__` identity in the Demo
 database and ignores supplied login sessions. That identity still reports only

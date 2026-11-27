@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoRecordNotice } from "@/components/DemoReadOnlyNotice";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import type { RecordAsset, RecordFolder, RecordProgress, RecordRoot } from "@/lib/api";
@@ -19,13 +20,7 @@ import {
 } from "./RecordGrid";
 import { RecordMediaPlayer } from "./RecordMediaPlayer";
 import { RecordPhotoViewer } from "./RecordPhotoViewer";
-import {
-  RecordDemoNotice,
-  RecordEmptyNotice,
-  RecordLoading,
-  RecordRetryNotice,
-  RecordSetupNotice,
-} from "./RecordStates";
+import { RecordEmptyNotice, RecordLoading, RecordRetryNotice, RecordSetupNotice } from "./RecordStates";
 import { RecordsToolbar } from "./RecordsToolbar";
 import {
   closeOverlayNavigation,
@@ -65,13 +60,14 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   const auth = useAuth();
   const { t } = useTranslation();
   const phone = useMobileNavigationLayout();
-  const enabled = !auth.demoMode;
+  const demo = auth.demoMode;
   const canScan = auth.hasPermission("library:write");
   const canOpenRun = auth.hasPermission("workflows:run");
-  const canDelete = auth.hasPermission("downloads:manage");
-  const canSaveProgress = auth.hasPermission("playback:use");
+  // Demo reviews a deletion without making it, and saves no progress.
+  const canDelete = demo || auth.hasPermission("downloads:manage");
+  const canSaveProgress = !demo && auth.hasPermission("playback:use");
   const { location, historyState, navigate } = useRecordsLocation();
-  const { state: rootState, reload: reloadRoot } = useRecordRoot(enabled);
+  const { state: rootState, reload: reloadRoot } = useRecordRoot(true);
   const root: RecordRoot | null = rootState.status === "ready" ? rootState.root : null;
   // A root that lost its marker keeps its catalog and is browsed as usual.
   const online = root?.state === "online" || root?.state === "marker_missing";
@@ -83,7 +79,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     loadMore,
     readWhole,
     reload: reloadTree,
-  } = useRecordTree(location.folderId, historyState, enabled && online);
+  } = useRecordTree(location.folderId, historyState, online);
   const scan = useRecordScan({
     activity: rootState.status === "ready" ? rootState.activity : null,
     reloadRoot,
@@ -115,7 +111,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
   );
   const { progress, remember } = useRecordProgress(location.folderId, playableItems);
   const [savedToken, setSavedToken] = useState(0);
-  const continueAssets = useRecordContinue(enabled && online && location.overlay === null, savedToken);
+  const continueAssets = useRecordContinue(online && location.overlay === null, savedToken);
   const placement = useRecordSiblings(location.overlay?.assetId ?? null, version);
 
   const openFolder = useStableCallback((folder: RecordFolder) => {
@@ -310,7 +306,6 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [location.overlay, online, openCrumb, trail.length]);
 
-  if (!enabled) return <RecordDemoNotice />;
   if (rootState.status === "loading") return <RecordLoading label={t("records.loading")} />;
   if (rootState.status === "error" || !root) {
     return (
@@ -398,6 +393,7 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
 
   return (
     <div className="space-y-4">
+      {demo && <DemoRecordNotice />}
       {root.state === "marker_missing" && (
         <p
           role="status"
@@ -519,7 +515,9 @@ export function RecordsBrowser({ librarySettingsPath }: { librarySettingsPath: s
           onClose={closeOverlay}
         />
       )}
-      {deleting && <RecordDeleteDialog target={deleting} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />}
+      {deleting && (
+        <RecordDeleteDialog target={deleting} demo={demo} onCancel={() => setDeleting(null)} onDeleted={finishDelete} />
+      )}
     </div>
   );
 }

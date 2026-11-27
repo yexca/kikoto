@@ -20,6 +20,10 @@ var demoShowcaseWorkflowCodes = []string{
 	"remote_work_fetch", sourcePresenceCheckWorkflowCode, "circle_catalog_sync", "series_catalog_sync", "voice_catalog_sync",
 }
 
+// These Record definitions join the sample history while Demo's generated
+// Record library is on, the only time Workflows shows their cards.
+var demoShowcaseRecordWorkflowCodes = []string{recordScanWorkflowCode, recordProbeWorkflowCode}
+
 // These extra examples populate Activity's active and attention views without
 // dispatching work. Demo never starts the workflow job runner.
 var demoShowcaseActivityExamples = []struct {
@@ -44,6 +48,7 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 	if !s.cfg.IsDemo() {
 		return fmt.Errorf("demo showcase is only available in demo mode")
 	}
+	recordOn := s.recordLibraryEnabled(ctx)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -61,6 +66,14 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 	for _, code := range demoShowcaseWorkflowCodes {
 		if err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", works); err != nil {
 			return err
+		}
+	}
+	if recordOn {
+		// Record runs name no work.
+		for _, code := range demoShowcaseRecordWorkflowCodes {
+			if err := seedDemoWorkflowRun(ctx, tx, code, "succeeded", "", nil); err != nil {
+				return err
+			}
 		}
 	}
 	for _, example := range demoShowcaseActivityExamples {

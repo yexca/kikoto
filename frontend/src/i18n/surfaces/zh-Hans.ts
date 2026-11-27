@@ -633,6 +633,7 @@ export const surfaceHans = {
       "演示模式：{{source}} 是模拟的远程来源，并非真实服务器。其中的作品是从本演示的本地作品中随机选取的。",
     demoWorksNotice: "演示模式：作品仅用于演示，版权归原作者所有。",
     demoListeningNotice: "演示模式：这里的收听记录是模拟生成的，并非真实收听；演示中的播放也不会被记录。",
+    demoRecordNotice: "演示模式：这里的视频、照片和音频文件都是生成的示例；观看进度不会保存，也无法扫描或删除。",
     demoTranscriptionNotice:
       "演示模式：这些转写是示例。演示不会把音频发送给语音识别服务，因此无法检测分级，也无法开始、添加或丢弃转写。",
     demoLyricsTranslationNotice:

@@ -3,8 +3,6 @@ export const recordsHans = {
   records: {
     loading: "正在加载记录…",
     loadingFolder: "正在加载文件夹…",
-    demoTitle: "演示模式下无法使用记录",
-    demoMessage: "连接到普通的 Kikoto 实例以配置记录根目录。",
     setupTitle: "设置记录",
     setupMessage: "在系统设置中初始化记录根目录，然后扫描其中的视频和照片。",
     openLibrarySettings: "打开媒体库设置",

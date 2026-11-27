@@ -33,6 +33,12 @@ export function DemoListeningNotice() {
   return <DemoNotice message={t("permissions.demoListeningNotice")} />;
 }
 
+/** Demo's Record library holds only generated samples and keeps no progress; say so above it. */
+export function DemoRecordNotice() {
+  const { t } = useTranslation();
+  return <DemoNotice message={t("permissions.demoRecordNotice")} />;
+}
+
 /** Demo contacts no transcription or translation service; say so above the sample lyrics tasks. */
 export function DemoLyricsTaskNotice({ task }: { task: "transcription" | "translation" }) {
   const { t } = useTranslation();
